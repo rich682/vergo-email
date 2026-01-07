@@ -1,0 +1,299 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" = your local machine (Mac/Windows/Linux)
+  // "debian-openssl-3.0.x" = Cloud Run production (node:18-slim is Debian-based)
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum TaskStatus {
+  AWAITING_RESPONSE
+  REPLIED
+  HAS_ATTACHMENTS
+  VERIFYING
+  FULFILLED
+  REJECTED
+  FLAGGED
+  MANUAL_REVIEW
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageChannel {
+  EMAIL
+  SMS
+}
+
+enum EmailProvider {
+  GMAIL
+  GENERIC_SMTP
+}
+
+enum CampaignType {
+  W9
+  COI
+  EXPENSE
+  TIMESHEET
+  INVOICE
+  RECEIPT
+  CUSTOM
+}
+
+enum EmailDraftStatus {
+  DRAFT
+  APPROVED
+  SENT
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  emailDomain String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users                  User[]
+  entities               Entity[]
+  groups                 Group[]
+  connectedEmailAccounts ConnectedEmailAccount[]
+  automationRules        AutomationRule[]
+  emailDrafts            EmailDraft[]
+  agentSchedules         AgentSchedule[]
+
+  @@index([slug])
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String?
+  role           UserRole @default(MEMBER)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDrafts  EmailDraft[]
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model Entity {
+  id             String   @id @default(cuid())
+  firstName      String
+  email          String?
+  phone          String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groups       EntityGroup[]
+  tasks        Task[]
+  messages     Message[]
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([organizationId, email])
+}
+
+model Group {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  color          String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entities     EntityGroup[]
+  schedules    AgentSchedule[]
+
+  @@index([organizationId])
+}
+
+model EntityGroup {
+  id        String   @id @default(cuid())
+  entityId  String
+  groupId   String
+  createdAt DateTime @default(now())
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, groupId])
+  @@index([entityId])
+  @@index([groupId])
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  entityId       String
+  campaignName   String?
+  campaignType   CampaignType?
+  status         TaskStatus   @default(AWAITING_RESPONSE)
+  threadId       String       @unique
+  replyToEmail   String?
+  replyToPhone   String?
+  aiReasoning    Json? // Store AI reasoning as JSON
+  aiVerified     Boolean?
+  verifiedAt     DateTime?
+  documentUrl    String?
+  documentKey    String?
+  hasAttachments Boolean      @default(false)
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  entity   Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([organizationId])
+  @@index([entityId])
+  @@index([status])
+  @@index([threadId])
+  @@index([organizationId, status])
+  @@index([organizationId, campaignName])
+  @@index([organizationId, campaignType])
+}
+
+model Message {
+  id           String           @id @default(cuid())
+  taskId       String
+  entityId     String
+  direction    MessageDirection
+  channel      MessageChannel   @default(EMAIL)
+  subject      String?
+  body         String?
+  htmlBody     String?
+  fromAddress  String
+  toAddress    String
+  providerId   String? // Gmail message ID or SMTP message ID
+  providerData Json? // Store full provider payload
+  attachments  Json? // Store attachment metadata as JSON
+  trackingToken String? @unique // Unique token for tracking pixel URL
+  openedAt      DateTime? // First time email was opened
+  openedCount    Int      @default(0) // Number of times opened
+  lastOpenedAt   DateTime? // Most recent open time
+  createdAt    DateTime         @default(now())
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([entityId])
+  @@index([providerId])
+  @@index([taskId, createdAt])
+  @@index([trackingToken])
+}
+
+model AgentSchedule {
+  id             String    @id @default(cuid())
+  name           String
+  cronExpression String
+  timezone       String    @default("UTC")
+  organizationId String
+  groupId        String?
+  campaignName   String?
+  campaignType   CampaignType?
+  emailSubject   String
+  emailBody      String
+  htmlBody       String?
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([groupId])
+  @@index([isActive, nextRunAt])
+}
+
+model ConnectedEmailAccount {
+  id             String        @id @default(cuid())
+  organizationId String
+  email          String
+  provider       EmailProvider
+  accessToken    String? // Encrypted
+  refreshToken   String? // Encrypted
+  tokenExpiresAt DateTime?
+  smtpHost       String?
+  smtpPort       Int?
+  smtpUser       String?
+  smtpPassword   String? // Encrypted
+  smtpSecure     Boolean       @default(true)
+  isPrimary      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([organizationId, isPrimary])
+}
+
+model AutomationRule {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  trigger        String // Event that triggers the rule
+  conditions     Json // Store conditions as JSON
+  actions        Json // Store actions as JSON
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model EmailDraft {
+  id                  String           @id @default(cuid())
+  organizationId      String
+  userId              String
+  prompt              String
+  generatedSubject    String?
+  generatedBody       String?
+  generatedHtmlBody   String?
+  suggestedRecipients Json? // Store suggested entity/group IDs as JSON
+  suggestedCampaignName String?
+  suggestedCampaignType CampaignType?
+  status              EmailDraftStatus @default(DRAFT)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+}
