@@ -1,0 +1,59 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Source code files
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# Exclude from git archive (export-ignore)
+node_modules/** export-ignore
+.next/** export-ignore
+dist/** export-ignore
+build/** export-ignore
+out/** export-ignore
+coverage/** export-ignore
+.vercel/** export-ignore
+*.log export-ignore
+.env* export-ignore
+.DS_Store export-ignore
+*.tsbuildinfo export-ignore
+
+# Large directories - tell git to skip during operations
+node_modules/** -diff -merge
+.next/** -diff -merge
+dist/** -diff -merge
+build/** -diff -merge
+
+# Prisma
+prisma/migrations/** export-ignore
+
+# Docker
+docker-compose.yml text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Scripts
+scripts/**/*.sh text eol=lf
+

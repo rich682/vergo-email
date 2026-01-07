@@ -1,0 +1,68 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+out
+dist
+build
+.vercel
+
+# Environment files
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation (not needed in Docker)
+*.md
+!DEPLOYMENT.md
+
+# IDE
+.vscode
+.idea
+.cursor
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma (keep schema, exclude migrations for production)
+prisma/migrations
+
+# Logs
+*.log
+logs
+
+# Temporary files
+*.tmp
+*.temp
+tmp
+temp
+
+# Cache
+.cache
+.parcel-cache
+.eslintcache
+
+# Uploads (handled by GCS in production)
+uploads
