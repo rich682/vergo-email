@@ -10,8 +10,8 @@ WORKDIR /app
 # Copy package files first for better layer caching
 COPY package.json package-lock.json* ./
 
-# Install dependencies with production flag
-RUN npm ci --only=production=false
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Builder stage
 FROM base AS builder
