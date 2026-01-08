@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,22 +30,38 @@ export default function InboxPage() {
     search: ""
   })
 
+  // Use refs to track latest values to avoid dependency issues
+  const filtersRef = useRef(filters)
+  const activeTabRef = useRef(activeTab)
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    filtersRef.current = filters
+  }, [filters])
+
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
+
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (filters.campaignName) params.append("campaignName", filters.campaignName)
-      if (filters.campaignType) params.append("campaignType", filters.campaignType)
-      if (filters.status) params.append("status", filters.status)
-      if (filters.search) params.append("search", filters.search)
+      const currentFilters = filtersRef.current
+      const currentTab = activeTabRef.current
+
+      if (currentFilters.campaignName) params.append("campaignName", currentFilters.campaignName)
+      if (currentFilters.campaignType) params.append("campaignType", currentFilters.campaignType)
+      if (currentFilters.status) params.append("status", currentFilters.status)
+      if (currentFilters.search) params.append("search", currentFilters.search)
       
       // Add filters based on active tab
-      if (activeTab === "awaiting") {
+      if (currentTab === "awaiting") {
         params.append("hasReplies", "false")
         params.append("isOpened", "false")
-      } else if (activeTab === "replied") {
+      } else if (currentTab === "replied") {
         params.append("hasReplies", "true")
-      } else if (activeTab === "read") {
+      } else if (currentTab === "read") {
         params.append("hasReplies", "false")
         params.append("isOpened", "true")
       }
@@ -95,7 +111,7 @@ export default function InboxPage() {
       setAllTasks([])
       setLoading(false)
     }
-  }, [filters, activeTab])
+  }, []) // Empty deps - read from refs instead
 
   // Fetch all inbox items to calculate tab counts
   const fetchAllTasksForCounts = useCallback(async () => {
@@ -129,8 +145,13 @@ export default function InboxPage() {
 
   const [tabCounts, setTabCounts] = useState({ awaiting: 0, replied: 0, read: 0 })
 
+  // Fetch tasks when filters or activeTab change
   useEffect(() => {
     fetchTasks()
+  }, [filters, activeTab, fetchTasks])
+
+  // Set up polling interval
+  useEffect(() => {
     const interval = setInterval(() => {
       fetchTasks()
     }, 30000)
