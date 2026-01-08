@@ -1,3 +1,5 @@
 import { Inngest } from "inngest"
 
-export const inngest = new Inngest({ id: "vergo-inbox" })
+export const inngest = new Inngest({
+  id: "vergo-email",
+})
