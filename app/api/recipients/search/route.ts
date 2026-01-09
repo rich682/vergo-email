@@ -18,11 +18,36 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const query = searchParams.get("q") || ""
 
+  // Return empty results if no query (for initial load check)
   if (!query || query.trim().length === 0) {
-    return NextResponse.json({
-      groups: [],
-      entities: []
-    })
+    // Still return groups and entities for empty state check
+    try {
+      const allGroups = await GroupService.findByOrganization(session.user.organizationId)
+      const allEntities = await EntityService.findByOrganization(session.user.organizationId)
+      return NextResponse.json({
+        groups: allGroups.slice(0, 10).map(group => {
+          const groupWithEntities = group as typeof group & {
+            entities: Array<{ entity: { id: string } }>
+          }
+          return {
+            id: group.id,
+            name: group.name,
+            entityCount: groupWithEntities.entities?.length || 0,
+            color: group.color
+          }
+        }),
+        entities: allEntities.slice(0, 10).map(entity => ({
+          id: entity.id,
+          firstName: entity.firstName,
+          email: entity.email || ""
+        }))
+      })
+    } catch (error: any) {
+      return NextResponse.json({
+        groups: [],
+        entities: []
+      })
+    }
   }
 
   try {

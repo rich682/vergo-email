@@ -22,6 +22,9 @@ import { getRequestGrouping } from "@/lib/requestGrouping"
 function ComposePageContent() {
   const searchParams = useSearchParams()
   const isRequestMode = searchParams.get('mode') === 'request'
+  const [requestName, setRequestName] = useState("")
+  const [requestNameError, setRequestNameError] = useState<string | null>(null)
+  const [recipientsError, setRecipientsError] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [selectedRecipients, setSelectedRecipients] = useState<SelectedRecipient[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,7 +43,6 @@ function ComposePageContent() {
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email: string; provider: string }>>([])
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState<string | undefined>(undefined)
   const [accountsLoading, setAccountsLoading] = useState(false)
-  const [requestNameError, setRequestNameError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)
   const [pollingAbortController, setPollingAbortController] = useState<AbortController | null>(null)
@@ -48,6 +50,25 @@ function ComposePageContent() {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
+
+    // Validate request name in request mode
+    if (isRequestMode) {
+      const trimmedName = requestName.trim()
+      if (!trimmedName) {
+        setRequestNameError("Request name is required")
+        return
+      }
+      setRequestNameError(null)
+    }
+
+    // Validate recipients in request mode
+    if (isRequestMode) {
+      if (selectedRecipients.length === 0) {
+        setRecipientsError("At least one contact or group must be selected")
+        return
+      }
+      setRecipientsError(null)
+    }
 
     // Abort any existing polling
     if (pollingAbortController) {
@@ -67,11 +88,17 @@ function ComposePageContent() {
     setError(null)
     
     try {
-      // Convert selected recipients to API format
+      // Convert selected recipients to API format (required in request mode)
       const recipientsData = selectedRecipients.length > 0 ? {
         entityIds: selectedRecipients.filter(r => r.type === "entity").map(r => r.id),
         groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id)
       } : undefined
+
+      if (isRequestMode && (!recipientsData || (recipientsData.entityIds.length === 0 && recipientsData.groupIds.length === 0))) {
+        setRecipientsError("At least one contact or group must be selected")
+        setLoading(false)
+        return
+      }
 
       const response = await fetch("/api/email-drafts/generate", {
         method: "POST",
@@ -212,7 +239,7 @@ function ComposePageContent() {
             setDraft({
               id: draftData.id,
               ...draftData,
-              campaignName: draftData.suggestedCampaignName || undefined
+              campaignName: isRequestMode ? requestName.trim() : (draftData.suggestedCampaignName || undefined)
             })
             setAiEnriching(false)
             return
@@ -278,8 +305,8 @@ function ComposePageContent() {
 
     // Validate Request Name in request mode
     if (isRequestMode) {
-      const requestName = (draft.campaignName || "").trim()
-      if (!requestName) {
+      const finalRequestName = requestName.trim() || (draft.campaignName || "").trim()
+      if (!finalRequestName) {
         setRequestNameError("Request name is required")
         return
       }
@@ -304,7 +331,7 @@ function ComposePageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipients: draft.suggestedRecipients,
-          campaignName: draft.campaignName || undefined,
+          campaignName: isRequestMode ? (requestName.trim() || draft.campaignName || undefined) : (draft.campaignName || undefined),
           emailAccountId: selectedEmailAccountId
         })
       })
@@ -317,31 +344,33 @@ function ComposePageContent() {
       const result = await response.json()
       
       // In request mode, redirect to request detail page
-      if (isRequestMode && draft.campaignName) {
-        const requestName = draft.campaignName.trim()
-        const grouping = getRequestGrouping({
-          campaignName: requestName,
-          campaignType: null,
-          id: '',
-          latestOutboundSubject: draft.generatedSubject || null
-        })
-        const encodedKey = encodeURIComponent(grouping.groupKey)
-        
-        // Get recipient count from draft
-        const entityCount = draft.suggestedRecipients?.entityIds?.length || 0
-        const groupCount = draft.suggestedRecipients?.groupIds?.length || 0
-        // Note: We can't get exact count without fetching groups, so use entity count as estimate
-        const estimatedRecipientCount = entityCount + (groupCount > 0 ? 1 : 0) // Rough estimate
-        
-        // Show toast notification (simple alert for now, can be enhanced)
-        const toastMessage = `Request created\n"${requestName}" • 0/${estimatedRecipientCount || entityCount} complete`
-        alert(toastMessage)
-        
-        // Redirect to request detail page
-        window.location.href = `/dashboard/requests/${encodedKey}`
-      } else if (isRequestMode) {
-        // Fallback: redirect to requests list if no request name
-        window.location.href = "/dashboard/requests"
+      if (isRequestMode) {
+        const finalRequestName = requestName.trim() || (draft.campaignName || "").trim()
+        if (finalRequestName) {
+          const grouping = getRequestGrouping({
+            campaignName: finalRequestName,
+            campaignType: null,
+            id: '',
+            latestOutboundSubject: draft.generatedSubject || null
+          })
+          const encodedKey = encodeURIComponent(grouping.groupKey)
+          
+          // Get recipient count from draft
+          const entityCount = draft.suggestedRecipients?.entityIds?.length || 0
+          const groupCount = draft.suggestedRecipients?.groupIds?.length || 0
+          // Note: We can't get exact count without fetching groups, so use entity count as estimate
+          const estimatedRecipientCount = entityCount + (groupCount > 0 ? 1 : 0) // Rough estimate
+          
+          // Show toast notification (simple alert for now, can be enhanced)
+          const toastMessage = `Request created\n"${finalRequestName}" • 0/${estimatedRecipientCount || entityCount} complete`
+          alert(toastMessage)
+          
+          // Redirect to request detail page
+          window.location.href = `/dashboard/requests/${encodedKey}`
+        } else {
+          // Fallback: redirect to requests list if no request name
+          window.location.href = "/dashboard/requests"
+        }
       } else {
         // Non-request mode: redirect to inbox
         window.location.href = "/dashboard/inbox"
@@ -527,7 +556,14 @@ function ComposePageContent() {
               <p className="text-sm font-medium text-red-800">{error}</p>
             </div>
           )}
-          <Button onClick={handleGenerate} disabled={loading || !prompt.trim()}>
+          <Button 
+            onClick={handleGenerate} 
+            disabled={
+              loading || 
+              !prompt.trim() || 
+              (isRequestMode && (!requestName.trim() || selectedRecipients.length === 0))
+            }
+          >
             {loading 
               ? (isRequestMode ? "Creating request..." : "Creating draft...")
               : isRequestMode 
@@ -601,9 +637,11 @@ function ComposePageContent() {
                 </Label>
                 <Input
                   placeholder="e.g., W-9 Collection, Expense Reports Q4"
-                  value={draft.campaignName || ""}
+                  value={requestName || draft.campaignName || ""}
                   onChange={(e) => {
-                    setDraft({ ...draft, campaignName: e.target.value || undefined })
+                    const newName = e.target.value
+                    setRequestName(newName)
+                    setDraft({ ...draft, campaignName: newName || undefined })
                     if (requestNameError) setRequestNameError(null)
                   }}
                 />

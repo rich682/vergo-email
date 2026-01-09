@@ -17,13 +17,25 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { prompt, selectedRecipients, idempotencyKey } = body
+    const { prompt, selectedRecipients, idempotencyKey, requestName } = body
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
         { error: "Prompt is required" },
         { status: 400 }
       )
+    }
+
+    // Validate recipients in request mode (if requestName is provided, treat as request mode)
+    if (requestName && selectedRecipients) {
+      const entityIds = selectedRecipients.entityIds || []
+      const groupIds = selectedRecipients.groupIds || []
+      if (entityIds.length === 0 && groupIds.length === 0) {
+        return NextResponse.json(
+          { error: "At least one contact or group must be selected" },
+          { status: 400 }
+        )
+      }
     }
 
     const correlationId = idempotencyKey || `gen-${Date.now()}-${Math.random().toString(36).substring(7)}`
@@ -169,12 +181,15 @@ export async function POST(request: NextRequest) {
           correlationId
         })
 
+        // Use requestName if provided, otherwise use AI-suggested campaign name
+        const finalCampaignName = requestName?.trim() || generated.suggestedCampaignName
+        
         await EmailDraftService.update(draft.id, session.user.organizationId, {
           generatedSubject: generated.subject,
           generatedBody: generated.body,
           generatedHtmlBody: generated.htmlBody,
-          suggestedRecipients: generated.suggestedRecipients,
-          suggestedCampaignName: generated.suggestedCampaignName,
+          suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+          suggestedCampaignName: finalCampaignName,
           suggestedCampaignType: generated.suggestedCampaignType,
           aiGenerationStatus: "complete"
         })
@@ -193,8 +208,8 @@ export async function POST(request: NextRequest) {
             generatedSubject: generated.subject,
             generatedBody: generated.body,
             generatedHtmlBody: generated.htmlBody,
-            suggestedRecipients: generated.suggestedRecipients,
-            suggestedCampaignName: generated.suggestedCampaignName,
+            suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+            suggestedCampaignName: finalCampaignName,
             suggestedCampaignType: generated.suggestedCampaignType
           }
         })
