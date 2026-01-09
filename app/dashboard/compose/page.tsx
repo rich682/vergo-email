@@ -525,6 +525,27 @@ function ComposePageContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {isRequestMode && (
+            <div>
+              <Label>
+                Request name <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <Input
+                placeholder="e.g., W-9 Collection Q4 2024"
+                value={requestName}
+                onChange={(e) => {
+                  setRequestName(e.target.value)
+                  if (requestNameError) setRequestNameError(null)
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This is how you'll recognize and track this request.
+              </p>
+              {requestNameError && (
+                <p className="text-xs text-red-600 mt-1">{requestNameError}</p>
+              )}
+            </div>
+          )}
           <div>
             <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
             <Textarea
@@ -540,15 +561,25 @@ function ComposePageContent() {
             )}
           </div>
           <div>
-            <Label>{isRequestMode ? "From who?" : "To (Optional - type / to search)"}</Label>
+            <Label>
+              {isRequestMode ? "Who needs to respond?" : "To (Optional - type / to search)"}
+              {isRequestMode && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <RecipientSelector
               selectedRecipients={selectedRecipients}
-              onRecipientsChange={setSelectedRecipients}
+              onRecipientsChange={(recipients) => {
+                setSelectedRecipients(recipients)
+                if (recipientsError) setRecipientsError(null)
+              }}
+              requireContacts={isRequestMode}
             />
             {isRequestMode && (
               <p className="text-xs text-gray-500 mt-1">
-                Select individuals or groups who need to respond
+                Select people or groups who must complete this request.
               </p>
+            )}
+            {recipientsError && (
+              <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
             )}
           </div>
           {error && (
