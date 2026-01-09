@@ -103,6 +103,7 @@ export class CSVImportService {
     organizationId: string,
     options?: {
       updateExisting?: boolean
+      groupIds?: string[]
     }
   ): Promise<ImportResult> {
     const result: ImportResult = {
@@ -129,8 +130,10 @@ export class CSVImportService {
       }
 
       try {
-        // Find or create groups
-        const groupIds: string[] = []
+        // Start with groups from UI selector (applied to all contacts)
+        const groupIds: string[] = options?.groupIds ? [...options.groupIds] : []
+        
+        // Add groups from CSV tags (columns 3+)
         for (const tagName of row.tags) {
           if (!tagName) continue
           
@@ -148,7 +151,10 @@ export class CSVImportService {
             groupId = newGroup.id
           }
           
-          groupIds.push(groupId)
+          // Only add if not already in list (avoid duplicates)
+          if (!groupIds.includes(groupId)) {
+            groupIds.push(groupId)
+          }
         }
 
         // Check if entity exists by email
@@ -166,7 +172,7 @@ export class CSVImportService {
               }
             )
 
-            // Update groups - remove all, then add new ones
+            // Update groups - merge with existing (additive only, don't remove)
             // Fetch entity with groups to get current groups
             const existingWithGroups = await EntityService.findById(existing.id, organizationId)
             if (existingWithGroups) {
@@ -174,12 +180,17 @@ export class CSVImportService {
                 groups: Array<{ group: { id: string } }>
               }
               const currentGroups = entityWithGroups.groups.map(eg => eg.group.id)
-              for (const gId of currentGroups) {
-                await EntityService.removeFromGroup(existing.id, gId)
+              // Only add groups that aren't already assigned
+              for (const gId of groupIds) {
+                if (!currentGroups.includes(gId)) {
+                  await EntityService.addToGroup(existing.id, gId)
+                }
               }
-            }
-            for (const gId of groupIds) {
-              await EntityService.addToGroup(existing.id, gId)
+            } else {
+              // If entity exists but no groups, add all
+              for (const gId of groupIds) {
+                await EntityService.addToGroup(existing.id, gId)
+              }
             }
 
             result.updated++

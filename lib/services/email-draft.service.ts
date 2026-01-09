@@ -12,6 +12,8 @@ export class EmailDraftService {
     suggestedRecipients?: any
     suggestedCampaignName?: string
     suggestedCampaignType?: CampaignType
+    idempotencyKey?: string | null
+    aiGenerationStatus?: string | null
   }): Promise<EmailDraft> {
     return prisma.emailDraft.create({
       data: {
@@ -24,6 +26,8 @@ export class EmailDraftService {
         suggestedRecipients: data.suggestedRecipients || null,
         suggestedCampaignName: data.suggestedCampaignName || null,
         suggestedCampaignType: data.suggestedCampaignType || null,
+        idempotencyKey: data.idempotencyKey || null,
+        aiGenerationStatus: data.aiGenerationStatus || null,
         status: "DRAFT"
       }
     })
@@ -50,10 +54,22 @@ export class EmailDraftService {
     })
   }
 
+  static async findByIdempotencyKey(
+    idempotencyKey: string,
+    organizationId: string
+  ): Promise<EmailDraft | null> {
+    return prisma.emailDraft.findFirst({
+      where: {
+        idempotencyKey,
+        organizationId
+      }
+    })
+  }
+
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status">>
+    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus">>
   ): Promise<EmailDraft> {
     return prisma.emailDraft.update({
       where: {

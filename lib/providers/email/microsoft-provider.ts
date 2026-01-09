@@ -78,7 +78,7 @@ export class MicrosoftProvider implements EmailProviderDriver {
     return { messageId: "", providerData: await resp.json().catch(() => ({})) }
   }
 
-  async syncContacts(account: EmailAccount): Promise<ContactSyncResult> {
+  async syncContacts(account: EmailAccount): Promise<ContactSyncResult & { contacts?: Array<{ name: string; email: string }> }> {
     const { token } = await this.getAccessToken(account)
     const resp = await fetch(`${GRAPH_BASE}/me/contacts?$select=id,displayName,emailAddresses`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -88,12 +88,23 @@ export class MicrosoftProvider implements EmailProviderDriver {
       throw new Error(`Microsoft contacts fetch failed: ${msg}`)
     }
     const data = await resp.json()
-    const contacts = Array.isArray(data.value) ? data.value : []
-    // Upsert will be handled upstream; return counts only
+    const rawContacts = Array.isArray(data.value) ? data.value : []
+    
+    // Transform to simple format
+    const contacts: Array<{ name: string; email: string }> = []
+    for (const contact of rawContacts) {
+      const email = contact.emailAddresses?.[0]?.address
+      const name = contact.displayName || email?.split("@")[0] || "Unknown"
+      if (email) {
+        contacts.push({ name, email })
+      }
+    }
+    
     return {
       imported: contacts.length,
       skipped: 0,
-      message: "Contacts fetched; upsert handled separately",
+      message: "Contacts fetched",
+      contacts
     }
   }
 }

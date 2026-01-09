@@ -17,6 +17,20 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File
     const updateExisting = formData.get("updateExisting") === "true"
+    const groupIdsJson = formData.get("groupIds") as string | null
+    let groupIds: string[] = []
+    
+    if (groupIdsJson) {
+      try {
+        groupIds = JSON.parse(groupIdsJson)
+        if (!Array.isArray(groupIds)) {
+          groupIds = []
+        }
+      } catch {
+        // Invalid JSON, ignore
+        groupIds = []
+      }
+    }
 
     if (!file) {
       return NextResponse.json(
@@ -43,7 +57,8 @@ export async function POST(request: NextRequest) {
       rows,
       session.user.organizationId,
       {
-        updateExisting
+        updateExisting,
+        groupIds
       }
     )
 

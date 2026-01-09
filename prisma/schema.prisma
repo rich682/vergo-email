@@ -316,6 +316,8 @@ model EmailDraft {
   suggestedCampaignName String?
   suggestedCampaignType CampaignType?
   status              EmailDraftStatus @default(DRAFT)
+  idempotencyKey      String?          @unique
+  aiGenerationStatus  String?          // "processing", "complete", "failed", "timeout"
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
@@ -325,4 +327,5 @@ model EmailDraft {
   @@index([organizationId])
   @@index([userId])
   @@index([status])
+  @@index([idempotencyKey])
 }

@@ -1,9 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
+interface Group {
+  id: string
+  name: string
+  color?: string | null
+}
 
 interface CSVUploadProps {
   onSuccess: () => void
@@ -14,6 +20,29 @@ export function CSVUpload({ onSuccess }: CSVUploadProps) {
   const [updateExisting, setUpdateExisting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [groups, setGroups] = useState<Group[]>([])
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+
+  useEffect(() => {
+    const loadGroups = async () => {
+      try {
+        const res = await fetch("/api/groups")
+        if (res.ok) {
+          const data = await res.json()
+          setGroups(Array.isArray(data) ? data : [])
+        }
+      } catch (err) {
+        console.error("Failed to load groups", err)
+      }
+    }
+    loadGroups()
+  }, [])
+
+  const toggleGroup = (id: string) => {
+    setSelectedGroupIds((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,6 +57,9 @@ export function CSVUpload({ onSuccess }: CSVUploadProps) {
       const formData = new FormData()
       formData.append("file", file)
       formData.append("updateExisting", updateExisting ? "true" : "false")
+      if (selectedGroupIds.length > 0) {
+        formData.append("groupIds", JSON.stringify(selectedGroupIds))
+      }
 
       const res = await fetch("/api/entities/bulk", {
         method: "POST",
@@ -69,6 +101,35 @@ export function CSVUpload({ onSuccess }: CSVUploadProps) {
         />
         Update existing contacts (matched by email)
       </label>
+
+      <div className="space-y-2">
+        <Label>Assign imported contacts to group(s) (optional)</Label>
+        <div className="flex flex-wrap gap-2">
+          {groups.length === 0 && (
+            <p className="text-sm text-gray-500">No groups available</p>
+          )}
+          {groups.map((g) => {
+            const checked = selectedGroupIds.includes(g.id)
+            return (
+              <button
+                type="button"
+                key={g.id}
+                onClick={() => toggleGroup(g.id)}
+                className={`rounded-full px-3 py-1 text-sm border ${
+                  checked
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-white text-gray-800 border-gray-200"
+                }`}
+              >
+                {g.name}
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-500">
+          Selected groups will be applied to all imported contacts
+        </p>
+      </div>
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">

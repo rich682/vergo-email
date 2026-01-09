@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, Suspense, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -41,11 +41,31 @@ function ComposePageContent() {
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState<string | undefined>(undefined)
   const [accountsLoading, setAccountsLoading] = useState(false)
   const [requestNameError, setRequestNameError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)
+  const [pollingAbortController, setPollingAbortController] = useState<AbortController | null>(null)
+  const [aiEnriching, setAiEnriching] = useState(false)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
 
+    // Abort any existing polling
+    if (pollingAbortController) {
+      pollingAbortController.abort()
+    }
+
+    // Generate new idempotency key
+    const newIdempotencyKey = crypto.randomUUID()
+    setIdempotencyKey(newIdempotencyKey)
+
+    // Create new AbortController for this request
+    const abortController = new AbortController()
+    setPollingAbortController(abortController)
+
     setLoading(true)
+    setAiEnriching(false)
+    setError(null)
+    
     try {
       // Convert selected recipients to API format
       const recipientsData = selectedRecipients.length > 0 ? {
@@ -58,12 +78,14 @@ function ComposePageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt,
-          selectedRecipients: recipientsData
-        })
+          selectedRecipients: recipientsData,
+          idempotencyKey: newIdempotencyKey
+        }),
+        signal: abortController.signal
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json().catch(() => ({ error: "Failed to generate draft" }))
         throw new Error(errorData.error || "Failed to generate draft")
       }
 
@@ -77,32 +99,171 @@ function ComposePageContent() {
           campaignName: data.draft.suggestedCampaignName || undefined
         })
         setLoading(false)
+        setAiEnriching(false)
+        return
+      }
+
+      // If request was created but AI failed, still show the draft
+      if (data.status === "failed" && data.id) {
+        setDraft({
+          id: data.id,
+          generatedSubject: "",
+          generatedBody: prompt,
+          campaignName: undefined
+        })
+        setError(data.error || "AI generation failed. You can still edit and send manually.")
+        setLoading(false)
+        setAiEnriching(false)
         return
       }
       
-      // Otherwise poll for draft completion (async generation)
-      const pollDraft = async () => {
-        const draftResponse = await fetch(`/api/email-drafts/${data.id}`)
-        const draftData = await draftResponse.json()
+      // Request created, now polling for AI enrichment
+      setLoading(false)
+      setAiEnriching(true)
+
+      // Polling with backoff + jitter
+      const MAX_POLL_TIME_MS = 60000 // 60 seconds total
+      const START_TIME = Date.now()
+      let pollAttempts = 0
+      const FAST_POLL_INTERVAL = 1000 // 1 second for first 10 seconds
+      const FAST_POLL_DURATION = 10000
+      
+      const getPollInterval = (): number => {
+        const elapsed = Date.now() - START_TIME
+        if (elapsed < FAST_POLL_DURATION) {
+          return FAST_POLL_INTERVAL
+        }
+        // Backoff: 2s, 3s, 4s, 5s, 6s max
+        const baseInterval = Math.min(2000 + (pollAttempts - 10) * 500, 6000)
+        // Add jitter: ±20%
+        const jitter = baseInterval * 0.2 * (Math.random() * 2 - 1)
+        return Math.max(1000, baseInterval + jitter)
+      }
+      
+      const pollDraft = async (): Promise<void> => {
+        // Check if aborted
+        if (abortController.signal.aborted) {
+          setAiEnriching(false)
+          return
+        }
+
+        pollAttempts++
+        const elapsed = Date.now() - START_TIME
         
-        if (draftData.generatedSubject) {
-          setDraft({
-            ...draftData,
-            campaignName: draftData.suggestedCampaignName || undefined
+        // Hard stop at 60 seconds
+        if (elapsed >= MAX_POLL_TIME_MS) {
+          // If we have a draft ID, navigate to it or show it
+          if (data.id) {
+            setDraft({
+              id: data.id,
+              generatedSubject: "",
+              generatedBody: prompt,
+              campaignName: undefined
+            })
+            if (isRequestMode) {
+              // Could navigate to request detail, but for now just show error
+              setError("AI enrichment timed out. You can still edit and send manually.")
+            }
+          } else {
+            setError("Request creation timed out. Please try again.")
+          }
+          setAiEnriching(false)
+          return
+        }
+        
+        try {
+          const draftResponse = await fetch(`/api/email-drafts/${data.id}`, {
+            signal: abortController.signal
           })
-          setLoading(false)
-        } else {
-          setTimeout(pollDraft, 1000)
+          
+          if (!draftResponse.ok) {
+            if (draftResponse.status === 404) {
+              setError("Draft not found. Please try again.")
+              setAiEnriching(false)
+              return
+            }
+            // For other errors, continue polling for a few more attempts
+            if (pollAttempts < 5) {
+              setTimeout(pollDraft, getPollInterval())
+              return
+            } else {
+              setError("Failed to check draft status. You can still edit manually.")
+              setAiEnriching(false)
+              return
+            }
+          }
+          
+          const draftData = await draftResponse.json()
+          
+          // Check terminal states
+          if (draftData.aiGenerationStatus === "failed" || draftData.aiGenerationStatus === "timeout") {
+            setDraft({
+              id: draftData.id,
+              generatedSubject: draftData.generatedSubject || "",
+              generatedBody: draftData.generatedBody || prompt,
+              campaignName: draftData.suggestedCampaignName || undefined
+            })
+            setError("AI enrichment failed. You can still edit and send manually.")
+            setAiEnriching(false)
+            return
+          }
+          
+          if (draftData.generatedSubject) {
+            setDraft({
+              id: draftData.id,
+              ...draftData,
+              campaignName: draftData.suggestedCampaignName || undefined
+            })
+            setAiEnriching(false)
+            return
+          }
+          
+          // Continue polling
+          setTimeout(pollDraft, getPollInterval())
+        } catch (pollError: any) {
+          if (abortController.signal.aborted) {
+            setAiEnriching(false)
+            return
+          }
+          
+          console.error("Error polling draft:", pollError)
+          // On network errors, try a few more times
+          if (pollAttempts < 5) {
+            setTimeout(pollDraft, getPollInterval())
+          } else {
+            setError("Network error while enriching. You can still edit manually.")
+            setAiEnriching(false)
+          }
         }
       }
       
       pollDraft()
     } catch (error: any) {
+      if (abortController.signal.aborted) {
+        // Request was aborted, don't show error
+        return
+      }
+      
       console.error("Error generating draft:", error)
-      alert(error.message || "Failed to generate draft")
+      setError(error.message || "Failed to generate draft")
       setLoading(false)
+      setAiEnriching(false)
+    } finally {
+      // Ensure loading states are cleared
+      if (!abortController.signal.aborted) {
+        // States will be set in try/catch, but ensure cleanup
+      }
     }
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingAbortController) {
+        pollingAbortController.abort()
+      }
+    }
+  }, [pollingAbortController])
 
   const checkWarning = async () => {
     if (!draft?.suggestedRecipients) return null
@@ -327,19 +488,14 @@ function ComposePageContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Natural Language Input</CardTitle>
+          <CardTitle>{isRequestMode ? "What are you collecting?" : "Natural Language Input"}</CardTitle>
           <CardDescription>
-            Example: "send email to my employees asking for expense reports"
+            {isRequestMode 
+              ? "Describe what you need from recipients (e.g., W-9 forms, expense reports, timesheets)"
+              : "Example: \"send email to my employees asking for expense reports\""}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label>{isRequestMode ? "Who needs to respond?" : "To (Optional - type / to search)"}</Label>
-            <RecipientSelector
-              selectedRecipients={selectedRecipients}
-              onRecipientsChange={setSelectedRecipients}
-            />
-          </div>
           <div>
             <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
             <Textarea
@@ -348,17 +504,53 @@ function ComposePageContent() {
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
             />
+            {isRequestMode && (
+              <p className="text-xs text-gray-500 mt-1">
+                Be specific about what you need and when it's due
+              </p>
+            )}
           </div>
+          <div>
+            <Label>{isRequestMode ? "From who?" : "To (Optional - type / to search)"}</Label>
+            <RecipientSelector
+              selectedRecipients={selectedRecipients}
+              onRecipientsChange={setSelectedRecipients}
+            />
+            {isRequestMode && (
+              <p className="text-xs text-gray-500 mt-1">
+                Select individuals or groups who need to respond
+              </p>
+            )}
+          </div>
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          )}
           <Button onClick={handleGenerate} disabled={loading || !prompt.trim()}>
-            {loading ? "Generating..." : "Generate Draft"}
+            {loading 
+              ? (isRequestMode ? "Creating request..." : "Creating draft...")
+              : isRequestMode 
+                ? "Generate Request" 
+                : "Generate Draft"}
           </Button>
+          {aiEnriching && (
+            <p className="text-sm text-gray-500 italic">
+              Adding AI suggestions...
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {draft && (
         <Card>
           <CardHeader>
-            <CardTitle>Review Draft</CardTitle>
+            <CardTitle>{isRequestMode ? "Review Request" : "Review Draft"}</CardTitle>
+            {isRequestMode && (
+              <CardDescription>
+                Review the generated request and make any edits before sending
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             {warning && (
@@ -402,6 +594,27 @@ function ComposePageContent() {
                 </Select>
               )}
             </div>
+            {isRequestMode && (
+              <div>
+                <Label>
+                  Request Name <span className="text-red-500 ml-1">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., W-9 Collection, Expense Reports Q4"
+                  value={draft.campaignName || ""}
+                  onChange={(e) => {
+                    setDraft({ ...draft, campaignName: e.target.value || undefined })
+                    if (requestNameError) setRequestNameError(null)
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This groups all responses together so you can track completion
+                </p>
+                {requestNameError && (
+                  <p className="text-xs text-red-600 mt-1">{requestNameError}</p>
+                )}
+              </div>
+            )}
             <div>
               <Label>{isRequestMode ? "Email Subject" : "Subject"}</Label>
               <Input
@@ -409,37 +622,30 @@ function ComposePageContent() {
                 onChange={(e) => setDraft({ ...draft, generatedSubject: e.target.value })}
               />
               {isRequestMode && (
-                <p className="text-xs text-gray-500 mt-1">This is the subject line of the email sent to recipients</p>
+                <p className="text-xs text-gray-500 mt-1">Subject line recipients will see in their inbox</p>
               )}
             </div>
             <div>
-              <Label>{isRequestMode ? "What are you requesting?" : "Body"}</Label>
+              <Label>{isRequestMode ? "Request Message" : "Body"}</Label>
               <Textarea
                 value={draft.generatedBody || ""}
                 onChange={(e) => setDraft({ ...draft, generatedBody: e.target.value })}
                 rows={10}
               />
-            </div>
-            <div>
-              <Label>
-                {isRequestMode ? "Request Name" : "Campaign Name (Optional)"}
-                {isRequestMode && <span className="text-red-500 ml-1">*</span>}
-              </Label>
-              <Input
-                placeholder={isRequestMode ? "e.g., W-9 Collection, Expense Reports Q4" : "e.g., W-9 Collection, Expense Reports"}
-                value={draft.campaignName || ""}
-                onChange={(e) => {
-                  setDraft({ ...draft, campaignName: e.target.value || undefined })
-                  if (requestNameError) setRequestNameError(null)
-                }}
-              />
               {isRequestMode && (
-                <p className="text-xs text-gray-500 mt-1">This groups all recipients for this request</p>
-              )}
-              {requestNameError && (
-                <p className="text-xs text-red-600 mt-1">{requestNameError}</p>
+                <p className="text-xs text-gray-500 mt-1">This is what recipients will read</p>
               )}
             </div>
+            {!isRequestMode && (
+              <div>
+                <Label>Campaign Name (Optional)</Label>
+                <Input
+                  placeholder="e.g., W-9 Collection, Expense Reports"
+                  value={draft.campaignName || ""}
+                  onChange={(e) => setDraft({ ...draft, campaignName: e.target.value || undefined })}
+                />
+              </div>
+            )}
             {sendError && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-md">
                 <p className="text-sm font-medium text-red-800">{sendError}</p>

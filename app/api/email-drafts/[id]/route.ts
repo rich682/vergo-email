@@ -28,7 +28,11 @@ export async function GET(
     )
   }
 
-  return NextResponse.json(draft)
+  // Include aiGenerationStatus in response
+  return NextResponse.json({
+    ...draft,
+    aiGenerationStatus: (draft as any).aiGenerationStatus || null
+  })
 }
 
 export async function PATCH(

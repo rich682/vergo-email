@@ -21,7 +21,11 @@
     "setup:db": "npm run db:push && npm run db:seed",
     "verify": "tsx scripts/verify-setup.ts",
     "deploy:check": "tsx scripts/check-deployment-status.ts",
-    "dev:full": "npm run dev"
+    "dev:full": "npm run dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:api": "vitest run tests/api",
+    "test:ui": "vitest run tests/ui"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -59,6 +63,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.1.5",
     "@types/bcryptjs": "^2.4.6",
     "@types/imap": "^0.8.40",
     "@types/mailparser": "^3.4.6",
@@ -67,15 +73,18 @@
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@types/uuid": "^10.0.0",
+    "@vitest/ui": "^1.0.4",
     "autoprefixer": "^10.4.20",
     "dotenv": "^17.2.3",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
+    "jsdom": "^23.0.1",
     "postcss": "^8.4.40",
     "prisma": "^5.19.1",
     "tailwindcss": "^3.4.7",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.21.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^1.0.4"
   }
 }

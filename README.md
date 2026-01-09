@@ -52,6 +52,15 @@ AI-powered email response tracking for accounting teams.
 - Prisma client: `npm run db:generate`
 - Lint (optional if enabled): `npm run lint`
 
+## Running Tests
+- Required: `TEST_DATABASE_URL` (database name must contain `_test`, `-test`, `test_`, or `test-`)
+- Warning: Tests modify database data
+- Commands:
+  - `npm test` - Run all tests
+  - `npm run test:api` - Run API tests only
+  - `npm run test:ui` - Run UI tests only
+  - `npm run test:watch` - Watch mode
+
 ## Project structure
 - `app/` — Next.js routes & API
 - `components/` — UI and feature components

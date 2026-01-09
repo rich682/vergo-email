@@ -24,6 +24,17 @@ export interface GeneratedEmailDraft {
   suggestedCampaignType?: CampaignType
 }
 
+export class AIEmailGenerationError extends Error {
+  constructor(
+    message: string,
+    public code: "AI_TIMEOUT" | "AI_ERROR",
+    public retryable: boolean
+  ) {
+    super(message)
+    this.name = "AIGenerationError"
+  }
+}
+
 export class AIEmailGenerationService {
   static async generateDraft(data: {
     organizationId: string
@@ -32,6 +43,7 @@ export class AIEmailGenerationService {
       entityIds?: string[]
       groupIds?: string[]
     }
+    correlationId?: string
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -57,44 +69,77 @@ export class AIEmailGenerationService {
       }))
     }
 
-    // Generate email with GPT-4o-mini
+    // Generate email with GPT-4o-mini (with timeout)
     const openai = getOpenAIClient()
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are an AI assistant that helps generate professional email drafts for accounting teams. 
-          Analyze the user's natural language prompt and generate:
-          1. A professional email subject line
-          2. A clear, professional email body (both plain text and HTML)
-          3. Suggested recipients (entity IDs or group IDs from the context)
-          4. A suggested campaign name and type if applicable
-          
-          Respond with a JSON object containing:
-          - subject: string
-          - body: string (plain text)
-          - htmlBody: string (HTML formatted)
-          - suggestedRecipients: { entityIds?: string[], groupIds?: string[] }
-          - suggestedCampaignName?: string
-          - suggestedCampaignType?: string (one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
-          
-          Match recipient suggestions to entities/groups mentioned in the prompt (e.g., "employees" -> employee group, "vendors" -> vendor group).
-          If a campaign type is mentioned (W-9, COI, Expense, etc.), suggest a campaign name and matching campaign type.`
-        },
-        {
-          role: "user",
-          content: `Context: ${JSON.stringify(context, null, 2)}\n\nUser prompt: ${data.prompt}\n\nGenerate the email draft.`
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.7
-    })
+    const AI_TIMEOUT_MS = 30000 // 30 seconds
+    const correlationId = data.correlationId || "unknown"
+    
+    console.log(JSON.stringify({
+      event: "ai_generation_start",
+      correlationId,
+      organizationId: data.organizationId,
+      timestamp: new Date().toISOString()
+    }))
+    
+    let timeoutId: NodeJS.Timeout | null = null
+    let aborted = false
+    
+    try {
+      const abortController = new AbortController()
+      
+      // Set up timeout that aborts the request
+      timeoutId = setTimeout(() => {
+        aborted = true
+        abortController.abort()
+      }, AI_TIMEOUT_MS)
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI assistant that helps generate professional email drafts for accounting teams. 
+            Analyze the user's natural language prompt and generate:
+            1. A professional email subject line
+            2. A clear, professional email body (both plain text and HTML)
+            3. Suggested recipients (entity IDs or group IDs from the context)
+            4. A suggested campaign name and type if applicable
+            
+            Respond with a JSON object containing:
+            - subject: string
+            - body: string (plain text)
+            - htmlBody: string (HTML formatted)
+            - suggestedRecipients: { entityIds?: string[], groupIds?: string[] }
+            - suggestedCampaignName?: string
+            - suggestedCampaignType?: string (one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
+            
+            Match recipient suggestions to entities/groups mentioned in the prompt (e.g., "employees" -> employee group, "vendors" -> vendor group).
+            If a campaign type is mentioned (W-9, COI, Expense, etc.), suggest a campaign name and matching campaign type.`
+          },
+          {
+            role: "user",
+            content: `Context: ${JSON.stringify(context, null, 2)}\n\nUser prompt: ${data.prompt}\n\nGenerate the email draft.`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7
+      }, { signal: abortController.signal as any })
+      
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      
+      console.log(JSON.stringify({
+        event: "ai_generation_complete",
+        correlationId,
+        timestamp: new Date().toISOString()
+      }))
 
-    const response = completion.choices[0]?.message?.content
-    if (!response) {
-      throw new Error("No response from OpenAI")
-    }
+      const response = completion.choices[0]?.message?.content
+      if (!response) {
+        throw new AIEmailGenerationError("No response from OpenAI", "AI_ERROR", false)
+      }
 
     const parsed = JSON.parse(response) as GeneratedEmailDraft
 
@@ -134,13 +179,40 @@ export class AIEmailGenerationService {
       suggestedCampaignType = parsed.suggestedCampaignType as CampaignType
     }
 
-    return {
-      subject: parsed.subject || "Email",
-      body: parsed.body || "",
-      htmlBody: parsed.htmlBody || parsed.body || "",
-      suggestedRecipients: validatedRecipients,
-      suggestedCampaignName: parsed.suggestedCampaignName,
-      suggestedCampaignType
+      return {
+        subject: parsed.subject || "Email",
+        body: parsed.body || "",
+        htmlBody: parsed.htmlBody || parsed.body || "",
+        suggestedRecipients: validatedRecipients,
+        suggestedCampaignName: parsed.suggestedCampaignName,
+        suggestedCampaignType
+      }
+    } catch (error: any) {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      
+      if (aborted || error.name === "AbortError" || error.message?.includes("timeout")) {
+        console.log(JSON.stringify({
+          event: "ai_generation_timeout",
+          correlationId,
+          timestamp: new Date().toISOString()
+        }))
+        throw new AIEmailGenerationError("AI generation timed out after 30 seconds", "AI_TIMEOUT", true)
+      }
+      
+      console.log(JSON.stringify({
+        event: "ai_generation_error",
+        correlationId,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }))
+      
+      throw new AIEmailGenerationError(
+        error.message || "AI generation failed",
+        "AI_ERROR",
+        false
+      )
     }
   }
 }
