@@ -69,14 +69,16 @@ export function ContactList({
         <div className="space-y-2">
           <Label htmlFor="group-filter">Group</Label>
           <Select
-            value={selectedGroupId}
-            onValueChange={(value) => onGroupFilterChange(value || undefined)}
+            value={selectedGroupId ?? "all"}
+            onValueChange={(value) =>
+              onGroupFilterChange(value === "all" ? undefined : value)
+            }
           >
             <SelectTrigger id="group-filter">
               <SelectValue placeholder="All groups" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All groups</SelectItem>
+              <SelectItem value="all">All groups</SelectItem>
               {groups.map((g) => (
                 <SelectItem key={g.id} value={g.id}>
                   {g.name}
