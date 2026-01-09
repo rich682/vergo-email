@@ -9,12 +9,13 @@ import { InboxList } from "@/components/tasks/inbox-list"
 import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 import { InboxFilters } from "@/components/tasks/inbox-filters"
 import { CampaignType, TaskStatus } from "@prisma/client"
+import { getTaskCompletionState, TaskCompletionState } from "@/lib/taskState"
 
 export default function InboxPage() {
   const router = useRouter()
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<InboxTab>("awaiting")
+  const [activeTab, setActiveTab] = useState<InboxTab>("Needs Review")
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -55,16 +56,8 @@ export default function InboxPage() {
       if (currentFilters.status) params.append("status", currentFilters.status)
       if (currentFilters.search) params.append("search", currentFilters.search)
       
-      // Add filters based on active tab
-      if (currentTab === "awaiting") {
-        params.append("hasReplies", "false")
-        params.append("isOpened", "false")
-      } else if (currentTab === "replied") {
-        params.append("hasReplies", "true")
-      } else if (currentTab === "read") {
-        params.append("hasReplies", "false")
-        params.append("isOpened", "true")
-      }
+      // Note: State-based filtering is done client-side after fetching all tasks
+      // This allows us to compute states from all available data
 
       console.log('[InboxPage] Fetching inbox items from:', `/api/tasks?${params.toString()}`)
       
@@ -113,37 +106,36 @@ export default function InboxPage() {
     }
   }, []) // Empty deps - read from refs instead
 
-  // Fetch all inbox items to calculate tab counts
-  const fetchAllTasksForCounts = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (filters.campaignName) params.append("campaignName", filters.campaignName)
-      if (filters.campaignType) params.append("campaignType", filters.campaignType)
-      if (filters.status) params.append("status", filters.status)
-      if (filters.search) params.append("search", filters.search)
-
-      const [awaitingResponse, replied] = await Promise.all([
-        fetch(`/api/tasks?${params.toString()}&hasReplies=false`, {
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' }
-        }).then(r => r.ok ? r.json() : []),
-        fetch(`/api/tasks?${params.toString()}&hasReplies=true`, {
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' }
-        }).then(r => r.ok ? r.json() : [])
-      ])
-
-      return {
-        awaiting: awaitingResponse.length,
-        replied: replied.length
-      }
-    } catch (error) {
-      console.error("Error fetching inbox item counts:", error)
-      return { awaiting: 0, replied: 0 }
+  // Calculate state counts from all tasks
+  const calculateStateCounts = useCallback((tasks: any[]) => {
+    const counts = {
+      "Needs Review": 0,
+      "Pending": 0,
+      "Submitted": 0,
+      "Complete": 0
     }
-  }, [filters])
+    
+    tasks.forEach(task => {
+      const state = getTaskCompletionState({
+        status: task.status,
+        hasAttachments: task.hasAttachments,
+        aiVerified: task.aiVerified ?? null,
+        updatedAt: task.updatedAt,
+        hasReplies: task.hasReplies,
+        latestInboundClassification: task.latestInboundClassification ?? null
+      })
+      counts[state] = (counts[state] || 0) + 1
+    })
+    
+    return counts
+  }, [])
 
-  const [tabCounts, setTabCounts] = useState({ awaiting: 0, replied: 0, read: 0 })
+  const [stateCounts, setStateCounts] = useState({
+    "Needs Review": 0,
+    "Pending": 0,
+    "Submitted": 0,
+    "Complete": 0
+  })
 
   // Fetch tasks when filters or activeTab change
   useEffect(() => {
@@ -158,13 +150,16 @@ export default function InboxPage() {
     return () => clearInterval(interval)
   }, [fetchTasks])
   
-  // Update tab counts when inbox items change
+  // Update state counts when tasks change
   useEffect(() => {
-    const awaiting = allTasks.filter(t => !t.hasReplies && !t.isOpened).length
-    const read = allTasks.filter(t => t.isOpened && !t.hasReplies).length
-    const replied = allTasks.filter(t => t.hasReplies).length
-    setTabCounts({ awaiting, read, replied })
-  }, [allTasks])
+    const counts = calculateStateCounts(allTasks)
+    setStateCounts(counts)
+    
+    // Auto-switch to Needs Review tab if there are items needing review and current tab is empty
+    if (counts["Needs Review"] > 0 && activeTab !== "Needs Review" && activeTab !== "Pending" && activeTab !== "Submitted" && activeTab !== "Complete") {
+      setActiveTab("Needs Review")
+    }
+  }, [allTasks, calculateStateCounts])
 
   // Update selected inbox item when taskId changes
   useEffect(() => {
@@ -204,17 +199,29 @@ export default function InboxPage() {
     setSelectedTaskId(null) // Clear selection when switching tabs
   }
 
-  // Filter inbox items based on active tab (client-side filtering for display)
+  // Filter tasks based on active tab (client-side filtering by computed state)
   const displayedTasks = allTasks.filter(task => {
-    if (activeTab === "awaiting") {
-      return !task.hasReplies && !task.isOpened
-    } else if (activeTab === "read") {
-      return task.isOpened && !task.hasReplies
-    } else if (activeTab === "replied") {
-      return task.hasReplies
+    const state = getTaskCompletionState({
+      status: task.status,
+      hasAttachments: task.hasAttachments,
+      aiVerified: task.aiVerified ?? null,
+      updatedAt: task.updatedAt,
+      hasReplies: task.hasReplies,
+      latestInboundClassification: task.latestInboundClassification ?? null
+    })
+    
+    // Add computed state to task for use in list component
+    task.completionState = state
+    
+    if (activeTab === "all") {
+      return true
     }
-    return false
+    
+    return state === activeTab
   })
+  
+  // Hide Complete tasks by default (can be shown via tab)
+  const tasksToShow = activeTab === "Complete" ? displayedTasks : displayedTasks.filter(t => t.completionState !== "Complete")
 
   if (loading && allTasks.length === 0) {
     return (
@@ -237,13 +244,39 @@ export default function InboxPage() {
 
         {/* Center: Tabs + Inbox List */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white">
+          {/* Summary Bar */}
+          <div className="flex-shrink-0 px-6 py-2 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="font-medium text-gray-700">Summary:</span>
+              <span className={`${stateCounts["Needs Review"] > 0 ? "font-semibold text-red-700" : "text-gray-600"}`}>
+                {stateCounts["Needs Review"]} Needs Review
+              </span>
+              <span className="text-gray-600">•</span>
+              <span className={`${stateCounts["Pending"] > 0 ? "font-semibold text-yellow-700" : "text-gray-600"}`}>
+                {stateCounts["Pending"]} Pending
+              </span>
+              <span className="text-gray-600">•</span>
+              <span className={`${stateCounts["Submitted"] > 0 ? "font-semibold text-purple-700" : "text-gray-600"}`}>
+                {stateCounts["Submitted"]} Submitted
+              </span>
+              <span className="text-gray-600">•</span>
+              <span className="text-gray-500">
+                {stateCounts["Complete"]} Complete
+              </span>
+              <span className="text-gray-400 ml-auto">
+                {allTasks.length} total
+              </span>
+            </div>
+          </div>
+          
           <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
             <InboxTabs
               activeTab={activeTab}
               onTabChange={handleTabChange}
-              awaitingCount={tabCounts.awaiting}
-              readCount={tabCounts.read}
-              repliedCount={tabCounts.replied}
+              needsReviewCount={stateCounts["Needs Review"]}
+              pendingCount={stateCounts["Pending"]}
+              submittedCount={stateCounts["Submitted"]}
+              completeCount={stateCounts["Complete"]}
             />
             <Button
               onClick={() => router.push("/dashboard/compose")}
@@ -256,7 +289,7 @@ export default function InboxPage() {
 
           <div className="flex-1 overflow-y-auto p-6 bg-white">
             <InboxList
-              tasks={displayedTasks}
+              tasks={tasksToShow}
               selectedTaskId={selectedTaskId}
               onTaskSelect={handleTaskSelect}
             />

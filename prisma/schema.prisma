@@ -157,6 +157,9 @@ model Task {
   replyToEmail   String?
   replyToPhone   String?
   aiReasoning    Json? // Store AI reasoning as JSON
+  aiSummary      String? // 2-3 sentence task summary
+  aiSummaryConfidence String? // High, Medium, Low
+  aiSummaryLastMessageId String? // Track which message summary is based on (for idempotency)
   aiVerified     Boolean?
   verifiedAt     DateTime?
   documentUrl    String?
@@ -196,6 +199,8 @@ model Message {
   openedAt      DateTime? // First time email was opened
   openedCount    Int      @default(0) // Number of times opened
   lastOpenedAt   DateTime? // Most recent open time
+  aiClassification String? // DATA, QUESTION, COMPLAINT, ACKNOWLEDGMENT, OTHER
+  aiReasoning     String? // Brief explanation of classification
   createdAt    DateTime         @default(now())
 
   entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)

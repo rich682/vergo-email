@@ -21,7 +21,7 @@ export default function SignInPage() {
         email,
         password,
         redirect: true,
-        callbackUrl: "/dashboard/inbox"
+        callbackUrl: "/dashboard/requests"
       })
 
       if (result?.error) {

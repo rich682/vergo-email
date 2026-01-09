@@ -120,7 +120,8 @@ export async function GET(request: NextRequest) {
           select: {
             openedAt: true,
             openedCount: true,
-            lastOpenedAt: true
+            lastOpenedAt: true,
+            subject: true
           }
         },
         _count: {
@@ -135,31 +136,45 @@ export async function GET(request: NextRequest) {
       take: 100
     })
 
-    // Get all task IDs to efficiently count inbound messages
+    // Get all task IDs to efficiently count inbound messages and get latest classification
     const taskIds = tasks.map(t => t.id)
     
-    // Get inbound message counts for all tasks
+    // Get inbound message counts and latest classification for all tasks
     const inboundCountMap = new Map<string, number>()
+    const latestClassificationMap = new Map<string, string | null>()
     if (taskIds.length > 0) {
+      // Get all inbound messages with classification
       const inboundMessages = await prisma.message.findMany({
         where: {
           taskId: { in: taskIds },
           direction: "INBOUND"
         },
         select: {
-          taskId: true
+          taskId: true,
+          aiClassification: true,
+          createdAt: true
+        },
+        orderBy: {
+          createdAt: "desc"
         }
       })
       
+      // Count messages and get latest classification per task
       for (const message of inboundMessages) {
         inboundCountMap.set(message.taskId, (inboundCountMap.get(message.taskId) || 0) + 1)
+        
+        // Store latest classification (first one we see due to DESC order)
+        if (!latestClassificationMap.has(message.taskId) && message.aiClassification) {
+          latestClassificationMap.set(message.taskId, message.aiClassification)
+        }
       }
     }
 
-    // Enrich tasks with reply information and read receipt data
+    // Enrich tasks with reply information, read receipt data, and classification
     let tasksWithReplies = tasks.map((task) => {
       const inboundCount = inboundCountMap.get(task.id) || 0
       const latestOutboundMessage = task.messages[0] || null
+      const latestClassification = latestClassificationMap.get(task.id) || null
       return {
         ...task,
         hasReplies: inboundCount > 0,
@@ -168,7 +183,9 @@ export async function GET(request: NextRequest) {
         isOpened: latestOutboundMessage?.openedAt ? true : false,
         openedAt: latestOutboundMessage?.openedAt || null,
         openedCount: latestOutboundMessage?.openedCount || 0,
-        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null
+        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
+        latestInboundClassification: latestClassification,
+        latestOutboundSubject: latestOutboundMessage?.subject || null
       }
     })
 

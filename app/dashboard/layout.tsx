@@ -34,12 +34,15 @@ export default async function DashboardLayout({
       <nav className="bg-white border-b border-gray-200 flex-shrink-0 px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-6">
-            <Link href="/dashboard/inbox" className="flex-shrink-0">
+            <Link href="/dashboard/requests" className="flex-shrink-0">
               <h1 className="text-xl font-bold cursor-pointer hover:text-gray-700 transition-colors">
                 Vergo Inbox
               </h1>
             </Link>
             <div className="hidden sm:flex items-center gap-4 text-sm font-medium text-gray-700">
+              <Link href="/dashboard/requests" className="hover:text-gray-900 transition-colors">
+                Requests
+              </Link>
               <Link href="/dashboard/inbox" className="hover:text-gray-900 transition-colors">
                 Inbox
               </Link>

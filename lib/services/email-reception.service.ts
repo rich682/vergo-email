@@ -131,6 +131,15 @@ export class EmailReceptionService {
       })
     }
 
+    // Trigger task summary generation
+    await inngest.send({
+      name: "task/summarize",
+      data: {
+        taskId: task.id,
+        messageId: message.id
+      }
+    })
+
     return {
       taskId: task.id,
       messageId: message.id

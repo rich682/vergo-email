@@ -1,61 +1,86 @@
 "use client"
 
-export type InboxTab = "awaiting" | "replied" | "read"
+import { TaskCompletionState } from "@/lib/taskState"
+
+export type InboxTab = TaskCompletionState | "all"
 
 interface InboxTabsProps {
   activeTab: InboxTab
   onTabChange: (tab: InboxTab) => void
-  awaitingCount: number
-  repliedCount: number
-  readCount: number
+  needsReviewCount: number
+  pendingCount: number
+  submittedCount: number
+  completeCount: number
 }
 
 export function InboxTabs({
   activeTab,
   onTabChange,
-  awaitingCount,
-  repliedCount,
-  readCount
+  needsReviewCount,
+  pendingCount,
+  submittedCount,
+  completeCount
 }: InboxTabsProps) {
   return (
     <div className="flex items-center gap-6">
       <button
-        onClick={() => onTabChange("awaiting")}
+        onClick={() => onTabChange("Needs Review")}
         className={`text-sm font-medium transition-colors ${
-          activeTab === "awaiting"
-            ? "text-gray-900"
+          activeTab === "Needs Review"
+            ? "text-red-700 font-semibold"
             : "text-gray-500 hover:text-gray-700"
         }`}
       >
-        Awaiting Response
-        {awaitingCount > 0 && (
-          <span className="ml-2 text-gray-400">{awaitingCount}</span>
+        Needs Review
+        {needsReviewCount > 0 && (
+          <span className={`ml-2 ${activeTab === "Needs Review" ? "text-red-600" : "text-gray-400"}`}>
+            {needsReviewCount}
+          </span>
         )}
       </button>
       <button
-        onClick={() => onTabChange("read")}
+        onClick={() => onTabChange("Pending")}
         className={`text-sm font-medium transition-colors ${
-          activeTab === "read"
-            ? "text-gray-900"
+          activeTab === "Pending"
+            ? "text-yellow-700 font-semibold"
             : "text-gray-500 hover:text-gray-700"
         }`}
       >
-        Read
-        {readCount > 0 && (
-          <span className="ml-2 text-gray-400">{readCount}</span>
+        Pending
+        {pendingCount > 0 && (
+          <span className={`ml-2 ${activeTab === "Pending" ? "text-yellow-600" : "text-gray-400"}`}>
+            {pendingCount}
+          </span>
         )}
       </button>
       <button
-        onClick={() => onTabChange("replied")}
+        onClick={() => onTabChange("Submitted")}
         className={`text-sm font-medium transition-colors ${
-          activeTab === "replied"
-            ? "text-gray-900"
+          activeTab === "Submitted"
+            ? "text-purple-700 font-semibold"
             : "text-gray-500 hover:text-gray-700"
         }`}
       >
-        Replied
-        {repliedCount > 0 && (
-          <span className="ml-2 text-gray-400">{repliedCount}</span>
+        Submitted
+        {submittedCount > 0 && (
+          <span className={`ml-2 ${activeTab === "Submitted" ? "text-purple-600" : "text-gray-400"}`}>
+            {submittedCount}
+          </span>
+        )}
+      </button>
+      <button
+        onClick={() => onTabChange("Complete")}
+        className={`text-sm font-medium transition-colors ${
+          activeTab === "Complete"
+            ? "text-green-700 font-semibold"
+            : "text-gray-500 hover:text-gray-700"
+        }`}
+      >
+        Complete
+        {completeCount > 0 && (
+          <span className={`ml-2 ${activeTab === "Complete" ? "text-green-600" : "text-gray-400"}`}>
+            {completeCount}
+          </span>
         )}
       </button>
     </div>

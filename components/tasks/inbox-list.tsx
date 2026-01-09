@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Paperclip, Circle, Check } from "lucide-react"
 import { TaskStatus, CampaignType } from "@prisma/client"
 import { formatDistanceToNow } from "date-fns"
+import { getTaskCompletionState, getStateBadgeColors, TaskCompletionState } from "@/lib/taskState"
 
 interface Task {
   id: string
@@ -24,6 +25,8 @@ interface Task {
   openedAt?: string | null
   openedCount?: number
   lastOpenedAt?: string | null
+  aiVerified?: boolean | null
+  completionState?: TaskCompletionState // Computed state
 }
 
 interface InboxListProps {
@@ -57,18 +60,17 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
     })
   }
 
-  const getStatusColor = (status: TaskStatus) => {
-    const colors: Record<string, string> = {
-      AWAITING_RESPONSE: "bg-yellow-100 text-yellow-800",
-      REPLIED: "bg-blue-100 text-blue-800",
-      HAS_ATTACHMENTS: "bg-purple-100 text-purple-800",
-      VERIFYING: "bg-indigo-100 text-indigo-800",
-      FULFILLED: "bg-green-100 text-green-800",
-      REJECTED: "bg-red-100 text-red-800",
-      FLAGGED: "bg-orange-100 text-orange-800",
-      MANUAL_REVIEW: "bg-gray-100 text-gray-800"
+  const getTaskState = (task: Task): TaskCompletionState => {
+    if (task.completionState) {
+      return task.completionState
     }
-    return colors[status] || "bg-gray-100 text-gray-800"
+    return getTaskCompletionState({
+      status: task.status,
+      hasAttachments: task.hasAttachments,
+      aiVerified: task.aiVerified ?? null,
+      updatedAt: task.updatedAt,
+      hasReplies: task.hasReplies
+    })
   }
 
   const handleSort = (field: keyof Task) => {
@@ -120,6 +122,12 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
             <tr>
               <th
                 scope="col"
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200"
+              >
+                State
+              </th>
+              <th
+                scope="col"
                 className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 border-r border-gray-200"
                 onClick={() => handleSort("entity")}
               >
@@ -136,7 +144,7 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
                 onClick={() => handleSort("campaignName")}
               >
                 <div className="flex items-center gap-2">
-                  Subject / Campaign
+                  Request
                   {sortField === "campaignName" && (
                     <span className="text-gray-400">{sortDirection === "asc" ? "↑" : "↓"}</span>
                   )}
@@ -148,7 +156,7 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
                 onClick={() => handleSort("updatedAt")}
               >
                 <div className="flex items-center gap-2">
-                  Time
+                  Progress
                   {sortField === "updatedAt" && (
                     <span className="text-gray-400">{sortDirection === "asc" ? "↑" : "↓"}</span>
                   )}
@@ -162,6 +170,9 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
               const senderName = task.entity.firstName || task.entity.email || "Unknown"
               const senderEmail = task.entity.email || ""
               const subject = task.campaignName || "No subject"
+              const taskState = getTaskState(task)
+              const stateColors = getStateBadgeColors(taskState)
+              const isNeedsReview = taskState === "Needs Review"
               
               return (
                 <tr
@@ -169,23 +180,23 @@ export function InboxList({ tasks, selectedTaskId, onTaskSelect }: InboxListProp
                   onClick={() => onTaskSelect(task.id)}
                   className={`hover:bg-gray-50 transition-colors cursor-pointer ${
                     isSelected ? "bg-blue-50" : ""
-                  }`}
+                  } ${isNeedsReview ? "border-l-2 border-red-500" : ""}`}
                 >
                   <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200">
-                    <div className="flex items-center gap-2">
-                      {!task.hasReplies && task.status === "AWAITING_RESPONSE" && (
-                        <Circle className="w-2 h-2 fill-blue-600 text-blue-600 flex-shrink-0" />
-                      )}
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {senderName}
-                        </div>
-                        {senderEmail && (
-                          <div className="text-xs text-gray-500">
-                            {senderEmail}
-                          </div>
-                        )}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stateColors.bg} ${stateColors.text}`}>
+                      {taskState}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap border-r border-gray-200">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {senderName}
                       </div>
+                      {senderEmail && (
+                        <div className="text-xs text-gray-500">
+                          {senderEmail}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200">

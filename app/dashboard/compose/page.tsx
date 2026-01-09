@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -16,8 +17,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getRequestGrouping } from "@/lib/requestGrouping"
 
-export default function ComposePage() {
+function ComposePageContent() {
+  const searchParams = useSearchParams()
+  const isRequestMode = searchParams.get('mode') === 'request'
   const [prompt, setPrompt] = useState("")
   const [selectedRecipients, setSelectedRecipients] = useState<SelectedRecipient[]>([])
   const [loading, setLoading] = useState(false)
@@ -36,6 +40,7 @@ export default function ComposePage() {
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email: string; provider: string }>>([])
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState<string | undefined>(undefined)
   const [accountsLoading, setAccountsLoading] = useState(false)
+  const [requestNameError, setRequestNameError] = useState<string | null>(null)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -110,6 +115,16 @@ export default function ComposePage() {
   const handleSend = async () => {
     if (!draft || sending) return
 
+    // Validate Request Name in request mode
+    if (isRequestMode) {
+      const requestName = (draft.campaignName || "").trim()
+      if (!requestName) {
+        setRequestNameError("Request name is required")
+        return
+      }
+      setRequestNameError(null)
+    }
+
     // Check for external recipients if not already confirmed
     if (!confirmed) {
       const warningData = await checkWarning()
@@ -138,8 +153,38 @@ export default function ComposePage() {
         throw new Error(errorData.error || `Failed to send email: ${response.statusText}`)
       }
 
-      // Success - redirect to inbox page
-      window.location.href = "/dashboard/inbox"
+      const result = await response.json()
+      
+      // In request mode, redirect to request detail page
+      if (isRequestMode && draft.campaignName) {
+        const requestName = draft.campaignName.trim()
+        const grouping = getRequestGrouping({
+          campaignName: requestName,
+          campaignType: null,
+          id: '',
+          latestOutboundSubject: draft.generatedSubject || null
+        })
+        const encodedKey = encodeURIComponent(grouping.groupKey)
+        
+        // Get recipient count from draft
+        const entityCount = draft.suggestedRecipients?.entityIds?.length || 0
+        const groupCount = draft.suggestedRecipients?.groupIds?.length || 0
+        // Note: We can't get exact count without fetching groups, so use entity count as estimate
+        const estimatedRecipientCount = entityCount + (groupCount > 0 ? 1 : 0) // Rough estimate
+        
+        // Show toast notification (simple alert for now, can be enhanced)
+        const toastMessage = `Request created\n"${requestName}" • 0/${estimatedRecipientCount || entityCount} complete`
+        alert(toastMessage)
+        
+        // Redirect to request detail page
+        window.location.href = `/dashboard/requests/${encodedKey}`
+      } else if (isRequestMode) {
+        // Fallback: redirect to requests list if no request name
+        window.location.href = "/dashboard/requests"
+      } else {
+        // Non-request mode: redirect to inbox
+        window.location.href = "/dashboard/inbox"
+      }
     } catch (error: any) {
       console.error("Error sending email:", error)
       setSendError(error.message || "Failed to send email. Please try again.")
@@ -253,9 +298,13 @@ export default function ComposePage() {
         throw new Error(errorData.error || `Failed to schedule email: ${response.statusText}`)
       }
 
-      // Success - close dialog and redirect to inbox page
+      // Success - close dialog and redirect
       setScheduleDialogOpen(false)
-      window.location.href = "/dashboard/inbox"
+      if (isRequestMode) {
+        window.location.href = "/dashboard/requests"
+      } else {
+        window.location.href = "/dashboard/inbox"
+      }
     } catch (error: any) {
       console.error("Error scheduling email:", error)
       setScheduleError(error.message || "Failed to schedule email. Please try again.")
@@ -267,8 +316,10 @@ export default function ComposePage() {
     <div className="w-full h-full flex flex-col border-l border-r border-gray-200">
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
         <div>
-          <h2 className="text-2xl font-bold">Compose Email</h2>
-          <p className="text-sm text-gray-600">Describe what you want to send in natural language</p>
+          <h2 className="text-2xl font-bold">{isRequestMode ? "Create Request" : "Compose Email"}</h2>
+          <p className="text-sm text-gray-600">
+            {isRequestMode ? "Send a request and track completion" : "Describe what you want to send in natural language"}
+          </p>
         </div>
       </div>
       <div className="flex-1 overflow-auto bg-gray-50 border-t border-gray-200">
@@ -283,16 +334,16 @@ export default function ComposePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label>To (Optional - type / to search)</Label>
+            <Label>{isRequestMode ? "Who needs to respond?" : "To (Optional - type / to search)"}</Label>
             <RecipientSelector
               selectedRecipients={selectedRecipients}
               onRecipientsChange={setSelectedRecipients}
             />
           </div>
           <div>
-            <Label>Message</Label>
+            <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
             <Textarea
-              placeholder="Describe the email you want to send..."
+              placeholder={isRequestMode ? "Please submit your W-9 form for tax year 2023..." : "Describe the email you want to send..."}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
@@ -352,14 +403,17 @@ export default function ComposePage() {
               )}
             </div>
             <div>
-              <Label>Subject</Label>
+              <Label>{isRequestMode ? "Email Subject" : "Subject"}</Label>
               <Input
                 value={draft.generatedSubject || ""}
                 onChange={(e) => setDraft({ ...draft, generatedSubject: e.target.value })}
               />
+              {isRequestMode && (
+                <p className="text-xs text-gray-500 mt-1">This is the subject line of the email sent to recipients</p>
+              )}
             </div>
             <div>
-              <Label>Body</Label>
+              <Label>{isRequestMode ? "What are you requesting?" : "Body"}</Label>
               <Textarea
                 value={draft.generatedBody || ""}
                 onChange={(e) => setDraft({ ...draft, generatedBody: e.target.value })}
@@ -367,12 +421,24 @@ export default function ComposePage() {
               />
             </div>
             <div>
-              <Label>Campaign Name (Optional)</Label>
+              <Label>
+                {isRequestMode ? "Request Name" : "Campaign Name (Optional)"}
+                {isRequestMode && <span className="text-red-500 ml-1">*</span>}
+              </Label>
               <Input
-                placeholder="e.g., W-9 Collection, Expense Reports"
+                placeholder={isRequestMode ? "e.g., W-9 Collection, Expense Reports Q4" : "e.g., W-9 Collection, Expense Reports"}
                 value={draft.campaignName || ""}
-                onChange={(e) => setDraft({ ...draft, campaignName: e.target.value || undefined })}
+                onChange={(e) => {
+                  setDraft({ ...draft, campaignName: e.target.value || undefined })
+                  if (requestNameError) setRequestNameError(null)
+                }}
               />
+              {isRequestMode && (
+                <p className="text-xs text-gray-500 mt-1">This groups all recipients for this request</p>
+              )}
+              {requestNameError && (
+                <p className="text-xs text-red-600 mt-1">{requestNameError}</p>
+              )}
             </div>
             {sendError && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-md">
@@ -381,10 +447,10 @@ export default function ComposePage() {
             )}
             <div className="flex gap-2">
               <Button onClick={handleSend} disabled={!!warning || sending}>
-                {sending ? "Sending..." : "Approve & Send"}
+                {sending ? (isRequestMode ? "Sending Request..." : "Sending...") : (isRequestMode ? "Send Request" : "Approve & Send")}
               </Button>
               <Button variant="outline" disabled={sending} onClick={handleScheduleClick}>
-                Approve & Schedule
+                {isRequestMode ? "Schedule Request" : "Approve & Schedule"}
               </Button>
             </div>
           </CardContent>
@@ -394,9 +460,9 @@ export default function ComposePage() {
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Schedule Email</DialogTitle>
+            <DialogTitle>{isRequestMode ? "Schedule Request" : "Schedule Email"}</DialogTitle>
             <DialogDescription>
-              Choose when to send this email. The email will be sent to all members of the selected group.
+              Choose when to send this {isRequestMode ? "request" : "email"}. The {isRequestMode ? "request" : "email"} will be sent to all members of the selected group.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -458,6 +524,18 @@ export default function ComposePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ComposePage() {
+  return (
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    }>
+      <ComposePageContent />
+    </Suspense>
   )
 }
 
