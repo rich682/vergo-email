@@ -1,4 +1,3 @@
-import { GCSStorageService } from "./gcs-storage.service"
 import { LocalStorageService } from "./local-storage.service"
 
 export interface StorageService {
@@ -9,11 +8,6 @@ export interface StorageService {
 }
 
 export function getStorageService(): StorageService {
-  // Use Google Cloud Storage if configured, otherwise use local storage (dev only)
-  if (process.env.GCS_BUCKET_NAME) {
-    return new GCSStorageService()
-  }
-  
   return new LocalStorageService()
 }
 
