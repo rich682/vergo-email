@@ -42,6 +42,11 @@ AI-powered email response tracking for accounting teams.
 - No alternate pipelines or container builds.
 - Ensure env vars are set in Vercel (same names as above).
 
+## Email provider env vars
+- Gmail: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI`
+- Microsoft: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT_ID` (or `common`), `MS_REDIRECT_URI`
+- Storage: `BLOB_READ_WRITE_TOKEN` (Vercel Blob; falls back to local in dev)
+
 ## Testing & build checks
 - Production build: `npm run build`
 - Prisma client: `npm run db:generate`

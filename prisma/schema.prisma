@@ -42,6 +42,7 @@ enum MessageChannel {
 
 enum EmailProvider {
   GMAIL
+  MICROSOFT
   GENERIC_SMTP
 }
 
@@ -256,6 +257,29 @@ model ConnectedEmailAccount {
   @@index([organizationId])
   @@index([email])
   @@index([organizationId, isPrimary])
+}
+
+model EmailAccount {
+  id             String        @id @default(cuid())
+  userId         String
+  organizationId String
+  provider       EmailProvider
+  email          String
+  accessToken    String? // Encrypted
+  refreshToken   String? // Encrypted
+  tokenExpiresAt DateTime?
+  scopes         String?
+  isPrimary      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  lastSyncedAt   DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([email])
+  @@index([organizationId, isPrimary])
+  @@index([organizationId, createdAt])
 }
 
 model AutomationRule {

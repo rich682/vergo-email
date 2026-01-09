@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
+import { EmailAccountService } from "@/lib/services/email-account.service"
+import { EmailProvider } from "@prisma/client"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get("code")
-  const state = searchParams.get("state") // organizationId
+  const state = searchParams.get("state") // JSON with organizationId/userId
 
   if (!code || !state) {
     return NextResponse.redirect(
@@ -48,16 +52,53 @@ export async function GET(request: Request) {
       )
     }
 
-    // Create connection
+    let organizationId = state
+    let userId: string | null = null
+    try {
+      const parsed = JSON.parse(state)
+      organizationId = parsed.organizationId || organizationId
+      userId = parsed.userId || null
+    } catch (e) {
+      // Fallback to legacy state (org id only)
+      organizationId = state
+    }
+
+    // Validate session matches state
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id || !session.user.organizationId) {
+      return NextResponse.redirect(new URL("/auth/signin", request.url))
+    }
+    if (userId && session.user.id !== userId) {
+      return NextResponse.redirect(new URL("/dashboard/settings?error=oauth_failed", request.url))
+    }
+    if (organizationId && session.user.organizationId !== organizationId) {
+      return NextResponse.redirect(new URL("/dashboard/settings?error=oauth_failed", request.url))
+    }
+
+    // Create legacy connection (backward compatible)
     await EmailConnectionService.createGmailConnection({
-      organizationId: state,
+      organizationId,
       email: userInfo.data.email,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       tokenExpiresAt: tokens.expiry_date
         ? new Date(tokens.expiry_date)
-        : new Date(Date.now() + 3600 * 1000) // Default to 1 hour if not provided
+        : new Date(Date.now() + 3600 * 1000)
     })
+
+    // Create new EmailAccount entry
+    if (userId) {
+      await EmailAccountService.createAccount({
+        userId,
+        organizationId,
+        provider: EmailProvider.GMAIL,
+        email: userInfo.data.email,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        scopes: (tokens.scope as string) || undefined,
+      })
+    }
 
     return NextResponse.redirect(
       new URL("/dashboard/settings?success=gmail_connected", request.url)

@@ -20,7 +20,7 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { recipients, campaignName } = body
+    const { recipients, campaignName, emailAccountId } = body
 
     const draft = await EmailDraftService.findById(
       params.id,
@@ -90,7 +90,8 @@ export async function POST(
       subject: draft.generatedSubject,
       body: draft.generatedBody,
       htmlBody: draft.generatedHtmlBody || undefined,
-      campaignName: campaignName || draft.suggestedCampaignName || undefined
+      campaignName: campaignName || draft.suggestedCampaignName || undefined,
+      accountId: emailAccountId
     })
 
     // Update draft status

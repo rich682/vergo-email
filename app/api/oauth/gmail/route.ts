@@ -26,11 +26,16 @@ export async function GET() {
     "https://www.googleapis.com/auth/userinfo.email"
   ]
 
+  const statePayload = JSON.stringify({
+    organizationId: session.user.organizationId,
+    userId: session.user.id,
+  })
+
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: scopes,
     prompt: "consent",
-    state: session.user.organizationId
+    state: statePayload
   })
 
   return NextResponse.redirect(authUrl)

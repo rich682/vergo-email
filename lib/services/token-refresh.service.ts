@@ -1,5 +1,8 @@
 import { EmailConnectionService } from "./email-connection.service"
-import { ConnectedEmailAccount } from "@prisma/client"
+import { EmailAccountService } from "./email-account.service"
+import { ConnectedEmailAccount, EmailAccount, EmailProvider } from "@prisma/client"
+import { GmailProvider } from "@/lib/providers/email/gmail-provider"
+import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 
 export class TokenRefreshService {
   static async ensureValidToken(
@@ -37,6 +40,31 @@ export class TokenRefreshService {
     }
 
     return this.ensureValidToken(account)
+  }
+
+  static async ensureValidEmailAccount(
+    account: EmailAccount
+  ): Promise<EmailAccount> {
+    if (account.provider === EmailProvider.GMAIL) {
+      const provider = new GmailProvider()
+      return provider.refreshToken(account)
+    }
+    if (account.provider === EmailProvider.MICROSOFT) {
+      const provider = new MicrosoftProvider()
+      return provider.refreshToken(account)
+    }
+    return account
+  }
+
+  static async refreshEmailAccountIfNeeded(
+    accountId: string
+  ): Promise<EmailAccount> {
+    const { prisma } = await import("@/lib/prisma")
+    const account = await prisma.emailAccount.findUnique({ where: { id: accountId } })
+    if (!account) {
+      throw new Error("EmailAccount not found")
+    }
+    return this.ensureValidEmailAccount(account)
   }
 }
 

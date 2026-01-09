@@ -16,8 +16,8 @@ function SettingsContent() {
     const success = searchParams.get("success")
     const error = searchParams.get("error")
 
-    if (success === "gmail_connected") {
-      setMessage({ type: "success", text: "Gmail account connected successfully!" })
+    if (success === "gmail_connected" || success === "microsoft_connected") {
+      setMessage({ type: "success", text: "Email account connected successfully!" })
       // Clear the message after 5 seconds
       setTimeout(() => setMessage(null), 5000)
       // Clean up URL
@@ -58,6 +58,40 @@ function SettingsContent() {
     window.location.href = "/api/oauth/gmail"
   }
 
+  const handleConnectMicrosoft = () => {
+    window.location.href = "/api/oauth/microsoft"
+  }
+
+  const handleSyncContacts = async (accountId: string) => {
+    try {
+      setMessage(null)
+      const res = await fetch(`/api/contacts/sync?emailAccountId=${accountId}`, { method: "POST" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Sync failed")
+      }
+      const data = await res.json().catch(() => ({}))
+      setMessage({ type: "success", text: data.message || "Sync started" })
+      setTimeout(() => setMessage(null), 5000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Sync failed" })
+      setTimeout(() => setMessage(null), 5000)
+    }
+  }
+
+  const handleDisconnect = async (accountId: string) => {
+    try {
+      const res = await fetch(`/api/email-accounts/${accountId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to disconnect")
+      }
+      fetchAccounts()
+    } catch (err) {
+      console.error("Disconnect error", err)
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col border-l border-r border-gray-200">
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
@@ -87,7 +121,10 @@ function SettingsContent() {
           <CardTitle>Email Accounts</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button onClick={handleConnectGmail}>Connect Gmail</Button>
+          <div className="flex gap-2">
+            <Button onClick={handleConnectGmail}>Connect Gmail inbox</Button>
+            <Button variant="outline" onClick={handleConnectMicrosoft}>Connect Microsoft inbox</Button>
+          </div>
 
           {loading ? (
             <div className="py-4 text-gray-500">Loading accounts...</div>
@@ -115,6 +152,12 @@ function SettingsContent() {
                         Primary
                       </span>
                     )}
+                    <Button size="sm" variant="outline" onClick={() => handleSyncContacts(account.id)}>
+                      Sync contacts
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDisconnect(account.id)}>
+                      Disconnect
+                    </Button>
                   </div>
                 </div>
               ))}

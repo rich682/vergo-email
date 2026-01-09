@@ -33,6 +33,9 @@ export default function ComposePage() {
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: string; name: string }>>([])
   const [scheduling, setScheduling] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email: string; provider: string }>>([])
+  const [selectedEmailAccountId, setSelectedEmailAccountId] = useState<string | undefined>(undefined)
+  const [accountsLoading, setAccountsLoading] = useState(false)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -125,7 +128,8 @@ export default function ComposePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipients: draft.suggestedRecipients,
-          campaignName: draft.campaignName || undefined
+          campaignName: draft.campaignName || undefined,
+          emailAccountId: selectedEmailAccountId
         })
       })
 
@@ -155,6 +159,27 @@ export default function ComposePage() {
   }
 
   // Fetch groups when draft is available
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        setAccountsLoading(true)
+        const res = await fetch("/api/email-accounts")
+        if (res.ok) {
+          const data = await res.json()
+          setEmailAccounts(data)
+          if (data.length > 0) {
+            setSelectedEmailAccountId(data[0].id)
+          }
+        }
+      } catch (e) {
+        console.error("Error loading email accounts", e)
+      } finally {
+        setAccountsLoading(false)
+      }
+    }
+    loadAccounts()
+  }, [])
+
   useEffect(() => {
     if (draft?.suggestedRecipients) {
       const fetchGroups = async () => {
@@ -300,6 +325,32 @@ export default function ComposePage() {
                 </div>
               </div>
             )}
+            <div>
+              <Label>From</Label>
+              {accountsLoading ? (
+                <div className="text-sm text-gray-500">Loading inboxes...</div>
+              ) : emailAccounts.length <= 1 ? (
+                <div className="text-sm text-gray-700">
+                  {emailAccounts[0]?.email || "No connected inbox"}
+                </div>
+              ) : (
+                <Select
+                  value={selectedEmailAccountId}
+                  onValueChange={(val) => setSelectedEmailAccountId(val)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select inbox" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {emailAccounts.map((acct) => (
+                      <SelectItem key={acct.id} value={acct.id}>
+                        {acct.email} ({acct.provider})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <div>
               <Label>Subject</Label>
               <Input

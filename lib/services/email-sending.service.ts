@@ -4,9 +4,12 @@ import { EmailConnectionService } from "./email-connection.service"
 import { TokenRefreshService } from "./token-refresh.service"
 import { TaskCreationService } from "./task-creation.service"
 import { TrackingPixelService } from "./tracking-pixel.service"
-import { ConnectedEmailAccount } from "@prisma/client"
+import { ConnectedEmailAccount, EmailAccount, EmailProvider } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid"
 import { decrypt } from "@/lib/encryption"
+import { EmailAccountService } from "./email-account.service"
+import { GmailProvider } from "@/lib/providers/email/gmail-provider"
+import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 
 export class EmailSendingService {
   static generateThreadId(): string {
@@ -132,19 +135,26 @@ export class EmailSendingService {
     threadId: string
     messageId: string
   }> {
-    // Get email account (primary if not specified)
-    let account: ConnectedEmailAccount | null
+    // Resolve EmailAccount first (multi-inbox), fallback to legacy ConnectedEmailAccount
+    let account: EmailAccount | ConnectedEmailAccount | null = null
+
     if (data.accountId) {
-      const { prisma } = await import("@/lib/prisma")
-      account = await prisma.connectedEmailAccount.findFirst({
-        where: {
-          id: data.accountId,
-          organizationId: data.organizationId,
-          isActive: true
-        }
-      })
+      account = await EmailAccountService.getById(data.accountId, data.organizationId)
+      if (!account) {
+        const { prisma } = await import("@/lib/prisma")
+        account = await prisma.connectedEmailAccount.findFirst({
+          where: {
+            id: data.accountId,
+            organizationId: data.organizationId,
+            isActive: true
+          }
+        })
+      }
     } else {
-      account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
+      account = await EmailAccountService.getFirstActive(data.organizationId)
+      if (!account) {
+        account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
+      }
     }
 
     if (!account) {
@@ -167,9 +177,29 @@ export class EmailSendingService {
     // Send email
     let sendResult: { messageId: string; providerData: any }
     
-    if (account.provider === "GMAIL") {
+    if ("provider" in account && (account as EmailAccount).provider === EmailProvider.GMAIL && "tokenExpiresAt" in account) {
+      const provider = new GmailProvider()
+      sendResult = await provider.sendEmail({
+        account: account as EmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    } else if ("provider" in account && (account as EmailAccount).provider === EmailProvider.MICROSOFT) {
+      const provider = new MicrosoftProvider()
+      sendResult = await provider.sendEmail({
+        account: account as EmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    } else if ((account as ConnectedEmailAccount).provider === "GMAIL") {
       sendResult = await this.sendViaGmail({
-        account,
+        account: account as ConnectedEmailAccount,
         to: data.to,
         subject: data.subject,
         body: data.body,
@@ -178,7 +208,7 @@ export class EmailSendingService {
       })
     } else {
       sendResult = await this.sendViaSMTP({
-        account,
+        account: account as ConnectedEmailAccount,
         to: data.to,
         subject: data.subject,
         body: data.body,
