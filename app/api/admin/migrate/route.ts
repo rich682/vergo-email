@@ -208,19 +208,93 @@ export async function POST(request: NextRequest) {
 
     const { action } = await request.json().catch(() => ({}))
     
-    if (action === "migrate") {
-      // Run Prisma migrations using db push
-      console.log("Running Prisma migrations...")
-      // We can't easily run prisma db push from here, so we'll use a workaround
-      // Actually, Prisma will auto-migrate on first connection if schema is different
-      // For now, we'll just verify the connection works
-      await prisma.$connect()
-      await prisma.$disconnect()
+    if (action === "migrate" || action === "add-personalization-fields") {
+      // Apply personalization fields migration
+      console.log("Applying personalization fields migration...")
       
-      return NextResponse.json({
-        success: true,
-        message: "Database connection verified. Schema should be in sync."
-      })
+      try {
+        // Add columns to EmailDraft table
+        await prisma.$executeRaw`
+          ALTER TABLE "EmailDraft" 
+          ADD COLUMN IF NOT EXISTS "subjectTemplate" TEXT,
+          ADD COLUMN IF NOT EXISTS "bodyTemplate" TEXT,
+          ADD COLUMN IF NOT EXISTS "htmlBodyTemplate" TEXT,
+          ADD COLUMN IF NOT EXISTS "availableTags" JSONB,
+          ADD COLUMN IF NOT EXISTS "personalizationMode" TEXT,
+          ADD COLUMN IF NOT EXISTS "blockOnMissingValues" BOOLEAN NOT NULL DEFAULT true;
+        `
+        console.log("✅ Added personalization columns to EmailDraft")
+
+        // Create PersonalizationData table if it doesn't exist
+        await prisma.$executeRaw`
+          CREATE TABLE IF NOT EXISTS "PersonalizationData" (
+            "id" TEXT NOT NULL,
+            "emailDraftId" TEXT NOT NULL,
+            "recipientEmail" TEXT NOT NULL,
+            "contactId" TEXT,
+            "dataJson" JSONB NOT NULL,
+            "renderSubject" TEXT,
+            "renderBody" TEXT,
+            "renderHtmlBody" TEXT,
+            "renderStatus" TEXT,
+            "renderErrors" JSONB,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "PersonalizationData_pkey" PRIMARY KEY ("id")
+          );
+        `
+        console.log("✅ Created PersonalizationData table")
+
+        // Create indexes
+        await prisma.$executeRaw`
+          CREATE UNIQUE INDEX IF NOT EXISTS "PersonalizationData_emailDraftId_recipientEmail_key" 
+          ON "PersonalizationData"("emailDraftId", "recipientEmail");
+        `
+        await prisma.$executeRaw`
+          CREATE INDEX IF NOT EXISTS "PersonalizationData_emailDraftId_idx" 
+          ON "PersonalizationData"("emailDraftId");
+        `
+        await prisma.$executeRaw`
+          CREATE INDEX IF NOT EXISTS "PersonalizationData_recipientEmail_idx" 
+          ON "PersonalizationData"("recipientEmail");
+        `
+        console.log("✅ Created indexes for PersonalizationData")
+
+        // Add foreign key constraint if it doesn't exist
+        const fkExists = await prisma.$queryRaw<Array<{exists: boolean}>>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_constraint 
+            WHERE conname = 'PersonalizationData_emailDraftId_fkey'
+          ) as exists;
+        `
+        
+        if (!fkExists[0]?.exists) {
+          await prisma.$executeRaw`
+            ALTER TABLE "PersonalizationData" 
+            ADD CONSTRAINT "PersonalizationData_emailDraftId_fkey" 
+            FOREIGN KEY ("emailDraftId") REFERENCES "EmailDraft"("id") 
+            ON DELETE CASCADE ON UPDATE CASCADE;
+          `
+          console.log("✅ Added foreign key constraint")
+        } else {
+          console.log("✅ Foreign key constraint already exists")
+        }
+        
+        return NextResponse.json({
+          success: true,
+          message: "Personalization fields migration applied successfully"
+        })
+      } catch (error: any) {
+        console.error("Migration error:", error)
+        return NextResponse.json(
+          { 
+            error: "Migration failed",
+            details: error.message,
+            stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+          },
+          { status: 500 }
+        )
+      }
     }
     
     if (action === "seed") {
@@ -243,7 +317,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: "Invalid action. Use 'migrate', 'seed', or 'migrate-and-seed'" },
+      { error: "Invalid action. Use 'migrate', 'add-personalization-fields', 'seed', or 'migrate-and-seed'" },
       { status: 400 }
     )
   } catch (error: any) {
