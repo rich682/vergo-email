@@ -80,15 +80,13 @@ Create OAuth credentials in Google Cloud Console, enable Gmail API, and set redi
 ## Development Scripts
 
 - `npm run dev` - Start Next.js development server
-- `npm run setup:env` - Generate `.env` file with secure secrets
-- `npm run setup:db` - Set up database (Docker + migrations + seed)
-- `npm run verify` - Verify local setup is correct
+- `npm run setup:db` - Set up database (push schema + seed)
 - `npm run db:generate` - Generate Prisma client
 - `npm run db:push` - Push database schema changes
 - `npm run db:migrate` - Run database migrations
 - `npm run db:seed` - Seed database with test data
 - `npm run db:studio` - Open Prisma Studio (database GUI)
-- `npm run dev:full` - Start Docker + Next.js dev server
+- `npm run dev:full` - Start Next.js dev server (alias for `npm run dev`)
 
 ## License
 
