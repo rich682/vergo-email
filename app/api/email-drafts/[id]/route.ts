@@ -29,9 +29,14 @@ export async function GET(
   }
 
   // Include aiGenerationStatus in response
+  // Use no-store to avoid stale AI status/content
   return NextResponse.json({
     ...draft,
     aiGenerationStatus: (draft as any).aiGenerationStatus || null
+  }, {
+    headers: {
+      'Cache-Control': 'no-store'
+    }
   })
 }
 

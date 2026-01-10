@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getRequestGrouping } from "@/lib/requestGrouping"
+import { PreviewPanel } from "@/components/compose/preview-panel"
 
 function ComposePageContent() {
   const searchParams = useSearchParams()
@@ -47,6 +48,15 @@ function ComposePageContent() {
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)
   const [pollingAbortController, setPollingAbortController] = useState<AbortController | null>(null)
   const [aiEnriching, setAiEnriching] = useState(false)
+  
+  // Preview panel state
+  const [previewSubject, setPreviewSubject] = useState("")
+  const [previewBody, setPreviewBody] = useState("")
+  const [aiSubject, setAiSubject] = useState<string | undefined>(undefined)
+  const [aiBody, setAiBody] = useState<string | undefined>(undefined)
+  const [subjectUserEdited, setSubjectUserEdited] = useState(false)
+  const [bodyUserEdited, setBodyUserEdited] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -120,11 +130,21 @@ function ComposePageContent() {
       
       // If draft is already completed (synchronous generation), use it directly
       if (data.status === "completed" && data.draft) {
-        setDraft({
+        const draftData = {
           id: data.id,
           ...data.draft,
-          campaignName: data.draft.suggestedCampaignName || undefined
-        })
+          campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined)
+        }
+        setDraft(draftData)
+        // Initialize preview with AI content
+        if (data.draft.generatedSubject) {
+          setPreviewSubject(data.draft.generatedSubject)
+          setAiSubject(data.draft.generatedSubject)
+        }
+        if (data.draft.generatedBody) {
+          setPreviewBody(data.draft.generatedBody)
+          setAiBody(data.draft.generatedBody)
+        }
         setLoading(false)
         setAiEnriching(false)
         return
@@ -132,16 +152,34 @@ function ComposePageContent() {
 
       // If request was created but AI failed, still show the draft
       if (data.status === "failed" && data.id) {
+        const fallbackSubject = ""
+        const fallbackBody = prompt
         setDraft({
           id: data.id,
-          generatedSubject: "",
-          generatedBody: prompt,
-          campaignName: undefined
+          generatedSubject: fallbackSubject,
+          generatedBody: fallbackBody,
+          campaignName: undefined,
+          aiGenerationStatus: "failed"
         })
+        setPreviewSubject(fallbackSubject)
+        setPreviewBody(fallbackBody)
         setError(data.error || "AI generation failed. You can still edit and send manually.")
         setLoading(false)
         setAiEnriching(false)
         return
+      }
+      
+      // Request created, initialize preview with prompt as fallback
+      if (data.id) {
+        setDraft({
+          id: data.id,
+          generatedSubject: "",
+          generatedBody: prompt,
+          campaignName: isRequestMode ? requestName.trim() : undefined,
+          aiGenerationStatus: "processing"
+        })
+        setPreviewSubject("")
+        setPreviewBody(prompt)
       }
       
       // Request created, now polling for AI enrichment
@@ -181,14 +219,22 @@ function ComposePageContent() {
         if (elapsed >= MAX_POLL_TIME_MS) {
           // If we have a draft ID, navigate to it or show it
           if (data.id) {
+            const fallbackSubject = ""
+            const fallbackBody = prompt
             setDraft({
               id: data.id,
-              generatedSubject: "",
-              generatedBody: prompt,
-              campaignName: undefined
+              generatedSubject: fallbackSubject,
+              generatedBody: fallbackBody,
+              campaignName: undefined,
+              aiGenerationStatus: "timeout"
             })
+            if (!subjectUserEdited) {
+              setPreviewSubject(fallbackSubject)
+            }
+            if (!bodyUserEdited) {
+              setPreviewBody(fallbackBody)
+            }
             if (isRequestMode) {
-              // Could navigate to request detail, but for now just show error
               setError("AI enrichment timed out. You can still edit and send manually.")
             }
           } else {
@@ -200,7 +246,8 @@ function ComposePageContent() {
         
         try {
           const draftResponse = await fetch(`/api/email-drafts/${data.id}`, {
-            signal: abortController.signal
+            signal: abortController.signal,
+            cache: 'no-store'
           })
           
           if (!draftResponse.ok) {
@@ -224,12 +271,24 @@ function ComposePageContent() {
           
           // Check terminal states
           if (draftData.aiGenerationStatus === "failed" || draftData.aiGenerationStatus === "timeout") {
+            const fallbackSubject = draftData.generatedSubject || ""
+            const fallbackBody = draftData.generatedBody || prompt
             setDraft({
               id: draftData.id,
-              generatedSubject: draftData.generatedSubject || "",
-              generatedBody: draftData.generatedBody || prompt,
-              campaignName: draftData.suggestedCampaignName || undefined
+              generatedSubject: fallbackSubject,
+              generatedBody: fallbackBody,
+              campaignName: draftData.suggestedCampaignName || undefined,
+              aiGenerationStatus: draftData.aiGenerationStatus
             })
+            // Only update preview if user hasn't edited
+            if (!subjectUserEdited) {
+              setPreviewSubject(fallbackSubject)
+              if (fallbackSubject) setAiSubject(fallbackSubject)
+            }
+            if (!bodyUserEdited) {
+              setPreviewBody(fallbackBody)
+              if (fallbackBody) setAiBody(fallbackBody)
+            }
             setError("AI enrichment failed. You can still edit and send manually.")
             setAiEnriching(false)
             return
@@ -239,8 +298,18 @@ function ComposePageContent() {
             setDraft({
               id: draftData.id,
               ...draftData,
-              campaignName: isRequestMode ? requestName.trim() : (draftData.suggestedCampaignName || undefined)
+              campaignName: isRequestMode ? requestName.trim() : (draftData.suggestedCampaignName || undefined),
+              aiGenerationStatus: draftData.aiGenerationStatus || "complete"
             })
+            // Update preview with AI content only if user hasn't edited
+            if (!subjectUserEdited && draftData.generatedSubject) {
+              setPreviewSubject(draftData.generatedSubject)
+              setAiSubject(draftData.generatedSubject)
+            }
+            if (!bodyUserEdited && draftData.generatedBody) {
+              setPreviewBody(draftData.generatedBody)
+              setAiBody(draftData.generatedBody)
+            }
             setAiEnriching(false)
             return
           }
@@ -298,6 +367,89 @@ function ComposePageContent() {
     // Note: Campaign warnings API was removed. This functionality can be re-implemented
     // if needed by checking entity domains directly
     return null
+  }
+
+  const handlePreviewSubmit = async () => {
+    if (!draft || submitting) return
+
+    // Validate Request Name in request mode
+    if (isRequestMode) {
+      const finalRequestName = requestName.trim() || (draft.campaignName || "").trim()
+      if (!finalRequestName) {
+        setRequestNameError("Request name is required")
+        return
+      }
+      setRequestNameError(null)
+    }
+
+    setSubmitting(true)
+    setSendError(null)
+
+    try {
+      // Update draft with preview edits
+      const updateResponse = await fetch(`/api/email-drafts/${draft.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generatedSubject: previewSubject,
+          generatedBody: previewBody
+        })
+      })
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to update draft")
+      }
+
+      // Submit the request
+      const response = await fetch(`/api/email-drafts/${draft.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipients: draft.suggestedRecipients,
+          campaignName: isRequestMode ? (requestName.trim() || draft.campaignName || undefined) : (draft.campaignName || undefined),
+          emailAccountId: selectedEmailAccountId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to send email" }))
+        throw new Error(errorData.error || `Failed to send email: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      
+      // In request mode, redirect to request detail page
+      if (isRequestMode) {
+        const finalRequestName = requestName.trim() || (draft.campaignName || "").trim()
+        if (finalRequestName) {
+          const grouping = getRequestGrouping({
+            campaignName: finalRequestName,
+            campaignType: null,
+            id: '',
+            latestOutboundSubject: previewSubject || null
+          })
+          const encodedKey = encodeURIComponent(grouping.groupKey)
+          
+          // Get recipient count from draft
+          const entityCount = draft.suggestedRecipients?.entityIds?.length || 0
+          const groupCount = draft.suggestedRecipients?.groupIds?.length || 0
+          const estimatedRecipientCount = entityCount + (groupCount > 0 ? 1 : 0)
+          
+          const toastMessage = `Request created\n"${finalRequestName}" • 0/${estimatedRecipientCount || entityCount} complete`
+          alert(toastMessage)
+          
+          window.location.href = `/dashboard/requests/${encodedKey}`
+        } else {
+          window.location.href = "/dashboard/requests"
+        }
+      } else {
+        window.location.href = "/dashboard/inbox"
+      }
+    } catch (error: any) {
+      console.error("Error submitting request:", error)
+      setSendError(error.message || "Failed to submit request. Please try again.")
+      setSubmitting(false)
+    }
   }
 
   const handleSend = async () => {
@@ -513,7 +665,8 @@ function ComposePageContent() {
         </div>
       </div>
       <div className="flex-1 overflow-auto bg-gray-50 border-t border-gray-200">
-        <div className="p-6 space-y-6">
+        <div className={`p-6 ${draft?.id && isRequestMode ? 'grid grid-cols-1 lg:grid-cols-2 gap-6' : 'space-y-6'}`}>
+          <div className={draft?.id && isRequestMode ? 'space-y-6' : ''}>
 
       <Card>
         <CardHeader>
@@ -796,6 +949,44 @@ function ComposePageContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+          </div>
+          {draft?.id && isRequestMode && (
+            <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-8rem)]">
+              <PreviewPanel
+                draftId={draft.id}
+                recipients={selectedRecipients}
+                subject={previewSubject}
+                body={previewBody}
+                aiSubject={aiSubject}
+                aiBody={aiBody}
+                aiStatus={draft.aiGenerationStatus as any || null}
+                subjectUserEdited={subjectUserEdited}
+                bodyUserEdited={bodyUserEdited}
+                onSubjectChange={(value) => {
+                  setPreviewSubject(value)
+                  setSubjectUserEdited(true)
+                }}
+                onBodyChange={(value) => {
+                  setPreviewBody(value)
+                  setBodyUserEdited(true)
+                }}
+                onResetSubject={() => {
+                  if (aiSubject) {
+                    setPreviewSubject(aiSubject)
+                    setSubjectUserEdited(false)
+                  }
+                }}
+                onResetBody={() => {
+                  if (aiBody) {
+                    setPreviewBody(aiBody)
+                    setBodyUserEdited(false)
+                  }
+                }}
+                onSubmit={handlePreviewSubmit}
+                submitting={submitting}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
