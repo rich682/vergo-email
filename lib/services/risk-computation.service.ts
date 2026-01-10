@@ -170,15 +170,146 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
 }
 
 /**
- * LLM-based risk computation (stub for future enhancement)
- * This can be enhanced later with actual LLM calls
+ * LLM-based risk computation with request context
+ * Uses request intent (subject/body) + reply text to determine nuanced risk
  */
-export async function computeRiskWithLLM(input: RiskComputationInput & { requestIntent?: string }): Promise<RiskComputationResult> {
-  // For now, use deterministic computation
-  // Future: Call LLM with requestIntent + latestResponseText to get nuanced risk assessment
-  // Example: "I'm looking for invoice payment status" + "I'll pay next month" -> medium risk
+export async function computeRiskWithLLM(input: RiskComputationInput & { 
+  requestSubject?: string | null
+  requestBody?: string | null
+  requestPrompt?: string | null // The original prompt/request name
+  replyText?: string | null
+}): Promise<RiskComputationResult> {
+  // First compute deterministic baseline
+  const deterministicResult = computeDeterministicRisk(input)
   
-  return computeDeterministicRisk(input)
+  // If no reply, return deterministic result (no need for LLM)
+  if (!input.hasReplies || !input.replyText) {
+    return deterministicResult
+  }
+
+  // If manual override exists, don't use LLM (override takes precedence)
+  // This should be checked by caller, but defensive check here too
+  
+  try {
+    const { default: OpenAI } = await import("openai")
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      console.warn("[Risk Computation] OPENAI_API_KEY not set, using deterministic fallback")
+      return deterministicResult
+    }
+
+    const openai = new OpenAI({ apiKey })
+    
+    // Build request context
+    const requestContext = input.requestPrompt || input.requestSubject || "Request"
+    const requestBodyPreview = input.requestBody ? input.requestBody.substring(0, 500) : ""
+    const replyPreview = input.replyText.substring(0, 800)
+    
+    // Call LLM for risk assessment
+    const response = await Promise.race([
+      openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI assistant that assesses risk for accounting requests based on email replies.
+
+Analyze the reply in the context of the original request and assign a risk level:
+- **HIGH**: Request is unlikely to be fulfilled (disputed, denied, delayed significantly, or unclear commitment)
+- **MEDIUM**: Request may be fulfilled but needs follow-up (partial commitment, questions, or vague responses)
+- **LOW**: Request is likely fulfilled or will be fulfilled soon (positive indicators, strong commitment, or already completed)
+
+Consider:
+- The urgency/timeline of the original request
+- The recipient's response indicates they will complete the request vs. they cannot/will not
+- Whether attachments were sent (indicates fulfillment)
+- Whether the reply contains concerning language (disputes, denials, delays)
+
+Respond with JSON:
+{
+  "riskLevel": "high" | "medium" | "low",
+  "riskReason": "Brief explanation (1-2 sentences) why this risk level",
+  "confidence": "High" | "Medium" | "Low",
+  "nextAction": "Suggested next action (optional)"
+}
+
+Be realistic and nuanced - not all replies are binary fulfilled/not fulfilled.`
+          },
+          {
+            role: "user",
+            content: `Original Request:
+Context: ${requestContext}
+Subject: ${input.requestSubject || "N/A"}
+Body: ${requestBodyPreview || "N/A"}
+
+Reply Received:
+${replyPreview}
+
+Additional Context:
+- Completion Percentage: ${input.completionPercentage !== null && input.completionPercentage !== undefined ? input.completionPercentage + "%" : "N/A"}
+- Has Attachments: ${input.hasAttachments ? "Yes" : "No"}
+- Attachments Verified: ${input.aiVerified === true ? "Yes" : input.aiVerified === false ? "No" : "Pending"}
+- Classification: ${input.latestInboundClassification || "N/A"}
+- Deadline Date: ${input.deadlineDate ? new Date(input.deadlineDate).toISOString().split('T')[0] : "None"}
+
+Analyze the risk level based on the reply content and request context.`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+        max_tokens: 200,
+        timeout: 8000 // 8 second timeout
+      }),
+      // Timeout fallback after 8 seconds
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("LLM timeout")), 8000)
+      )
+    ])
+
+    const responseText = response.choices[0]?.message?.content
+    if (!responseText) {
+      console.warn("[Risk Computation] LLM returned empty response, using deterministic fallback")
+      return deterministicResult
+    }
+
+    const parsed = JSON.parse(responseText)
+    const llmRiskLevel = parsed.riskLevel?.toLowerCase()
+    const riskReason = parsed.riskReason || deterministicResult.riskReason
+    const confidence = parsed.confidence || "Medium"
+
+    // Validate risk level
+    if (llmRiskLevel !== "high" && llmRiskLevel !== "medium" && llmRiskLevel !== "low") {
+      console.warn(`[Risk Computation] Invalid LLM risk level "${llmRiskLevel}", using deterministic fallback`)
+      return deterministicResult
+    }
+
+    // Use LLM result if confidence is high, otherwise blend with deterministic
+    if (confidence === "High" || confidence === "high") {
+      return {
+        riskLevel: llmRiskLevel,
+        riskReason: `LLM analysis: ${riskReason}`,
+        readStatus: deterministicResult.readStatus // Keep deterministic readStatus
+      }
+    } else {
+      // Medium/low confidence: blend with deterministic, preferring more conservative (higher risk)
+      const deterministicLevel = deterministicResult.riskLevel
+      if (
+        (llmRiskLevel === "high" && deterministicLevel !== "high") ||
+        (llmRiskLevel === "medium" && deterministicLevel === "low")
+      ) {
+        return {
+          riskLevel: llmRiskLevel,
+          riskReason: `LLM analysis (${confidence} confidence): ${riskReason}`,
+          readStatus: deterministicResult.readStatus
+        }
+      } else {
+        return deterministicResult
+      }
+    }
+  } catch (error: any) {
+    console.warn(`[Risk Computation] LLM error (${error.message}), using deterministic fallback`)
+    return deterministicResult
+  }
 }
 
 /**

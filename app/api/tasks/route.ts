@@ -192,7 +192,7 @@ export async function GET(request: NextRequest) {
       const latestResponseText = latestResponseTextMap.get(task.id) || null
       const latestInboundDate = latestInboundDateMap.get(task.id) || null
       
-      // Compute risk based on current state (not stored values)
+      // Compute risk based on current state for validation, but prefer persisted values if they exist
       // This ensures readStatus is always accurate based on openedAt and hasReplies
       const riskComputation = computeDeterministicRisk({
         hasReplies: inboundCount > 0,
@@ -207,10 +207,27 @@ export async function GET(request: NextRequest) {
         deadlineDate: task.deadlineDate || null
       })
       
-      // Use manual override if present, otherwise use computed risk
+      // Use manual override if present, otherwise use persisted risk if available, otherwise compute fresh
       // Always use computed readStatus based on current state (openedAt, hasReplies), not stored value
-      const riskLevel = task.manualRiskOverride || riskComputation.riskLevel
-      const riskReason = task.manualRiskOverride ? (task.overrideReason || "Manually set") : riskComputation.riskReason
+      // But for riskLevel/riskReason, prefer persisted values (from backfill or real-time computation)
+      // unless the underlying data has changed significantly
+      let riskLevel: string | null
+      let riskReason: string | null
+      
+      if (task.manualRiskOverride) {
+        riskLevel = task.manualRiskOverride
+        riskReason = task.overrideReason || "Manually set"
+      } else if (task.riskLevel && task.riskReason) {
+        // Use persisted risk values (from backfill or previous computation)
+        // This preserves LLM-based reasoning and avoids recomputing on every request
+        riskLevel = task.riskLevel
+        riskReason = task.riskReason
+      } else {
+        // No persisted risk yet, use computed (deterministic fallback)
+        riskLevel = riskComputation.riskLevel
+        riskReason = riskComputation.riskReason
+      }
+      
       const readStatus = riskComputation.readStatus // Always use computed readStatus, not stored value
       const lastActivityAt = computeLastActivityAt({
         readStatus: riskComputation.readStatus,

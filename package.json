@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "test:api": "vitest run tests/api",
     "test:ui": "vitest run tests/ui",
-    "backfill:completion": "tsx scripts/backfill-completion-percentages.ts"
+    "backfill:completion": "tsx scripts/backfill-completion-percentages.ts",
+    "backfill:risk": "tsx scripts/backfill-risk-computation.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

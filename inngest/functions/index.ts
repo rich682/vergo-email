@@ -176,7 +176,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                 data: updateData
               })
               
-              console.log(`Task ${taskId} completion percentage updated to ${completionPercentage}% (${confidence} confidence): ${reasoning}`)
+              console.log(`[Message Classification] Task ${taskId} completion percentage updated to ${completionPercentage}% (${confidence} confidence): ${reasoning}`)
 
               // Execute automation rules after classification
               const { AutomationEngineService } = await import("@/lib/services/automation-engine.service")
@@ -187,6 +187,96 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                 hasAttachments: task.hasAttachments,
                 verified: task.aiVerified || false
               })
+
+              // Trigger risk recomputation after classification completes
+              // Only recompute if no manual override exists (manual overrides take precedence)
+              const updatedTaskForRisk = await prisma.task.findUnique({
+                where: { id: taskId },
+                include: {
+                  messages: {
+                    where: { direction: "OUTBOUND" },
+                    orderBy: { createdAt: "desc" },
+                    take: 1
+                  }
+                }
+              })
+
+              if (updatedTaskForRisk && !updatedTaskForRisk.manualRiskOverride) {
+                const { computeRiskWithLLM, computeLastActivityAt } = await import("@/lib/services/risk-computation.service")
+                
+                // Get latest outbound message for request context
+                const latestOutboundForRisk = updatedTaskForRisk.messages[0] || null
+                const latestInboundForRisk = message // The reply we just classified
+                
+                // Get request prompt from task campaignName (which matches EmailDraft.suggestedCampaignName)
+                const requestPrompt = task.campaignName || null
+                
+                try {
+                  const llmRiskResult = await computeRiskWithLLM({
+                    hasReplies: true,
+                    latestResponseText: latestInboundForRisk.body || latestInboundForRisk.htmlBody || null,
+                    latestInboundClassification: classification.classification || null,
+                    completionPercentage: completionPercentage,
+                    openedAt: latestOutboundForRisk?.openedAt || null,
+                    lastOpenedAt: latestOutboundForRisk?.lastOpenedAt || null,
+                    hasAttachments: updatedTaskForRisk.hasAttachments,
+                    aiVerified: updatedTaskForRisk.aiVerified,
+                    lastActivityAt: latestInboundForRisk.createdAt,
+                    deadlineDate: updatedTaskForRisk.deadlineDate || null,
+                    requestSubject: latestOutboundForRisk?.subject || null,
+                    requestBody: latestOutboundForRisk?.body || latestOutboundForRisk?.htmlBody || null,
+                    requestPrompt: requestPrompt,
+                    replyText: latestInboundForRisk.body || latestInboundForRisk.htmlBody || null
+                  })
+
+                  // Persist risk computation (respecting that manual override check was already done)
+                  await prisma.task.update({
+                    where: { id: taskId },
+                    data: {
+                      readStatus: llmRiskResult.readStatus,
+                      riskLevel: llmRiskResult.riskLevel,
+                      riskReason: llmRiskResult.riskReason,
+                      lastActivityAt: computeLastActivityAt({
+                        lastOpenedAt: latestOutboundForRisk?.lastOpenedAt || null,
+                        openedAt: latestOutboundForRisk?.openedAt || null,
+                        lastActivityAt: latestInboundForRisk.createdAt
+                      }) || latestInboundForRisk.createdAt
+                    }
+                  })
+
+                  console.log(`[Risk Computation] Task ${taskId} risk updated after reply: ${llmRiskResult.riskLevel} - ${llmRiskResult.riskReason}`)
+                } catch (riskError: any) {
+                  console.error(`[Risk Computation] Error computing risk for task ${taskId}:`, riskError)
+                  // Fallback to deterministic risk computation
+                  const { computeDeterministicRisk } = await import("@/lib/services/risk-computation.service")
+                  const deterministicRisk = computeDeterministicRisk({
+                    hasReplies: true,
+                    latestResponseText: latestInboundForRisk.body || latestInboundForRisk.htmlBody || null,
+                    latestInboundClassification: classification.classification || null,
+                    completionPercentage: completionPercentage,
+                    openedAt: latestOutboundForRisk?.openedAt || null,
+                    lastOpenedAt: latestOutboundForRisk?.lastOpenedAt || null,
+                    hasAttachments: updatedTaskForRisk.hasAttachments,
+                    aiVerified: updatedTaskForRisk.aiVerified,
+                    lastActivityAt: latestInboundForRisk.createdAt,
+                    deadlineDate: updatedTaskForRisk.deadlineDate || null
+                  })
+                  
+                  await prisma.task.update({
+                    where: { id: taskId },
+                    data: {
+                      readStatus: deterministicRisk.readStatus,
+                      riskLevel: deterministicRisk.riskLevel,
+                      riskReason: deterministicRisk.riskReason,
+                      lastActivityAt: latestInboundForRisk.createdAt
+                    }
+                  })
+
+                  console.log(`[Risk Computation] Task ${taskId} risk updated (deterministic fallback): ${deterministicRisk.riskLevel} - ${deterministicRisk.riskReason}`)
+                }
+              } else if (updatedTaskForRisk?.manualRiskOverride) {
+                console.log(`[Risk Computation] Task ${taskId} has manual override (${updatedTaskForRisk.manualRiskOverride}), skipping automatic risk recomputation`)
+              }
             } catch (parseError) {
               console.error(`Error parsing intent analysis for task ${taskId}:`, parseError)
             }
