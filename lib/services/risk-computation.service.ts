@@ -17,6 +17,8 @@ export interface RiskComputationInput {
   hasAttachments?: boolean
   aiVerified?: boolean | null
   lastActivityAt?: Date | null
+  deadlineDate?: Date | string | null // Deadline/due date for the request
+  requestSentAt?: Date | string | null // When the request email was sent (for calculating days since)
 }
 
 export interface RiskComputationResult {
@@ -59,12 +61,35 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
   }
 
   if (readStatus === "read") {
-    // Email was opened but no reply received - this is "read but not replied"
-    // Note: If hasReplies is true, readStatus would be "replied", so we don't need to check !hasReplies here
-    return {
-      riskLevel: "medium",
-      riskReason: "Email read but no response",
-      readStatus
+    // Email was opened but no reply received - this is HIGH risk (they've seen it but haven't responded)
+    // Calculate days overdue if deadline exists
+    let daysOverdue = 0
+    if (input.deadlineDate) {
+      const deadline = input.deadlineDate instanceof Date ? input.deadlineDate : new Date(input.deadlineDate)
+      const now = new Date()
+      const diffTime = now.getTime() - deadline.getTime()
+      daysOverdue = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)))
+    }
+    
+    // Risk increases based on days overdue
+    if (daysOverdue > 7) {
+      return {
+        riskLevel: "high",
+        riskReason: `Email read but no response (${daysOverdue} days overdue)`,
+        readStatus
+      }
+    } else if (daysOverdue > 0) {
+      return {
+        riskLevel: "high",
+        riskReason: `Email read but no response (${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue)`,
+        readStatus
+      }
+    } else {
+      return {
+        riskLevel: "high",
+        riskReason: "Email read but no response",
+        readStatus
+      }
     }
   }
 

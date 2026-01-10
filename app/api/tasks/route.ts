@@ -203,7 +203,8 @@ export async function GET(request: NextRequest) {
         lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
         hasAttachments: task.hasAttachments,
         aiVerified: task.aiVerified,
-        lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt
+        lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt,
+        deadlineDate: task.deadlineDate || null
       })
       
       // Use manual override if present, otherwise use computed risk

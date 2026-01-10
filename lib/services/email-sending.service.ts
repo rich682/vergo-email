@@ -158,6 +158,7 @@ export class EmailSendingService {
     campaignName?: string
     campaignType?: string
     accountId?: string
+    deadlineDate?: Date | null
   }): Promise<{
     taskId: string
     threadId: string
@@ -255,7 +256,8 @@ export class EmailSendingService {
       campaignType: data.campaignType,
       threadId,
       replyToEmail: replyTo,
-      subject: data.subject
+      subject: data.subject,
+      deadlineDate: data.deadlineDate || null
     })
 
     // Log outbound message with tracking token
@@ -289,6 +291,7 @@ export class EmailSendingService {
     campaignType?: string
     accountId?: string
     perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
+    deadlineDays?: number | null
   }): Promise<Array<{
     email: string
     taskId: string
@@ -297,6 +300,13 @@ export class EmailSendingService {
     error?: string
   }>> {
     const results = []
+
+    // Calculate deadlineDate if deadlineDays is provided (deadlineDate = now + deadlineDays)
+    const deadlineDate = data.deadlineDays ? (() => {
+      const deadline = new Date()
+      deadline.setDate(deadline.getDate() + data.deadlineDays)
+      return deadline
+    })() : null
 
     for (const recipient of data.recipients) {
       try {
@@ -315,7 +325,8 @@ export class EmailSendingService {
           htmlBody: htmlBodyToUse,
           campaignName: data.campaignName,
           campaignType: data.campaignType,
-          accountId: data.accountId
+          accountId: data.accountId,
+          deadlineDate
         })
 
         results.push({

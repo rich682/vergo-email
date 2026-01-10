@@ -13,6 +13,7 @@ export class TaskCreationService {
     threadId: string
     replyToEmail: string
     subject?: string
+    deadlineDate?: Date | null
   }): Promise<Task> {
     // Find or create entity
     const entity = await EntityService.findOrCreateByEmail({
@@ -30,7 +31,8 @@ export class TaskCreationService {
         campaignType: data.campaignType as any || null,
         status: "AWAITING_RESPONSE",
         threadId: data.threadId,
-        replyToEmail: data.replyToEmail
+        replyToEmail: data.replyToEmail,
+        deadlineDate: data.deadlineDate || null
       }
     })
   }

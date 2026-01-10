@@ -173,6 +173,7 @@ model Task {
   manualRiskOverride    String?         // high | medium | low | null (if manually set)
   overrideReason        String?         // Reason for manual override
   lastActivityAt        DateTime?       // Last activity timestamp (opened, replied, etc.)
+  deadlineDate          DateTime?       // Deadline/due date for the request (set during compose)
   organizationId         String
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
@@ -327,6 +328,7 @@ model EmailDraft {
   availableTags         Json? // Array of available tag names
   personalizationMode   String? // "none" | "contact" | "csv"
   blockOnMissingValues  Boolean          @default(true)
+  deadlineDays          Int?            // Number of days after sending for deadline (null = no deadline)
   // Legacy fields (keeping for backwards compatibility)
   suggestedRecipients   Json? // Store suggested entity/group IDs as JSON
   suggestedCampaignName String?

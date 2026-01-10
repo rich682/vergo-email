@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { prompt, selectedRecipients, idempotencyKey, requestName, personalizationMode, availableTags, blockOnMissingValues } = body
+    const { prompt, selectedRecipients, idempotencyKey, requestName, personalizationMode, availableTags, blockOnMissingValues, deadlineDays } = body
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -199,6 +199,7 @@ export async function POST(request: NextRequest) {
       availableTags: availableTags || null,
       personalizationMode: personalizationMode || null,
       blockOnMissingValues: blockOnMissingValues ?? true,
+      deadlineDays: deadlineDays ? parseInt(deadlineDays, 10) : null,
       suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
       suggestedCampaignName: finalCampaignName,
       suggestedCampaignType: generated.suggestedCampaignType,

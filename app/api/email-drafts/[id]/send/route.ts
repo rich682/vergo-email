@@ -37,7 +37,7 @@ export async function POST(
         { status: 404 }
       )
     }
-    
+
     // Get user and organization for signature
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -64,6 +64,7 @@ export async function POST(
     const personalizationMode = (draft as any).personalizationMode || "none"
     const blockOnMissingValues = (draft as any).blockOnMissingValues ?? true
     const availableTags = (draft as any).availableTags ? (typeof (draft as any).availableTags === 'string' ? JSON.parse((draft as any).availableTags) : (draft as any).availableTags) : []
+    const deadlineDays = (draft as any).deadlineDays ? parseInt((draft as any).deadlineDays, 10) : null
 
     if (!subjectTemplate || !bodyTemplate) {
       return NextResponse.json(
@@ -358,6 +359,7 @@ export async function POST(
       htmlBody: htmlBodyTemplate, // Will be overridden per-recipient if personalization
       campaignName: campaignName || draft.suggestedCampaignName || undefined,
       accountId: emailAccountId,
+      deadlineDays: deadlineDays || undefined,
       // Pass per-recipient rendered emails if personalization is enabled
       perRecipientEmails: personalizationMode !== "none" ? renderedEmails.map(e => ({
         email: e.email,

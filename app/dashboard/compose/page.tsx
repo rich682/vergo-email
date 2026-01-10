@@ -64,6 +64,9 @@ function ComposePageContent() {
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null)
   const [variableMapping, setVariableMapping] = useState<Record<string, string>>({}) // Maps variable -> CSV column
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from variables
+  
+  // Deadline state
+  const [deadlineDays, setDeadlineDays] = useState<number | null>(null) // Number of days after sending for deadline
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -144,6 +147,7 @@ function ComposePageContent() {
           selectedRecipients: recipientsData,
           idempotencyKey: newIdempotencyKey,
           requestName: isRequestMode ? requestName.trim() : undefined,
+          deadlineDays: isRequestMode && deadlineDays ? deadlineDays : undefined,
           ...personalizationPayload
         }),
         signal: abortController.signal
@@ -675,6 +679,28 @@ function ComposePageContent() {
                 setVariableMapping(mapping)
               }}
             />
+          )}
+          
+          {/* Deadline Section - only in request mode */}
+          {isRequestMode && (
+            <div>
+              <Label>
+                Deadline (days after sending)
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                placeholder="e.g., 7 (for 7 days after sending)"
+                value={deadlineDays || ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setDeadlineDays(value === "" ? null : parseInt(value, 10))
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Optional: Set a deadline in days after sending. This will be used to calculate risk (read but no reply after deadline = high risk).
+              </p>
+            </div>
           )}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
