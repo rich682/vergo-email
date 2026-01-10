@@ -19,7 +19,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
-import { PersonalizationSection, PersonalizationMode } from "@/components/compose/personalization-section"
+import { VariablesSection } from "@/components/compose/variables-section"
 import type { CSVParseResult } from "@/lib/utils/csv-parser"
 
 function ComposePageContent() {
@@ -59,10 +59,11 @@ function ComposePageContent() {
   const [bodyUserEdited, setBodyUserEdited] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   
-  // Personalization state
-  const [personalizationMode, setPersonalizationMode] = useState<PersonalizationMode>("none")
+  // Variables state
+  const [variables, setVariables] = useState<string[]>([]) // User-defined variable names
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null)
-  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [variableMapping, setVariableMapping] = useState<Record<string, string>>({}) // Maps variable -> CSV column
+  const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from variables
   const [blockOnMissingValues, setBlockOnMissingValues] = useState(true)
 
   const handleGenerate = async () => {
@@ -87,11 +88,21 @@ function ComposePageContent() {
       setRecipientsError(null)
     }
 
-    // Validate CSV upload if personalization mode is CSV
-    if (personalizationMode === "csv" && !csvData) {
-      setError("Please upload a CSV file for personalization")
+    // Validate CSV upload if variables are defined
+    if (variables.length > 0 && !csvData) {
+      setError("Please upload a CSV file to populate your variables")
       setLoading(false)
       return
+    }
+    
+    // Check that all variables are mapped if CSV is uploaded
+    if (variables.length > 0 && csvData) {
+      const unmapped = variables.filter(v => !variableMapping[v])
+      if (unmapped.length > 0) {
+        setError(`Please map all variables to CSV columns. Unmapped: ${unmapped.map(v => `"${v}"`).join(", ")}`)
+        setLoading(false)
+        return
+      }
     }
 
     // Generate new idempotency key
@@ -118,10 +129,10 @@ function ComposePageContent() {
         return
       }
 
-      // Build personalization data
-      const personalizationPayload = personalizationMode !== "none" ? {
-        personalizationMode,
-        availableTags: availableTags.length > 0 ? availableTags : undefined,
+      // Build personalization data - use CSV mode if variables are defined
+      const personalizationPayload = variables.length > 0 ? {
+        personalizationMode: "csv" as const,
+        availableTags: variables, // Use variables as tags
         blockOnMissingValues
       } : {}
 
@@ -147,16 +158,29 @@ function ComposePageContent() {
       
       // Synchronous generation always returns completed immediately
       if (data.status === "completed" && data.draft) {
-        // If CSV mode, persist personalization data
-        if (personalizationMode === "csv" && csvData) {
+        // If variables are defined and CSV is uploaded, persist personalization data
+        if (variables.length > 0 && csvData && Object.keys(variableMapping).length > 0) {
           try {
+            // Remap CSV rows to use variable names instead of CSV column names
+            const remappedRows = csvData.rows.map(row => {
+              const remapped: Record<string, string> = {}
+              remapped[csvData.emailColumn] = row[csvData.emailColumn] // Keep email column as-is
+              
+              // Map CSV columns to variables
+              for (const [variable, csvColumn] of Object.entries(variableMapping)) {
+                remapped[variable] = row[csvColumn] || ""
+              }
+              
+              return remapped
+            })
+            
             const personalizationResponse = await fetch(`/api/email-drafts/${data.id}/personalization-data`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                csvRows: csvData.rows,
+                csvRows: remappedRows,
                 emailColumn: csvData.emailColumn,
-                tagColumns: csvData.tagColumns
+                tagColumns: variables // Use variables as tag columns
               })
             })
 
@@ -173,8 +197,8 @@ function ComposePageContent() {
           ...data.draft,
           campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined),
           aiGenerationStatus: "complete",
-          personalizationMode,
-          availableTags,
+          personalizationMode: variables.length > 0 ? "csv" : "none",
+          availableTags: variables, // Use variables as tags
           blockOnMissingValues
         }
         setDraft(draftData)
@@ -269,13 +293,13 @@ function ComposePageContent() {
     setSendError(null)
 
     try {
-      // Update draft with preview edits (use templates if personalization is enabled)
+      // Update draft with preview edits (use templates if variables are defined)
       const updateData: any = {
         generatedSubject: previewSubject,
         generatedBody: previewBody
       }
       
-      if (personalizationMode !== "none") {
+      if (variables.length > 0) {
         updateData.subjectTemplate = previewSubject
         updateData.bodyTemplate = previewBody
         updateData.htmlBodyTemplate = previewBody // Use body as HTML template for now
@@ -594,38 +618,7 @@ function ComposePageContent() {
               )}
             </div>
           )}
-          
-          {/* Personalization Section - appears BEFORE prompt */}
-          {isRequestMode && (
-            <PersonalizationSection
-              mode={personalizationMode}
-              onModeChange={(mode) => {
-                setPersonalizationMode(mode)
-                if (mode === "none") {
-                  setCsvData(null)
-                  setAvailableTags([])
-                } else if (mode === "contact") {
-                  setCsvData(null)
-                  setAvailableTags(["First Name", "Email"])
-                } else {
-                  setCsvData(null)
-                  setAvailableTags([])
-                }
-              }}
-              csvData={csvData}
-              onCSVUpload={(data) => {
-                setCsvData(data)
-                // Extract tag names from normalizedTagMap (values are original column names)
-                const tags = Object.values(data.normalizedTagMap)
-                setAvailableTags(tags)
-              }}
-              availableTags={availableTags}
-              blockOnMissingValues={blockOnMissingValues}
-              onBlockOnMissingValuesChange={setBlockOnMissingValues}
-            />
-          )}
-          
-          {/* Prompt input - only disabled if CSV mode and no CSV uploaded */}
+          {/* Prompt input */}
           <div>
             <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
             <Textarea
@@ -633,19 +626,14 @@ function ComposePageContent() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              disabled={personalizationMode === "csv" && !csvData}
             />
             {isRequestMode && (
               <p className="text-xs text-gray-500 mt-1">
-                Be specific about what you need and when it's due. {personalizationMode !== "none" && availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
-              </p>
-            )}
-            {personalizationMode === "csv" && !csvData && (
-              <p className="text-xs text-yellow-600 mt-1">
-                Please upload a CSV file first to enable prompt input
+                Be specific about what you need and when it's due. {variables.length > 0 && `Available variables: ${variables.map(v => `{{${v}}}`).join(", ")}`}
               </p>
             )}
           </div>
+          
           <div>
             <Label>
               {isRequestMode ? "Who needs to respond?" : "To (Optional - type / to search)"}
@@ -668,6 +656,29 @@ function ComposePageContent() {
               <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
             )}
           </div>
+          
+          {/* Variables Section - appears AFTER prompt and recipients */}
+          {isRequestMode && (
+            <VariablesSection
+              variables={variables}
+              onVariablesChange={(newVariables) => {
+                setVariables(newVariables)
+                setAvailableTags(newVariables) // Variables become tags
+                // Clear CSV data if variables are removed
+                if (newVariables.length === 0) {
+                  setCsvData(null)
+                  setVariableMapping({})
+                }
+              }}
+              csvData={csvData}
+              onCSVUpload={(data, mapping) => {
+                setCsvData(data)
+                setVariableMapping(mapping)
+              }}
+              blockOnMissingValues={blockOnMissingValues}
+              onBlockOnMissingValuesChange={setBlockOnMissingValues}
+            />
+          )}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
               <p className="text-sm font-medium text-red-800">{error}</p>
@@ -684,7 +695,7 @@ function ComposePageContent() {
                    loading ||
                    !prompt.trim() ||
                    (isRequestMode && (!requestName.trim() || selectedRecipients.length === 0)) ||
-                   (isRequestMode && personalizationMode === "csv" && !csvData)
+                   (isRequestMode && variables.length > 0 && !csvData)
                  }
                >
             {loading 
@@ -797,8 +808,8 @@ function ComposePageContent() {
                 }}
                 onSubmit={handlePreviewSubmit}
                 submitting={submitting}
-                availableTags={availableTags}
-                personalizationMode={personalizationMode}
+                availableTags={variables} // Use variables as tags
+                personalizationMode={variables.length > 0 ? "csv" : "none"}
               />
             </div>
           )}
