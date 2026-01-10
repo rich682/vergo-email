@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     }
 
     // Create legacy connection (backward compatible)
-    await EmailConnectionService.createGmailConnection({
+    const connectedAccount = await EmailConnectionService.createGmailConnection({
       organizationId,
       email: userInfo.data.email,
       accessToken: tokens.access_token,
@@ -98,6 +98,17 @@ export async function GET(request: Request) {
         tokenExpiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
         scopes: (tokens.scope as string) || undefined,
       })
+    }
+
+    // Attempt to set up Gmail watch for push notifications (optional - won't fail if not configured)
+    try {
+      const { GmailWatchService } = await import("@/lib/services/gmail-watch.service")
+      await GmailWatchService.setupWatch(connectedAccount.id)
+      console.log(`[Gmail OAuth] Successfully set up watch for account ${connectedAccount.id}`)
+    } catch (watchError: any) {
+      // Log but don't fail - sync service will handle replies as fallback
+      console.warn(`[Gmail OAuth] Could not set up watch for account ${connectedAccount.id}:`, watchError.message)
+      console.warn(`[Gmail OAuth] Push notifications not available, but sync service will still work`)
     }
 
     return NextResponse.redirect(

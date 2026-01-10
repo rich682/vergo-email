@@ -28,7 +28,7 @@ export class GmailWatchService {
         : undefined)
 
     if (!topicName) {
-      throw new Error("Gmail Pub/Sub topic is not configured")
+      throw new Error("Gmail Pub/Sub topic is not configured. Set GMAIL_PUBSUB_TOPIC or GOOGLE_CLOUD_PROJECT env vars. Push notifications will not work, but sync service can still be used as fallback.")
     }
 
     try {
