@@ -3,9 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
-import { inngest } from "@/inngest/client"
 
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now()
   const session = await getServerSession(authOptions)
   
   if (!session?.user?.organizationId) {
@@ -39,6 +39,17 @@ export async function POST(request: NextRequest) {
     }
 
     const correlationId = idempotencyKey || `gen-${Date.now()}-${Math.random().toString(36).substring(7)}`
+    
+    // Execution path: Synchronous generation by default for < 2s completion
+    // Inngest async path removed - no handler exists, would cause stuck "processing" state
+    
+    console.log(JSON.stringify({
+      event: "draft_generate_request",
+      correlationId,
+      idempotencyKey: idempotencyKey || null,
+      requestTime: requestStartTime,
+      timestamp: new Date().toISOString()
+    }))
 
     // Race-safe idempotency: try create, catch unique constraint, then fetch existing
     let draft
@@ -73,14 +84,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Create draft record (race-safe: unique constraint will catch concurrent duplicates)
+    const draftCreateStartTime = Date.now()
     try {
       draft = await EmailDraftService.create({
         organizationId: session.user.organizationId,
         userId: session.user.id,
         prompt,
         idempotencyKey: idempotencyKey || null,
-        aiGenerationStatus: "processing"
+        aiGenerationStatus: "processing" // Will be set to "complete" immediately after generation
       })
+      const draftCreateEndTime = Date.now()
     } catch (createError: any) {
       // Handle unique constraint violation ONLY if it's for idempotencyKey
       if (createError.code === 'P2002' && idempotencyKey) {
@@ -132,114 +145,68 @@ export async function POST(request: NextRequest) {
       throw createError
     }
 
+    const draftCreateEndTime = Date.now()
     console.log(JSON.stringify({
       event: "draft_created",
       correlationId,
       draftId: draft.id,
+      idempotencyKey: idempotencyKey || null,
       organizationId: session.user.organizationId,
+      draftCreateTimeMs: draftCreateEndTime - draftCreateStartTime,
       timestamp: new Date().toISOString()
     }))
 
-    // Try to use Inngest for async generation, fallback to sync if it fails
-    try {
-      await inngest.send({
-        name: "email-draft/generate",
-        data: {
-          draftId: draft.id,
-          organizationId: session.user.organizationId,
-          prompt,
-          selectedRecipients
-        }
-      })
+    // Synchronous generation path (default) - no Inngest handler exists
+    // This ensures < 2s completion in normal conditions with deterministic fallback
+    const aiStartTime = Date.now()
+    // AI service now always returns (template fallback on timeout/error), never throws
+    const generated = await AIEmailGenerationService.generateDraft({
+      organizationId: session.user.organizationId,
+      prompt,
+      selectedRecipients,
+      correlationId: correlationId // Use original correlationId for tracing
+    })
+    const aiEndTime = Date.now()
 
-      console.log(JSON.stringify({
-        event: "draft_generate_async",
-        correlationId,
-        draftId: draft.id,
-        timestamp: new Date().toISOString()
-      }))
+    // Use requestName if provided, otherwise use AI-suggested campaign name
+    const finalCampaignName = requestName?.trim() || generated.suggestedCampaignName
+    
+    const dbUpdateStartTime = Date.now()
+    await EmailDraftService.update(draft.id, session.user.organizationId, {
+      generatedSubject: generated.subject,
+      generatedBody: generated.body,
+      generatedHtmlBody: generated.htmlBody,
+      suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+      suggestedCampaignName: finalCampaignName,
+      suggestedCampaignType: generated.suggestedCampaignType,
+      aiGenerationStatus: "complete" // Always complete (template fallback is still "complete")
+    })
+    const dbUpdateEndTime = Date.now()
+    const responseTime = Date.now()
 
-      return NextResponse.json({
-        id: draft.id,
-        status: "processing"
-      })
-    } catch (inngestError: any) {
-      // Fallback to synchronous generation if Inngest is not available
-      console.log(JSON.stringify({
-        event: "draft_generate_sync_fallback",
-        correlationId,
-        draftId: draft.id,
-        reason: inngestError.message,
-        timestamp: new Date().toISOString()
-      }))
-      
-      try {
-        const generated = await AIEmailGenerationService.generateDraft({
-          organizationId: session.user.organizationId,
-          prompt,
-          selectedRecipients,
-          correlationId
-        })
+    console.log(JSON.stringify({
+      event: "draft_generate_complete",
+      correlationId,
+      idempotencyKey: idempotencyKey || null,
+      draftId: draft.id,
+      aiTimeMs: aiEndTime - aiStartTime,
+      dbUpdateTimeMs: dbUpdateEndTime - dbUpdateStartTime,
+      totalTimeMs: responseTime - requestStartTime,
+      timestamp: new Date().toISOString()
+    }))
 
-        // Use requestName if provided, otherwise use AI-suggested campaign name
-        const finalCampaignName = requestName?.trim() || generated.suggestedCampaignName
-        
-        await EmailDraftService.update(draft.id, session.user.organizationId, {
-          generatedSubject: generated.subject,
-          generatedBody: generated.body,
-          generatedHtmlBody: generated.htmlBody,
-          suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
-          suggestedCampaignName: finalCampaignName,
-          suggestedCampaignType: generated.suggestedCampaignType,
-          aiGenerationStatus: "complete"
-        })
-
-        console.log(JSON.stringify({
-          event: "draft_generate_complete",
-          correlationId,
-          draftId: draft.id,
-          timestamp: new Date().toISOString()
-        }))
-
-        return NextResponse.json({
-          id: draft.id,
-          status: "completed",
-          draft: {
-            generatedSubject: generated.subject,
-            generatedBody: generated.body,
-            generatedHtmlBody: generated.htmlBody,
-            suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
-            suggestedCampaignName: finalCampaignName,
-            suggestedCampaignType: generated.suggestedCampaignType
-          }
-        })
-      } catch (aiError: any) {
-        const isTimeout = aiError.code === "AI_TIMEOUT"
-        const finalStatus = isTimeout ? "timeout" : "failed"
-        
-        await EmailDraftService.update(draft.id, session.user.organizationId, {
-          aiGenerationStatus: finalStatus
-        })
-
-        console.log(JSON.stringify({
-          event: "draft_generate_failed",
-          correlationId,
-          draftId: draft.id,
-          error: aiError.message,
-          code: aiError.code,
-          retryable: aiError.retryable,
-          timestamp: new Date().toISOString()
-        }))
-
-        // Return draft ID even on failure so user can still use it
-        return NextResponse.json({
-          id: draft.id,
-          status: "failed",
-          error: aiError.message,
-          retryable: aiError.retryable
-        })
+    return NextResponse.json({
+      id: draft.id,
+      status: "completed",
+      draft: {
+        generatedSubject: generated.subject,
+        generatedBody: generated.body,
+        generatedHtmlBody: generated.htmlBody,
+        suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+        suggestedCampaignName: finalCampaignName,
+        suggestedCampaignType: generated.suggestedCampaignType
       }
-    }
+    })
   } catch (error: any) {
     console.error("Error generating draft:", error)
     return NextResponse.json(

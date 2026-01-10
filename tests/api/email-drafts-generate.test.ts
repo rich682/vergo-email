@@ -69,7 +69,10 @@ describe('POST /api/email-drafts/generate', () => {
 
     expect(response.status).toBe(200)
     expect(data.id).toBeDefined()
-    expect(data.status).toBe('processing')
+    expect(data.status).toBe('completed')
+    expect(data.draft).toBeDefined()
+    expect(data.draft.generatedSubject).toBe('Test Subject')
+    expect(data.draft.generatedBody).toBe('Test Body')
 
     const draft = await prisma.emailDraft.findUnique({
       where: { id: data.id }
@@ -211,6 +214,68 @@ describe('POST /api/email-drafts/generate', () => {
 
     EmailDraftService.create = originalCreate
     findByIdempotencyKeySpy.mockRestore()
+  })
+
+  it('should return completed status with subject/body immediately', async () => {
+    const req = new NextRequest('http://localhost/api/email-drafts/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt: testPrompt
+      })
+    })
+
+    const response = await POST(req)
+    const data = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(data.status).toBe('completed')
+    expect(data.draft).toBeDefined()
+    expect(data.draft.generatedSubject).toBe('Test Subject')
+    expect(data.draft.generatedBody).toBe('Test Body')
+    
+    // Verify draft has terminal status (not processing)
+    const draft = await prisma.emailDraft.findUnique({
+      where: { id: data.id }
+    })
+    expect(draft?.aiGenerationStatus).toBe('complete')
+    expect(draft?.generatedSubject).toBe('Test Subject')
+    expect(draft?.generatedBody).toBe('Test Body')
+  })
+
+  it('should return template fallback on OpenAI timeout and set complete status', async () => {
+    const { AIEmailGenerationService } = await import('@/lib/services/ai-email-generation.service')
+    
+    // Mock OpenAI timeout - service returns template fallback (doesn't throw)
+    vi.mocked(AIEmailGenerationService.generateDraft).mockResolvedValueOnce({
+      subject: 'Request: Test prompt for draft generation',
+      body: testPrompt,
+      htmlBody: `<p>${testPrompt}</p>`,
+      suggestedRecipients: { entityIds: [], groupIds: [] }
+    })
+
+    const req = new NextRequest('http://localhost/api/email-drafts/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt: testPrompt
+      })
+    })
+
+    const response = await POST(req)
+    const data = await response.json()
+
+    // Should still return completed (with template fallback)
+    expect(response.status).toBe(200)
+    expect(data.status).toBe('completed')
+    expect(data.draft).toBeDefined()
+    expect(data.draft.generatedSubject).toContain('Request:')
+    expect(data.draft.generatedBody).toBe(testPrompt)
+    
+    // Verify draft has complete status (NOT processing)
+    const draft = await prisma.emailDraft.findUnique({
+      where: { id: data.id }
+    })
+    expect(draft?.aiGenerationStatus).toBe('complete')
+    expect(draft?.aiGenerationStatus).not.toBe('processing')
   })
 })
 
