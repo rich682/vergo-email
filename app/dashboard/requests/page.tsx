@@ -44,13 +44,10 @@ interface RequestGroup {
   lastActivity: Date
 }
 
-type RiskFilter = "all" | "high" | "needs-follow-up" | "low"
-
 export default function RequestsPage() {
   const router = useRouter()
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all")
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -148,18 +145,8 @@ export default function RequestsPage() {
       })
     }
 
-    // Filter by risk filter
-    let filteredGroups = groups
-    if (riskFilter === "high") {
-      filteredGroups = groups.filter(g => g.highCount > 0)
-    } else if (riskFilter === "needs-follow-up") {
-      filteredGroups = groups.filter(g => g.highCount > 0 || g.mediumCount > 0)
-    } else if (riskFilter === "low") {
-      filteredGroups = groups.filter(g => g.lowCount > 0 && g.highCount === 0 && g.mediumCount === 0)
-    }
-
     // Sort: Highest High count first, then Medium, then Last updated
-    return filteredGroups.sort((a, b) => {
+    return groups.sort((a, b) => {
       if (a.highCount !== b.highCount) {
         return b.highCount - a.highCount
       }
@@ -168,7 +155,7 @@ export default function RequestsPage() {
       }
       return b.lastActivity.getTime() - a.lastActivity.getTime()
     })
-  }, [allTasks, riskFilter])
+  }, [allTasks])
 
   const handleRequestClick = (groupKey: string) => {
     const encodedKey = encodeURIComponent(groupKey)
@@ -204,50 +191,6 @@ export default function RequestsPage() {
                 <Plus className="w-4 h-4" />
                 New Request
               </Button>
-            </div>
-            
-            {/* Risk Filter Chips */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setRiskFilter("all")}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  riskFilter === "all"
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setRiskFilter("high")}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  riskFilter === "high"
-                    ? "bg-red-600 text-white"
-                    : "bg-red-50 text-red-700 hover:bg-red-100"
-                }`}
-              >
-                High Risk
-              </button>
-              <button
-                onClick={() => setRiskFilter("needs-follow-up")}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  riskFilter === "needs-follow-up"
-                    ? "bg-yellow-600 text-white"
-                    : "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
-                }`}
-              >
-                Needs Follow-up
-              </button>
-              <button
-                onClick={() => setRiskFilter("low")}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  riskFilter === "low"
-                    ? "bg-green-600 text-white"
-                    : "bg-green-50 text-green-700 hover:bg-green-100"
-                }`}
-              >
-                Low Risk
-              </button>
             </div>
           </div>
 
