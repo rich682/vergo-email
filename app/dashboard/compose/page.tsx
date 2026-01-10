@@ -726,6 +726,49 @@ function ComposePageContent() {
               )}
             </div>
           )}
+          
+          {/* Recipient Source Selector - only in request mode - BEFORE prompt for better UX */}
+          {isRequestMode && (
+            <div className="border-b border-gray-200 pb-4">
+              <Label>
+                Recipient source <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <p className="text-xs text-gray-500 mt-1 mb-3">
+                Choose how to select recipients: upload a CSV (contacts and tags from CSV columns) or manually select contacts/groups.
+              </p>
+              <div className="flex gap-6 mt-2">
+                <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1">
+                  <input
+                    type="radio"
+                    name="recipientSource"
+                    value="contact"
+                    checked={recipientSource === "contact"}
+                    onChange={() => handleRecipientSourceChange("contact")}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm font-medium block">Select contacts/groups</span>
+                    <span className="text-xs text-gray-500">Choose from your contact database</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1">
+                  <input
+                    type="radio"
+                    name="recipientSource"
+                    value="csv"
+                    checked={recipientSource === "csv"}
+                    onChange={() => handleRecipientSourceChange("csv")}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm font-medium block">Upload CSV</span>
+                    <span className="text-xs text-gray-500">Contacts + tags from CSV columns</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
           {/* Prompt input */}
           <div>
             <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
@@ -741,39 +784,6 @@ function ComposePageContent() {
               </p>
             )}
           </div>
-          
-          {/* Recipient Source Selector - only in request mode */}
-          {isRequestMode && (
-            <div>
-              <Label>
-                Recipient source <span className="text-red-500 ml-1">*</span>
-              </Label>
-              <div className="flex gap-4 mt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="recipientSource"
-                    value="contact"
-                    checked={recipientSource === "contact"}
-                    onChange={() => handleRecipientSourceChange("contact")}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Select contacts/groups</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="recipientSource"
-                    value="csv"
-                    checked={recipientSource === "csv"}
-                    onChange={() => handleRecipientSourceChange("csv")}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Upload CSV</span>
-                </label>
-              </div>
-            </div>
-          )}
 
           {/* Contact/Group Selector - only shown when contact mode is selected */}
           {isRequestMode && recipientSource === "contact" && (
@@ -802,11 +812,11 @@ function ComposePageContent() {
 
           {/* CSV Upload - only shown when CSV mode is selected */}
           {isRequestMode && recipientSource === "csv" && (
-            <div className="space-y-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <div className="space-y-4 border border-gray-200 rounded-lg p-4 bg-blue-50 border-blue-200">
               <div>
-                <Label className="text-base font-semibold">Upload CSV</Label>
-                <p className="text-xs text-gray-500 mt-1">
-                  Upload a CSV file with an email column and data columns. All non-email columns will automatically become tags.
+                <Label className="text-base font-semibold">Upload CSV File</Label>
+                <p className="text-xs text-gray-600 mt-1">
+                  <strong>How it works:</strong> Upload a CSV with an email column and data columns. Recipients are automatically extracted from the email column, and <strong>all non-email columns automatically become tags</strong> you can use in your message (e.g., Invoice Number, Due Date).
                 </p>
               </div>
               
@@ -829,14 +839,18 @@ function ComposePageContent() {
               {csvData && (
                 <div className="space-y-3 mt-3 p-3 bg-white border border-gray-200 rounded-md">
                   <div className="text-sm">
-                    <span className="font-medium">Email column:</span> {csvData.emailColumnName}
+                    <span className="font-medium">✓ Email column detected:</span> <code className="text-xs bg-gray-100 px-1 rounded">{csvData.emailColumnName}</code>
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Recipients:</span> {csvData.recipients.count}
+                    <span className="font-medium">✓ Recipients found:</span> <strong className="text-blue-600">{csvData.recipients.count}</strong> contact{csvData.recipients.count !== 1 ? 's' : ''} from CSV
                   </div>
                   <div className="text-sm">
-                    <span className="font-medium">Tags ({csvData.tags.length}):</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
+                    <span className="font-medium">✓ Auto-generated tags ({csvData.tags.length}):</span>
+                    <p className="text-xs text-gray-500 mt-1 mb-1">
+                      These tags are now available for use in your message above. Use them like: 
+                      <code className="bg-gray-100 px-1 rounded ml-1">{`{{${csvData.tags[0] || 'Tag Name'}}}`}</code>
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-2">
                       {csvData.tags.map((tag) => (
                         <span
                           key={tag}
