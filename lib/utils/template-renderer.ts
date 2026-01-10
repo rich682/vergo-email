@@ -91,6 +91,21 @@ export function renderTemplate(template: string, data: Record<string, string | n
     }
   }
 
+  // Post-process to handle missing First Name in greetings gracefully
+  // Replace patterns like "Dear [MISSING: First Name]," with "Hello,"
+  const firstNameMissingPatterns = [
+    /Dear\s+\[MISSING:\s*First\s+Name\]\s*,/gi,
+    /Dear\s+\[MISSING:\s*first\s+name\]\s*,/gi,
+    /Dear\s+\[MISSING:\s*firstName\]\s*,/gi,
+    /Dear\s+\[MISSING:\s*first_name\]\s*,/gi
+  ]
+  
+  for (const pattern of firstNameMissingPatterns) {
+    if (pattern.test(rendered)) {
+      rendered = rendered.replace(pattern, 'Hello,')
+    }
+  }
+
   return {
     rendered,
     missingTags,

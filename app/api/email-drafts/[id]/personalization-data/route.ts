@@ -60,8 +60,13 @@ export async function POST(
         }
       }
 
-      // Try to find existing entity by email
+      // Try to find existing entity by email and add First Name from contact database
       const entity = await EntityService.findByEmail(recipientEmail, session.user.organizationId)
+      if (entity?.firstName) {
+        // Always include First Name from contact database if available
+        // This allows the AI to use {{First Name}} in greetings even if it's not in the user-defined variables
+        dataJson["First Name"] = entity.firstName
+      }
 
       personalizationDataArray.push({
         emailDraftId: params.id,

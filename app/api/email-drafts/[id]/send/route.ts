@@ -147,18 +147,14 @@ export async function POST(
       for (const recipient of recipientList) {
         const personalizationData = personalizationMap.get(recipient.email.toLowerCase())
         if (personalizationData) {
-          // Enrich dataJson with recipient info if entity exists (for "First Name" if used in template)
+          // Enrich dataJson with recipient info if entity exists (always include First Name if available)
           const dataJson = { ...(personalizationData.dataJson as Record<string, string>) }
           
-          // If entity exists and has firstName, add "First Name" to dataJson if it's in the template but not in CSV data
+          // If entity exists and has firstName, always add "First Name" to dataJson if not already present
+          // This allows the template renderer to use {{First Name}} if it's in the template
           const entity = recipient.entityId ? await EntityService.findById(recipient.entityId, session.user.organizationId) : null
           if (entity?.firstName && !dataJson["First Name"] && !dataJson["first name"] && !dataJson["firstName"]) {
-            // Only add if "First Name" tag is actually used in the template
-            const allTags = [...extractTags(subjectTemplate), ...extractTags(bodyTemplate), ...extractTags(htmlBodyTemplate)]
-            const usesFirstName = allTags.some(tag => normalizeTagName(tag) === normalizeTagName("First Name"))
-            if (usesFirstName) {
-              dataJson["First Name"] = entity.firstName
-            }
+            dataJson["First Name"] = entity.firstName
           }
           
           // Render templates for this recipient

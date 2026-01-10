@@ -124,12 +124,16 @@ export class AIEmailGenerationService {
           bodyText = `Hello,\n\nI am looking for an update on invoice {{${invoiceVar}}}`
           if (dueDateVar) {
             bodyText += ` with a due date of {{${dueDateVar}}}, which is past due`
+            subjectText = `Invoice {{${invoiceVar}}} - Payment Due {{${dueDateVar}}}`
+          } else {
+            subjectText = `Invoice {{${invoiceVar}}} - Payment Due`
           }
           bodyText += `. Can you let us know when you'll be able to pay it?\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = `Update Requested: Invoice {{${invoiceVar}}} - Payment Past Due`
         } else {
-          // Generic template with variables
+          // Generic template with variables - use first variable in subject if available
+          const firstVar = data.availableTags[0]
           bodyText = `Hello,\n\n${data.prompt}\n\nRelevant details: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = firstVar ? `Request: {{${firstVar}}}` : `Request: ${subject}`
         }
       }
       
@@ -191,8 +195,10 @@ export class AIEmailGenerationService {
             Transform the user's request into a polished, professional email that intelligently incorporates available variables.
             
             The email should:
-            - Start with a professional greeting (${data.availableTags && data.availableTags.some(t => t.toLowerCase().includes('first') || t.toLowerCase().includes('name')) ? 'e.g., "Dear {{First Name}},"' : '"Hello," or "Dear [Recipient],"'})
-            - ONLY use variables that are explicitly provided in the available tags list - DO NOT invent variables like "{{First Name}}" unless it's in the list
+            - Start with a professional greeting:
+              * If "{{First Name}}" is available (lookup from contact database), use "Dear {{First Name}}," 
+              * Otherwise, use a generic greeting like "Hello," or "Dear [Recipient],"
+            - Use variables in the SUBJECT LINE when relevant to make it specific and actionable (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}")
             - Understand the SEMANTIC MEANING of each variable and use it contextually
             - Create natural, flowing sentences that incorporate variables meaningfully (don't just list them - weave them into your message)
             - Use proper paragraph structure with line breaks for readability (use \n for line breaks in plain text, <br> for HTML)
@@ -241,12 +247,12 @@ export class AIEmailGenerationService {
             The sender signature will be appended automatically by the system - do NOT include it in your response.
             
             Respond with a JSON object containing:
-            - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? 'May include {{Tag Name}} placeholders if relevant. ONLY use variables from the available tags list.' : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
-            - body: string (plain text email body, 6-10 lines. Use \\n for line breaks between paragraphs. Include greeting, main message, closing. ${data.availableTags && data.availableTags.length > 0 ? `ONLY use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. DO NOT use variables not in this list.` : ''} NO signature)
+            - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? `USE VARIABLES IN SUBJECT when relevant (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}"). Use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. You may also use {{First Name}} if available from contact database.` : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
+            - body: string (plain text email body, 6-10 lines. Use \\n for line breaks between paragraphs. Include greeting: use "Dear {{First Name}}," if available, otherwise "Hello,". Main message, closing. ${data.availableTags && data.availableTags.length > 0 ? `Use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. You may also use {{First Name}} in the greeting if available.` : 'Use "Dear {{First Name}}," if available, otherwise "Hello," for greeting.'} NO signature)
             - htmlBody: string (HTML formatted version with <br> for line breaks between paragraphs, same content as body. Use <br><br> for paragraph breaks)
-            - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled)
-            - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled. Use \\n for line breaks)
-            - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled. Use <br> for line breaks, <br><br> for paragraph breaks)
+            - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} if relevant)
+            - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} in greeting if available. Use \\n for line breaks)
+            - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} in greeting if available. Use <br> for line breaks, <br><br> for paragraph breaks)
             - suggestedRecipients: { entityIds?: string[], groupIds?: string[] } (optional)
             - suggestedCampaignName?: string (optional)
             - suggestedCampaignType?: string (optional, one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
@@ -286,7 +292,9 @@ User request: "${data.prompt}"
 ${data.availableTags && data.availableTags.length > 0 ? `
 
 CRITICAL - INTELLIGENT VARIABLE USAGE:
-Available variables that MUST be used (ONLY use these, do NOT invent others): ${data.availableTags.map(t => `"${t}"`).join(', ')}
+Available variables that MUST be used: ${data.availableTags.map(t => `"${t}"`).join(', ')}
+
+SPECIAL VARIABLE: "First Name" may be available from the contact database even if not in the user-defined variables list. If available, use it in greetings (e.g., "Dear {{First Name}},"). If not available, use a generic greeting like "Hello,".
 
 ANALYSIS REQUIRED:
 1. Read the user's request carefully: "${data.prompt}"
@@ -294,11 +302,10 @@ ANALYSIS REQUIRED:
    ${data.availableTags.map(t => {
      const lower = t.toLowerCase()
      let meaning = ''
-     if (lower.includes('invoice') && lower.includes('number')) meaning = '= specific invoice identifier (use like "invoice {{' + t + '}}")'
-     else if (lower.includes('due') && lower.includes('date')) meaning = '= payment deadline or due date (use like "with a due date of {{' + t + '}}, which is past due")'
+     if (lower.includes('invoice') && lower.includes('number')) meaning = '= specific invoice identifier (use in subject like "Invoice {{' + t + '}} - Payment Due" and in body like "invoice {{' + t + '}}")'
+     else if (lower.includes('due') && lower.includes('date')) meaning = '= payment deadline or due date (use in subject like "Invoice {{Invoice Number}} - Due {{' + t + '}}" and in body like "with a due date of {{' + t + '}}, which is past due")'
      else if (lower.includes('amount') || lower.includes('total')) meaning = '= monetary value (use like "amount of ${{' + t + '}}")'
-     else if (lower.includes('first') && lower.includes('name')) meaning = "= recipient's first name (use in greeting like 'Dear {{' + t + '}}')"
-     else meaning = '= interpret based on variable name and use contextually'
+     else meaning = '= interpret based on variable name and use contextually in both subject and body when relevant'
      return `   - "${t}" ${meaning}`
    }).join('\n')}
 
@@ -311,8 +318,9 @@ ANALYSIS REQUIRED:
 4. Example of intelligent transformation:
    - User request: "update on outstanding invoices"
    - Variables: ["Invoice Number", "Due Date"]
-   - Your output should be: "Hello,\\n\\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\\n\\nThank you for your prompt attention.\\n\\nBest regards,"
-   - HTML version: "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>Thank you for your prompt attention.<br><br>Best regards,"
+   - Subject should be: "Invoice {{Invoice Number}} - Payment Due {{Due Date}}" (USE VARIABLES IN SUBJECT)
+   - Body should be: "Dear {{First Name}},\\n\\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\\n\\nThank you for your prompt attention.\\n\\nBest regards," (or "Hello," if {{First Name}} is not available)
+   - HTML version: "Dear {{First Name}},<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>Thank you for your prompt attention.<br><br>Best regards,"
    
    Notice how:
    - Variables are woven into natural sentences (not just listed)
@@ -323,12 +331,13 @@ ANALYSIS REQUIRED:
    - NO variables were used that aren't in the list
 
 5. REQUIREMENTS:
-   - Use ONLY the variables provided in the list above - do NOT invent or add variables like "{{First Name}}" unless it's in the list
+   - Use variables in the SUBJECT LINE when relevant to make it specific (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}")
    - Use ALL available variables in your email body where they make sense
+   - You may use {{First Name}} in greetings if available (from contact database), otherwise use "Hello,"
    - Create natural, flowing sentences - don't just list variables
    - Format with proper paragraphs - use \\n\\n for paragraph breaks in plain text body/bodyTemplate, <br><br> in HTML versions
    - Separate greeting, main message, and closing with blank lines
-   - Make the email specific and actionable using variables
+   - Make the email specific and actionable using variables in both subject and body
    - Match the user's intent and tone from their original request
    - Variables should enhance the message, not distract from it
 
@@ -337,7 +346,7 @@ ANALYSIS REQUIRED:
 Sender signature to append:
 ${signature}
 
-Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates ONLY these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. Use proper paragraph formatting with line breaks (\\n\\n for paragraph breaks in plain text, <br><br> in HTML). Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. '}Keep it concise (6-10 lines in body) with proper paragraph breaks.`
+Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. USE VARIABLES IN THE SUBJECT LINE when relevant. Use {{First Name}} in greeting if available (from contact database), otherwise use "Hello,". Use proper paragraph formatting with line breaks (\\n\\n for paragraph breaks in plain text, <br><br> in HTML). Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. Use "Dear {{First Name}}," if available, otherwise "Hello," for greeting. '}Keep it concise (6-10 lines in body) with proper paragraph breaks.`
           }
         ],
         response_format: { type: "json_object" },
