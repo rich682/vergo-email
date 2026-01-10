@@ -85,12 +85,33 @@ export function PreviewPanel({
       })
       if (response.ok) {
         const data = await response.json()
-        if (data.success && data.sample) {
-          setPreviewRecipients(data.sample)
+        if (data.success && data.sample && data.sample.length > 0) {
+          const recipients = data.sample
+          setPreviewRecipients(recipients)
+          // Automatically select and render preview for the first recipient
+          const firstRecipient = recipients[0]
+          setSelectedPreviewRecipient(firstRecipient.email)
+          
+          // Immediately render the preview for the first recipient
+          if (personalizationMode === "csv" && firstRecipient.data) {
+            const subjectResult = renderTemplate(subject, firstRecipient.data)
+            const bodyResult = renderTemplate(body, firstRecipient.data)
+            setPreviewSubject(subjectResult.rendered)
+            setPreviewBody(bodyResult.rendered)
+          }
+        } else {
+          setPreviewRecipients([])
+          setSelectedPreviewRecipient(null)
+          setPreviewSubject(subject)
+          setPreviewBody(body)
         }
       }
     } catch (error) {
       console.error("Error fetching preview recipients:", error)
+      setPreviewRecipients([])
+      setSelectedPreviewRecipient(null)
+      setPreviewSubject(subject)
+      setPreviewBody(body)
     } finally {
       setLoadingRecipients(false)
     }
@@ -108,6 +129,23 @@ export function PreviewPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, personalizationMode])
+
+  // Auto-select first recipient when recipients are available and none is selected (fallback for contact mode)
+  useEffect(() => {
+    if (personalizationMode === "contact" && recipients.length > 0 && !selectedPreviewRecipient) {
+      const firstEntityRecipient = recipients.find(r => r.type === "entity" && r.email)
+      if (firstEntityRecipient) {
+        setSelectedPreviewRecipient(`${firstEntityRecipient.type}-${firstEntityRecipient.id}`)
+        // Render preview immediately
+        const data = buildContactData(firstEntityRecipient)
+        const subjectResult = renderTemplate(subject, data)
+        const bodyResult = renderTemplate(body, data)
+        setPreviewSubject(subjectResult.rendered)
+        setPreviewBody(bodyResult.rendered)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipients, personalizationMode])
 
   // Update preview when template or selected recipient changes
   useEffect(() => {
