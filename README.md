@@ -53,6 +53,9 @@ AI-powered email response tracking for accounting teams.
 - Repository hygiene: `npm run hygiene` (checks for duplicates, dead scripts, empty dirs)
 - Lint (optional if enabled): `npm run lint`
 
+## CI checks
+CI runs on every PR and push to main: `npm run hygiene` → `npm test` → `npm run build`. All checks must pass.
+
 ## Running Tests
 - Required: `TEST_DATABASE_URL` (database name must contain `_test`, `-test`, `test_`, or `test-`)
 - Warning: Tests modify database data
