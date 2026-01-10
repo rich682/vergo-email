@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { InboxList } from "@/components/tasks/inbox-list"
 import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 import { getTaskCompletionState, TaskCompletionState } from "@/lib/taskState"
 import { getRequestGrouping } from "@/lib/requestGrouping"
@@ -239,11 +238,53 @@ export default function RequestDetailPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 bg-white">
-            <InboxList
-              tasks={filteredTasks}
-              selectedTaskId={selectedTaskId}
-              onTaskSelect={handleTaskSelect}
-            />
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Responses</h3>
+                {filteredTasks.length === 0 ? (
+                  <p className="text-sm text-gray-500">No responses yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredTasks.map((task) => {
+                      const completionState = task.completionState || "Pending"
+                      const stateColors: Record<string, string> = {
+                        "Needs Review": "bg-red-100 text-red-800",
+                        "Pending": "bg-yellow-100 text-yellow-800",
+                        "Submitted": "bg-purple-100 text-purple-800",
+                        "Complete": "bg-green-100 text-green-800"
+                      }
+                      
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => handleTaskSelect(task.id)}
+                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="font-medium text-gray-900">
+                                  {(task as any).entity?.firstName || (task as any).entity?.email || "Unknown"}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${stateColors[completionState] || "bg-gray-100 text-gray-800"}`}>
+                                  {completionState}
+                                </span>
+                              </div>
+                              {task.latestOutboundSubject && (
+                                <p className="text-sm text-gray-600 mb-1">{task.latestOutboundSubject}</p>
+                              )}
+                              <p className="text-xs text-gray-500">
+                                {formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

@@ -43,9 +43,6 @@ export default async function DashboardLayout({
               <Link href="/dashboard/requests" className="hover:text-gray-900 transition-colors">
                 Requests
               </Link>
-              <Link href="/dashboard/inbox" className="hover:text-gray-900 transition-colors">
-                Inbox
-              </Link>
               <Link href="/dashboard/contacts" className="hover:text-gray-900 transition-colors">
                 Contacts
               </Link>

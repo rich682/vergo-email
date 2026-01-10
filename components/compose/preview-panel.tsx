@@ -67,73 +67,76 @@ export function PreviewPanel({
 
   return (
     <Card className="h-full flex flex-col">
-      <CardHeader>
+      <CardHeader className="flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle>Preview</CardTitle>
           {getAiStatusBadge()}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col space-y-4 overflow-auto">
-        <div>
-          <Label className="text-sm font-medium text-gray-700">To:</Label>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {recipients.map((r) => (
-              <span
-                key={`${r.type}-${r.id}`}
-                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
-              >
-                {r.name}
-                {r.type === "group" && r.entityCount !== undefined && (
-                  <span className="text-xs text-gray-500">({r.entityCount})</span>
-                )}
-              </span>
-            ))}
+      <CardContent className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          <div>
+            <Label className="text-sm font-medium text-gray-700">To:</Label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {recipients.map((r) => (
+                <span
+                  key={`${r.type}-${r.id}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
+                >
+                  {r.name}
+                  {r.type === "group" && r.entityCount !== undefined && (
+                    <span className="text-xs text-gray-500">({r.entityCount})</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-sm font-medium text-gray-700">Subject:</Label>
+              {subjectUserEdited && aiSubject && (
+                <button
+                  type="button"
+                  onClick={onResetSubject}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Reset to AI
+                </button>
+              )}
+            </div>
+            <Input
+              value={subject}
+              onChange={(e) => onSubjectChange(e.target.value)}
+              placeholder="Email subject..."
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-sm font-medium text-gray-700">Body:</Label>
+              {bodyUserEdited && aiBody && (
+                <button
+                  type="button"
+                  onClick={onResetBody}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Reset to AI
+                </button>
+              )}
+            </div>
+            <Textarea
+              value={body}
+              onChange={(e) => onBodyChange(e.target.value)}
+              placeholder="Email body..."
+              className="min-h-[200px] resize-none"
+              rows={8}
+            />
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <Label className="text-sm font-medium text-gray-700">Subject:</Label>
-            {subjectUserEdited && aiSubject && (
-              <button
-                type="button"
-                onClick={onResetSubject}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Reset to AI
-              </button>
-            )}
-          </div>
-          <Input
-            value={subject}
-            onChange={(e) => onSubjectChange(e.target.value)}
-            placeholder="Email subject..."
-            className="w-full"
-          />
-        </div>
-
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-1">
-            <Label className="text-sm font-medium text-gray-700">Body:</Label>
-            {bodyUserEdited && aiBody && (
-              <button
-                type="button"
-                onClick={onResetBody}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Reset to AI
-              </button>
-            )}
-          </div>
-          <Textarea
-            value={body}
-            onChange={(e) => onBodyChange(e.target.value)}
-            placeholder="Email body..."
-            className="flex-1 min-h-[200px]"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2 pt-4 border-t">
+        <div className="flex-shrink-0 flex flex-col gap-2 pt-4 border-t bg-white">
           <Button
             onClick={onSubmit}
             disabled={submitting || !subject.trim() || !body.trim()}

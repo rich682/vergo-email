@@ -199,9 +199,9 @@ export default function RequestsPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 bg-white">
+          <div className="flex-1 overflow-y-auto bg-white">
             {requestGroups.length === 0 ? (
-              <div className="flex items-center justify-center min-h-[400px]">
+              <div className="flex items-center justify-center min-h-[400px] p-6">
                 <div className="text-center max-w-md">
                   <div className="mb-4 flex justify-center">
                     <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
@@ -224,70 +224,75 @@ export default function RequestsPage() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {requestGroups.map((group) => {
-                  const progressColor = group.percentComplete === 100 
-                    ? "text-green-600" 
-                    : group.percentComplete < 50 
-                    ? "text-yellow-600" 
-                    : "text-gray-600"
-                  
-                  return (
-                    <div
-                      key={group.groupKey}
-                      onClick={() => handleRequestClick(group.groupKey)}
-                      className="border border-gray-200 bg-white rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900 truncate">
-                              {group.displayName}
-                            </h3>
-                            {group.groupType !== 'CUSTOM' && (
-                              <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                                {group.groupType}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
-                            <span className={progressColor}>
-                              {group.completeCount} / {group.totalCount} complete ({group.percentComplete}%)
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {requestGroups.map((group) => {
+                      // Determine primary status
+                      const primaryStatus = group.needsReviewCount > 0 
+                        ? "Needs Review" 
+                        : group.pendingCount > 0 
+                        ? "Pending" 
+                        : group.submittedCount > 0 
+                        ? "Submitted" 
+                        : "Complete"
+                      
+                      const statusColor = primaryStatus === "Needs Review"
+                        ? "bg-red-100 text-red-800"
+                        : primaryStatus === "Pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : primaryStatus === "Submitted"
+                        ? "bg-purple-100 text-purple-800"
+                        : "bg-green-100 text-green-800"
+                      
+                      // Build recipient display
+                      const recipientCount = group.totalCount
+                      const recipientText = `${recipientCount} ${recipientCount === 1 ? 'recipient' : 'recipients'}`
+                      
+                      return (
+                        <tr
+                          key={group.groupKey}
+                          onClick={() => handleRequestClick(group.groupKey)}
+                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-900">{group.displayName}</span>
+                              {group.groupType !== 'CUSTOM' && (
+                                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                                  {group.groupType}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                              {primaryStatus}
                             </span>
-                            <span>•</span>
-                            <span>{group.totalCount} {group.totalCount === 1 ? 'recipient' : 'recipients'}</span>
-                            <span>•</span>
-                            <span>Updated {formatDistanceToNow(group.lastActivity, { addSuffix: true })}</span>
-                          </div>
-
-                          <div className="flex items-center gap-3 flex-wrap">
-                            {group.needsReviewCount > 0 && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                {group.needsReviewCount} Needs Review
-                              </span>
-                            )}
-                            {group.pendingCount > 0 && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                {group.pendingCount} Pending
-                              </span>
-                            )}
-                            {group.submittedCount > 0 && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                {group.submittedCount} Submitted
-                              </span>
-                            )}
-                            {group.completeCount > 0 && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {group.completeCount} Complete
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {recipientText}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {group.completeCount} / {group.totalCount} ({group.percentComplete}%)
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatDistanceToNow(group.lastActivity, { addSuffix: true })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

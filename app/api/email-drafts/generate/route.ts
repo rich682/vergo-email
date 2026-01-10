@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
+import { prisma } from "@/lib/prisma"
 
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
@@ -156,6 +157,12 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     }))
 
+    // Get user info for signature
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { organization: true }
+    })
+
     // Synchronous generation path (default) - no Inngest handler exists
     // This ensures < 2s completion in normal conditions with deterministic fallback
     const aiStartTime = Date.now()
@@ -164,7 +171,10 @@ export async function POST(request: NextRequest) {
       organizationId: session.user.organizationId,
       prompt,
       selectedRecipients,
-      correlationId: correlationId // Use original correlationId for tracing
+      correlationId: correlationId, // Use original correlationId for tracing
+      senderName: user?.name || undefined,
+      senderEmail: user?.email || undefined,
+      senderCompany: user?.organization?.name || undefined
     })
     const aiEndTime = Date.now()
 

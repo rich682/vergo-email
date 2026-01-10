@@ -44,6 +44,9 @@ export class AIEmailGenerationService {
       groupIds?: string[]
     }
     correlationId?: string
+    senderName?: string
+    senderEmail?: string
+    senderCompany?: string
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -89,10 +92,26 @@ export class AIEmailGenerationService {
       const subject = data.prompt.length > 50 
         ? data.prompt.substring(0, 47) + "..."
         : data.prompt
+      
+      // Build signature for fallback
+      const signatureParts: string[] = []
+      if (data.senderName) signatureParts.push(data.senderName)
+      if (data.senderCompany) signatureParts.push(data.senderCompany)
+      if (data.senderEmail) signatureParts.push(data.senderEmail)
+      const signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+      
+      const bodyWithSignature = signature
+        ? `${data.prompt}\n\n${signature}`
+        : data.prompt
+      
+      const htmlBodyWithSignature = signature
+        ? `<p>${data.prompt.replace(/\n/g, '<br>')}</p><br><br>${signature.replace(/\n/g, '<br>')}`
+        : `<p>${data.prompt.replace(/\n/g, '<br>')}</p>`
+      
       return {
         subject: `Request: ${subject}`,
-        body: data.prompt,
-        htmlBody: `<p>${data.prompt.replace(/\n/g, '<br>')}</p>`,
+        body: bodyWithSignature,
+        htmlBody: htmlBodyWithSignature,
         suggestedRecipients: {
           entityIds: data.selectedRecipients?.entityIds || [],
           groupIds: data.selectedRecipients?.groupIds || []
@@ -114,32 +133,51 @@ export class AIEmailGenerationService {
         abortController.abort()
       }, AI_TIMEOUT_MS)
       
+      // Build sender signature
+      const signatureParts: string[] = []
+      if (data.senderName) signatureParts.push(data.senderName)
+      if (data.senderCompany) signatureParts.push(data.senderCompany)
+      if (data.senderEmail) signatureParts.push(data.senderEmail)
+      const signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: `You are an AI assistant that helps generate professional email drafts for accounting teams. 
-            Analyze the user's natural language prompt and generate:
-            1. A professional email subject line
-            2. A clear, professional email body (both plain text and HTML)
-            3. Suggested recipients (entity IDs or group IDs from the context)
-            4. A suggested campaign name and type if applicable
+            content: `You are an AI assistant that helps generate professional, polite email drafts for accounting teams.
+            
+            Transform the user's request into a polished email with:
+            1. A concise, specific subject line (avoid "Request:" prefix unless truly necessary)
+            2. A polite email body (6-10 lines) with:
+               - Professional greeting
+               - Clear ask with deadline if mentioned
+               - What to do next (e.g., "reply with attachment", "click link")
+               - Professional closing
+               - Sender signature (provided separately)
+            
+            Be concise, professional, and polite. Keep body to 6-10 lines.
             
             Respond with a JSON object containing:
-            - subject: string
-            - body: string (plain text)
-            - htmlBody: string (HTML formatted)
+            - subject: string (concise, specific, no "Request:" prefix unless needed)
+            - body: string (plain text, 6-10 lines, includes signature at end)
+            - htmlBody: string (HTML formatted, same content with <br> for line breaks)
             - suggestedRecipients: { entityIds?: string[], groupIds?: string[] }
             - suggestedCampaignName?: string
             - suggestedCampaignType?: string (one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
             
-            Match recipient suggestions to entities/groups mentioned in the prompt (e.g., "employees" -> employee group, "vendors" -> vendor group).
-            If a campaign type is mentioned (W-9, COI, Expense, etc.), suggest a campaign name and matching campaign type.`
+            The signature will be appended automatically - do NOT include it in body/htmlBody.`
           },
           {
             role: "user",
-            content: `Context: ${JSON.stringify(context, null, 2)}\n\nUser prompt: ${data.prompt}\n\nGenerate the email draft.`
+            content: `Context: ${JSON.stringify(context, null, 2)}
+
+User request: ${data.prompt}
+
+Sender signature to append:
+${signature}
+
+Generate a polite, professional email draft. Keep it concise (6-10 lines in body).`
           }
         ],
         response_format: { type: "json_object" },
@@ -174,6 +212,15 @@ export class AIEmailGenerationService {
       }
 
     const parsed = JSON.parse(response) as GeneratedEmailDraft
+
+    // Append signature to body (signature already built above)
+    const bodyWithSignature = signature 
+      ? `${parsed.body || ""}\n\n${signature}`
+      : (parsed.body || "")
+    
+    const htmlBodyWithSignature = signature
+      ? `${parsed.htmlBody || parsed.body || ""}<br><br>${signature.replace(/\n/g, '<br>')}`
+      : (parsed.htmlBody || parsed.body || "")
 
     // Use selected recipients if provided, otherwise validate AI suggestions
     let validatedRecipients: GeneratedEmailDraft["suggestedRecipients"] = {
@@ -213,8 +260,8 @@ export class AIEmailGenerationService {
 
       return {
         subject: parsed.subject || "Email",
-        body: parsed.body || "",
-        htmlBody: parsed.htmlBody || parsed.body || "",
+        body: bodyWithSignature,
+        htmlBody: htmlBodyWithSignature,
         suggestedRecipients: validatedRecipients,
         suggestedCampaignName: parsed.suggestedCampaignName,
         suggestedCampaignType

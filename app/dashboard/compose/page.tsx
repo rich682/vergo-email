@@ -587,128 +587,7 @@ function ComposePageContent() {
         </CardContent>
       </Card>
 
-      {draft && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{isRequestMode ? "Review Request" : "Review Draft"}</CardTitle>
-            {isRequestMode && (
-              <CardDescription>
-                Review the generated request and make any edits before sending
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {warning && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                <p className="text-sm font-medium text-yellow-800">
-                  Warning: This email will be sent to {warning.externalCount} external contact(s) and {warning.internalCount} internal contact(s).
-                </p>
-                <div className="flex gap-2 mt-2">
-                  <Button size="sm" onClick={handleProceed}>
-                    Proceed
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleCancel}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-            <div>
-              <Label>From</Label>
-              {accountsLoading ? (
-                <div className="text-sm text-gray-500">Loading inboxes...</div>
-              ) : emailAccounts.length <= 1 ? (
-                <div className="text-sm text-gray-700">
-                  {emailAccounts[0]?.email || "No connected inbox"}
-                </div>
-              ) : (
-                <Select
-                  value={selectedEmailAccountId}
-                  onValueChange={(val) => setSelectedEmailAccountId(val)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select inbox" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {emailAccounts.map((acct) => (
-                      <SelectItem key={acct.id} value={acct.id}>
-                        {acct.email} ({acct.provider})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-            {isRequestMode && (
-              <div>
-                <Label>
-                  Request Name <span className="text-red-500 ml-1">*</span>
-                </Label>
-                <Input
-                  placeholder="e.g., W-9 Collection, Expense Reports Q4"
-                  value={requestName || draft.campaignName || ""}
-                  onChange={(e) => {
-                    const newName = e.target.value
-                    setRequestName(newName)
-                    setDraft({ ...draft, campaignName: newName || undefined })
-                    if (requestNameError) setRequestNameError(null)
-                  }}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  This groups all responses together so you can track completion
-                </p>
-                {requestNameError && (
-                  <p className="text-xs text-red-600 mt-1">{requestNameError}</p>
-                )}
-              </div>
-            )}
-            <div>
-              <Label>{isRequestMode ? "Email Subject" : "Subject"}</Label>
-              <Input
-                value={draft.generatedSubject || ""}
-                onChange={(e) => setDraft({ ...draft, generatedSubject: e.target.value })}
-              />
-              {isRequestMode && (
-                <p className="text-xs text-gray-500 mt-1">Subject line recipients will see in their inbox</p>
-              )}
-            </div>
-            <div>
-              <Label>{isRequestMode ? "Request Message" : "Body"}</Label>
-              <Textarea
-                value={draft.generatedBody || ""}
-                onChange={(e) => setDraft({ ...draft, generatedBody: e.target.value })}
-                rows={10}
-              />
-              {isRequestMode && (
-                <p className="text-xs text-gray-500 mt-1">This is what recipients will read</p>
-              )}
-            </div>
-            {!isRequestMode && (
-              <div>
-                <Label>Campaign Name (Optional)</Label>
-                <Input
-                  placeholder="e.g., W-9 Collection, Expense Reports"
-                  value={draft.campaignName || ""}
-                  onChange={(e) => setDraft({ ...draft, campaignName: e.target.value || undefined })}
-                />
-              </div>
-            )}
-            {sendError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-sm font-medium text-red-800">{sendError}</p>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button onClick={handleSend} disabled={!!warning || sending}>
-                {sending ? (isRequestMode ? "Sending Request..." : "Sending...") : (isRequestMode ? "Send Request" : "Approve & Send")}
-              </Button>
-              <Button variant="outline" disabled={sending} onClick={handleScheduleClick}>
-                {isRequestMode ? "Schedule Request" : "Approve & Schedule"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Review section removed - preview panel handles all editing */}
 
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent>
@@ -776,7 +655,7 @@ function ComposePageContent() {
       </Dialog>
           </div>
           {draft?.id && isRequestMode && (
-            <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-8rem)]">
+            <div className="h-full flex flex-col">
               <PreviewPanel
                 draftId={draft.id}
                 recipients={selectedRecipients}
