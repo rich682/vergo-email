@@ -14,6 +14,7 @@ function SettingsContent() {
   const [signature, setSignature] = useState<string>("")
   const [loadingSignature, setLoadingSignature] = useState(true)
   const [savingSignature, setSavingSignature] = useState(false)
+  const [cleaningUp, setCleaningUp] = useState(false)
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -138,6 +139,37 @@ function SettingsContent() {
     }
   }
 
+  const handleCleanupRequests = async () => {
+    if (!confirm("Are you sure you want to delete ALL requests? This cannot be undone.")) {
+      return
+    }
+
+    try {
+      setCleaningUp(true)
+      setMessage(null)
+      const res = await fetch("/api/admin/cleanup-requests", { method: "POST" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Cleanup failed")
+      }
+      const data = await res.json()
+      setMessage({ 
+        type: "success", 
+        text: `Cleanup completed! Deleted ${data.deleted.tasks} tasks and ${data.deleted.emailDrafts} email drafts.` 
+      })
+      setTimeout(() => {
+        setMessage(null)
+        // Redirect to requests page to see empty state
+        window.location.href = "/dashboard/requests"
+      }, 2000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Cleanup failed" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setCleaningUp(false)
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col border-l border-r border-gray-200">
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
@@ -246,6 +278,29 @@ function SettingsContent() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Management</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-700 mb-2">
+              Delete all requests and email drafts for a clean start. This will permanently delete all tasks, messages, and drafts.
+            </p>
+            <Button
+              variant="destructive"
+              onClick={handleCleanupRequests}
+              disabled={cleaningUp}
+            >
+              {cleaningUp ? "Deleting..." : "Delete All Requests"}
+            </Button>
+            <p className="text-xs text-gray-500 mt-2">
+              ⚠️ This action cannot be undone. All requests, tasks, and associated data will be permanently deleted.
+            </p>
+          </div>
         </CardContent>
       </Card>
         </div>
