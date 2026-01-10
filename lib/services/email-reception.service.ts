@@ -65,33 +65,58 @@ export class EmailReceptionService {
       }
     }
     
-    // Strategy 2: Match by Gmail thread ID (if In-Reply-To didn't work)
+    // Strategy 2: Match by Gmail thread ID (more reliable than subject matching)
     if (!task && data.providerData?.threadId) {
-      // Gmail thread IDs are different from our internal thread IDs
-      // We need to find the original message in this Gmail thread and match to our task
-      // For now, try to find by matching subject line pattern (Re: original subject)
-      // This is a fallback - ideally we'd store Gmail thread ID when sending
-      const subjectWithoutRe = data.subject?.replace(/^(Re:|RE:|re:)\s*/i, "").trim()
-      if (subjectWithoutRe) {
-        // Try to find task with matching subject
-        const matchingTask = await prisma.task.findFirst({
-          where: {
-            messages: {
-              some: {
-                direction: "OUTBOUND",
-                subject: {
-                  contains: subjectWithoutRe,
-                  mode: "insensitive"
+      // Gmail thread ID is stored in providerData.threadId when we send emails
+      // Find any outbound message with matching Gmail thread ID
+      const gmailThreadId = data.providerData.threadId
+      
+      // Query messages where providerData contains the threadId
+      // Note: Prisma JSON queries need special handling
+      const matchingMessages = await prisma.message.findMany({
+        where: {
+          direction: "OUTBOUND",
+          providerData: { not: null }
+        },
+        include: {
+          task: {
+            include: { entity: true }
+          }
+        }
+      })
+      
+      // Filter in memory for matching thread ID (Prisma JSON path queries can be tricky)
+      const matchingMessage = matchingMessages.find(msg => {
+        const providerData = msg.providerData as any
+        return providerData?.threadId === gmailThreadId
+      })
+      
+      if (matchingMessage?.task) {
+        task = matchingMessage.task
+        console.log(`[Email Reception] Matched reply by Gmail thread ID: ${gmailThreadId} -> Task ${task.id}`)
+      } else {
+        // Fallback: Try matching by subject pattern if thread ID didn't work
+        const subjectWithoutRe = data.subject?.replace(/^(Re:|RE:|re:)\s*/i, "").trim()
+        if (subjectWithoutRe) {
+          const matchingTask = await prisma.task.findFirst({
+            where: {
+              messages: {
+                some: {
+                  direction: "OUTBOUND",
+                  subject: {
+                    contains: subjectWithoutRe,
+                    mode: "insensitive"
+                  }
                 }
               }
-            }
-          },
-          include: { entity: true }
-        })
-        
-        if (matchingTask) {
-          task = matchingTask
-          console.log(`Matched reply by subject pattern: "${subjectWithoutRe}" -> Task ${task.id}`)
+            },
+            include: { entity: true }
+          })
+          
+          if (matchingTask) {
+            task = matchingTask
+            console.log(`[Email Reception] Matched reply by subject pattern: "${subjectWithoutRe}" -> Task ${task.id}`)
+          }
         }
       }
     }
@@ -116,20 +141,25 @@ export class EmailReceptionService {
 
     if (!task) {
       // Orphaned message - couldn't match to any task
-      console.warn("Orphaned email received - could not match to task:", {
+      console.warn("[Email Reception] Orphaned email received - could not match to task:", {
         providerId: data.providerId,
         from: data.from,
         subject: data.subject,
         inReplyTo: data.providerData?.inReplyTo,
-        threadId: data.providerData?.threadId,
+        gmailThreadId: data.providerData?.threadId,
         replyTo: data.replyTo,
-        to: data.to
+        to: data.to,
+        messageIdHeader: data.providerData?.messageIdHeader
       })
       return {
         taskId: null,
         messageId: ""
       }
     }
+    
+    console.log(`[Email Reception] Successfully matched reply from ${data.from} to Task ${task.id} (Campaign: ${task.campaignName || 'N/A'})`)
+    
+    console.log(`[Email Reception] Successfully matched reply from ${data.from} to Task ${task.id} (Campaign: ${task.campaignName || 'N/A'})`)
 
     // Process attachments
     let hasAttachments = false
