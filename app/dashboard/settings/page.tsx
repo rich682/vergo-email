@@ -4,11 +4,16 @@ import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 function SettingsContent() {
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [signature, setSignature] = useState<string>("")
+  const [loadingSignature, setLoadingSignature] = useState(true)
+  const [savingSignature, setSavingSignature] = useState(false)
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -37,7 +42,48 @@ function SettingsContent() {
     }
 
     fetchAccounts()
+    fetchUserSignature()
   }, [searchParams])
+
+  const fetchUserSignature = async () => {
+    try {
+      setLoadingSignature(true)
+      const response = await fetch("/api/user/signature")
+      if (response.ok) {
+        const data = await response.json()
+        setSignature(data.signature || "")
+      }
+    } catch (error) {
+      console.error("Error fetching signature:", error)
+    } finally {
+      setLoadingSignature(false)
+    }
+  }
+
+  const handleSaveSignature = async () => {
+    try {
+      setSavingSignature(true)
+      setMessage(null)
+      const response = await fetch("/api/user/signature", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signature })
+      })
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to save signature")
+      }
+      
+      setMessage({ type: "success", text: "Signature saved successfully!" })
+      setTimeout(() => setMessage(null), 5000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to save signature" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setSavingSignature(false)
+    }
+  }
 
   const fetchAccounts = async () => {
     try {
@@ -115,6 +161,43 @@ function SettingsContent() {
           <p className="font-medium">{message.text}</p>
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Signature</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="signature" className="text-sm font-medium text-gray-700 mb-2 block">
+              Your email signature (will be appended to all outgoing emails)
+            </Label>
+            {loadingSignature ? (
+              <div className="py-4 text-gray-500">Loading signature...</div>
+            ) : (
+              <>
+                <Textarea
+                  id="signature"
+                  value={signature}
+                  onChange={(e) => setSignature(e.target.value)}
+                  placeholder="John Doe&#10;Accountant&#10;john@example.com"
+                  rows={5}
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Leave empty to use auto-generated signature from your name, organization, and email.
+                </p>
+                <Button
+                  onClick={handleSaveSignature}
+                  disabled={savingSignature}
+                  className="mt-4"
+                >
+                  {savingSignature ? "Saving..." : "Save Signature"}
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

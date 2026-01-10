@@ -44,12 +44,18 @@ export async function POST(
       include: { organization: true }
     })
     
-    // Build signature for per-recipient emails
-    const signatureParts: string[] = []
-    if (user?.name) signatureParts.push(user.name)
-    if (user?.organization?.name) signatureParts.push(user.organization.name)
-    if (user?.email) signatureParts.push(user.email)
-    const signature = signatureParts.length > 0 ? signatureParts.join('\n') : (user?.email || '')
+    // Use user's custom signature if available, otherwise build from user/org data
+    let signature: string
+    if (user?.signature && user.signature.trim() !== '') {
+      signature = user.signature
+    } else {
+      // Build signature from user/org data as fallback
+      const signatureParts: string[] = []
+      if (user?.name) signatureParts.push(user.name)
+      if (user?.organization?.name) signatureParts.push(user.organization.name)
+      if (user?.email) signatureParts.push(user.email)
+      signature = signatureParts.length > 0 ? signatureParts.join('\n') : (user?.email || '')
+    }
 
     // Use templates if available, otherwise fall back to generated fields
     const subjectTemplate = (draft as any).subjectTemplate || draft.generatedSubject || ""

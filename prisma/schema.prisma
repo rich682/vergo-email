@@ -87,6 +87,7 @@ model User {
   passwordHash   String
   name           String?
   role           UserRole @default(MEMBER)
+  signature      String?  // User's email signature
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -165,6 +166,7 @@ model Task {
   documentUrl            String?
   documentKey            String?
   hasAttachments         Boolean       @default(false)
+  completionPercentage   Int?          // LLM-determined completion percentage (0-100) based on reply intent
   organizationId         String
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt

@@ -113,7 +113,23 @@ export default function RequestDetailPage() {
     const submittedCount = filteredTasks.filter(t => t.completionState === "Submitted").length
     const completeCount = filteredTasks.filter(t => t.completionState === "Complete").length
     const totalCount = filteredTasks.length
-    const percentComplete = totalCount > 0 ? Math.round((completeCount / totalCount) * 100) : 0
+    
+    // Calculate completion percentage based on LLM intent analysis (0-100 per task)
+    // Use average of task completion percentages if available, otherwise fall back to binary counting
+    let percentComplete = 0
+    if (totalCount > 0) {
+      const tasksWithCompletion = filteredTasks.filter(t => t.completionPercentage !== null && t.completionPercentage !== undefined)
+      if (tasksWithCompletion.length > 0) {
+        // Use intent-based completion percentages
+        const sum = tasksWithCompletion.reduce((acc, t) => acc + (t.completionPercentage || 0), 0)
+        // For tasks without completion percentage yet, assume 0%
+        const totalSum = sum + (totalCount - tasksWithCompletion.length) * 0
+        percentComplete = Math.round(totalSum / totalCount)
+      } else {
+        // Fall back to binary counting (old method)
+        percentComplete = Math.round((completeCount / totalCount) * 100)
+      }
+    }
     
     // Find latest activity (max updatedAt)
     const lastActivity = filteredTasks.length > 0

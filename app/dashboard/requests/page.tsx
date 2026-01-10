@@ -18,6 +18,7 @@ interface Task {
   hasReplies: boolean
   latestInboundClassification?: string | null
   latestOutboundSubject?: string | null
+  completionPercentage?: number | null // LLM-determined completion percentage (0-100) based on reply intent
 }
 
 interface RequestGroup {
@@ -129,7 +130,24 @@ export default function RequestsPage() {
       const submittedCount = tasks.filter(t => t.completionState === "Submitted").length
       const completeCount = tasks.filter(t => t.completionState === "Complete").length
       const totalCount = tasks.length
-      const percentComplete = totalCount > 0 ? Math.round((completeCount / totalCount) * 100) : 0
+      
+      // Calculate completion percentage based on LLM intent analysis (0-100 per task)
+      // Use average of task completion percentages if available, otherwise fall back to binary counting
+      let percentComplete = 0
+      if (totalCount > 0) {
+        const tasksWithCompletion = tasks.filter(t => t.completionPercentage !== null && t.completionPercentage !== undefined)
+        if (tasksWithCompletion.length > 0) {
+          // Use intent-based completion percentages
+          const sum = tasksWithCompletion.reduce((acc, t) => acc + (t.completionPercentage || 0), 0)
+          const avg = sum / tasksWithCompletion.length
+          // For tasks without completion percentage yet, assume 0%
+          const totalSum = sum + (totalCount - tasksWithCompletion.length) * 0
+          percentComplete = Math.round(totalSum / totalCount)
+        } else {
+          // Fall back to binary counting (old method)
+          percentComplete = Math.round((completeCount / totalCount) * 100)
+        }
+      }
       
       // Find latest activity (max updatedAt)
       const lastActivity = tasks.reduce((latest, task) => {

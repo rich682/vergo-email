@@ -26,9 +26,21 @@ export const functions = [
       const { messageId, taskId } = event.data
 
       try {
-        // Fetch the message
+        // Fetch the message and task
         const message = await prisma.message.findUnique({
-          where: { id: messageId }
+          where: { id: messageId },
+          include: {
+            task: {
+              include: {
+                entity: true,
+                messages: {
+                  where: { direction: "OUTBOUND" },
+                  orderBy: { createdAt: "desc" },
+                  take: 1
+                }
+              }
+            }
+          }
         })
 
         if (!message) {
@@ -55,6 +67,131 @@ export const functions = [
             aiReasoning: classification.reasoning
           }
         })
+
+        // Analyze reply intent to determine if task is fulfilled
+        if (taskId && message.task) {
+          const task = message.task
+          const latestOutboundMessage = task.messages[0] // Already filtered to OUTBOUND and sorted desc
+
+          // Build context for intent analysis
+          const requestSubject = latestOutboundMessage?.subject || task.campaignName || "Request"
+          const requestBody = latestOutboundMessage?.body || latestOutboundMessage?.htmlBody || ""
+          const requestPreview = requestBody.substring(0, 300) // First 300 chars
+
+          const replySubject = message.subject || ""
+          const replyBody = message.body || message.htmlBody || ""
+          const replyPreview = replyBody.substring(0, 500) // First 500 chars
+
+          // Use LLM to analyze reply intent and determine completion percentage (0-100)
+          const openai = getOpenAIClient()
+          const intentAnalysis = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are an AI assistant that analyzes email replies to determine request completion percentage based on intent.
+
+Analyze the reply and assign a completion percentage (0-100) based on:
+- 100%: Request is fully completed (e.g., "I just paid the invoice", "I've sent the document", "Payment completed")
+- 80-90%: Strong commitment with timeline (e.g., "I'll pay this week", "I'll send it tomorrow", "I'll submit it by Friday")
+- 60-79%: Moderate commitment without clear timeline (e.g., "I'll get it done soon", "I'm working on it", "I'll send it when ready")
+- 40-59%: Acknowledgment but unclear commitment (e.g., "Got it", "Will do", "I understand")
+- 20-39%: Questioning or needs clarification (e.g., "What format do you need?", "Can you clarify?", "Which invoice?")
+- 0-19%: No progress or rejection (e.g., "I can't do this", "I don't have it", "Not possible")
+
+Examples:
+- "I just paid invoice #12345" → 100% (completed)
+- "I'll pay the invoice this week" → 80% (strong commitment with timeline)
+- "I'll send it tomorrow" → 85% (strong commitment with specific timeline)
+- "I'm working on it, will get back to you" → 65% (moderate commitment, no timeline)
+- "Got it, thanks" → 50% (acknowledgment, unclear commitment)
+- "What invoice number?" → 25% (questioning/clarification needed)
+- "I don't have access to that" → 10% (cannot complete)
+
+Respond with JSON:
+{
+  "completionPercentage": number (0-100),
+  "confidence": "High"/"Medium"/"Low",
+  "reasoning": "Brief explanation of why this percentage"
+}
+
+Be accurate and realistic - use the full 0-100 scale based on actual intent, not just binary fulfilled/not fulfilled.`
+              },
+              {
+                role: "user",
+                content: `Request sent:
+Subject: ${requestSubject}
+Body: ${requestPreview}
+
+Reply received:
+Subject: ${replySubject}
+Body: ${replyPreview}
+Classification: ${classification.classification}
+
+Has attachments: ${task.hasAttachments ? "Yes" : "No"}
+
+Analyze the reply intent and determine the completion percentage (0-100) based on what the recipient is indicating.`
+              }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3,
+            max_tokens: 200
+          })
+
+          const intentResponse = intentAnalysis.choices[0]?.message?.content
+          if (intentResponse) {
+            try {
+              const intentParsed = JSON.parse(intentResponse)
+              let completionPercentage = Math.round(intentParsed.completionPercentage || 0)
+              const confidence = intentParsed.confidence || "Medium"
+              const reasoning = intentParsed.reasoning || "No reasoning provided"
+
+              // Clamp completion percentage to 0-100
+              completionPercentage = Math.max(0, Math.min(100, completionPercentage))
+
+              // If attachments are present and verified, boost to 100% if not already high
+              if (task.hasAttachments && task.aiVerified === true) {
+                completionPercentage = 100
+              } else if (task.hasAttachments && task.aiVerified === null && completionPercentage < 60) {
+                // If attachments exist but not verified yet, set to 60% (pending verification)
+                completionPercentage = 60
+              }
+
+              // Update task with completion percentage and status if appropriate
+              const updateData: any = {
+                completionPercentage,
+                aiReasoning: typeof task.aiReasoning === 'object' && task.aiReasoning !== null
+                  ? { ...(task.aiReasoning as object), completionAnalysis: reasoning }
+                  : { completionAnalysis: reasoning }
+              }
+
+              // If completion is 100% or high confidence 95%+, mark as FULFILLED
+              if (completionPercentage >= 100 || (completionPercentage >= 95 && confidence === "High")) {
+                updateData.status = "FULFILLED"
+                console.log(`Task ${taskId} marked as FULFILLED with ${completionPercentage}% completion (${confidence} confidence)`)
+              }
+
+              await prisma.task.update({
+                where: { id: taskId },
+                data: updateData
+              })
+              
+              console.log(`Task ${taskId} completion percentage updated to ${completionPercentage}% (${confidence} confidence): ${reasoning}`)
+
+              // Execute automation rules after classification
+              const { AutomationEngineService } = await import("@/lib/services/automation-engine.service")
+              await AutomationEngineService.executeRules({
+                taskId: taskId,
+                organizationId: task.organizationId,
+                messageClassification: classification.classification as any,
+                hasAttachments: task.hasAttachments,
+                verified: task.aiVerified || false
+              })
+            } catch (parseError) {
+              console.error(`Error parsing intent analysis for task ${taskId}:`, parseError)
+            }
+          }
+        }
 
         return {
           success: true,
