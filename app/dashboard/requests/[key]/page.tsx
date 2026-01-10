@@ -242,7 +242,20 @@ export default function RequestDetailPage() {
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <span className="text-red-700">High</span>
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <span className="text-yellow-700">Medium</span>
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <span className="text-green-700">Low</span>
+                          </th>
+                          {filteredTasks.some(t => !t.riskLevel || t.riskLevel === "unknown") && (
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              <span className="text-gray-500">Unknown</span>
+                            </th>
+                          )}
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason / Snippet</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
                         </tr>
@@ -269,6 +282,12 @@ export default function RequestDetailPage() {
                           const entityEmail = (task as any).entity?.email || null
                           const lastActivityAt = task.lastActivityAt ? new Date(task.lastActivityAt) : new Date(task.updatedAt)
                           
+                          // Determine which risk column to show
+                          const isHigh = riskLevel === "high" ? 1 : 0
+                          const isMedium = riskLevel === "medium" ? 1 : 0
+                          const isLow = riskLevel === "low" ? 1 : 0
+                          const isUnknown = riskLevel === "unknown" || !riskLevel ? 1 : 0
+                          
                           return (
                             <tr
                               key={task.id}
@@ -288,16 +307,53 @@ export default function RequestDetailPage() {
                                   {readStatus}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLevel] || riskColors.unknown}`}>
-                                    {riskLevel}
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                {isHigh > 0 ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    {isHigh}
                                   </span>
-                                  {task.isManualRiskOverride && (
-                                    <span className="text-xs text-gray-500">(Manual)</span>
-                                  )}
-                                </div>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                                {task.isManualRiskOverride && riskLevel === "high" && (
+                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
+                                )}
                               </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                {isMedium > 0 ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    {isMedium}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                                {task.isManualRiskOverride && riskLevel === "medium" && (
+                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                {isLow > 0 ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    {isLow}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                                {task.isManualRiskOverride && riskLevel === "low" && (
+                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
+                                )}
+                              </td>
+                              {filteredTasks.some(t => !t.riskLevel || t.riskLevel === "unknown") && (
+                                <td className="px-4 py-3 whitespace-nowrap text-center">
+                                  {isUnknown > 0 ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                      {isUnknown}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-gray-400">—</span>
+                                  )}
+                                </td>
+                              )}
                               <td className="px-4 py-3">
                                 <div className="max-w-md">
                                   <p className="text-sm text-gray-900 truncate">

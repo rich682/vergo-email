@@ -282,20 +282,25 @@ export default function RequestsPage() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <span className="text-red-700">High</span>
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <span className="text-yellow-700">Medium</span>
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <span className="text-green-700">Low</span>
+                      </th>
+                      {requestGroups.some(g => g.unknownCount > 0) && (
+                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <span className="text-gray-500">Unknown</span>
+                        </th>
+                      )}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {requestGroups.map((group) => {
-                      // Build risk breakdown display
-                      const riskParts: string[] = []
-                      if (group.highCount > 0) riskParts.push(`${group.highCount} High`)
-                      if (group.mediumCount > 0) riskParts.push(`${group.mediumCount} Med`)
-                      if (group.lowCount > 0) riskParts.push(`${group.lowCount} Low`)
-                      if (group.unknownCount > 0) riskParts.push(`${group.unknownCount} Unknown`)
-                      const riskText = riskParts.length > 0 ? riskParts.join(" • ") : "0 Unknown"
-                      
                       // Build recipient display
                       const recipientCount = group.totalCount
                       const recipientText = `${recipientCount} ${recipientCount === 1 ? 'recipient' : 'recipients'}`
@@ -319,21 +324,36 @@ export default function RequestsPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {recipientText}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-medium ${
-                                group.highCount > 0 
-                                  ? "text-red-700" 
-                                  : group.mediumCount > 0 
-                                  ? "text-yellow-700" 
-                                  : group.lowCount > 0
-                                  ? "text-green-700"
-                                  : "text-gray-500"
-                              }`}>
-                                {riskText}
-                              </span>
-                            </div>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className={`text-sm font-semibold ${
+                              group.highCount > 0 ? "text-red-700" : "text-gray-400"
+                            }`}>
+                              {group.highCount}
+                            </span>
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className={`text-sm font-semibold ${
+                              group.mediumCount > 0 ? "text-yellow-700" : "text-gray-400"
+                            }`}>
+                              {group.mediumCount}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className={`text-sm font-semibold ${
+                              group.lowCount > 0 ? "text-green-700" : "text-gray-400"
+                            }`}>
+                              {group.lowCount}
+                            </span>
+                          </td>
+                          {requestGroups.some(g => g.unknownCount > 0) && (
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className={`text-sm font-semibold ${
+                                group.unknownCount > 0 ? "text-gray-600" : "text-gray-400"
+                              }`}>
+                                {group.unknownCount}
+                              </span>
+                            </td>
+                          )}
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDistanceToNow(group.lastActivity, { addSuffix: true })}
                           </td>
