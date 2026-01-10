@@ -50,6 +50,7 @@ AI-powered email response tracking for accounting teams.
 ## Testing & build checks
 - Production build: `npm run build`
 - Prisma client: `npm run db:generate`
+- Repository hygiene: `npm run hygiene` (checks for duplicates, dead scripts, empty dirs)
 - Lint (optional if enabled): `npm run lint`
 
 ## Running Tests
@@ -60,6 +61,14 @@ AI-powered email response tracking for accounting teams.
   - `npm run test:api` - Run API tests only
   - `npm run test:ui` - Run UI tests only
   - `npm run test:watch` - Watch mode
+
+## Pre-Commit Checks
+Before committing, ensure:
+1. `npm run hygiene` — Validates repository structure (no duplicates, dead scripts, empty dirs)
+2. `npm test` — All tests pass
+3. `npm run build` — Build succeeds
+
+See `REPO_STRUCTURE.md` for detailed guidelines.
 
 ## Project structure
 - `app/` — Next.js routes & API
