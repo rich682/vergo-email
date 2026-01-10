@@ -1,6 +1,7 @@
 import { inngest } from "../client"
 import { prisma } from "@/lib/prisma"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
+import { EmailSyncService } from "@/lib/services/email-sync.service"
 import OpenAI from "openai"
 
 function getOpenAIClient() {
@@ -421,6 +422,35 @@ Use plain language. Be concise.`
         console.error(`Error summarizing task ${taskId}:`, error.message)
         // Don't throw - allow retry
         return { success: false, error: error.message }
+      }
+    }
+  ),
+  // Scheduled function to automatically sync Gmail accounts for new replies and opens
+  inngest.createFunction(
+    { 
+      id: "sync-gmail-accounts",
+      name: "Sync Gmail Accounts for Replies and Opens"
+    },
+    { 
+      cron: "*/5 * * * *" // Run every 5 minutes
+    },
+    async () => {
+      try {
+        console.log("[Inngest Sync] Starting scheduled Gmail sync...")
+        const result = await EmailSyncService.syncGmailAccounts()
+        console.log(`[Inngest Sync] Completed: processed ${result.processed} messages, ${result.errors} errors`)
+        return {
+          success: true,
+          processed: result.processed,
+          errors: result.errors
+        }
+      } catch (error: any) {
+        console.error("[Inngest Sync] Error syncing Gmail accounts:", error)
+        // Don't throw - allow retry on next schedule
+        return {
+          success: false,
+          error: error.message
+        }
       }
     }
   ),
