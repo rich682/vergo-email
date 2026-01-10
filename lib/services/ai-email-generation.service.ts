@@ -116,12 +116,17 @@ export class AIEmailGenerationService {
         // This is a fallback, so keep it simple but useful
         const lowerPrompt = data.prompt.toLowerCase()
         
+        // Determine greeting based on personalization mode
+        const greeting = data.personalizationMode === "csv" && data.selectedRecipients 
+          ? "Dear {{First Name}}," // First Name will be available from contact database
+          : "Hello,"
+        
         // Try to detect context and create appropriate template
         if (lowerPrompt.includes('invoice') || lowerPrompt.includes('payment')) {
           const invoiceVar = data.availableTags.find(t => t.toLowerCase().includes('invoice') || t.toLowerCase().includes('number')) || data.availableTags[0]
           const dueDateVar = data.availableTags.find(t => t.toLowerCase().includes('due') || t.toLowerCase().includes('date'))
           
-          bodyText = `Hello,\n\nI am looking for an update on invoice {{${invoiceVar}}}`
+          bodyText = `${greeting}\n\nI am looking for an update on invoice {{${invoiceVar}}}`
           if (dueDateVar) {
             bodyText += ` with a due date of {{${dueDateVar}}}, which is past due`
             subjectText = `Invoice {{${invoiceVar}}} - Payment Due {{${dueDateVar}}}`
@@ -132,7 +137,7 @@ export class AIEmailGenerationService {
         } else {
           // Generic template with variables - use first variable in subject if available
           const firstVar = data.availableTags[0]
-          bodyText = `Hello,\n\n${data.prompt}\n\nRelevant details: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}\n\nThank you for your prompt attention.\n\nBest regards,`
+          bodyText = `${greeting}\n\n${data.prompt}\n\nRelevant details: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}\n\nThank you for your prompt attention.\n\nBest regards,`
           subjectText = firstVar ? `Request: {{${firstVar}}}` : `Request: ${subject}`
         }
       }
@@ -196,8 +201,7 @@ export class AIEmailGenerationService {
             
             The email should:
             - Start with a professional greeting:
-              * If "{{First Name}}" is available (lookup from contact database), use "Dear {{First Name}}," 
-              * Otherwise, use a generic greeting like "Hello," or "Dear [Recipient],"
+              ${data.personalizationMode === "csv" && data.selectedRecipients ? '* ALWAYS use "Dear {{First Name}}," as the greeting - First Name will be available from the contact database for all recipients' : '* Use "Dear {{First Name}}," if available (from contact database), otherwise use a generic greeting like "Hello," - the system will handle missing First Name gracefully'}
             - Use variables in the SUBJECT LINE when relevant to make it specific and actionable (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}")
             - Understand the SEMANTIC MEANING of each variable and use it contextually
             - Create natural, flowing sentences that incorporate variables meaningfully (don't just list them - weave them into your message)
@@ -248,7 +252,7 @@ export class AIEmailGenerationService {
             
             Respond with a JSON object containing:
             - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? `USE VARIABLES IN SUBJECT when relevant (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}"). Use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. You may also use {{First Name}} if available from contact database.` : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
-            - body: string (plain text email body, 6-10 lines. Use \\n for line breaks between paragraphs. Include greeting: use "Dear {{First Name}}," if available, otherwise "Hello,". Main message, closing. ${data.availableTags && data.availableTags.length > 0 ? `Use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. You may also use {{First Name}} in the greeting if available.` : 'Use "Dear {{First Name}}," if available, otherwise "Hello," for greeting.'} NO signature)
+            - body: string (plain text email body, 6-10 lines. Use \\n for line breaks between paragraphs. Include greeting: ${data.personalizationMode === "csv" && data.selectedRecipients ? 'ALWAYS use "Dear {{First Name}}," as the greeting - First Name will be available from the contact database for all recipients' : 'use "Dear {{First Name}}," if available (from contact database), otherwise "Hello,"'}. Main message, closing. ${data.availableTags && data.availableTags.length > 0 ? `Use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}.` : ''} NO signature)
             - htmlBody: string (HTML formatted version with <br> for line breaks between paragraphs, same content as body. Use <br><br> for paragraph breaks)
             - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} if relevant)
             - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} in greeting if available. Use \\n for line breaks)
@@ -260,18 +264,19 @@ export class AIEmailGenerationService {
             ${data.availableTags && data.availableTags.length > 0 ? `
             Example with intelligent variable usage (variables: "Invoice Number", "Due Date", prompt: "update on outstanding invoices"):
             {
-              "subject": "Update Requested: Invoice {{Invoice Number}} - Payment Past Due",
-              "subjectTemplate": "Update Requested: Invoice {{Invoice Number}} - Payment Past Due",
-              "body": "Hello,\n\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\n\nIf you've already sent payment, please provide confirmation and we'll update our records accordingly.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
-              "bodyTemplate": "Hello,\n\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\n\nIf you've already sent payment, please provide confirmation and we'll update our records accordingly.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
-              "htmlBody": "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,",
-              "htmlBodyTemplate": "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
+              "subject": "Invoice {{Invoice Number}} - Payment Due {{Due Date}}",
+              "subjectTemplate": "Invoice {{Invoice Number}} - Payment Due {{Due Date}}",
+              "body": "Dear {{First Name}},\n\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\n\nIf you've already sent payment, please provide confirmation and we'll update our records accordingly.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
+              "bodyTemplate": "Dear {{First Name}},\n\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\n\nIf you've already sent payment, please provide confirmation and we'll update our records accordingly.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
+              "htmlBody": "Dear {{First Name}},<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,",
+              "htmlBodyTemplate": "Dear {{First Name}},<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
             }
             
             IMPORTANT: 
-            - ONLY use variables that are in the available tags list - do NOT invent variables like "{{First Name}}" unless it's provided
+            ${data.personalizationMode === "csv" && data.selectedRecipients ? '- ALWAYS use "Dear {{First Name}}," as the greeting - First Name will be available from the contact database for all recipients' : '- You may use {{First Name}} in greetings if available (from contact database), otherwise use "Hello," - the system will handle missing First Name gracefully'}
             - Use proper paragraph formatting with line breaks (\\n in plain text, <br> in HTML)
             - Separate greeting, main message, and closing with blank lines (\\n\\n in plain text, <br><br> in HTML)
+            - USE VARIABLES IN THE SUBJECT LINE when relevant (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}")
             ` : `
             Example format (no personalization):
             {
@@ -294,7 +299,7 @@ ${data.availableTags && data.availableTags.length > 0 ? `
 CRITICAL - INTELLIGENT VARIABLE USAGE:
 Available variables that MUST be used: ${data.availableTags.map(t => `"${t}"`).join(', ')}
 
-SPECIAL VARIABLE: "First Name" may be available from the contact database even if not in the user-defined variables list. If available, use it in greetings (e.g., "Dear {{First Name}},"). If not available, use a generic greeting like "Hello,".
+SPECIAL VARIABLE: "First Name" WILL be available from the contact database when recipients are selected from contacts. ${data.personalizationMode === "csv" && data.selectedRecipients ? 'Since you are using CSV personalization mode and recipients are selected from the contact database, ALWAYS use "Dear {{First Name}}," in the greeting. First Name will be looked up from the contact database for each recipient.' : 'Use "Dear {{First Name}}," in greetings when available. If First Name is not available for a specific recipient, the system will automatically replace it with "Hello," during rendering.'}
 
 ANALYSIS REQUIRED:
 1. Read the user's request carefully: "${data.prompt}"
@@ -312,8 +317,8 @@ ANALYSIS REQUIRED:
 3. Create natural sentences that weave variables into the user's request:
    - User wants: "${data.prompt}"
    - Variables available: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}
-   - Your task: Transform "${data.prompt}" into a specific email that uses ONLY these variables naturally
-   - DO NOT use variables that are not in the list above (e.g., do NOT use "{{First Name}}" unless it's explicitly in the list)
+   - Your task: Transform "${data.prompt}" into a specific email that uses these variables naturally
+   - ${data.personalizationMode === "csv" && data.selectedRecipients ? 'ALWAYS use "Dear {{First Name}}," in the greeting since recipients are from the contact database and First Name will be available.' : 'You may use {{First Name}} in greetings if available (from contact database), otherwise use "Hello,". The system will handle missing First Name gracefully.'}
    
 4. Example of intelligent transformation:
    - User request: "update on outstanding invoices"
@@ -326,14 +331,14 @@ ANALYSIS REQUIRED:
    - Variables are woven into natural sentences (not just listed)
    - The email has proper paragraph breaks (\\n\\n between paragraphs in plain text, <br><br> in HTML)
    - The email is specific and contextual (mentions "past due" when using "Due Date")
+   - The greeting uses {{First Name}} which will be available from the contact database
    - The tone matches the user's request (asking for an update)
    - Variables add meaning and context to make it actionable
-   - NO variables were used that aren't in the list
 
 5. REQUIREMENTS:
    - Use variables in the SUBJECT LINE when relevant to make it specific (e.g., "Invoice {{Invoice Number}} - Payment Due {{Due Date}}")
    - Use ALL available variables in your email body where they make sense
-   - You may use {{First Name}} in greetings if available (from contact database), otherwise use "Hello,"
+   - ${data.personalizationMode === "csv" && data.selectedRecipients ? 'ALWAYS use "Dear {{First Name}}," as the greeting - First Name will be available from the contact database for all recipients' : 'Use "Dear {{First Name}}," in greetings when available (from contact database), otherwise use "Hello," - the system will handle missing First Name gracefully'}
    - Create natural, flowing sentences - don't just list variables
    - Format with proper paragraphs - use \\n\\n for paragraph breaks in plain text body/bodyTemplate, <br><br> in HTML versions
    - Separate greeting, main message, and closing with blank lines
@@ -346,7 +351,7 @@ ANALYSIS REQUIRED:
 Sender signature to append:
 ${signature}
 
-Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. USE VARIABLES IN THE SUBJECT LINE when relevant. Use {{First Name}} in greeting if available (from contact database), otherwise use "Hello,". Use proper paragraph formatting with line breaks (\\n\\n for paragraph breaks in plain text, <br><br> in HTML). Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. Use "Dear {{First Name}}," if available, otherwise "Hello," for greeting. '}Keep it concise (6-10 lines in body) with proper paragraph breaks.`
+Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. USE VARIABLES IN THE SUBJECT LINE when relevant. ${data.personalizationMode === "csv" && data.selectedRecipients ? 'ALWAYS start with "Dear {{First Name}}," as the greeting - First Name will be available from the contact database.' : 'Use "Dear {{First Name}}," in greeting if available (from contact database), otherwise use "Hello," - the system will handle missing First Name gracefully.'} Use proper paragraph formatting with line breaks (\\n\\n for paragraph breaks in plain text, <br><br> in HTML). Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. ' + (data.personalizationMode === "csv" && data.selectedRecipients ? 'Start with "Dear {{First Name}}," as the greeting - First Name will be available from the contact database. ' : 'Use "Dear {{First Name}}," if available, otherwise "Hello," for greeting. ')}Keep it concise (6-10 lines in body) with proper paragraph breaks.`
           }
         ],
         response_format: { type: "json_object" },
