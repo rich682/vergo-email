@@ -3,6 +3,7 @@ import { Task, TaskStatus, MessageDirection } from "@prisma/client"
 import { ThreadIdExtractor } from "./thread-id-extractor"
 import { getStorageService } from "./storage.service"
 import { inngest } from "@/inngest/client"
+import { createHash } from "crypto"
 
 export interface InboundEmailData {
   from: string
@@ -158,8 +159,6 @@ export class EmailReceptionService {
     }
     
     console.log(`[Email Reception] Successfully matched reply from ${data.from} to Task ${task.id} (Campaign: ${task.campaignName || 'N/A'})`)
-    
-    console.log(`[Email Reception] Successfully matched reply from ${data.from} to Task ${task.id} (Campaign: ${task.campaignName || 'N/A'})`)
 
     // Process attachments
     let hasAttachments = false
@@ -248,6 +247,21 @@ export class EmailReceptionService {
         messageId: message.id
       }
     })
+
+    // Structured log for reply ingestion
+    // Note: RAG computation happens asynchronously via Inngest, so riskLevel/readStatus may be null here
+    // The RAG computation will log separately via rag_computed event
+    const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+    console.log(JSON.stringify({
+      event: 'reply_ingested',
+      requestId: task.id,
+      recipientHash,
+      timestampMs: new Date().getTime(),
+      result: {
+        riskLevel: task.riskLevel || null,
+        readStatus: task.readStatus || null
+      }
+    }))
 
     return {
       taskId: task.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { computeDeterministicRisk, computeLastActivityAt } from "@/lib/services/risk-computation.service"
+import { createHash } from "crypto"
 
 export async function GET(
   request: NextRequest,
@@ -108,6 +109,19 @@ export async function GET(
       })
 
       console.log(`[Tracking Pixel] Task ${task.id} updated: readStatus=${riskComputation.readStatus}, riskLevel=${riskComputation.riskLevel}, reason="${riskComputation.riskReason}"`)
+      
+      // Structured log for open event ingestion
+      const recipientHash = createHash('sha256').update((message.toAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
+      console.log(JSON.stringify({
+        event: 'open_ingested',
+        requestId: task.id,
+        recipientHash,
+        timestampMs: now.getTime(),
+        result: {
+          riskLevel: riskComputation.riskLevel,
+          readStatus: riskComputation.readStatus
+        }
+      }))
     } else {
       // Manual override exists - only update lastActivityAt, not risk
       await prisma.task.update({
@@ -117,6 +131,20 @@ export async function GET(
         }
       })
       console.log(`[Tracking Pixel] Task ${task.id} has manual override (${task.manualRiskOverride}), skipping risk recomputation. Updated lastActivityAt only.`)
+      
+      // Structured log for open event (with manual override)
+      const recipientHash = createHash('sha256').update((message.toAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
+      console.log(JSON.stringify({
+        event: 'open_ingested',
+        requestId: task.id,
+        recipientHash,
+        timestampMs: now.getTime(),
+        result: {
+          riskLevel: task.manualRiskOverride || task.riskLevel,
+          readStatus: task.readStatus
+        },
+        note: 'manual_override'
+      }))
     }
 
     // Return 1x1 transparent PNG image

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 import OpenAI from "openai"
+import { createHash } from "crypto"
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -246,6 +247,20 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   })
 
                   console.log(`[Risk Computation] Task ${taskId} risk updated after reply: ${llmRiskResult.riskLevel} - ${llmRiskResult.riskReason}`)
+                  
+                  // Structured log for RAG computation (LLM path)
+                  const recipientHash = createHash('sha256').update((latestInboundForRisk.fromAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
+                  console.log(JSON.stringify({
+                    event: 'rag_computed',
+                    requestId: taskId,
+                    recipientHash,
+                    timestampMs: new Date().getTime(),
+                    result: {
+                      riskLevel: llmRiskResult.riskLevel,
+                      readStatus: llmRiskResult.readStatus
+                    },
+                    method: 'llm'
+                  }))
                 } catch (riskError: any) {
                   console.error(`[Risk Computation] Error computing risk for task ${taskId}:`, riskError)
                   // Fallback to deterministic risk computation
@@ -274,6 +289,20 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   })
 
                   console.log(`[Risk Computation] Task ${taskId} risk updated (deterministic fallback): ${deterministicRisk.riskLevel} - ${deterministicRisk.riskReason}`)
+                  
+                  // Structured log for RAG computation (deterministic fallback)
+                  const recipientHash = createHash('sha256').update((latestInboundForRisk.fromAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
+                  console.log(JSON.stringify({
+                    event: 'rag_computed',
+                    requestId: taskId,
+                    recipientHash,
+                    timestampMs: new Date().getTime(),
+                    result: {
+                      riskLevel: deterministicRisk.riskLevel,
+                      readStatus: deterministicRisk.readStatus
+                    },
+                    method: 'deterministic_fallback'
+                  }))
                 }
               } else if (updatedTaskForRisk?.manualRiskOverride) {
                 console.log(`[Risk Computation] Task ${taskId} has manual override (${updatedTaskForRisk.manualRiskOverride}), skipping automatic risk recomputation`)
