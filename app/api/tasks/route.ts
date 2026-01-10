@@ -192,9 +192,9 @@ export async function GET(request: NextRequest) {
       const latestResponseText = latestResponseTextMap.get(task.id) || null
       const latestInboundDate = latestInboundDateMap.get(task.id) || null
       
-      // Compute risk if not manually overridden, or compute anyway for API response
+      // Compute risk based on current state (not stored values)
+      // This ensures readStatus is always accurate based on openedAt and hasReplies
       const riskComputation = computeDeterministicRisk({
-        readStatus: task.readStatus as any,
         hasReplies: inboundCount > 0,
         latestResponseText,
         latestInboundClassification: latestClassification,
@@ -207,9 +207,10 @@ export async function GET(request: NextRequest) {
       })
       
       // Use manual override if present, otherwise use computed risk
+      // Always use computed readStatus based on current state (openedAt, hasReplies), not stored value
       const riskLevel = task.manualRiskOverride || riskComputation.riskLevel
       const riskReason = task.manualRiskOverride ? (task.overrideReason || "Manually set") : riskComputation.riskReason
-      const readStatus = task.readStatus || riskComputation.readStatus
+      const readStatus = riskComputation.readStatus // Always use computed readStatus, not stored value
       const lastActivityAt = computeLastActivityAt({
         readStatus: riskComputation.readStatus,
         hasReplies: inboundCount > 0,

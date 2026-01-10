@@ -34,18 +34,22 @@ export interface RiskComputationResult {
  * - unknown if insufficient data
  */
 export function computeDeterministicRisk(input: RiskComputationInput): RiskComputationResult {
-  // Determine read status
+  // Determine read status based on current state
+  // Priority: replied > read > unread
   let readStatus: ReadStatus = "unknown" as ReadStatus
   
   if (input.hasReplies) {
+    // If there are any inbound messages (replies), status is "replied"
     readStatus = "replied"
   } else if (input.openedAt || input.lastOpenedAt) {
+    // If email was opened (openedAt or lastOpenedAt exists) but no replies, status is "read"
     readStatus = "read"
   } else {
+    // No replies and no open tracking, status is "unread"
     readStatus = "unread"
   }
 
-  // Apply deterministic rules
+  // Apply deterministic risk rules based on read status
   if (readStatus === "unread") {
     return {
       riskLevel: "high",
@@ -54,7 +58,9 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
     }
   }
 
-  if (readStatus === "read" && !input.hasReplies) {
+  if (readStatus === "read") {
+    // Email was opened but no reply received - this is "read but not replied"
+    // Note: If hasReplies is true, readStatus would be "replied", so we don't need to check !hasReplies here
     return {
       riskLevel: "medium",
       riskReason: "Email read but no response",
