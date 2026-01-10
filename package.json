@@ -27,7 +27,8 @@
     "test:api": "vitest run tests/api",
     "test:ui": "vitest run tests/ui",
     "backfill:completion": "tsx scripts/backfill-completion-percentages.ts",
-    "backfill:risk": "tsx scripts/backfill-risk-computation.ts"
+    "backfill:risk": "tsx scripts/backfill-risk-computation.ts",
+    "cleanup:requests": "tsx scripts/cleanup-requests.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
