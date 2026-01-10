@@ -20,17 +20,13 @@ interface VariablesSectionProps {
   onVariablesChange: (variables: string[]) => void
   csvData: CSVParseResult | null
   onCSVUpload: (data: CSVParseResult, variableMapping: Record<string, string>) => void
-  blockOnMissingValues: boolean
-  onBlockOnMissingValuesChange: (value: boolean) => void
 }
 
 export function VariablesSection({
   variables,
   onVariablesChange,
   csvData,
-  onCSVUpload,
-  blockOnMissingValues,
-  onBlockOnMissingValuesChange
+  onCSVUpload
 }: VariablesSectionProps) {
   const [newVariable, setNewVariable] = useState("")
   const [uploading, setUploading] = useState(false)
@@ -288,21 +284,6 @@ export function VariablesSection({
         </div>
       )}
 
-      {/* Block on Missing Values Toggle */}
-      {variables.length > 0 && (
-        <div className="flex items-center space-x-2 pt-2 border-t border-gray-200">
-          <input
-            type="checkbox"
-            id="block-missing"
-            checked={blockOnMissingValues}
-            onChange={(e) => onBlockOnMissingValuesChange(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          <Label htmlFor="block-missing" className="text-sm font-normal cursor-pointer">
-            Block send if required variables are missing
-          </Label>
-        </div>
-      )}
     </div>
   )
 }

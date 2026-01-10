@@ -64,7 +64,6 @@ function ComposePageContent() {
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null)
   const [variableMapping, setVariableMapping] = useState<Record<string, string>>({}) // Maps variable -> CSV column
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from variables
-  const [blockOnMissingValues, setBlockOnMissingValues] = useState(true)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -130,10 +129,11 @@ function ComposePageContent() {
       }
 
       // Build personalization data - use CSV mode if variables are defined
+      // Default blockOnMissingValues to true if variables are defined
       const personalizationPayload = variables.length > 0 ? {
         personalizationMode: "csv" as const,
         availableTags: variables, // Use variables as tags
-        blockOnMissingValues
+        blockOnMissingValues: true // Always block on missing values if variables are defined
       } : {}
 
       const response = await fetch("/api/email-drafts/generate", {
@@ -198,8 +198,7 @@ function ComposePageContent() {
           campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined),
           aiGenerationStatus: "complete",
           personalizationMode: variables.length > 0 ? "csv" : "none",
-          availableTags: variables, // Use variables as tags
-          blockOnMissingValues
+          availableTags: variables // Use variables as tags
         }
         setDraft(draftData)
         
@@ -675,8 +674,6 @@ function ComposePageContent() {
                 setCsvData(data)
                 setVariableMapping(mapping)
               }}
-              blockOnMissingValues={blockOnMissingValues}
-              onBlockOnMissingValuesChange={setBlockOnMissingValues}
             />
           )}
           {error && (
