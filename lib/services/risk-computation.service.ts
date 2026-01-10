@@ -43,8 +43,9 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
   if (input.hasReplies) {
     // If there are any inbound messages (replies), status is "replied"
     readStatus = "replied"
-  } else if (input.openedAt || input.lastOpenedAt) {
-    // If email was opened (openedAt or lastOpenedAt exists) but no replies, status is "read"
+  } else if (input.openedAt instanceof Date || input.lastOpenedAt instanceof Date) {
+    // If email was opened (openedAt or lastOpenedAt is a valid Date) but no replies, status is "read"
+    // Must check instanceof Date to avoid truthy values like empty strings or non-Date objects
     readStatus = "read"
   } else {
     // No replies and no open tracking, status is "unread"

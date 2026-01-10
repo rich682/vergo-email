@@ -187,10 +187,15 @@ export async function GET(request: NextRequest) {
     // Enrich tasks with reply information, read receipt data, classification, and risk
     let tasksWithReplies = tasks.map((task) => {
       const inboundCount = inboundCountMap.get(task.id) || 0
-      const latestOutboundMessage = task.messages[0] || null
+      const latestOutboundMessage = task.messages && task.messages.length > 0 ? task.messages[0] : null
       const latestClassification = latestClassificationMap.get(task.id) || null
       const latestResponseText = latestResponseTextMap.get(task.id) || null
       const latestInboundDate = latestInboundDateMap.get(task.id) || null
+      
+      // For readStatus computation, openedAt and lastOpenedAt should only be used if they're actual Date values
+      // Newly sent emails should have null for these fields until the tracking pixel is hit
+      const openedAt = latestOutboundMessage?.openedAt instanceof Date ? latestOutboundMessage.openedAt : null
+      const lastOpenedAt = latestOutboundMessage?.lastOpenedAt instanceof Date ? latestOutboundMessage.lastOpenedAt : null
       
       // Compute risk based on current state for validation, but prefer persisted values if they exist
       // This ensures readStatus is always accurate based on openedAt and hasReplies
@@ -199,8 +204,8 @@ export async function GET(request: NextRequest) {
         latestResponseText,
         latestInboundClassification: latestClassification,
         completionPercentage: task.completionPercentage,
-        openedAt: latestOutboundMessage?.openedAt || null,
-        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
+        openedAt: openedAt,
+        lastOpenedAt: lastOpenedAt,
         hasAttachments: task.hasAttachments,
         aiVerified: task.aiVerified,
         lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt,
@@ -235,12 +240,14 @@ export async function GET(request: NextRequest) {
         latestResponseText,
         latestInboundClassification: latestClassification,
         completionPercentage: task.completionPercentage,
-        openedAt: latestOutboundMessage?.openedAt || null,
-        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
+        openedAt: openedAt, // Use the validated openedAt (null if not a Date)
+        lastOpenedAt: lastOpenedAt, // Use the validated lastOpenedAt (null if not a Date)
         hasAttachments: task.hasAttachments,
         aiVerified: task.aiVerified,
         lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt
       }) || latestInboundDate || task.updatedAt
+      
+      // Return task with computed risk data
       
       return {
         ...task,
