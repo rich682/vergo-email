@@ -72,9 +72,9 @@ export class AIEmailGenerationService {
       }))
     }
 
-    // Generate email with GPT-4o-mini (hard 2s timeout for <2s completion)
+    // Generate email with GPT-4o-mini (10s timeout for reliable completion)
     const openai = getOpenAIClient()
-    const AI_TIMEOUT_MS = 2000 // 2 seconds hard limit for fast completion
+    const AI_TIMEOUT_MS = 10000 // 10 seconds timeout for reliable LLM completion
     const correlationId = data.correlationId || "unknown"
     const aiStartTime = Date.now()
     
@@ -147,26 +147,31 @@ export class AIEmailGenerationService {
             role: "system",
             content: `You are an AI assistant that helps generate professional, polite email drafts for accounting teams.
             
-            Transform the user's request into a polished email with:
-            1. A concise, specific subject line (avoid "Request:" prefix unless truly necessary)
-            2. A polite email body (6-10 lines) with:
-               - Professional greeting
-               - Clear ask with deadline if mentioned
-               - What to do next (e.g., "reply with attachment", "click link")
-               - Professional closing
-               - Sender signature (provided separately)
+            Transform the user's request into a polished, professional email. The email should:
+            - Start with a professional greeting (e.g., "Dear [Name]," or "Hello,")
+            - Clearly state what you need from the recipient
+            - Mention any deadlines or due dates if provided
+            - Explain what action they need to take (e.g., "Please reply with the attached document", "Click the link below to submit")
+            - End with a professional closing (e.g., "Thank you for your prompt attention to this matter.", "Please let me know if you have any questions.")
+            - Be concise (6-10 lines total, not including greeting/closing)
+            - Be polite and professional in tone
             
-            Be concise, professional, and polite. Keep body to 6-10 lines.
+            The sender signature will be appended automatically by the system - do NOT include it in your response.
             
             Respond with a JSON object containing:
-            - subject: string (concise, specific, no "Request:" prefix unless needed)
-            - body: string (plain text, 6-10 lines, includes signature at end)
-            - htmlBody: string (HTML formatted, same content with <br> for line breaks)
-            - suggestedRecipients: { entityIds?: string[], groupIds?: string[] }
-            - suggestedCampaignName?: string
-            - suggestedCampaignType?: string (one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
+            - subject: string (concise, specific subject line. Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips")
+            - body: string (plain text email body, 6-10 lines. Include greeting, main message, closing. NO signature)
+            - htmlBody: string (HTML formatted version with <br> for line breaks, same content as body)
+            - suggestedRecipients: { entityIds?: string[], groupIds?: string[] } (optional)
+            - suggestedCampaignName?: string (optional)
+            - suggestedCampaignType?: string (optional, one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
             
-            The signature will be appended automatically - do NOT include it in body/htmlBody.`
+            Example format:
+            {
+              "subject": "2024 Payroll Slips Submission",
+              "body": "Hello,\n\nWe need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
+              "htmlBody": "Hello,<br><br>We need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
+            }`
           },
           {
             role: "user",
@@ -211,16 +216,51 @@ Generate a polite, professional email draft. Keep it concise (6-10 lines in body
         return getTemplateFallback()
       }
 
-    const parsed = JSON.parse(response) as GeneratedEmailDraft
+      // Parse JSON response with error handling
+      let parsed: GeneratedEmailDraft
+      try {
+        parsed = JSON.parse(response) as GeneratedEmailDraft
+      } catch (parseError: any) {
+        console.log(JSON.stringify({
+          event: "ai_generation_parse_error",
+          correlationId,
+          error: parseError.message,
+          responsePreview: response.substring(0, 200),
+          timestamp: new Date().toISOString(),
+          usedTemplate: true
+        }))
+        return getTemplateFallback()
+      }
 
-    // Append signature to body (signature already built above)
-    const bodyWithSignature = signature 
-      ? `${parsed.body || ""}\n\n${signature}`
-      : (parsed.body || "")
-    
-    const htmlBodyWithSignature = signature
-      ? `${parsed.htmlBody || parsed.body || ""}<br><br>${signature.replace(/\n/g, '<br>')}`
-      : (parsed.htmlBody || parsed.body || "")
+      // Validate that we got a proper email body
+      if (!parsed.body || parsed.body.trim().length === 0) {
+        console.log(JSON.stringify({
+          event: "ai_generation_empty_body",
+          correlationId,
+          parsedKeys: Object.keys(parsed),
+          timestamp: new Date().toISOString(),
+          usedTemplate: true
+        }))
+        return getTemplateFallback()
+      }
+
+      // Log successful AI generation
+      console.log(JSON.stringify({
+        event: "ai_generation_success",
+        correlationId,
+        subjectPreview: parsed.subject?.substring(0, 50),
+        bodyLength: parsed.body?.length || 0,
+        timestamp: new Date().toISOString()
+      }))
+
+      // Append signature to body (signature already built above)
+      const bodyWithSignature = signature 
+        ? `${parsed.body || ""}\n\n${signature}`
+        : (parsed.body || "")
+      
+      const htmlBodyWithSignature = signature
+        ? `${parsed.htmlBody || parsed.body || ""}<br><br>${signature.replace(/\n/g, '<br>')}`
+        : (parsed.htmlBody || parsed.body || "")
 
     // Use selected recipients if provided, otherwise validate AI suggestions
     let validatedRecipients: GeneratedEmailDraft["suggestedRecipients"] = {
@@ -272,11 +312,13 @@ Generate a polite, professional email draft. Keep it concise (6-10 lines in body
       }
       
       const aiEndTime = Date.now()
-      if (aborted || error.name === "AbortError" || error.message?.includes("timeout")) {
+      if (aborted || error.name === "AbortError" || error.message?.includes("timeout") || error.message?.includes("aborted")) {
         console.log(JSON.stringify({
           event: "ai_generation_timeout_fallback",
           correlationId,
           idempotencyKey: null,
+          errorType: error.name,
+          errorMessage: error.message,
           timestamp: new Date().toISOString(),
           timeMs: aiEndTime,
           durationMs: aiEndTime - aiStartTime,
@@ -290,7 +332,9 @@ Generate a polite, professional email draft. Keep it concise (6-10 lines in body
         event: "ai_generation_error_fallback",
         correlationId,
         idempotencyKey: null,
-        error: error.message,
+        errorType: error.name,
+        errorMessage: error.message,
+        errorCode: (error as any).code,
         timestamp: new Date().toISOString(),
         timeMs: aiEndTime,
         durationMs: aiEndTime - aiStartTime,
