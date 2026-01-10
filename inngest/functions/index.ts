@@ -432,7 +432,7 @@ Use plain language. Be concise.`
       name: "Sync Gmail Accounts for Replies and Opens"
     },
     { 
-      cron: "*/5 * * * *" // Run every 5 minutes
+      cron: "* * * * *" // Run every 1 minute
     },
     async () => {
       try {
