@@ -147,12 +147,30 @@ export async function POST(
       for (const recipient of recipientList) {
         const personalizationData = personalizationMap.get(recipient.email.toLowerCase())
         if (personalizationData) {
-          const dataJson = personalizationData.dataJson as Record<string, string>
+          // Enrich dataJson with recipient info if entity exists (for "First Name" if used in template)
+          const dataJson = { ...(personalizationData.dataJson as Record<string, string>) }
+          
+          // If entity exists and has firstName, add "First Name" to dataJson if it's in the template but not in CSV data
+          const entity = recipient.entityId ? await EntityService.findById(recipient.entityId, session.user.organizationId) : null
+          if (entity?.firstName && !dataJson["First Name"] && !dataJson["first name"] && !dataJson["firstName"]) {
+            // Only add if "First Name" tag is actually used in the template
+            const allTags = [...extractTags(subjectTemplate), ...extractTags(bodyTemplate), ...extractTags(htmlBodyTemplate)]
+            const usesFirstName = allTags.some(tag => normalizeTagName(tag) === normalizeTagName("First Name"))
+            if (usesFirstName) {
+              dataJson["First Name"] = entity.firstName
+            }
+          }
           
           // Render templates for this recipient
           const subjectResult = renderTemplate(subjectTemplate, dataJson)
           const bodyResult = renderTemplate(bodyTemplate, dataJson)
-          const htmlBodyResult = renderTemplate(htmlBodyTemplate, dataJson)
+          
+          // Ensure HTML body has proper line breaks - convert \n to <br> if not already present
+          // First, render the template, then convert any remaining \n to <br>
+          const htmlBodyTemplateProcessed = htmlBodyTemplate.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
+          const htmlBodyResult = renderTemplate(htmlBodyTemplateProcessed, dataJson)
+          // Convert any \n that might be in the rendered values to <br>
+          const htmlBodyRendered = htmlBodyResult.rendered.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
           
           const missingTags = [...new Set([...subjectResult.missingTags, ...bodyResult.missingTags, ...htmlBodyResult.missingTags])]
           
@@ -167,7 +185,7 @@ export async function POST(
           
           // Append signature to rendered body for personalized emails
           const renderedBodyWithSignature = bodyResult.rendered + (signature ? `\n\n${signature}` : '')
-          const renderedHtmlBodyWithSignature = htmlBodyResult.rendered + (signature ? `<br><br>${signature.replace(/\n/g, '<br>')}` : '')
+          const renderedHtmlBodyWithSignature = htmlBodyRendered + (signature ? `<br><br>${signature.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}` : '')
           
           if (blockOnMissingValues && missingTags.length > 0) {
             renderedEmails.push({
@@ -207,7 +225,9 @@ export async function POST(
           
           // Append signature to rendered body
           const emptyRenderedBodyWithSignature = emptyBodyResult.rendered + (signature ? `\n\n${signature}` : '')
-          const emptyRenderedHtmlBodyWithSignature = emptyHtmlBodyResult.rendered + (signature ? `<br><br>${signature.replace(/\n/g, '<br>')}` : '')
+          // Ensure HTML body has proper line breaks
+          const emptyHtmlBodyProcessed = emptyHtmlBodyResult.rendered.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
+          const emptyRenderedHtmlBodyWithSignature = emptyHtmlBodyProcessed + (signature ? `<br><br>${signature.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}` : '')
           
           renderedEmails.push({
             email: recipient.email,
@@ -231,11 +251,15 @@ export async function POST(
         
         const subjectResult = renderTemplate(subjectTemplate, dataJson)
         const bodyResult = renderTemplate(bodyTemplate, dataJson)
-        const htmlBodyResult = renderTemplate(htmlBodyTemplate, dataJson)
+        
+        // Ensure HTML body has proper line breaks
+        const contactHtmlBodyTemplateProcessed = htmlBodyTemplate.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
+        const htmlBodyResult = renderTemplate(contactHtmlBodyTemplateProcessed, dataJson)
+        const contactHtmlBodyRendered = htmlBodyResult.rendered.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
         
         // Append signature to rendered body for personalized emails
         const contactRenderedBodyWithSignature = bodyResult.rendered + (signature ? `\n\n${signature}` : '')
-        const contactRenderedHtmlBodyWithSignature = htmlBodyResult.rendered + (signature ? `<br><br>${signature.replace(/\n/g, '<br>')}` : '')
+        const contactRenderedHtmlBodyWithSignature = contactHtmlBodyRendered + (signature ? `<br><br>${signature.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}` : '')
         
         renderedEmails.push({
           email: recipient.email,
@@ -257,13 +281,16 @@ export async function POST(
       }
     } else {
       // No personalization - use template as-is (signature already included in template from AI generation)
+      // Ensure HTML body has proper line breaks
+      const noPersonalizationHtmlBody = htmlBodyTemplate.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')
+      
       for (const recipient of recipientList) {
         renderedEmails.push({
           email: recipient.email,
           name: recipient.name,
           subject: subjectTemplate,
           body: bodyTemplate, // Already includes signature from AI generation
-          htmlBody: htmlBodyTemplate, // Already includes signature from AI generation
+          htmlBody: noPersonalizationHtmlBody, // Already includes signature from AI generation, with proper HTML formatting
           renderStatus: "ok",
           renderErrors: undefined
         })

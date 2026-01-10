@@ -191,9 +191,11 @@ export class AIEmailGenerationService {
             Transform the user's request into a polished, professional email that intelligently incorporates available variables.
             
             The email should:
-            - Start with a professional greeting (e.g., "Dear {{First Name}}," or "Hello,")
+            - Start with a professional greeting (${data.availableTags && data.availableTags.some(t => t.toLowerCase().includes('first') || t.toLowerCase().includes('name')) ? 'e.g., "Dear {{First Name}},"' : '"Hello," or "Dear [Recipient],"'})
+            - ONLY use variables that are explicitly provided in the available tags list - DO NOT invent variables like "{{First Name}}" unless it's in the list
             - Understand the SEMANTIC MEANING of each variable and use it contextually
             - Create natural, flowing sentences that incorporate variables meaningfully (don't just list them - weave them into your message)
+            - Use proper paragraph structure with line breaks for readability (use \n for line breaks in plain text, <br> for HTML)
             - Clearly state what you need from the recipient, using variables to make it specific (e.g., "I am looking for an update on invoice {{Invoice Number}}")
             - Use variables to add context and urgency where appropriate (e.g., "with a due date of {{Due Date}}, which is past due")
             - Explain what action they need to take (e.g., "Can you let us know when you'll be able to pay it?")
@@ -201,6 +203,7 @@ export class AIEmailGenerationService {
             - Be concise (6-10 lines total, not including greeting/closing)
             - Be polite and professional in tone
             - Make the email feel personalized and specific, not generic
+            - Format the email with proper paragraphs - separate greeting, main message, and closing with line breaks
             
             ${data.availableTags && data.availableTags.length > 0 ? `
             CRITICAL - INTELLIGENT PERSONALIZATION WITH VARIABLES:
@@ -238,12 +241,12 @@ export class AIEmailGenerationService {
             The sender signature will be appended automatically by the system - do NOT include it in your response.
             
             Respond with a JSON object containing:
-            - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? 'May include {{Tag Name}} placeholders if relevant.' : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
-            - body: string (plain text email body, 6-10 lines. Include greeting, main message, closing. ${data.availableTags && data.availableTags.length > 0 ? 'Use {{Tag Name}} syntax for personalization.' : ''} NO signature)
-            - htmlBody: string (HTML formatted version with <br> for line breaks, same content as body)
+            - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? 'May include {{Tag Name}} placeholders if relevant. ONLY use variables from the available tags list.' : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
+            - body: string (plain text email body, 6-10 lines. Use \\n for line breaks between paragraphs. Include greeting, main message, closing. ${data.availableTags && data.availableTags.length > 0 ? `ONLY use these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. DO NOT use variables not in this list.` : ''} NO signature)
+            - htmlBody: string (HTML formatted version with <br> for line breaks between paragraphs, same content as body. Use <br><br> for paragraph breaks)
             - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled)
-            - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled)
-            - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled)
+            - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled. Use \\n for line breaks)
+            - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled. Use <br> for line breaks, <br><br> for paragraph breaks)
             - suggestedRecipients: { entityIds?: string[], groupIds?: string[] } (optional)
             - suggestedCampaignName?: string (optional)
             - suggestedCampaignType?: string (optional, one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
@@ -258,6 +261,11 @@ export class AIEmailGenerationService {
               "htmlBody": "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,",
               "htmlBodyTemplate": "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>If you've already sent payment, please provide confirmation and we'll update our records accordingly.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
             }
+            
+            IMPORTANT: 
+            - ONLY use variables that are in the available tags list - do NOT invent variables like "{{First Name}}" unless it's provided
+            - Use proper paragraph formatting with line breaks (\\n in plain text, <br> in HTML)
+            - Separate greeting, main message, and closing with blank lines (\\n\\n in plain text, <br><br> in HTML)
             ` : `
             Example format (no personalization):
             {
@@ -278,7 +286,7 @@ User request: "${data.prompt}"
 ${data.availableTags && data.availableTags.length > 0 ? `
 
 CRITICAL - INTELLIGENT VARIABLE USAGE:
-Available variables that MUST be used: ${data.availableTags.map(t => `"${t}"`).join(', ')}
+Available variables that MUST be used (ONLY use these, do NOT invent others): ${data.availableTags.map(t => `"${t}"`).join(', ')}
 
 ANALYSIS REQUIRED:
 1. Read the user's request carefully: "${data.prompt}"
@@ -286,33 +294,40 @@ ANALYSIS REQUIRED:
    ${data.availableTags.map(t => {
      const lower = t.toLowerCase()
      let meaning = ''
-     if (lower.includes('invoice') || lower.includes('number')) meaning = '= specific invoice identifier'
-     else if (lower.includes('due') || lower.includes('date')) meaning = '= payment deadline or date something is due'
-     else if (lower.includes('amount') || lower.includes('total')) meaning = '= monetary value'
-     else if (lower.includes('first') || lower.includes('name')) meaning = "= recipient's first name"
-     else meaning = '= interpret based on variable name'
+     if (lower.includes('invoice') && lower.includes('number')) meaning = '= specific invoice identifier (use like "invoice {{' + t + '}}")'
+     else if (lower.includes('due') && lower.includes('date')) meaning = '= payment deadline or due date (use like "with a due date of {{' + t + '}}, which is past due")'
+     else if (lower.includes('amount') || lower.includes('total')) meaning = '= monetary value (use like "amount of ${{' + t + '}}")'
+     else if (lower.includes('first') && lower.includes('name')) meaning = "= recipient's first name (use in greeting like 'Dear {{' + t + '}}')"
+     else meaning = '= interpret based on variable name and use contextually'
      return `   - "${t}" ${meaning}`
    }).join('\n')}
 
 3. Create natural sentences that weave variables into the user's request:
    - User wants: "${data.prompt}"
    - Variables available: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}
-   - Your task: Transform "${data.prompt}" into a specific email that uses these variables naturally
+   - Your task: Transform "${data.prompt}" into a specific email that uses ONLY these variables naturally
+   - DO NOT use variables that are not in the list above (e.g., do NOT use "{{First Name}}" unless it's explicitly in the list)
    
 4. Example of intelligent transformation:
    - User request: "update on outstanding invoices"
    - Variables: ["Invoice Number", "Due Date"]
-   - Your output should be: "I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?"
+   - Your output should be: "Hello,\\n\\nI am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?\\n\\nThank you for your prompt attention.\\n\\nBest regards,"
+   - HTML version: "Hello,<br><br>I am looking for an update on invoice {{Invoice Number}} with a due date of {{Due Date}}, which is past due. Can you let us know when you'll be able to pay it?<br><br>Thank you for your prompt attention.<br><br>Best regards,"
    
    Notice how:
    - Variables are woven into natural sentences (not just listed)
+   - The email has proper paragraph breaks (\\n\\n between paragraphs in plain text, <br><br> in HTML)
    - The email is specific and contextual (mentions "past due" when using "Due Date")
    - The tone matches the user's request (asking for an update)
    - Variables add meaning and context to make it actionable
+   - NO variables were used that aren't in the list
 
 5. REQUIREMENTS:
+   - Use ONLY the variables provided in the list above - do NOT invent or add variables like "{{First Name}}" unless it's in the list
    - Use ALL available variables in your email body where they make sense
    - Create natural, flowing sentences - don't just list variables
+   - Format with proper paragraphs - use \\n\\n for paragraph breaks in plain text body/bodyTemplate, <br><br> in HTML versions
+   - Separate greeting, main message, and closing with blank lines
    - Make the email specific and actionable using variables
    - Match the user's intent and tone from their original request
    - Variables should enhance the message, not distract from it
@@ -322,7 +337,7 @@ ANALYSIS REQUIRED:
 Sender signature to append:
 ${signature}
 
-Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. '}Keep it concise (6-10 lines in body).`
+Generate a polite, professional email draft that ${data.availableTags && data.availableTags.length > 0 ? `intelligently transforms "${data.prompt}" into a specific, contextual email that naturally incorporates ONLY these variables: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}. Use proper paragraph formatting with line breaks (\\n\\n for paragraph breaks in plain text, <br><br> in HTML). Make it feel like a real, personalized request - not a template. ` : 'clearly addresses the user\'s request. '}Keep it concise (6-10 lines in body) with proper paragraph breaks.`
           }
         ],
         response_format: { type: "json_object" },
