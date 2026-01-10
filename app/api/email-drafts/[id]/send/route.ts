@@ -73,38 +73,64 @@ export async function POST(
       )
     }
 
-    // Resolve recipients and build per-recipient data
+    // Resolve recipients based on personalization mode
     const recipientList: Array<{ email: string; name?: string; entityId?: string }> = []
+    let existingPersonalizationData: any[] = [] // Store for use in CSV mode rendering
 
-    if (recipients?.entityIds) {
-      for (const entityId of recipients.entityIds) {
-        const entity = await EntityService.findById(
-          entityId,
-          session.user.organizationId
+    if (personalizationMode === "csv") {
+      // In CSV mode, recipients come from personalization data (stored during generation)
+      existingPersonalizationData = await PersonalizationDataService.findByDraftId(params.id)
+      
+      if (existingPersonalizationData.length === 0) {
+        return NextResponse.json(
+          { error: "No personalization data found. Please upload a CSV and generate the draft first." },
+          { status: 400 }
         )
-        if (entity?.email) {
-          recipientList.push({
-            email: entity.email,
-            name: entity.firstName,
-            entityId: entity.id
-          })
-        }
       }
-    }
-
-    if (recipients?.groupIds) {
-      for (const groupId of recipients.groupIds) {
-        const entities = await EntityService.findByOrganization(
-          session.user.organizationId,
-          { groupId }
-        )
-        for (const entity of entities) {
-          if (entity.email && !recipientList.find(r => r.email === entity.email)) {
+      
+      for (const pd of existingPersonalizationData) {
+        // Try to find entity by email to get name
+        const entity = pd.contactId ? await EntityService.findById(pd.contactId, session.user.organizationId) : 
+                      await EntityService.findByEmail(pd.recipientEmail, session.user.organizationId)
+        
+        recipientList.push({
+          email: pd.recipientEmail,
+          name: entity?.firstName || pd.recipientEmail.split('@')[0],
+          entityId: entity?.id || pd.contactId || undefined
+        })
+      }
+    } else {
+      // Contact mode: resolve from selected recipients
+      if (recipients?.entityIds) {
+        for (const entityId of recipients.entityIds) {
+          const entity = await EntityService.findById(
+            entityId,
+            session.user.organizationId
+          )
+          if (entity?.email) {
             recipientList.push({
               email: entity.email,
               name: entity.firstName,
               entityId: entity.id
             })
+          }
+        }
+      }
+
+      if (recipients?.groupIds) {
+        for (const groupId of recipients.groupIds) {
+          const entities = await EntityService.findByOrganization(
+            session.user.organizationId,
+            { groupId }
+          )
+          for (const entity of entities) {
+            if (entity.email && !recipientList.find(r => r.email === entity.email)) {
+              recipientList.push({
+                email: entity.email,
+                name: entity.firstName,
+                entityId: entity.id
+              })
+            }
           }
         }
       }
@@ -142,9 +168,7 @@ export async function POST(
 
     // Build dataJson for each recipient
     if (personalizationMode === "csv") {
-      // Fetch personalization data from database (should have been created during generation)
-      const existingPersonalizationData = await PersonalizationDataService.findByDraftId(params.id)
-      
+      // Use personalization data already fetched (no need to fetch again)
       // Build a map for quick lookup
       const personalizationMap = new Map<string, any>()
       existingPersonalizationData.forEach(p => {

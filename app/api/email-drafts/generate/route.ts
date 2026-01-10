@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate recipients in request mode (if requestName is provided, treat as request mode)
-    if (requestName && selectedRecipients) {
+    // Validate recipients in request mode (only for contact mode, not CSV mode)
+    if (requestName && selectedRecipients && personalizationMode !== "csv") {
       const entityIds = selectedRecipients.entityIds || []
       const groupIds = selectedRecipients.groupIds || []
       if (entityIds.length === 0 && groupIds.length === 0) {

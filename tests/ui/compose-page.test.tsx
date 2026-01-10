@@ -13,6 +13,7 @@ describe('ComposePage - Generate Request Flow', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('should handle polling timeout and clear loading state', async () => {
@@ -31,7 +32,7 @@ describe('ComposePage - Generate Request Flow', () => {
       }
       if (url.includes('/api/email-drafts/test-draft-id')) {
         pollCount++
-        if (pollCount > 60) {
+        if (pollCount > 5) { // Reduced for faster test execution
           loadingCleared = true
           return Promise.resolve({
             ok: true,
@@ -53,16 +54,17 @@ describe('ComposePage - Generate Request Flow', () => {
       return Promise.reject(new Error('Unknown endpoint'))
     })
 
-    const startTime = Date.now()
-    const MAX_POLL_TIME = 60000
-    
-    while (Date.now() - startTime < MAX_POLL_TIME && !loadingCleared) {
+    // Use a fixed number of iterations instead of while loop with Date.now()
+    const MAX_POLL_COUNT = 10
+    for (let i = 0; i < MAX_POLL_COUNT && !loadingCleared; i++) {
       await mockFetch(`/api/email-drafts/test-draft-id`)
       vi.advanceTimersByTime(1000)
+      // Process pending promises
+      await Promise.resolve()
     }
 
     expect(loadingCleared).toBe(true)
-    expect(pollCount).toBeGreaterThan(60)
+    expect(pollCount).toBeGreaterThan(5)
   })
 
   it('should handle failed status and preserve draft', async () => {

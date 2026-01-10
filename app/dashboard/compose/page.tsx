@@ -19,8 +19,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
-import { VariablesSection } from "@/components/compose/variables-section"
-import type { CSVParseResult } from "@/lib/utils/csv-parser"
 
 function ComposePageContent() {
   const searchParams = useSearchParams()
@@ -59,14 +57,117 @@ function ComposePageContent() {
   const [bodyUserEdited, setBodyUserEdited] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   
-  // Variables state
-  const [variables, setVariables] = useState<string[]>([]) // User-defined variable names
-  const [csvData, setCsvData] = useState<CSVParseResult | null>(null)
-  const [variableMapping, setVariableMapping] = useState<Record<string, string>>({}) // Maps variable -> CSV column
-  const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from variables
+  // Recipient source state (exclusive: contact vs CSV)
+  const [recipientSource, setRecipientSource] = useState<"contact" | "csv">("contact")
+  
+  // CSV mode state
+  const [csvData, setCsvData] = useState<{
+    recipients: { emails: string[]; count: number }
+    tags: string[]
+    emailColumnName: string
+    missingCountsByTag: Record<string, number>
+    blockingErrors: string[]
+    rows: Array<Record<string, string>>
+    emailColumn: string
+    tagColumns: string[]
+    normalizedTagMap: Record<string, string>
+  } | null>(null)
+  const [csvUploading, setCsvUploading] = useState(false)
+  const [csvUploadError, setCsvUploadError] = useState<string | null>(null)
+  const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from CSV or contact fields
   
   // Deadline state
   const [deadlineDate, setDeadlineDate] = useState<string>("") // Deadline date (ISO string format)
+  
+  // Personalization mode: "none" | "contact" | "csv"
+  const personalizationMode = recipientSource === "csv" && csvData ? "csv" : (recipientSource === "contact" ? "contact" : "none")
+  const [blockOnMissingValues, setBlockOnMissingValues] = useState(true)
+
+  // Handle recipient source change with confirmation if data exists
+  const handleRecipientSourceChange = (newSource: "contact" | "csv") => {
+    if (newSource === recipientSource) return
+
+    // Check if we need to show confirmation
+    const hasData = (newSource === "csv" && csvData) || 
+                   (newSource === "contact" && selectedRecipients.length > 0) ||
+                   (recipientSource === "csv" && csvData) ||
+                   (recipientSource === "contact" && selectedRecipients.length > 0)
+
+    if (hasData && !confirm(`Switching to ${newSource === "csv" ? "CSV" : "Contact"} mode will clear existing ${recipientSource === "csv" ? "CSV" : "contact"} data. Continue?`)) {
+      return
+    }
+
+    setRecipientSource(newSource)
+    
+    // Clear conflicting data
+    if (newSource === "csv") {
+      setSelectedRecipients([])
+      setRecipientsError(null)
+    } else {
+      setCsvData(null)
+      setAvailableTags([])
+      setCsvUploadError(null)
+    }
+  }
+
+  // Handle CSV file upload
+  const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.csv')) {
+      setCsvUploadError("Please select a CSV file")
+      return
+    }
+
+    setCsvUploading(true)
+    setCsvUploadError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch("/api/email-drafts/csv-upload", {
+        method: "POST",
+        body: formData
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to upload CSV" }))
+        throw new Error(errorData.error || "Failed to upload CSV")
+      }
+
+      const result = await response.json()
+      if (result.success && result.data) {
+        // CSV columns automatically become tags (all non-email columns)
+        const tags = result.data.tags || result.data.tagColumns || []
+        setAvailableTags(tags)
+        setCsvData({
+          recipients: result.data.recipients || { emails: [], count: 0 },
+          tags,
+          emailColumnName: result.data.emailColumnName || result.data.emailColumn,
+          missingCountsByTag: result.data.missingCountsByTag || result.data.validation?.missingValues || {},
+          blockingErrors: result.data.blockingErrors || [],
+          rows: result.data.rows,
+          emailColumn: result.data.emailColumn,
+          tagColumns: result.data.tagColumns,
+          normalizedTagMap: result.data.normalizedTagMap || {}
+        })
+      } else {
+        throw new Error("Invalid response from server")
+      }
+    } catch (error: any) {
+      setCsvUploadError(error.message || "Failed to upload CSV")
+      setCsvData(null)
+      setAvailableTags([])
+    } finally {
+      setCsvUploading(false)
+      // Reset file input
+      if (event.target) {
+        event.target.value = ""
+      }
+    }
+  }
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -81,29 +182,30 @@ function ComposePageContent() {
       setRequestNameError(null)
     }
 
-    // Validate recipients in request mode
+    // Validate recipients based on recipient source
     if (isRequestMode) {
-      if (selectedRecipients.length === 0) {
-        setRecipientsError("At least one contact or group must be selected")
-        return
-      }
-      setRecipientsError(null)
-    }
-
-    // Validate CSV upload if variables are defined
-    if (variables.length > 0 && !csvData) {
-      setError("Please upload a CSV file to populate your variables")
-      setLoading(false)
-      return
-    }
-    
-    // Check that all variables are mapped if CSV is uploaded
-    if (variables.length > 0 && csvData) {
-      const unmapped = variables.filter(v => !variableMapping[v])
-      if (unmapped.length > 0) {
-        setError(`Please map all variables to CSV columns. Unmapped: ${unmapped.map(v => `"${v}"`).join(", ")}`)
-        setLoading(false)
-        return
+      if (recipientSource === "contact") {
+        if (selectedRecipients.length === 0) {
+          setRecipientsError("At least one contact or group must be selected")
+          return
+        }
+        setRecipientsError(null)
+      } else if (recipientSource === "csv") {
+        if (!csvData) {
+          setError("Please upload a CSV file")
+          setLoading(false)
+          return
+        }
+        if (csvData.blockingErrors && csvData.blockingErrors.length > 0) {
+          setError(`CSV has errors: ${csvData.blockingErrors.join(", ")}`)
+          setLoading(false)
+          return
+        }
+        if (csvData.recipients.count === 0) {
+          setError("CSV must contain at least one recipient")
+          setLoading(false)
+          return
+        }
       }
     }
 
@@ -125,18 +227,33 @@ function ComposePageContent() {
         groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id)
       } : undefined
 
-      if (isRequestMode && (!recipientsData || (recipientsData.entityIds.length === 0 && recipientsData.groupIds.length === 0))) {
-        setRecipientsError("At least one contact or group must be selected")
-        setLoading(false)
-        return
+      // Build recipients data based on source
+      let finalRecipientsData = undefined
+      if (recipientSource === "contact") {
+        finalRecipientsData = selectedRecipients.length > 0 ? {
+          entityIds: selectedRecipients.filter(r => r.type === "entity").map(r => r.id),
+          groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id)
+        } : undefined
+        
+        if (isRequestMode && (!finalRecipientsData || (finalRecipientsData.entityIds.length === 0 && finalRecipientsData.groupIds.length === 0))) {
+          setRecipientsError("At least one contact or group must be selected")
+          setLoading(false)
+          return
+        }
+      } else if (recipientSource === "csv" && csvData) {
+        // For CSV mode, recipients come from CSV - create a placeholder structure
+        // The actual recipients will be determined when sending from CSV data
+        finalRecipientsData = {
+          entityIds: [],
+          groupIds: []
+        }
       }
 
-      // Build personalization data - use CSV mode if variables are defined
-      // Default blockOnMissingValues to true if variables are defined
-      const personalizationPayload = variables.length > 0 ? {
-        personalizationMode: "csv" as const,
-        availableTags: variables, // Use variables as tags
-        blockOnMissingValues: true // Always block on missing values if variables are defined
+      // Build personalization payload based on recipient source
+      const personalizationPayload = personalizationMode !== "none" ? {
+        personalizationMode,
+        availableTags: personalizationMode === "csv" && csvData ? csvData.tags : (personalizationMode === "contact" ? ["First Name", "Email"] : []),
+        blockOnMissingValues
       } : {}
 
       const response = await fetch("/api/email-drafts/generate", {
@@ -144,7 +261,7 @@ function ComposePageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt,
-          selectedRecipients: recipientsData,
+          selectedRecipients: finalRecipientsData,
           idempotencyKey: newIdempotencyKey,
           requestName: isRequestMode ? requestName.trim() : undefined,
           deadlineDate: isRequestMode && deadlineDate ? deadlineDate : undefined,
@@ -162,34 +279,22 @@ function ComposePageContent() {
       
       // Synchronous generation always returns completed immediately
       if (data.status === "completed" && data.draft) {
-        // If variables are defined and CSV is uploaded, persist personalization data
-        if (variables.length > 0 && csvData && Object.keys(variableMapping).length > 0) {
+        // If CSV mode, persist personalization data immediately after draft creation
+        if (personalizationMode === "csv" && csvData && data.id) {
           try {
-            // Remap CSV rows to use variable names instead of CSV column names
-            const remappedRows = csvData.rows.map(row => {
-              const remapped: Record<string, string> = {}
-              remapped[csvData.emailColumn] = row[csvData.emailColumn] // Keep email column as-is
-              
-              // Map CSV columns to variables
-              for (const [variable, csvColumn] of Object.entries(variableMapping)) {
-                remapped[variable] = row[csvColumn] || ""
-              }
-              
-              return remapped
-            })
-            
             const personalizationResponse = await fetch(`/api/email-drafts/${data.id}/personalization-data`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                csvRows: remappedRows,
+                csvRows: csvData.rows,
                 emailColumn: csvData.emailColumn,
-                tagColumns: variables // Use variables as tag columns
+                tagColumns: csvData.tagColumns // Use all CSV columns except email as tags
               })
             })
 
             if (!personalizationResponse.ok) {
-              console.error("Failed to store personalization data")
+              const errorData = await personalizationResponse.json().catch(() => ({ error: "Failed to store personalization data" }))
+              console.error("Failed to store personalization data:", errorData.error)
             }
           } catch (error) {
             console.error("Error storing personalization data:", error)
@@ -201,8 +306,8 @@ function ComposePageContent() {
           ...data.draft,
           campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined),
           aiGenerationStatus: "complete",
-          personalizationMode: variables.length > 0 ? "csv" : "none",
-          availableTags: variables // Use variables as tags
+          personalizationMode,
+          availableTags: personalizationMode === "csv" && csvData ? csvData.tags : (personalizationMode === "contact" ? ["First Name", "Email"] : [])
         }
         setDraft(draftData)
         
@@ -302,7 +407,7 @@ function ComposePageContent() {
         generatedBody: previewBody
       }
       
-      if (variables.length > 0) {
+      if (personalizationMode !== "none") {
         updateData.subjectTemplate = previewSubject
         updateData.bodyTemplate = previewBody
         updateData.htmlBodyTemplate = previewBody // Use body as HTML template for now
@@ -632,53 +737,159 @@ function ComposePageContent() {
             />
             {isRequestMode && (
               <p className="text-xs text-gray-500 mt-1">
-                Be specific about what you need and when it's due. {variables.length > 0 && `Available variables: ${variables.map(v => `{{${v}}}`).join(", ")}`}
+                Be specific about what you need and when it's due. {availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
               </p>
             )}
           </div>
           
-          <div>
-            <Label>
-              {isRequestMode ? "Who needs to respond?" : "To (Optional - type / to search)"}
-              {isRequestMode && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            <RecipientSelector
-              selectedRecipients={selectedRecipients}
-              onRecipientsChange={(recipients) => {
-                setSelectedRecipients(recipients)
-                if (recipientsError) setRecipientsError(null)
-              }}
-              requireContacts={isRequestMode}
-            />
-            {isRequestMode && (
+          {/* Recipient Source Selector - only in request mode */}
+          {isRequestMode && (
+            <div>
+              <Label>
+                Recipient source <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <div className="flex gap-4 mt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="recipientSource"
+                    value="contact"
+                    checked={recipientSource === "contact"}
+                    onChange={() => handleRecipientSourceChange("contact")}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">Select contacts/groups</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="recipientSource"
+                    value="csv"
+                    checked={recipientSource === "csv"}
+                    onChange={() => handleRecipientSourceChange("csv")}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">Upload CSV</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Contact/Group Selector - only shown when contact mode is selected */}
+          {isRequestMode && recipientSource === "contact" && (
+            <div>
+              <Label>
+                Who needs to respond? <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <RecipientSelector
+                selectedRecipients={selectedRecipients}
+                onRecipientsChange={(recipients) => {
+                  setSelectedRecipients(recipients)
+                  if (recipientsError) setRecipientsError(null)
+                  // Update available tags for contact mode
+                  setAvailableTags(["First Name", "Email"])
+                }}
+                requireContacts={true}
+              />
               <p className="text-xs text-gray-500 mt-1">
                 Select people or groups who must complete this request.
               </p>
-            )}
-            {recipientsError && (
-              <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
-            )}
-          </div>
-          
-          {/* Variables Section - appears AFTER prompt and recipients */}
-          {isRequestMode && (
-            <VariablesSection
-              variables={variables}
-              onVariablesChange={(newVariables) => {
-                setVariables(newVariables)
-                setAvailableTags(newVariables) // Variables become tags
-                // Clear CSV data if variables are removed
-                if (newVariables.length === 0) {
-                  setCsvData(null)
-                  setVariableMapping({})
-                }
-              }}
-              csvData={csvData}
-              onCSVUpload={(data, mapping) => {
-                setCsvData(data)
-                setVariableMapping(mapping)
-              }}
-            />
+              {recipientsError && (
+                <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
+              )}
+            </div>
+          )}
+
+          {/* CSV Upload - only shown when CSV mode is selected */}
+          {isRequestMode && recipientSource === "csv" && (
+            <div className="space-y-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div>
+                <Label className="text-base font-semibold">Upload CSV</Label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Upload a CSV file with an email column and data columns. All non-email columns will automatically become tags.
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUpload}
+                  disabled={csvUploading}
+                  className="flex-1"
+                />
+                {csvUploading && <span className="text-sm text-gray-500">Uploading...</span>}
+              </div>
+
+              {csvUploadError && (
+                <p className="text-xs text-red-600 mt-1">{csvUploadError}</p>
+              )}
+
+              {/* CSV Upload Results */}
+              {csvData && (
+                <div className="space-y-3 mt-3 p-3 bg-white border border-gray-200 rounded-md">
+                  <div className="text-sm">
+                    <span className="font-medium">Email column:</span> {csvData.emailColumnName}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Recipients:</span> {csvData.recipients.count}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Tags ({csvData.tags.length}):</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {csvData.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-medium"
+                        >
+                          {`{{${tag}}}`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Missing Values Warning */}
+                  {Object.keys(csvData.missingCountsByTag).length > 0 && (
+                    <div className="text-xs text-yellow-700 mt-2">
+                      <div className="font-medium">Missing values per tag:</div>
+                      <ul className="list-disc list-inside mt-1">
+                        {Object.entries(csvData.missingCountsByTag).map(([tag, count]) => (
+                          <li key={tag}>
+                            {tag}: {count} missing
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Blocking Errors */}
+                  {csvData.blockingErrors && csvData.blockingErrors.length > 0 && (
+                    <div className="text-xs text-red-700 mt-2">
+                      <div className="font-medium">Errors (must be fixed):</div>
+                      <ul className="list-disc list-inside mt-1">
+                        {csvData.blockingErrors.map((error, idx) => (
+                          <li key={idx}>{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Block on missing values toggle */}
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                    <input
+                      type="checkbox"
+                      id="blockOnMissingValues"
+                      checked={blockOnMissingValues}
+                      onChange={(e) => setBlockOnMissingValues(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <Label htmlFor="blockOnMissingValues" className="text-xs font-normal cursor-pointer">
+                      Block send if required tags are missing values
+                    </Label>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           
           {/* Deadline Section - only in request mode */}
@@ -713,8 +924,9 @@ function ComposePageContent() {
                  disabled={
                    loading ||
                    !prompt.trim() ||
-                   (isRequestMode && (!requestName.trim() || selectedRecipients.length === 0)) ||
-                   (isRequestMode && variables.length > 0 && !csvData)
+                   (isRequestMode && !requestName.trim()) ||
+                   (isRequestMode && recipientSource === "contact" && selectedRecipients.length === 0) ||
+                   (isRequestMode && recipientSource === "csv" && (!csvData || (csvData.blockingErrors && csvData.blockingErrors.length > 0)))
                  }
                >
             {loading 
@@ -827,8 +1039,8 @@ function ComposePageContent() {
                 }}
                 onSubmit={handlePreviewSubmit}
                 submitting={submitting}
-                availableTags={variables} // Use variables as tags
-                personalizationMode={variables.length > 0 ? "csv" : "none"}
+                availableTags={availableTags} // Use CSV-derived tags or contact field tags
+                personalizationMode={personalizationMode}
               />
             </div>
           )}

@@ -86,23 +86,31 @@ export function PreviewPanel({
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.sample && data.sample.length > 0) {
-          // Filter to only include recipients that are actually selected
-          // Build a set of selected recipient emails for fast lookup
-          const selectedEmails = new Set(
-            recipients
-              .filter(r => r.type === "entity" && r.email)
-              .map(r => r.email?.toLowerCase().trim())
-              .filter((email): email is string => Boolean(email))
-          )
+          // In CSV mode, show all CSV recipients (no filtering by selected contacts)
+          // In contact mode, filter to only show selected recipients
+          let filteredRecipients: PreviewRecipient[] = []
           
-          // Only include personalization data for selected recipients
-          const filteredRecipients = data.sample.filter((r: PreviewRecipient) => 
-            selectedEmails.has(r.email.toLowerCase().trim())
-          )
+          if (personalizationMode === "csv") {
+            // CSV mode: show all CSV recipients (no filtering needed)
+            filteredRecipients = data.sample
+          } else {
+            // Contact mode: filter to only include recipients that are actually selected
+            const selectedEmails = new Set(
+              recipients
+                .filter(r => r.type === "entity" && r.email)
+                .map(r => r.email?.toLowerCase().trim())
+                .filter((email): email is string => Boolean(email))
+            )
+            
+            // Only include personalization data for selected recipients
+            filteredRecipients = data.sample.filter((r: PreviewRecipient) => 
+              selectedEmails.has(r.email.toLowerCase().trim())
+            )
+          }
           
           setPreviewRecipients(filteredRecipients)
           
-          // Automatically select and render preview for the first selected recipient
+          // Automatically select and render preview for the first recipient
           if (filteredRecipients.length > 0) {
             const firstRecipient = filteredRecipients[0]
             setSelectedPreviewRecipient(firstRecipient.email)
@@ -115,7 +123,7 @@ export function PreviewPanel({
               setPreviewBody(bodyResult.rendered)
             }
           } else {
-            // No matching recipients found, show template
+            // No recipients found, show template
             setSelectedPreviewRecipient(null)
             setPreviewSubject(subject)
             setPreviewBody(body)

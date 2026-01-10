@@ -54,14 +54,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Return parsed data
+    // Tags are directly derived from CSV headers (all non-email columns)
+    // tagColumns already contains the original column names, so use them directly as tags
+    const tags = result.tagColumns // Original column names become tags
+    
+    // Extract recipient emails (sample first 10 for display)
+    const recipientEmails = result.rows
+      .map(row => row[result.emailColumn]?.trim())
+      .filter(Boolean)
+      .slice(0, 10)
+    
+    // Check for blocking errors
+    const blockingErrors: string[] = []
+    if (result.validation.duplicateEmails.length > 0) {
+      blockingErrors.push(`Duplicate emails found: ${result.validation.duplicateEmails.length} duplicates`)
+    }
+    if (!result.emailColumn) {
+      blockingErrors.push('Email column not found')
+    }
+    
+    // Return parsed data with tags directly derived from CSV headers
     return NextResponse.json({
       success: true,
       data: {
         rows: result.rows,
         emailColumn: result.emailColumn,
-        tagColumns: result.tagColumns,
+        emailColumnName: result.emailColumn,
+        recipients: {
+          emails: recipientEmails,
+          count: result.validation.rowCount
+        },
+        tags: tags, // Original column names become tags directly
+        tagColumns: result.tagColumns, // Keep for backward compatibility
         normalizedTagMap: result.normalizedTagMap,
+        missingCountsByTag: result.validation.missingValues,
+        blockingErrors,
         validation: result.validation
       }
     })
