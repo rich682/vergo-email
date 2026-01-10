@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
           const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
-          // Fetch the message
+          // Fetch the message with full headers to get In-Reply-To and References
           const message = await gmail.users.messages.get({
             userId: "me",
             id: messageId,
@@ -44,6 +44,23 @@ export async function POST(request: NextRequest) {
           const parsed = await simpleParser(
             Buffer.from(message.data.raw, "base64")
           )
+
+          // Extract In-Reply-To and References headers for matching replies to original messages
+          const inReplyToHeader = parsed.headers.get("in-reply-to") || parsed.headers.get("In-Reply-To") || ""
+          const referencesHeader = parsed.headers.get("references") || parsed.headers.get("References") || ""
+          
+          // Clean up message IDs (remove < > brackets and extract ID)
+          // Gmail message IDs are in format: <unique-id@mail.gmail.com> or similar
+          const extractMessageId = (header: string): string | null => {
+            if (!header) return null
+            // Extract message ID from header (format: <message-id@domain>)
+            const match = header.match(/<([^>]+)>/)
+            return match ? match[1] : null
+          }
+          const inReplyToMessageId = extractMessageId(inReplyToHeader)
+          
+          // Also get Gmail thread ID from the message data
+          const gmailThreadId = message.data.threadId || null
 
           // Extract attachments
           const attachments: Array<{
@@ -78,7 +95,12 @@ export async function POST(request: NextRequest) {
             body: parsed.text || "",
             htmlBody: parsed.html || undefined,
             providerId: messageId,
-            providerData: message.data,
+            providerData: {
+              ...message.data,
+              inReplyTo: inReplyToMessageId,
+              references: referencesHeader,
+              threadId: gmailThreadId
+            },
             attachments: attachments.length > 0 ? attachments : undefined
           }
 

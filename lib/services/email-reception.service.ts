@@ -12,7 +12,7 @@ export interface InboundEmailData {
   body?: string
   htmlBody?: string
   providerId: string
-  providerData: any
+  providerData: any // Can contain inReplyTo, references, threadId for Gmail matching
   attachments?: Array<{
     filename: string
     content: Buffer
@@ -24,28 +24,107 @@ export class EmailReceptionService {
   static async processInboundEmail(
     data: InboundEmailData
   ): Promise<{ taskId: string | null; messageId: string }> {
-    // Extract thread ID from reply-to or to address
-    const threadId = ThreadIdExtractor.extractFromEmailAddress(
-      data.replyTo || data.to
-    )
-
-    if (!threadId) {
-      // Orphaned message - log but don't create task
-      console.warn("Orphaned email received:", data.providerId)
-      return {
-        taskId: null,
-        messageId: ""
+    // Try to match reply to original message using multiple strategies:
+    // 1. Gmail In-Reply-To header (most reliable - contains original message ID)
+    // 2. Gmail thread ID from providerData
+    // 3. Legacy: Extract thread ID from reply-to address (for backwards compatibility)
+    
+    let task = null
+    
+    // Strategy 1: Match by In-Reply-To header (Message-ID header from original email)
+    const inReplyToMessageId = data.providerData?.inReplyTo
+    if (inReplyToMessageId) {
+      // The In-Reply-To header contains the Message-ID header from the original email
+      // We need to search providerData for messages that have this Message-ID stored
+      // Since providerData is JSON, we need to query messages and check their providerData
+      const allOutboundMessages = await prisma.message.findMany({
+        where: {
+          direction: "OUTBOUND",
+          providerData: { not: null }
+        },
+        include: {
+          task: {
+            include: { entity: true }
+          }
+        }
+      })
+      
+      // Find message where providerData.messageIdHeader matches inReplyToMessageId
+      const originalMessage = allOutboundMessages.find(msg => {
+        const providerData = msg.providerData as any
+        const messageIdHeader = providerData?.messageIdHeader || ""
+        // Compare without < > brackets (In-Reply-To may or may not have them)
+        const normalizedInReplyTo = inReplyToMessageId.replace(/^<|>$/g, "")
+        const normalizedHeader = messageIdHeader.replace(/^<|>$/g, "")
+        return normalizedInReplyTo === normalizedHeader || messageIdHeader === inReplyToMessageId || messageIdHeader === `<${inReplyToMessageId}>`
+      })
+      
+      if (originalMessage?.task) {
+        task = originalMessage.task
+        console.log(`Matched reply to original message by In-Reply-To Message-ID: ${inReplyToMessageId} -> Task ${task.id}`)
+      }
+    }
+    
+    // Strategy 2: Match by Gmail thread ID (if In-Reply-To didn't work)
+    if (!task && data.providerData?.threadId) {
+      // Gmail thread IDs are different from our internal thread IDs
+      // We need to find the original message in this Gmail thread and match to our task
+      // For now, try to find by matching subject line pattern (Re: original subject)
+      // This is a fallback - ideally we'd store Gmail thread ID when sending
+      const subjectWithoutRe = data.subject?.replace(/^(Re:|RE:|re:)\s*/i, "").trim()
+      if (subjectWithoutRe) {
+        // Try to find task with matching subject
+        const matchingTask = await prisma.task.findFirst({
+          where: {
+            messages: {
+              some: {
+                direction: "OUTBOUND",
+                subject: {
+                  contains: subjectWithoutRe,
+                  mode: "insensitive"
+                }
+              }
+            }
+          },
+          include: { entity: true }
+        })
+        
+        if (matchingTask) {
+          task = matchingTask
+          console.log(`Matched reply by subject pattern: "${subjectWithoutRe}" -> Task ${task.id}`)
+        }
+      }
+    }
+    
+    // Strategy 3: Legacy - Extract thread ID from reply-to address (for backwards compatibility)
+    if (!task) {
+      const threadId = ThreadIdExtractor.extractFromEmailAddress(
+        data.replyTo || data.to
+      )
+      
+      if (threadId) {
+        task = await prisma.task.findUnique({
+          where: { threadId },
+          include: { entity: true }
+        })
+        
+        if (task) {
+          console.log(`Matched reply by legacy thread ID: ${threadId} -> Task ${task.id}`)
+        }
       }
     }
 
-    // Find task by thread ID
-    const task = await prisma.task.findUnique({
-      where: { threadId },
-      include: { entity: true }
-    })
-
     if (!task) {
-      console.warn("Task not found for threadId:", threadId)
+      // Orphaned message - couldn't match to any task
+      console.warn("Orphaned email received - could not match to task:", {
+        providerId: data.providerId,
+        from: data.from,
+        subject: data.subject,
+        inReplyTo: data.providerData?.inReplyTo,
+        threadId: data.providerData?.threadId,
+        replyTo: data.replyTo,
+        to: data.to
+      })
       return {
         taskId: null,
         messageId: ""

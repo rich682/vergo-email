@@ -45,11 +45,15 @@ export class EmailSendingService {
 
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
-    // Create email message
+    // Generate a Message-ID header for tracking (Gmail will use this in In-Reply-To when someone replies)
+    const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${data.account.email.split('@')[1] || 'gmail.com'}>`
+
+    // Create email message with Message-ID header
     const messageParts = [
       `To: ${data.to}`,
       `From: ${data.account.email}`,
       `Reply-To: ${data.replyTo}`,
+      `Message-ID: ${messageIdHeader}`,
       `Subject: ${data.subject}`,
       "Content-Type: text/html; charset=utf-8",
       "",
@@ -70,9 +74,33 @@ export class EmailSendingService {
       }
     })
 
+    // After sending, fetch the message to get Gmail's assigned Message-ID (which might differ from what we set)
+    let actualMessageId = messageIdHeader
+    try {
+      const sentMessage = await gmail.users.messages.get({
+        userId: "me",
+        id: response.data.id || "",
+        format: "raw"
+      })
+      
+      if (sentMessage.data.raw) {
+        const { simpleParser } = await import("mailparser")
+        const parsedSent = await simpleParser(Buffer.from(sentMessage.data.raw, "base64"))
+        const actualMessageIdHeader = parsedSent.headers.get("message-id") || parsedSent.headers.get("Message-ID") || messageIdHeader
+        actualMessageId = typeof actualMessageIdHeader === 'string' ? actualMessageIdHeader : messageIdHeader
+      }
+    } catch (e) {
+      // If we can't fetch, use the one we generated
+      console.warn("Could not fetch sent message to get actual Message-ID, using generated one")
+    }
+
     return {
       messageId: response.data.id || "",
-      providerData: response.data
+      providerData: {
+        ...response.data,
+        messageIdHeader: actualMessageId, // Store the Message-ID header for matching replies
+        threadId: response.data.threadId
+      }
     }
   }
 
@@ -161,10 +189,11 @@ export class EmailSendingService {
       throw new Error("No active email account found")
     }
 
-    // Generate thread ID and reply-to address
+    // Generate thread ID for internal tracking
     const threadId = this.generateThreadId()
-    const domain = this.extractDomainFromEmail(account.email)
-    const replyTo = this.generateReplyToAddress(threadId, domain)
+    // Use actual sender email as Reply-To so replies come back to connected inbox
+    // We'll match replies using Gmail's In-Reply-To header instead of fake addresses
+    const replyTo = account.email
 
     // Generate tracking token and inject pixel if HTML body exists
     const trackingToken = TrackingPixelService.generateTrackingToken()

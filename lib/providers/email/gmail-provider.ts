@@ -56,10 +56,15 @@ export class GmailProvider implements EmailProviderDriver {
     const oauth2Client = this.getClient(account)
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
+    // Generate a Message-ID header for tracking (Gmail will use this in In-Reply-To when someone replies)
+    // Format: <unique-id@domain> where domain should match the sender's domain
+    const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${account.email.split('@')[1] || 'gmail.com'}>`
+
     const messageParts = [
       `To: ${params.to}`,
       `From: ${account.email}`,
       `Reply-To: ${params.replyTo}`,
+      `Message-ID: ${messageIdHeader}`,
       `Subject: ${params.subject}`,
       "Content-Type: text/html; charset=utf-8",
       "",
@@ -78,9 +83,32 @@ export class GmailProvider implements EmailProviderDriver {
       requestBody: { raw: encodedMessage },
     })
 
+    // After sending, fetch the message to get Gmail's assigned Message-ID (which might differ from what we set)
+    let actualMessageId = messageIdHeader
+    try {
+      const sentMessage = await gmail.users.messages.get({
+        userId: "me",
+        id: response.data.id || "",
+        format: "raw"
+      })
+      
+      if (sentMessage.data.raw) {
+        const parsedSent = await import("mailparser").then(m => m.simpleParser(Buffer.from(sentMessage.data.raw!, "base64")))
+        const actualMessageIdHeader = parsedSent.headers.get("message-id") || parsedSent.headers.get("Message-ID") || messageIdHeader
+        actualMessageId = typeof actualMessageIdHeader === 'string' ? actualMessageIdHeader : messageIdHeader
+      }
+    } catch (e) {
+      // If we can't fetch, use the one we generated
+      console.warn("Could not fetch sent message to get actual Message-ID, using generated one")
+    }
+
     return {
       messageId: response.data.id || "",
-      providerData: response.data,
+      providerData: {
+        ...response.data,
+        messageIdHeader: actualMessageId, // Store the Message-ID header for matching replies
+        threadId: response.data.threadId
+      },
     }
   }
 
