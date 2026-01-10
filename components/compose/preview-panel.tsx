@@ -86,18 +86,39 @@ export function PreviewPanel({
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.sample && data.sample.length > 0) {
-          const recipients = data.sample
-          setPreviewRecipients(recipients)
-          // Automatically select and render preview for the first recipient
-          const firstRecipient = recipients[0]
-          setSelectedPreviewRecipient(firstRecipient.email)
+          // Filter to only include recipients that are actually selected
+          // Build a set of selected recipient emails for fast lookup
+          const selectedEmails = new Set(
+            recipients
+              .filter(r => r.type === "entity" && r.email)
+              .map(r => r.email?.toLowerCase().trim())
+              .filter((email): email is string => Boolean(email))
+          )
           
-          // Immediately render the preview for the first recipient
-          if (personalizationMode === "csv" && firstRecipient.data) {
-            const subjectResult = renderTemplate(subject, firstRecipient.data)
-            const bodyResult = renderTemplate(body, firstRecipient.data)
-            setPreviewSubject(subjectResult.rendered)
-            setPreviewBody(bodyResult.rendered)
+          // Only include personalization data for selected recipients
+          const filteredRecipients = data.sample.filter((r: PreviewRecipient) => 
+            selectedEmails.has(r.email.toLowerCase().trim())
+          )
+          
+          setPreviewRecipients(filteredRecipients)
+          
+          // Automatically select and render preview for the first selected recipient
+          if (filteredRecipients.length > 0) {
+            const firstRecipient = filteredRecipients[0]
+            setSelectedPreviewRecipient(firstRecipient.email)
+            
+            // Immediately render the preview for the first recipient
+            if (personalizationMode === "csv" && firstRecipient.data) {
+              const subjectResult = renderTemplate(subject, firstRecipient.data)
+              const bodyResult = renderTemplate(body, firstRecipient.data)
+              setPreviewSubject(subjectResult.rendered)
+              setPreviewBody(bodyResult.rendered)
+            }
+          } else {
+            // No matching recipients found, show template
+            setSelectedPreviewRecipient(null)
+            setPreviewSubject(subject)
+            setPreviewBody(body)
           }
         } else {
           setPreviewRecipients([])
@@ -118,6 +139,7 @@ export function PreviewPanel({
   }
 
   // Fetch personalization data when draftId changes and personalization is enabled
+  // Also re-fetch when recipients change (to filter by selected recipients)
   useEffect(() => {
     if (personalizationMode !== "none" && draftId) {
       fetchPreviewRecipients()
@@ -128,7 +150,7 @@ export function PreviewPanel({
       setPreviewBody(body)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftId, personalizationMode])
+  }, [draftId, personalizationMode, recipients])
 
   // Auto-select first recipient when recipients are available and none is selected (fallback for contact mode)
   useEffect(() => {
