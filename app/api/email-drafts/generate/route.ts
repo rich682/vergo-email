@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { prompt, selectedRecipients, idempotencyKey, requestName } = body
+    const { prompt, selectedRecipients, idempotencyKey, requestName, personalizationMode, availableTags, blockOnMissingValues } = body
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -174,18 +174,31 @@ export async function POST(request: NextRequest) {
       correlationId: correlationId, // Use original correlationId for tracing
       senderName: user?.name || undefined,
       senderEmail: user?.email || undefined,
-      senderCompany: user?.organization?.name || undefined
+      senderCompany: user?.organization?.name || undefined,
+      availableTags: availableTags || undefined,
+      personalizationMode: personalizationMode || undefined
     })
     const aiEndTime = Date.now()
 
     // Use requestName if provided, otherwise use AI-suggested campaign name
     const finalCampaignName = requestName?.trim() || generated.suggestedCampaignName
     
+    // Use templates if available, otherwise use regular generated fields
+    const subjectTemplate = generated.subjectTemplate || generated.subject
+    const bodyTemplate = generated.bodyTemplate || generated.body
+    const htmlBodyTemplate = generated.htmlBodyTemplate || generated.htmlBody
+
     const dbUpdateStartTime = Date.now()
     await EmailDraftService.update(draft.id, session.user.organizationId, {
       generatedSubject: generated.subject,
       generatedBody: generated.body,
       generatedHtmlBody: generated.htmlBody,
+      subjectTemplate: subjectTemplate || null,
+      bodyTemplate: bodyTemplate || null,
+      htmlBodyTemplate: htmlBodyTemplate || null,
+      availableTags: availableTags || null,
+      personalizationMode: personalizationMode || null,
+      blockOnMissingValues: blockOnMissingValues ?? true,
       suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
       suggestedCampaignName: finalCampaignName,
       suggestedCampaignType: generated.suggestedCampaignType,
@@ -205,18 +218,21 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     }))
 
-    return NextResponse.json({
-      id: draft.id,
-      status: "completed",
-      draft: {
-        generatedSubject: generated.subject,
-        generatedBody: generated.body,
-        generatedHtmlBody: generated.htmlBody,
-        suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
-        suggestedCampaignName: finalCampaignName,
-        suggestedCampaignType: generated.suggestedCampaignType
-      }
-    })
+            return NextResponse.json({
+              id: draft.id,
+              status: "completed",
+              draft: {
+                generatedSubject: generated.subject,
+                generatedBody: generated.body,
+                generatedHtmlBody: generated.htmlBody,
+                subjectTemplate: subjectTemplate || generated.subject,
+                bodyTemplate: bodyTemplate || generated.body,
+                htmlBodyTemplate: htmlBodyTemplate || generated.htmlBody,
+                suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+                suggestedCampaignName: finalCampaignName,
+                suggestedCampaignType: generated.suggestedCampaignType
+              }
+            })
   } catch (error: any) {
     console.error("Error generating draft:", error)
     return NextResponse.json(

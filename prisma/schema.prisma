@@ -148,26 +148,26 @@ model EntityGroup {
 }
 
 model Task {
-  id             String       @id @default(cuid())
-  entityId       String
-  campaignName   String?
-  campaignType   CampaignType?
-  status         TaskStatus   @default(AWAITING_RESPONSE)
-  threadId       String       @unique
-  replyToEmail   String?
-  replyToPhone   String?
-  aiReasoning    Json? // Store AI reasoning as JSON
-  aiSummary      String? // 2-3 sentence task summary
-  aiSummaryConfidence String? // High, Medium, Low
+  id                     String        @id @default(cuid())
+  entityId               String
+  campaignName           String?
+  campaignType           CampaignType?
+  status                 TaskStatus    @default(AWAITING_RESPONSE)
+  threadId               String        @unique
+  replyToEmail           String?
+  replyToPhone           String?
+  aiReasoning            Json? // Store AI reasoning as JSON
+  aiSummary              String? // 2-3 sentence task summary
+  aiSummaryConfidence    String? // High, Medium, Low
   aiSummaryLastMessageId String? // Track which message summary is based on (for idempotency)
-  aiVerified     Boolean?
-  verifiedAt     DateTime?
-  documentUrl    String?
-  documentKey    String?
-  hasAttachments Boolean      @default(false)
-  organizationId String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  aiVerified             Boolean?
+  verifiedAt             DateTime?
+  documentUrl            String?
+  documentKey            String?
+  hasAttachments         Boolean       @default(false)
+  organizationId         String
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   entity   Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -182,26 +182,26 @@ model Task {
 }
 
 model Message {
-  id           String           @id @default(cuid())
-  taskId       String
-  entityId     String
-  direction    MessageDirection
-  channel      MessageChannel   @default(EMAIL)
-  subject      String?
-  body         String?
-  htmlBody     String?
-  fromAddress  String
-  toAddress    String
-  providerId   String? // Gmail message ID or SMTP message ID
-  providerData Json? // Store full provider payload
-  attachments  Json? // Store attachment metadata as JSON
-  trackingToken String? @unique // Unique token for tracking pixel URL
-  openedAt      DateTime? // First time email was opened
-  openedCount    Int      @default(0) // Number of times opened
-  lastOpenedAt   DateTime? // Most recent open time
+  id               String           @id @default(cuid())
+  taskId           String
+  entityId         String
+  direction        MessageDirection
+  channel          MessageChannel   @default(EMAIL)
+  subject          String?
+  body             String?
+  htmlBody         String?
+  fromAddress      String
+  toAddress        String
+  providerId       String? // Gmail message ID or SMTP message ID
+  providerData     Json? // Store full provider payload
+  attachments      Json? // Store attachment metadata as JSON
+  trackingToken    String?          @unique // Unique token for tracking pixel URL
+  openedAt         DateTime? // First time email was opened
+  openedCount      Int              @default(0) // Number of times opened
+  lastOpenedAt     DateTime? // Most recent open time
   aiClassification String? // DATA, QUESTION, COMPLAINT, ACKNOWLEDGMENT, OTHER
-  aiReasoning     String? // Brief explanation of classification
-  createdAt    DateTime         @default(now())
+  aiReasoning      String? // Brief explanation of classification
+  createdAt        DateTime         @default(now())
 
   entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -214,10 +214,10 @@ model Message {
 }
 
 model AgentSchedule {
-  id             String    @id @default(cuid())
+  id             String        @id @default(cuid())
   name           String
   cronExpression String
-  timezone       String    @default("UTC")
+  timezone       String        @default("UTC")
   organizationId String
   groupId        String?
   campaignName   String?
@@ -227,9 +227,9 @@ model AgentSchedule {
   htmlBody       String?
   lastRunAt      DateTime?
   nextRunAt      DateTime?
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   group        Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
@@ -305,27 +305,57 @@ model AutomationRule {
 }
 
 model EmailDraft {
-  id                  String           @id @default(cuid())
-  organizationId      String
-  userId              String
-  prompt              String
-  generatedSubject    String?
-  generatedBody       String?
-  generatedHtmlBody   String?
-  suggestedRecipients Json? // Store suggested entity/group IDs as JSON
+  id                    String           @id @default(cuid())
+  organizationId        String
+  userId                String
+  prompt                String
+  generatedSubject      String?
+  generatedBody         String?
+  generatedHtmlBody     String?
+  // Personalization fields
+  subjectTemplate       String? // Template with {{Tag Name}} placeholders
+  bodyTemplate          String? // Template with {{Tag Name}} placeholders
+  htmlBodyTemplate      String? // HTML template with {{Tag Name}} placeholders
+  availableTags         Json? // Array of available tag names
+  personalizationMode   String? // "none" | "contact" | "csv"
+  blockOnMissingValues  Boolean          @default(true)
+  // Legacy fields (keeping for backwards compatibility)
+  suggestedRecipients   Json? // Store suggested entity/group IDs as JSON
   suggestedCampaignName String?
   suggestedCampaignType CampaignType?
-  status              EmailDraftStatus @default(DRAFT)
-  idempotencyKey      String?          @unique
-  aiGenerationStatus  String?          // "processing", "complete", "failed", "timeout"
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  status                EmailDraftStatus @default(DRAFT)
+  idempotencyKey        String?          @unique
+  aiGenerationStatus    String? // "processing", "complete", "failed", "timeout"
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personalizationData PersonalizationData[]
 
   @@index([organizationId])
   @@index([userId])
   @@index([status])
   @@index([idempotencyKey])
+}
+
+model PersonalizationData {
+  id             String   @id @default(cuid())
+  emailDraftId   String
+  recipientEmail String
+  contactId      String? // Optional reference to Entity
+  dataJson       Json // Key/value map from CSV + contact fields
+  renderSubject  String? // Rendered subject for this recipient
+  renderBody     String? // Rendered body for this recipient
+  renderHtmlBody String? // Rendered HTML body for this recipient
+  renderStatus   String? // "ok" | "missing" | "failed"
+  renderErrors   Json? // Array of error messages if renderStatus is "failed" or "missing"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  emailDraft EmailDraft @relation(fields: [emailDraftId], references: [id], onDelete: Cascade)
+
+  @@unique([emailDraftId, recipientEmail])
+  @@index([emailDraftId])
+  @@index([recipientEmail])
 }

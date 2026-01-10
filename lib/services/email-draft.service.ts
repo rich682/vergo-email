@@ -9,6 +9,14 @@ export class EmailDraftService {
     generatedSubject?: string
     generatedBody?: string
     generatedHtmlBody?: string
+    // Personalization fields
+    subjectTemplate?: string
+    bodyTemplate?: string
+    htmlBodyTemplate?: string
+    availableTags?: string[]
+    personalizationMode?: "none" | "contact" | "csv"
+    blockOnMissingValues?: boolean
+    // Legacy fields
     suggestedRecipients?: any
     suggestedCampaignName?: string
     suggestedCampaignType?: CampaignType
@@ -23,6 +31,12 @@ export class EmailDraftService {
         generatedSubject: data.generatedSubject,
         generatedBody: data.generatedBody,
         generatedHtmlBody: data.generatedHtmlBody,
+        subjectTemplate: data.subjectTemplate || null,
+        bodyTemplate: data.bodyTemplate || null,
+        htmlBodyTemplate: data.htmlBodyTemplate || null,
+        availableTags: data.availableTags ? JSON.stringify(data.availableTags) as any : null,
+        personalizationMode: data.personalizationMode || null,
+        blockOnMissingValues: data.blockOnMissingValues ?? true,
         suggestedRecipients: data.suggestedRecipients || null,
         suggestedCampaignName: data.suggestedCampaignName || null,
         suggestedCampaignType: data.suggestedCampaignType || null,
@@ -36,8 +50,8 @@ export class EmailDraftService {
   static async findById(
     id: string,
     organizationId: string
-  ): Promise<EmailDraft | null> {
-    return prisma.emailDraft.findFirst({
+  ): Promise<(EmailDraft & { availableTags?: string[] }) | null> {
+    const draft = await prisma.emailDraft.findFirst({
       where: {
         id,
         organizationId
@@ -52,6 +66,16 @@ export class EmailDraftService {
         }
       }
     })
+
+    if (!draft) return null
+
+    // Parse availableTags from JSON if it exists
+    const draftWithTags = {
+      ...draft,
+      availableTags: draft.availableTags ? (typeof draft.availableTags === 'string' ? JSON.parse(draft.availableTags) : draft.availableTags) : undefined
+    }
+
+    return draftWithTags
   }
 
   static async findByIdempotencyKey(
@@ -69,14 +93,21 @@ export class EmailDraftService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus">>
+    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "subjectTemplate" | "bodyTemplate" | "htmlBodyTemplate" | "availableTags" | "personalizationMode" | "blockOnMissingValues" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus">>
   ): Promise<EmailDraft> {
+    const updateData: any = { ...data }
+    
+    // Convert availableTags array to JSON if provided
+    if ('availableTags' in updateData && Array.isArray(updateData.availableTags)) {
+      updateData.availableTags = JSON.stringify(updateData.availableTags)
+    }
+
     return prisma.emailDraft.update({
       where: {
         id,
         organizationId
       },
-      data: data as any
+      data: updateData
     })
   }
 

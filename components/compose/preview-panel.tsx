@@ -1,12 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SelectedRecipient } from "./recipient-selector"
+import { TagInput } from "./tag-input"
+import { renderTemplate } from "@/lib/utils/template-renderer"
 import { X } from "lucide-react"
 
 interface PreviewPanelProps {
@@ -26,6 +29,15 @@ interface PreviewPanelProps {
   onSubmit: () => void
   onSavePending?: () => void
   submitting?: boolean
+  // Personalization props
+  availableTags?: string[]
+  personalizationMode?: "none" | "contact" | "csv"
+  onTagInsert?: (tag: string, field: "subject" | "body") => void
+}
+
+interface PreviewRecipient {
+  email: string
+  data: Record<string, string>
 }
 
 export function PreviewPanel({
@@ -44,8 +56,131 @@ export function PreviewPanel({
   onResetBody,
   onSubmit,
   onSavePending,
-  submitting = false
+  submitting = false,
+  availableTags = [],
+  personalizationMode = "none",
+  onTagInsert
 }: PreviewPanelProps) {
+  const [previewRecipients, setPreviewRecipients] = useState<PreviewRecipient[]>([])
+  const [selectedPreviewRecipient, setSelectedPreviewRecipient] = useState<string | null>(null)
+  const [previewSubject, setPreviewSubject] = useState<string>(subject)
+  const [previewBody, setPreviewBody] = useState<string>(body)
+  const [loadingRecipients, setLoadingRecipients] = useState(false)
+
+  // Build contact fields data for contact mode (pure function, no dependencies)
+  const buildContactData = (recipient: SelectedRecipient): Record<string, string> => {
+    // Extract first name from full name
+    const firstName = recipient.name?.split(' ')[0] || recipient.name || ""
+    return {
+      "First Name": firstName,
+      "Email": recipient.email || ""
+    }
+  }
+
+  const fetchPreviewRecipients = async () => {
+    setLoadingRecipients(true)
+    try {
+      const response = await fetch(`/api/email-drafts/${draftId}/personalization-data`, {
+        cache: 'no-store'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.sample) {
+          setPreviewRecipients(data.sample)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching preview recipients:", error)
+    } finally {
+      setLoadingRecipients(false)
+    }
+  }
+
+  // Fetch personalization data when draftId changes and personalization is enabled
+  useEffect(() => {
+    if (personalizationMode !== "none" && draftId) {
+      fetchPreviewRecipients()
+    } else {
+      setPreviewRecipients([])
+      setSelectedPreviewRecipient(null)
+      setPreviewSubject(subject)
+      setPreviewBody(body)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId, personalizationMode])
+
+  // Update preview when template or selected recipient changes
+  useEffect(() => {
+    if (!selectedPreviewRecipient) {
+      setPreviewSubject(subject)
+      setPreviewBody(body)
+      return
+    }
+
+    // Re-render preview if recipient is selected
+    if (personalizationMode === "csv") {
+      const recipient = previewRecipients.find(r => r.email === selectedPreviewRecipient)
+      if (recipient) {
+        const subjectResult = renderTemplate(subject, recipient.data)
+        const bodyResult = renderTemplate(body, recipient.data)
+        setPreviewSubject(subjectResult.rendered)
+        setPreviewBody(bodyResult.rendered)
+      }
+    } else if (personalizationMode === "contact") {
+      const recipient = recipients.find(r => `${r.type}-${r.id}` === selectedPreviewRecipient && r.type === "entity" && r.email)
+      if (recipient) {
+        const data = buildContactData(recipient)
+        const subjectResult = renderTemplate(subject, data)
+        const bodyResult = renderTemplate(body, data)
+        setPreviewSubject(subjectResult.rendered)
+        setPreviewBody(bodyResult.rendered)
+      }
+    }
+  }, [subject, body, selectedPreviewRecipient, personalizationMode, previewRecipients, recipients])
+
+  const handlePreviewRecipientChange = (email: string | "none") => {
+    if (email === "none") {
+      setSelectedPreviewRecipient(null)
+      setPreviewSubject(subject)
+      setPreviewBody(body)
+      return
+    }
+
+    const recipient = previewRecipients.find(r => r.email === email)
+    if (!recipient) return
+
+    setSelectedPreviewRecipient(email)
+
+    // Render templates with recipient data
+    const subjectResult = renderTemplate(subject, recipient.data)
+    const bodyResult = renderTemplate(body, recipient.data)
+
+    setPreviewSubject(subjectResult.rendered)
+    setPreviewBody(bodyResult.rendered)
+  }
+
+  // Handle contact mode preview
+  const handleContactPreviewChange = (recipientId: string | "none") => {
+    if (recipientId === "none") {
+      setSelectedPreviewRecipient(null)
+      setPreviewSubject(subject)
+      setPreviewBody(body)
+      return
+    }
+
+    const recipient = recipients.find(r => `${r.type}-${r.id}` === recipientId)
+    if (!recipient) return
+
+    setSelectedPreviewRecipient(recipientId)
+    const data = buildContactData(recipient)
+
+    const subjectResult = renderTemplate(subject, data)
+    const bodyResult = renderTemplate(body, data)
+
+    setPreviewSubject(subjectResult.rendered)
+    setPreviewBody(bodyResult.rendered)
+  }
+
   const getAiStatusBadge = () => {
     if (!aiStatus) return null
     
@@ -64,6 +199,10 @@ export function PreviewPanel({
       </div>
     )
   }
+
+  // Use preview values if a recipient is selected, otherwise use template values
+  const displaySubject = selectedPreviewRecipient ? previewSubject : subject
+  const displayBody = selectedPreviewRecipient ? previewBody : body
 
   return (
     <Card className="h-full flex flex-col">
@@ -92,10 +231,63 @@ export function PreviewPanel({
             </div>
           </div>
 
+          {/* Preview as recipient dropdown */}
+          {personalizationMode !== "none" && (
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Preview as recipient:</Label>
+              <Select
+                value={selectedPreviewRecipient || "none"}
+                onValueChange={(value) => {
+                  if (personalizationMode === "csv") {
+                    handlePreviewRecipientChange(value)
+                  } else if (personalizationMode === "contact") {
+                    handleContactPreviewChange(value)
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="Select a recipient to preview" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Template (no preview)</SelectItem>
+                  {personalizationMode === "csv" && (
+                    <>
+                      {loadingRecipients ? (
+                        <SelectItem value="loading" disabled>Loading recipients...</SelectItem>
+                      ) : (
+                        previewRecipients.map((r) => (
+                          <SelectItem key={r.email} value={r.email}>
+                            {r.email}
+                          </SelectItem>
+                        ))
+                      )}
+                    </>
+                  )}
+                  {personalizationMode === "contact" && (
+                    <>
+                      {recipients
+                        .filter((r) => r.type === "entity" && r.email)
+                        .map((r) => (
+                          <SelectItem key={`${r.type}-${r.id}`} value={`${r.type}-${r.id}`}>
+                            {r.name} ({r.email})
+                          </SelectItem>
+                        ))}
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+              {selectedPreviewRecipient && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Showing rendered preview. Missing tags are marked as [MISSING: Tag].
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label className="text-sm font-medium text-gray-700">Subject:</Label>
-              {subjectUserEdited && aiSubject && (
+              {!selectedPreviewRecipient && subjectUserEdited && aiSubject && (
                 <button
                   type="button"
                   onClick={onResetSubject}
@@ -105,18 +297,33 @@ export function PreviewPanel({
                 </button>
               )}
             </div>
-            <Input
-              value={subject}
-              onChange={(e) => onSubjectChange(e.target.value)}
-              placeholder="Email subject..."
-              className="w-full"
-            />
+            {selectedPreviewRecipient ? (
+              // Preview mode: show rendered content as read-only
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm whitespace-pre-wrap">
+                {displaySubject}
+              </div>
+            ) : personalizationMode !== "none" && availableTags && availableTags.length > 0 ? (
+              <TagInput
+                value={subject}
+                onChange={onSubjectChange}
+                availableTags={availableTags}
+                placeholder="Email subject..."
+                className="w-full"
+              />
+            ) : (
+              <Input
+                value={subject}
+                onChange={(e) => onSubjectChange(e.target.value)}
+                placeholder="Email subject..."
+                className="w-full"
+              />
+            )}
           </div>
 
-          <div>
+          <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1">
               <Label className="text-sm font-medium text-gray-700">Body:</Label>
-              {bodyUserEdited && aiBody && (
+              {!selectedPreviewRecipient && bodyUserEdited && aiBody && (
                 <button
                   type="button"
                   onClick={onResetBody}
@@ -126,13 +333,30 @@ export function PreviewPanel({
                 </button>
               )}
             </div>
-            <Textarea
-              value={body}
-              onChange={(e) => onBodyChange(e.target.value)}
-              placeholder="Email body..."
-              className="min-h-[200px] resize-none"
-              rows={8}
-            />
+            {selectedPreviewRecipient ? (
+              // Preview mode: show rendered content as read-only
+              <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm whitespace-pre-wrap overflow-auto min-h-[200px]">
+                {displayBody}
+              </div>
+            ) : personalizationMode !== "none" && availableTags && availableTags.length > 0 ? (
+              <TagInput
+                value={body}
+                onChange={onBodyChange}
+                availableTags={availableTags}
+                placeholder="Email body..."
+                multiline
+                rows={8}
+                className="flex-1 min-h-[200px] resize-none"
+              />
+            ) : (
+              <Textarea
+                value={body}
+                onChange={(e) => onBodyChange(e.target.value)}
+                placeholder="Email body..."
+                className="flex-1 min-h-[200px] resize-none"
+                rows={8}
+              />
+            )}
           </div>
         </div>
 

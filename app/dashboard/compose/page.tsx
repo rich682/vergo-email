@@ -19,6 +19,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
+import { PersonalizationSection, PersonalizationMode } from "@/components/compose/personalization-section"
+import type { CSVParseResult } from "@/lib/utils/csv-parser"
 
 function ComposePageContent() {
   const searchParams = useSearchParams()
@@ -56,6 +58,12 @@ function ComposePageContent() {
   const [subjectUserEdited, setSubjectUserEdited] = useState(false)
   const [bodyUserEdited, setBodyUserEdited] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  
+  // Personalization state
+  const [personalizationMode, setPersonalizationMode] = useState<PersonalizationMode>("none")
+  const [csvData, setCsvData] = useState<CSVParseResult | null>(null)
+  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [blockOnMissingValues, setBlockOnMissingValues] = useState(true)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -77,6 +85,13 @@ function ComposePageContent() {
         return
       }
       setRecipientsError(null)
+    }
+
+    // Validate CSV upload if personalization mode is CSV
+    if (personalizationMode === "csv" && !csvData) {
+      setError("Please upload a CSV file for personalization")
+      setLoading(false)
+      return
     }
 
     // Generate new idempotency key
@@ -103,13 +118,22 @@ function ComposePageContent() {
         return
       }
 
+      // Build personalization data
+      const personalizationPayload = personalizationMode !== "none" ? {
+        personalizationMode,
+        availableTags: availableTags.length > 0 ? availableTags : undefined,
+        blockOnMissingValues
+      } : {}
+
       const response = await fetch("/api/email-drafts/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt,
           selectedRecipients: recipientsData,
-          idempotencyKey: newIdempotencyKey
+          idempotencyKey: newIdempotencyKey,
+          requestName: isRequestMode ? requestName.trim() : undefined,
+          ...personalizationPayload
         }),
         signal: abortController.signal
       })
@@ -123,21 +147,50 @@ function ComposePageContent() {
       
       // Synchronous generation always returns completed immediately
       if (data.status === "completed" && data.draft) {
+        // If CSV mode, persist personalization data
+        if (personalizationMode === "csv" && csvData) {
+          try {
+            const personalizationResponse = await fetch(`/api/email-drafts/${data.id}/personalization-data`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                csvRows: csvData.rows,
+                emailColumn: csvData.emailColumn,
+                tagColumns: csvData.tagColumns
+              })
+            })
+
+            if (!personalizationResponse.ok) {
+              console.error("Failed to store personalization data")
+            }
+          } catch (error) {
+            console.error("Error storing personalization data:", error)
+          }
+        }
+
         const draftData = {
           id: data.id,
           ...data.draft,
           campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined),
-          aiGenerationStatus: "complete"
+          aiGenerationStatus: "complete",
+          personalizationMode,
+          availableTags,
+          blockOnMissingValues
         }
         setDraft(draftData)
+        
+        // Use templates if available, otherwise fall back to generated subject/body
+        const subjectToUse = data.draft.subjectTemplate || data.draft.generatedSubject || ""
+        const bodyToUse = data.draft.bodyTemplate || data.draft.generatedBody || ""
+        
         // Initialize preview with generated content
-        if (data.draft.generatedSubject) {
-          setPreviewSubject(data.draft.generatedSubject)
-          setAiSubject(data.draft.generatedSubject)
+        if (subjectToUse) {
+          setPreviewSubject(subjectToUse)
+          setAiSubject(subjectToUse)
         }
-        if (data.draft.generatedBody) {
-          setPreviewBody(data.draft.generatedBody)
-          setAiBody(data.draft.generatedBody)
+        if (bodyToUse) {
+          setPreviewBody(bodyToUse)
+          setAiBody(bodyToUse)
         }
         setLoading(false)
         setAiEnriching(false)
@@ -216,18 +269,27 @@ function ComposePageContent() {
     setSendError(null)
 
     try {
-      // Update draft with preview edits
+      // Update draft with preview edits (use templates if personalization is enabled)
+      const updateData: any = {
+        generatedSubject: previewSubject,
+        generatedBody: previewBody
+      }
+      
+      if (personalizationMode !== "none") {
+        updateData.subjectTemplate = previewSubject
+        updateData.bodyTemplate = previewBody
+        updateData.htmlBodyTemplate = previewBody // Use body as HTML template for now
+      }
+
       const updateResponse = await fetch(`/api/email-drafts/${draft.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          generatedSubject: previewSubject,
-          generatedBody: previewBody
-        })
+        body: JSON.stringify(updateData)
       })
 
       if (!updateResponse.ok) {
-        throw new Error("Failed to update draft")
+        const errorData = await updateResponse.json().catch(() => ({ error: "Failed to update draft" }))
+        throw new Error(errorData.error || "Failed to update draft")
       }
 
       // Submit the request
@@ -277,7 +339,10 @@ function ComposePageContent() {
       }
     } catch (error: any) {
       console.error("Error submitting request:", error)
-      setSendError(error.message || "Failed to submit request. Please try again.")
+      // Only set error if not already handled (e.g., missing tags error)
+      if (!sendError) {
+        setSendError(error.message || "Failed to submit request. Please try again.")
+      }
       setSubmitting(false)
     }
   }
@@ -529,6 +594,38 @@ function ComposePageContent() {
               )}
             </div>
           )}
+          
+          {/* Personalization Section - appears BEFORE prompt */}
+          {isRequestMode && (
+            <PersonalizationSection
+              mode={personalizationMode}
+              onModeChange={(mode) => {
+                setPersonalizationMode(mode)
+                if (mode === "none") {
+                  setCsvData(null)
+                  setAvailableTags([])
+                } else if (mode === "contact") {
+                  setCsvData(null)
+                  setAvailableTags(["First Name", "Email"])
+                } else {
+                  setCsvData(null)
+                  setAvailableTags([])
+                }
+              }}
+              csvData={csvData}
+              onCSVUpload={(data) => {
+                setCsvData(data)
+                // Extract tag names from normalizedTagMap (values are original column names)
+                const tags = Object.values(data.normalizedTagMap)
+                setAvailableTags(tags)
+              }}
+              availableTags={availableTags}
+              blockOnMissingValues={blockOnMissingValues}
+              onBlockOnMissingValuesChange={setBlockOnMissingValues}
+            />
+          )}
+          
+          {/* Prompt input - only disabled if CSV mode and no CSV uploaded */}
           <div>
             <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
             <Textarea
@@ -536,10 +633,16 @@ function ComposePageContent() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
+              disabled={personalizationMode === "csv" && !csvData}
             />
             {isRequestMode && (
               <p className="text-xs text-gray-500 mt-1">
-                Be specific about what you need and when it's due
+                Be specific about what you need and when it's due. {personalizationMode !== "none" && availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
+              </p>
+            )}
+            {personalizationMode === "csv" && !csvData && (
+              <p className="text-xs text-yellow-600 mt-1">
+                Please upload a CSV file first to enable prompt input
               </p>
             )}
           </div>
@@ -570,14 +673,20 @@ function ComposePageContent() {
               <p className="text-sm font-medium text-red-800">{error}</p>
             </div>
           )}
-          <Button 
-            onClick={handleGenerate} 
-            disabled={
-              loading || 
-              !prompt.trim() || 
-              (isRequestMode && (!requestName.trim() || selectedRecipients.length === 0))
-            }
-          >
+          {sendError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm font-medium text-red-800 whitespace-pre-line">{sendError}</p>
+            </div>
+          )}
+               <Button
+                 onClick={handleGenerate}
+                 disabled={
+                   loading ||
+                   !prompt.trim() ||
+                   (isRequestMode && (!requestName.trim() || selectedRecipients.length === 0)) ||
+                   (isRequestMode && personalizationMode === "csv" && !csvData)
+                 }
+               >
             {loading 
               ? (isRequestMode ? "Creating request..." : "Creating draft...")
               : isRequestMode 
@@ -688,6 +797,8 @@ function ComposePageContent() {
                 }}
                 onSubmit={handlePreviewSubmit}
                 submitting={submitting}
+                availableTags={availableTags}
+                personalizationMode={personalizationMode}
               />
             </div>
           )}

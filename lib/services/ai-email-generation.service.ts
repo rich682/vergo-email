@@ -16,6 +16,10 @@ export interface GeneratedEmailDraft {
   subject: string
   body: string
   htmlBody: string
+  // Template versions (with {{Tag Name}} placeholders for personalization)
+  subjectTemplate?: string
+  bodyTemplate?: string
+  htmlBodyTemplate?: string
   suggestedRecipients: {
     entityIds?: string[]
     groupIds?: string[]
@@ -47,6 +51,9 @@ export class AIEmailGenerationService {
     senderName?: string
     senderEmail?: string
     senderCompany?: string
+    // Personalization fields
+    availableTags?: string[] // Array of tag names that can be used in templates
+    personalizationMode?: "none" | "contact" | "csv"
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -108,10 +115,15 @@ export class AIEmailGenerationService {
         ? `<p>${data.prompt.replace(/\n/g, '<br>')}</p><br><br>${signature.replace(/\n/g, '<br>')}`
         : `<p>${data.prompt.replace(/\n/g, '<br>')}</p>`
       
+      const subjectTemplate = `Request: ${subject}`
+      
       return {
-        subject: `Request: ${subject}`,
+        subject: subjectTemplate,
         body: bodyWithSignature,
         htmlBody: htmlBodyWithSignature,
+        subjectTemplate: subjectTemplate,
+        bodyTemplate: bodyWithSignature,
+        htmlBodyTemplate: htmlBodyWithSignature,
         suggestedRecipients: {
           entityIds: data.selectedRecipients?.entityIds || [],
           groupIds: data.selectedRecipients?.groupIds || []
@@ -148,7 +160,7 @@ export class AIEmailGenerationService {
             content: `You are an AI assistant that helps generate professional, polite email drafts for accounting teams.
             
             Transform the user's request into a polished, professional email. The email should:
-            - Start with a professional greeting (e.g., "Dear [Name]," or "Hello,")
+            - Start with a professional greeting (e.g., "Dear {{First Name}}," or "Hello,")
             - Clearly state what you need from the recipient
             - Mention any deadlines or due dates if provided
             - Explain what action they need to take (e.g., "Please reply with the attached document", "Click the link below to submit")
@@ -156,22 +168,48 @@ export class AIEmailGenerationService {
             - Be concise (6-10 lines total, not including greeting/closing)
             - Be polite and professional in tone
             
+            ${data.availableTags && data.availableTags.length > 0 ? `
+            PERSONALIZATION: This email will be personalized per recipient using these available tags: ${data.availableTags.join(', ')}
+            - Use {{Tag Name}} syntax to insert dynamic values (e.g., {{Invoice Number}}, {{Due Date}}, {{First Name}})
+            - Use tags naturally in the email where appropriate
+            - If a tag name has spaces, use the exact format shown (e.g., "{{Due Date}}" not "{{DueDate}}")
+            - Example: "Dear {{First Name}}, your invoice {{Invoice Number}} for ${{Amount}} is due on {{Due Date}}."
+            ` : ''}
+            
             The sender signature will be appended automatically by the system - do NOT include it in your response.
             
             Respond with a JSON object containing:
-            - subject: string (concise, specific subject line. Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips")
-            - body: string (plain text email body, 6-10 lines. Include greeting, main message, closing. NO signature)
+            - subject: string (concise, specific subject line. ${data.availableTags && data.availableTags.length > 0 ? 'May include {{Tag Name}} placeholders if relevant.' : 'Avoid generic prefixes like "Request:" - be specific, e.g., "2024 Payroll Slips Request" instead of "Request: payroll slips"'} )
+            - body: string (plain text email body, 6-10 lines. Include greeting, main message, closing. ${data.availableTags && data.availableTags.length > 0 ? 'Use {{Tag Name}} syntax for personalization.' : ''} NO signature)
             - htmlBody: string (HTML formatted version with <br> for line breaks, same content as body)
+            - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled)
+            - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled)
+            - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled)
             - suggestedRecipients: { entityIds?: string[], groupIds?: string[] } (optional)
             - suggestedCampaignName?: string (optional)
             - suggestedCampaignType?: string (optional, one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
             
-            Example format:
+            ${data.availableTags && data.availableTags.length > 0 ? `
+            Example with personalization:
+            {
+              "subject": "Invoice {{Invoice Number}} - Payment Due",
+              "subjectTemplate": "Invoice {{Invoice Number}} - Payment Due",
+              "body": "Dear {{First Name}},\n\nYour invoice {{Invoice Number}} for ${{Amount}} is due on {{Due Date}}. Please submit payment by clicking the link below.\n\nThank you for your prompt attention.\n\nBest regards,",
+              "bodyTemplate": "Dear {{First Name}},\n\nYour invoice {{Invoice Number}} for ${{Amount}} is due on {{Due Date}}. Please submit payment by clicking the link below.\n\nThank you for your prompt attention.\n\nBest regards,",
+              "htmlBody": "Dear {{First Name}},<br><br>Your invoice {{Invoice Number}} for ${{Amount}} is due on {{Due Date}}. Please submit payment by clicking the link below.<br><br>Thank you for your prompt attention.<br><br>Best regards,",
+              "htmlBodyTemplate": "Dear {{First Name}},<br><br>Your invoice {{Invoice Number}} for ${{Amount}} is due on {{Due Date}}. Please submit payment by clicking the link below.<br><br>Thank you for your prompt attention.<br><br>Best regards,"
+            }
+            ` : `
+            Example format (no personalization):
             {
               "subject": "2024 Payroll Slips Submission",
+              "subjectTemplate": "2024 Payroll Slips Submission",
               "body": "Hello,\n\nWe need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
-              "htmlBody": "Hello,<br><br>We need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
-            }`
+              "bodyTemplate": "Hello,\n\nWe need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.\n\nThank you for your prompt attention to this matter.\n\nBest regards,",
+              "htmlBody": "Hello,<br><br>We need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,",
+              "htmlBodyTemplate": "Hello,<br><br>We need your payroll slips for 2024 by year end (December 31, 2024). Please reply to this email with the payroll slips attached.<br><br>Thank you for your prompt attention to this matter.<br><br>Best regards,"
+            }
+            `}`
           },
           {
             role: "user",
@@ -298,10 +336,23 @@ Generate a polite, professional email draft. Keep it concise (6-10 lines in body
       suggestedCampaignType = parsed.suggestedCampaignType as CampaignType
     }
 
+      // Use template versions if available, otherwise use regular versions
+      // Templates should NOT include signature (signature is appended during per-recipient rendering)
+      const subjectTemplate = parsed.subjectTemplate || parsed.subject || "Email"
+      const bodyTemplate = parsed.bodyTemplate || parsed.body || ""
+      const htmlBodyTemplate = parsed.htmlBodyTemplate || parsed.htmlBody || bodyTemplate
+
+      // Templates should be tag-ready (without signature)
+      // Signature will be appended during per-recipient rendering if personalization is enabled
+      // For non-personalized, we use the body with signature as-is
+
       return {
-        subject: parsed.subject || "Email",
-        body: bodyWithSignature,
-        htmlBody: htmlBodyWithSignature,
+        subject: parsed.subject || subjectTemplate || "Email",
+        body: bodyWithSignature, // Final rendered body with signature (for non-personalized)
+        htmlBody: htmlBodyWithSignature, // Final rendered HTML with signature (for non-personalized)
+        subjectTemplate: subjectTemplate, // Template without signature (for personalized)
+        bodyTemplate: bodyTemplate, // Template without signature (for personalized)
+        htmlBodyTemplate: htmlBodyTemplate, // Template without signature (for personalized)
         suggestedRecipients: validatedRecipients,
         suggestedCampaignName: parsed.suggestedCampaignName,
         suggestedCampaignType

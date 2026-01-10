@@ -259,6 +259,7 @@ export class EmailSendingService {
     campaignName?: string
     campaignType?: string
     accountId?: string
+    perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
   }): Promise<Array<{
     email: string
     taskId: string
@@ -270,13 +271,19 @@ export class EmailSendingService {
 
     for (const recipient of data.recipients) {
       try {
+        // Use per-recipient email if provided, otherwise use default
+        const perRecipientEmail = data.perRecipientEmails?.find(e => e.email === recipient.email)
+        const subjectToUse = perRecipientEmail?.subject || data.subject
+        const bodyToUse = perRecipientEmail?.body || data.body
+        const htmlBodyToUse = perRecipientEmail?.htmlBody || data.htmlBody
+
         const result = await this.sendEmail({
           organizationId: data.organizationId,
           to: recipient.email,
           toName: recipient.name,
-          subject: data.subject,
-          body: data.body,
-          htmlBody: data.htmlBody,
+          subject: subjectToUse,
+          body: bodyToUse,
+          htmlBody: htmlBodyToUse,
           campaignName: data.campaignName,
           campaignType: data.campaignType,
           accountId: data.accountId
