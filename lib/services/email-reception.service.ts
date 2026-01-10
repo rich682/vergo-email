@@ -32,52 +32,54 @@ export class EmailReceptionService {
     
     let task = null
     
-    // Strategy 1: Match by In-Reply-To header (Message-ID header from original email)
+    // Strategy 1: Match by In-Reply-To header (Message-ID header from original email) - EFFICIENT INDEXED QUERY
     const inReplyToMessageId = data.providerData?.inReplyTo
     if (inReplyToMessageId) {
-      // The In-Reply-To header contains the Message-ID header from the original email
-      // We need to search providerData for messages that have this Message-ID stored
-      // Since providerData is JSON, we need to query messages and check their providerData
-      const allOutboundMessages = await prisma.message.findMany({
+      // Normalize the Message-ID (remove < > brackets if present)
+      const normalizedInReplyTo = inReplyToMessageId.replace(/^<|>$/g, "").trim()
+      
+      // Query directly using indexed messageIdHeader column (efficient)
+      // Try exact match first, then try with brackets
+      const originalMessage = await prisma.message.findFirst({
         where: {
           direction: "OUTBOUND",
-          providerData: { not: null }
+          OR: [
+            { messageIdHeader: normalizedInReplyTo },
+            { messageIdHeader: `<${normalizedInReplyTo}>` },
+            { messageIdHeader: inReplyToMessageId }
+          ]
         },
         include: {
           task: {
             include: { entity: true }
           }
         }
-      })
-      
-      // Find message where providerData.messageIdHeader matches inReplyToMessageId
-      const originalMessage = allOutboundMessages.find(msg => {
-        const providerData = msg.providerData as any
-        const messageIdHeader = providerData?.messageIdHeader || ""
-        // Compare without < > brackets (In-Reply-To may or may not have them)
-        const normalizedInReplyTo = inReplyToMessageId.replace(/^<|>$/g, "")
-        const normalizedHeader = messageIdHeader.replace(/^<|>$/g, "")
-        return normalizedInReplyTo === normalizedHeader || messageIdHeader === inReplyToMessageId || messageIdHeader === `<${inReplyToMessageId}>`
       })
       
       if (originalMessage?.task) {
         task = originalMessage.task
-        console.log(`Matched reply to original message by In-Reply-To Message-ID: ${inReplyToMessageId} -> Task ${task.id}`)
+        const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+        console.log(JSON.stringify({
+          event: 'reply_linked',
+          requestId: task.id,
+          recipientHash,
+          timestampMs: Date.now(),
+          method: 'in_reply_to_header',
+          messageIdHeader: normalizedInReplyTo
+        }))
+        console.log(`Matched reply to original message by In-Reply-To Message-ID: ${normalizedInReplyTo} -> Task ${task.id}`)
       }
     }
     
-    // Strategy 2: Match by Gmail thread ID (more reliable than subject matching)
+    // Strategy 2: Match by Gmail thread ID (efficient indexed query)
     if (!task && data.providerData?.threadId) {
-      // Gmail thread ID is stored in providerData.threadId when we send emails
-      // Find any outbound message with matching Gmail thread ID
-      const gmailThreadId = data.providerData.threadId
+      const gmailThreadId = String(data.providerData.threadId)
       
-      // Query messages where providerData contains the threadId
-      // Note: Prisma JSON queries need special handling
-      const matchingMessages = await prisma.message.findMany({
+      // Query directly using indexed threadId column (efficient)
+      const matchingMessage = await prisma.message.findFirst({
         where: {
           direction: "OUTBOUND",
-          providerData: { not: null }
+          threadId: gmailThreadId
         },
         include: {
           task: {
@@ -86,38 +88,54 @@ export class EmailReceptionService {
         }
       })
       
-      // Filter in memory for matching thread ID (Prisma JSON path queries can be tricky)
-      const matchingMessage = matchingMessages.find(msg => {
-        const providerData = msg.providerData as any
-        return providerData?.threadId === gmailThreadId
-      })
-      
       if (matchingMessage?.task) {
         task = matchingMessage.task
+        const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+        console.log(JSON.stringify({
+          event: 'reply_linked',
+          requestId: task.id,
+          recipientHash,
+          timestampMs: Date.now(),
+          method: 'thread_id',
+          threadId: gmailThreadId
+        }))
         console.log(`[Email Reception] Matched reply by Gmail thread ID: ${gmailThreadId} -> Task ${task.id}`)
-      } else {
-        // Fallback: Try matching by subject pattern if thread ID didn't work
-        const subjectWithoutRe = data.subject?.replace(/^(Re:|RE:|re:)\s*/i, "").trim()
-        if (subjectWithoutRe) {
-          const matchingTask = await prisma.task.findFirst({
-            where: {
-              messages: {
-                some: {
-                  direction: "OUTBOUND",
-                  subject: {
-                    contains: subjectWithoutRe,
-                    mode: "insensitive"
-                  }
+      }
+    }
+    
+    // Strategy 2b: Fallback - Try matching by subject pattern (only if both above failed)
+    if (!task && data.subject) {
+      const subjectWithoutRe = data.subject.replace(/^(Re:|RE:|re:)\s*/i, "").trim()
+      if (subjectWithoutRe && subjectWithoutRe.length > 5) {
+        // Only use subject matching if subject is meaningful (more than 5 chars)
+        const matchingTask = await prisma.task.findFirst({
+          where: {
+            messages: {
+              some: {
+                direction: "OUTBOUND",
+                subject: {
+                  contains: subjectWithoutRe,
+                  mode: "insensitive"
                 }
               }
-            },
-            include: { entity: true }
-          })
-          
-          if (matchingTask) {
-            task = matchingTask
-            console.log(`[Email Reception] Matched reply by subject pattern: "${subjectWithoutRe}" -> Task ${task.id}`)
-          }
+            }
+          },
+          include: { entity: true },
+          take: 1 // Limit to 1 result
+        })
+        
+        if (matchingTask) {
+          task = matchingTask
+          const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+          console.log(JSON.stringify({
+            event: 'reply_linked',
+            requestId: task.id,
+            recipientHash,
+            timestampMs: Date.now(),
+            method: 'subject_pattern',
+            subjectPattern: subjectWithoutRe.substring(0, 50)
+          }))
+          console.log(`[Email Reception] Matched reply by subject pattern: "${subjectWithoutRe.substring(0, 50)}" -> Task ${task.id}`)
         }
       }
     }
@@ -142,15 +160,29 @@ export class EmailReceptionService {
 
     if (!task) {
       // Orphaned message - couldn't match to any task
+      const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+      console.log(JSON.stringify({
+        event: 'reply_link_failed',
+        recipientHash,
+        timestampMs: Date.now(),
+        reason: 'no_matching_outbound_message',
+        identifiers_present: {
+          inReplyTo: !!data.providerData?.inReplyTo,
+          threadId: !!data.providerData?.threadId,
+          subject: !!data.subject,
+          providerId: !!data.providerId
+        },
+        inReplyToValue: data.providerData?.inReplyTo ? data.providerData.inReplyTo.substring(0, 50) : null,
+        threadIdValue: data.providerData?.threadId || null
+      }))
       console.warn("[Email Reception] Orphaned email received - could not match to task:", {
         providerId: data.providerId,
         from: data.from,
-        subject: data.subject,
+        subject: data.subject?.substring(0, 50),
         inReplyTo: data.providerData?.inReplyTo,
         gmailThreadId: data.providerData?.threadId,
         replyTo: data.replyTo,
-        to: data.to,
-        messageIdHeader: data.providerData?.messageIdHeader
+        to: data.to
       })
       return {
         taskId: null,
@@ -158,6 +190,7 @@ export class EmailReceptionService {
       }
     }
     
+    const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
     console.log(`[Email Reception] Successfully matched reply from ${data.from} to Task ${task.id} (Campaign: ${task.campaignName || 'N/A'})`)
 
     // Process attachments
@@ -249,14 +282,15 @@ export class EmailReceptionService {
     })
 
     // Structured log for reply ingestion
-    // Note: RAG computation happens asynchronously via Inngest, so riskLevel/readStatus may be null here
+    // Note: RAG computation happens asynchronously via Inngest classify-message function, so riskLevel/readStatus may be null here
     // The RAG computation will log separately via rag_computed event
-    const recipientHash = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
+    const recipientHashForLog = createHash('sha256').update(data.from.toLowerCase().trim()).digest('hex').substring(0, 16)
     console.log(JSON.stringify({
       event: 'reply_ingested',
       requestId: task.id,
-      recipientHash,
-      timestampMs: new Date().getTime(),
+      recipientHash: recipientHashForLog,
+      timestampMs: Date.now(),
+      riskRecomputeInvoked: true, // Risk recompute triggered via Inngest message/classify event
       result: {
         riskLevel: task.riskLevel || null,
         readStatus: task.readStatus || null

@@ -467,10 +467,12 @@ Use plain language. Be concise.`
       try {
         console.log("[Inngest Sync] Starting scheduled Gmail sync...")
         const result = await EmailSyncService.syncGmailAccounts()
-        console.log(`[Inngest Sync] Completed: processed ${result.processed} messages, ${result.errors} errors`)
+        console.log(`[Inngest Sync] Completed: ${result.accountsProcessed} accounts, ${result.messagesFetched} messages fetched, ${result.repliesPersisted} replies persisted, ${result.errors} errors`)
         return {
           success: true,
-          processed: result.processed,
+          accountsProcessed: result.accountsProcessed,
+          messagesFetched: result.messagesFetched,
+          repliesPersisted: result.repliesPersisted,
           errors: result.errors
         }
       } catch (error: any) {

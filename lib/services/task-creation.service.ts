@@ -49,6 +49,15 @@ export class TaskCreationService {
     providerData?: any
     trackingToken?: string
   }): Promise<void> {
+    // Extract messageIdHeader and threadId from providerData for efficient reply matching
+    const providerData = data.providerData || {}
+    const messageIdHeader = typeof providerData === 'object' && providerData !== null
+      ? (providerData.messageIdHeader || null)
+      : null
+    const threadId = typeof providerData === 'object' && providerData !== null
+      ? (providerData.threadId || null)
+      : null
+
     await prisma.message.create({
       data: {
         taskId: data.taskId,
@@ -62,6 +71,8 @@ export class TaskCreationService {
         toAddress: data.toAddress,
         providerId: data.providerId,
         providerData: data.providerData || null,
+        messageIdHeader: messageIdHeader ? String(messageIdHeader) : null,
+        threadId: threadId ? String(threadId) : null,
         trackingToken: data.trackingToken || null
       }
     })

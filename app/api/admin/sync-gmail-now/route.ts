@@ -1,13 +1,12 @@
-/**
- * Admin API endpoint to manually sync Gmail accounts for new messages
- * This polls Gmail for new messages as a fallback when push notifications aren't working
- */
-
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 
+/**
+ * Manual trigger endpoint for Gmail sync (safety valve for production)
+ * Authenticated admin-only endpoint to immediately sync Gmail accounts for replies
+ */
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
   
@@ -19,23 +18,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    console.log("[Email Sync API] Starting manual email sync...")
-    
     const result = await EmailSyncService.syncGmailAccounts()
-    
+
     return NextResponse.json({
       success: true,
-      message: "Email sync completed",
-      accountsProcessed: result.accountsProcessed,
-      messagesFetched: result.messagesFetched,
-      repliesPersisted: result.repliesPersisted,
-      errors: result.errors
+      ...result
     })
   } catch (error: any) {
-    console.error("[Email Sync API] Error syncing emails:", error)
+    console.error("[Sync Gmail Now] Error:", error)
     return NextResponse.json(
       { 
-        error: "Email sync failed",
+        error: "Sync failed",
         message: error.message 
       },
       { status: 500 }

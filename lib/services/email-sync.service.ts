@@ -8,13 +8,24 @@ import { EmailConnectionService } from "./email-connection.service"
 import { EmailReceptionService } from "./email-reception.service"
 import { prisma } from "@/lib/prisma"
 import { simpleParser } from "mailparser"
+import { createHash } from "crypto"
 
 export class EmailSyncService {
   /**
    * Sync all Gmail accounts for new messages in threads we're tracking
    * This checks for new messages in Gmail threads that correspond to our tasks
    */
-  static async syncGmailAccounts(): Promise<{ processed: number; errors: number }> {
+  static async syncGmailAccounts(): Promise<{ 
+    accountsProcessed: number
+    messagesFetched: number
+    repliesPersisted: number
+    errors: number
+  }> {
+    console.log(JSON.stringify({
+      event: 'sync_start',
+      timestampMs: Date.now()
+    }))
+
     const accounts = await prisma.connectedEmailAccount.findMany({
       where: {
         provider: "GMAIL",
@@ -22,27 +33,63 @@ export class EmailSyncService {
       }
     })
 
-    let processed = 0
+    let accountsProcessed = 0
+    let messagesFetched = 0
+    let repliesPersisted = 0
     let errors = 0
 
     for (const account of accounts) {
       try {
+        const accountHash = createHash('sha256').update(account.id).digest('hex').substring(0, 16)
+        console.log(JSON.stringify({
+          event: 'sync_account',
+          timestampMs: Date.now(),
+          accountHash
+        }))
+
         const result = await this.syncGmailAccount(account.id)
-        processed += result.processed
-        errors += result.errors
+        accountsProcessed++
+        messagesFetched += result.messagesFetched || 0
+        repliesPersisted += result.repliesPersisted || 0
+        errors += result.errors || 0
       } catch (error: any) {
+        const accountHash = createHash('sha256').update(account.id).digest('hex').substring(0, 16)
+        console.error(JSON.stringify({
+          event: 'sync_account_error',
+          timestampMs: Date.now(),
+          accountHash,
+          error: error.message?.substring(0, 100)
+        }))
         console.error(`[Email Sync] Error syncing account ${account.id}:`, error)
         errors++
       }
     }
 
-    return { processed, errors }
+    const result = {
+      accountsProcessed,
+      messagesFetched,
+      repliesPersisted,
+      errors
+    }
+
+    console.log(JSON.stringify({
+      event: 'sync_complete',
+      timestampMs: Date.now(),
+      ...result
+    }))
+
+    return result
   }
 
   /**
    * Sync a specific Gmail account for new messages
    */
-  static async syncGmailAccount(accountId: string): Promise<{ processed: number; errors: number }> {
+  static async syncGmailAccount(accountId: string): Promise<{ 
+    processed: number
+    messagesFetched: number
+    repliesPersisted: number
+    errors: number
+  }> {
     const oauth2Client = await EmailConnectionService.getGmailClient(accountId)
     if (!oauth2Client) {
       throw new Error("Failed to get Gmail client")
@@ -51,14 +98,19 @@ export class EmailSyncService {
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
     // Get all outbound messages we've sent (to find Gmail thread IDs)
+    // Use indexed threadId column for efficiency, but also check providerData for backward compatibility
     const ourOutboundMessages = await prisma.message.findMany({
       where: {
         direction: "OUTBOUND",
-        providerData: { not: null }
+        OR: [
+          { threadId: { not: null } }, // Use indexed column
+          { providerData: { not: null } } // Fallback to JSON for backward compatibility
+        ]
       },
       select: {
         id: true,
         taskId: true,
+        threadId: true, // Use indexed column
         providerData: true,
         createdAt: true
       },
@@ -70,15 +122,22 @@ export class EmailSyncService {
 
     const gmailThreadIds = new Set<string>()
     for (const msg of ourOutboundMessages) {
-      const providerData = msg.providerData as any
-      if (providerData?.threadId) {
-        gmailThreadIds.add(providerData.threadId)
+      // Prefer indexed threadId column, fall back to providerData for backward compatibility
+      if (msg.threadId) {
+        gmailThreadIds.add(String(msg.threadId))
+      } else {
+        const providerData = msg.providerData as any
+        if (providerData?.threadId) {
+          gmailThreadIds.add(String(providerData.threadId))
+        }
       }
     }
 
     console.log(`[Email Sync] Found ${gmailThreadIds.size} Gmail threads to check for account ${accountId}`)
 
     let processed = 0
+    let messagesFetched = 0
+    let repliesPersisted = 0
     let errors = 0
 
     // For each Gmail thread, check for new messages we haven't processed yet
@@ -107,6 +166,8 @@ export class EmailSyncService {
         for (const gmailMessage of thread.data.messages) {
           const gmailMessageId = gmailMessage.id
           if (existingIds.has(gmailMessageId)) continue
+
+          messagesFetched++
 
           // Skip if this is an outbound message (we sent it)
           const messageData = await gmail.users.messages.get({
@@ -175,9 +236,12 @@ export class EmailSyncService {
             }))
           }
 
-          await EmailReceptionService.processInboundEmail(emailData)
+          const result = await EmailReceptionService.processInboundEmail(emailData)
           processed++
-          console.log(`[Email Sync] Processed new message ${gmailMessageId} in thread ${threadId}`)
+          if (result.taskId) {
+            repliesPersisted++
+          }
+          console.log(`[Email Sync] Processed new message ${gmailMessageId} in thread ${threadId} -> Task ${result.taskId || 'none'}`)
         }
       } catch (error: any) {
         console.error(`[Email Sync] Error processing thread ${threadId}:`, error)
@@ -185,7 +249,7 @@ export class EmailSyncService {
       }
     }
 
-    return { processed, errors }
+    return { processed, messagesFetched, repliesPersisted, errors }
   }
 }
 
