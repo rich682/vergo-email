@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { CampaignType, TaskStatus } from "@prisma/client"
+import { computeDeterministicRisk, computeLastActivityAt } from "@/lib/services/risk-computation.service"
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic'
@@ -136,14 +137,16 @@ export async function GET(request: NextRequest) {
       take: 100
     })
 
-    // Get all task IDs to efficiently count inbound messages and get latest classification
+    // Get all task IDs to efficiently count inbound messages and get latest classification/body
     const taskIds = tasks.map(t => t.id)
     
-    // Get inbound message counts and latest classification for all tasks
+    // Get inbound message counts, latest classification, and body for risk computation
     const inboundCountMap = new Map<string, number>()
     const latestClassificationMap = new Map<string, string | null>()
+    const latestResponseTextMap = new Map<string, string | null>()
+    const latestInboundDateMap = new Map<string, Date | null>()
     if (taskIds.length > 0) {
-      // Get all inbound messages with classification
+      // Get all inbound messages with classification and body
       const inboundMessages = await prisma.message.findMany({
         where: {
           taskId: { in: taskIds },
@@ -152,6 +155,7 @@ export async function GET(request: NextRequest) {
         select: {
           taskId: true,
           aiClassification: true,
+          body: true,
           createdAt: true
         },
         orderBy: {
@@ -159,7 +163,7 @@ export async function GET(request: NextRequest) {
         }
       })
       
-      // Count messages and get latest classification per task
+      // Count messages and get latest classification/body per task
       for (const message of inboundMessages) {
         inboundCountMap.set(message.taskId, (inboundCountMap.get(message.taskId) || 0) + 1)
         
@@ -167,14 +171,58 @@ export async function GET(request: NextRequest) {
         if (!latestClassificationMap.has(message.taskId) && message.aiClassification) {
           latestClassificationMap.set(message.taskId, message.aiClassification)
         }
+        
+        // Store latest response text for risk computation
+        if (!latestResponseTextMap.has(message.taskId) && message.body) {
+          latestResponseTextMap.set(message.taskId, message.body)
+        }
+        
+        // Store latest inbound date
+        if (!latestInboundDateMap.has(message.taskId)) {
+          latestInboundDateMap.set(message.taskId, message.createdAt)
+        }
       }
     }
 
-    // Enrich tasks with reply information, read receipt data, and classification
+    // Enrich tasks with reply information, read receipt data, classification, and risk
     let tasksWithReplies = tasks.map((task) => {
       const inboundCount = inboundCountMap.get(task.id) || 0
       const latestOutboundMessage = task.messages[0] || null
       const latestClassification = latestClassificationMap.get(task.id) || null
+      const latestResponseText = latestResponseTextMap.get(task.id) || null
+      const latestInboundDate = latestInboundDateMap.get(task.id) || null
+      
+      // Compute risk if not manually overridden, or compute anyway for API response
+      const riskComputation = computeDeterministicRisk({
+        readStatus: task.readStatus as any,
+        hasReplies: inboundCount > 0,
+        latestResponseText,
+        latestInboundClassification: latestClassification,
+        completionPercentage: task.completionPercentage,
+        openedAt: latestOutboundMessage?.openedAt || null,
+        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
+        hasAttachments: task.hasAttachments,
+        aiVerified: task.aiVerified,
+        lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt
+      })
+      
+      // Use manual override if present, otherwise use computed risk
+      const riskLevel = task.manualRiskOverride || riskComputation.riskLevel
+      const riskReason = task.manualRiskOverride ? (task.overrideReason || "Manually set") : riskComputation.riskReason
+      const readStatus = task.readStatus || riskComputation.readStatus
+      const lastActivityAt = computeLastActivityAt({
+        readStatus: riskComputation.readStatus,
+        hasReplies: inboundCount > 0,
+        latestResponseText,
+        latestInboundClassification: latestClassification,
+        completionPercentage: task.completionPercentage,
+        openedAt: latestOutboundMessage?.openedAt || null,
+        lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
+        hasAttachments: task.hasAttachments,
+        aiVerified: task.aiVerified,
+        lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt
+      }) || latestInboundDate || task.updatedAt
+      
       return {
         ...task,
         hasReplies: inboundCount > 0,
@@ -185,7 +233,14 @@ export async function GET(request: NextRequest) {
         openedCount: latestOutboundMessage?.openedCount || 0,
         lastOpenedAt: latestOutboundMessage?.lastOpenedAt || null,
         latestInboundClassification: latestClassification,
-        latestOutboundSubject: latestOutboundMessage?.subject || null
+        latestOutboundSubject: latestOutboundMessage?.subject || null,
+        latestResponseText: latestResponseText ? (latestResponseText.length > 200 ? latestResponseText.substring(0, 200) + "..." : latestResponseText) : null,
+        // Risk data
+        readStatus,
+        riskLevel,
+        riskReason,
+        lastActivityAt: lastActivityAt instanceof Date ? lastActivityAt.toISOString() : lastActivityAt,
+        isManualRiskOverride: !!task.manualRiskOverride
       }
     })
 

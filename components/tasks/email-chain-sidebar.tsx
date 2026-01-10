@@ -62,6 +62,8 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
   const [summaryExpanded, setSummaryExpanded] = useState(true)
   const [overrideStatus, setOverrideStatus] = useState<string | null>(null)
   const [overrideMessage, setOverrideMessage] = useState<string | null>(null)
+  const [overrideRisk, setOverrideRisk] = useState<string | null>(null)
+  const [riskOverrideMessage, setRiskOverrideMessage] = useState<string | null>(null)
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -206,6 +208,58 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
       setOverrideMessage(error.message || "Failed to update status")
       setOverrideStatus(null)
       setTimeout(() => setOverrideMessage(null), 3000)
+    }
+  }
+
+  // Handle manual risk override
+  const handleRiskOverride = async (riskLevel: "high" | "medium" | "low" | "unknown") => {
+    if (!task?.id) return
+
+    setOverrideRisk(riskLevel)
+    setRiskOverrideMessage(null)
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/risk`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          riskLevel,
+          overrideReason: `Manual override to ${riskLevel}` 
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to update risk" }))
+        throw new Error(errorData.error || "Failed to update risk")
+      }
+
+      const data = await response.json()
+      
+      // Update local task state optimistically
+      if (task) {
+        task.riskLevel = riskLevel
+        task.manualRiskOverride = riskLevel
+        task.overrideReason = `Manual override to ${riskLevel}`
+        task.updatedAt = new Date().toISOString()
+      }
+
+      // Show success message
+      setRiskOverrideMessage("Risk level updated successfully")
+      setTimeout(() => {
+        setRiskOverrideMessage(null)
+        setOverrideRisk(null)
+      }, 2000)
+
+      // Refresh the page to update the list view
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
+    } catch (error: any) {
+      console.error("Error updating risk:", error)
+      setRiskOverrideMessage(error.message || "Failed to update risk")
+      setOverrideRisk(null)
+      setTimeout(() => setRiskOverrideMessage(null), 3000)
     }
   }
 
@@ -425,6 +479,88 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
               {overrideStatus === "FLAGGED" ? "Updating..." : "Flag"}
             </Button>
           </div>
+        </div>
+
+        {/* Risk Override */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="text-xs text-gray-500 mb-2">
+            Risk Level {task.isManualRiskOverride && <span className="text-orange-600">(Manual)</span>}
+          </div>
+          <div className="mb-2">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+              task.riskLevel === "high" ? "bg-red-100 text-red-800" :
+              task.riskLevel === "medium" ? "bg-yellow-100 text-yellow-800" :
+              task.riskLevel === "low" ? "bg-green-100 text-green-800" :
+              "bg-gray-100 text-gray-800"
+            }`}>
+              {task.riskLevel || "unknown"}
+            </span>
+            {task.riskReason && (
+              <p className="text-xs text-gray-600 mt-1">{task.riskReason}</p>
+            )}
+          </div>
+          {riskOverrideMessage && (
+            <div className={`mb-2 text-xs p-2 rounded ${
+              riskOverrideMessage.includes("success") 
+                ? "bg-green-50 text-green-700 border border-green-200" 
+                : "bg-red-50 text-red-700 border border-red-200"
+            }`}>
+              {riskOverrideMessage}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+              disabled={overrideRisk !== null}
+              onClick={() => handleRiskOverride("high")}
+            >
+              {overrideRisk === "high" ? "Updating..." : "High"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+              disabled={overrideRisk !== null}
+              onClick={() => handleRiskOverride("medium")}
+            >
+              {overrideRisk === "medium" ? "Updating..." : "Medium"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+              disabled={overrideRisk !== null}
+              onClick={() => handleRiskOverride("low")}
+            >
+              {overrideRisk === "low" ? "Updating..." : "Low"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              disabled={overrideRisk !== null}
+              onClick={() => handleRiskOverride("unknown")}
+            >
+              {overrideRisk === "unknown" ? "Updating..." : "Clear"}
+            </Button>
+          </div>
+          {task.readStatus === "unread" && task.riskLevel === "high" && (
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs w-full"
+                onClick={() => {
+                  // Placeholder for resend/remind functionality
+                  alert("Resend/Remind functionality coming soon")
+                }}
+              >
+                Resend / Remind
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

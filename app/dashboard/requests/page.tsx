@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { getTaskCompletionState, TaskCompletionState } from "@/lib/taskState"
-import { getRequestGrouping, RequestGrouping } from "@/lib/requestGrouping"
+import { getRequestGrouping } from "@/lib/requestGrouping"
 import { formatDistanceToNow } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
@@ -18,7 +17,17 @@ interface Task {
   hasReplies: boolean
   latestInboundClassification?: string | null
   latestOutboundSubject?: string | null
-  completionPercentage?: number | null // LLM-determined completion percentage (0-100) based on reply intent
+  completionPercentage?: number | null
+  // Risk fields
+  readStatus?: string | null
+  riskLevel?: "high" | "medium" | "low" | "unknown" | null
+  riskReason?: string | null
+  lastActivityAt?: string | null
+  isManualRiskOverride?: boolean
+  entity?: {
+    firstName: string
+    email: string | null
+  }
 }
 
 interface RequestGroup {
@@ -27,19 +36,21 @@ interface RequestGroup {
   groupType: string
   tasks: Task[]
   totalCount: number
-  needsReviewCount: number
-  pendingCount: number
-  submittedCount: number
-  completeCount: number
-  percentComplete: number
+  // Risk rollups
+  highCount: number
+  mediumCount: number
+  lowCount: number
+  unknownCount: number
   lastActivity: Date
-  needsAttentionCount: number
 }
+
+type RiskFilter = "all" | "high" | "needs-follow-up" | "low"
 
 export default function RequestsPage() {
   const router = useRouter()
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all")
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -83,25 +94,9 @@ export default function RequestsPage() {
 
   // Compute task states and group them
   const requestGroups = useMemo(() => {
-    // Compute completion state for each task
-    const tasksWithState = allTasks.map(task => {
-      const completionState = getTaskCompletionState({
-        status: task.status,
-        hasAttachments: task.hasAttachments,
-        aiVerified: task.aiVerified ?? null,
-        updatedAt: task.updatedAt,
-        hasReplies: task.hasReplies,
-        latestInboundClassification: task.latestInboundClassification ?? null
-      })
-      return {
-        ...task,
-        completionState
-      }
-    })
-
     // Group tasks by grouping key
     const groupMap = new Map<string, Task[]>()
-    for (const task of tasksWithState) {
+    for (const task of allTasks) {
       const grouping = getRequestGrouping({
         campaignName: task.campaignName,
         campaignType: task.campaignType,
@@ -115,7 +110,7 @@ export default function RequestsPage() {
       groupMap.get(grouping.groupKey)!.push(task)
     }
 
-    // Compute rollups for each group
+    // Compute risk rollups for each group
     const groups: RequestGroup[] = []
     for (const [groupKey, tasks] of groupMap.entries()) {
       const grouping = getRequestGrouping({
@@ -125,33 +120,17 @@ export default function RequestsPage() {
         latestOutboundSubject: tasks[0]?.latestOutboundSubject ?? null
       })
 
-      const needsReviewCount = tasks.filter(t => t.completionState === "Needs Review").length
-      const pendingCount = tasks.filter(t => t.completionState === "Pending").length
-      const submittedCount = tasks.filter(t => t.completionState === "Submitted").length
-      const completeCount = tasks.filter(t => t.completionState === "Complete").length
       const totalCount = tasks.length
+      const highCount = tasks.filter(t => t.riskLevel === "high").length
+      const mediumCount = tasks.filter(t => t.riskLevel === "medium").length
+      const lowCount = tasks.filter(t => t.riskLevel === "low").length
+      const unknownCount = tasks.filter(t => !t.riskLevel || t.riskLevel === "unknown").length
       
-      // Calculate completion percentage based on LLM intent analysis (0-100 per task)
-      // Use average of task completion percentages if available, otherwise fall back to binary counting
-      let percentComplete = 0
-      if (totalCount > 0) {
-        const tasksWithCompletion = tasks.filter(t => t.completionPercentage !== null && t.completionPercentage !== undefined)
-        if (tasksWithCompletion.length > 0) {
-          // Use intent-based completion percentages
-          const sum = tasksWithCompletion.reduce((acc, t) => acc + (t.completionPercentage || 0), 0)
-          const avg = sum / tasksWithCompletion.length
-          // For tasks without completion percentage yet, assume 0%
-          const totalSum = sum + (totalCount - tasksWithCompletion.length) * 0
-          percentComplete = Math.round(totalSum / totalCount)
-        } else {
-          // Fall back to binary counting (old method)
-          percentComplete = Math.round((completeCount / totalCount) * 100)
-        }
-      }
-      
-      // Find latest activity (max updatedAt)
+      // Find latest activity (max lastActivityAt or updatedAt)
       const lastActivity = tasks.reduce((latest, task) => {
-        const taskDate = new Date(task.updatedAt)
+        const taskDate = task.lastActivityAt 
+          ? new Date(task.lastActivityAt)
+          : new Date(task.updatedAt)
         return taskDate > latest ? taskDate : latest
       }, new Date(0))
 
@@ -161,24 +140,35 @@ export default function RequestsPage() {
         groupType: grouping.groupType,
         tasks,
         totalCount,
-        needsReviewCount,
-        pendingCount,
-        submittedCount,
-        completeCount,
-        percentComplete,
-        lastActivity,
-        needsAttentionCount: needsReviewCount
+        highCount,
+        mediumCount,
+        lowCount,
+        unknownCount,
+        lastActivity
       })
     }
 
-    // Sort: needsAttentionCount DESC, then lastActivity DESC
-    return groups.sort((a, b) => {
-      if (a.needsAttentionCount !== b.needsAttentionCount) {
-        return b.needsAttentionCount - a.needsAttentionCount
+    // Filter by risk filter
+    let filteredGroups = groups
+    if (riskFilter === "high") {
+      filteredGroups = groups.filter(g => g.highCount > 0)
+    } else if (riskFilter === "needs-follow-up") {
+      filteredGroups = groups.filter(g => g.highCount > 0 || g.mediumCount > 0)
+    } else if (riskFilter === "low") {
+      filteredGroups = groups.filter(g => g.lowCount > 0 && g.highCount === 0 && g.mediumCount === 0)
+    }
+
+    // Sort: Highest High count first, then Medium, then Last updated
+    return filteredGroups.sort((a, b) => {
+      if (a.highCount !== b.highCount) {
+        return b.highCount - a.highCount
+      }
+      if (a.mediumCount !== b.mediumCount) {
+        return b.mediumCount - a.mediumCount
       }
       return b.lastActivity.getTime() - a.lastActivity.getTime()
     })
-  }, [allTasks])
+  }, [allTasks, riskFilter])
 
   const handleRequestClick = (groupKey: string) => {
     const encodedKey = encodeURIComponent(groupKey)
@@ -200,7 +190,7 @@ export default function RequestsPage() {
       <div className="flex-1 flex overflow-hidden relative bg-gray-50">
         <div className="flex-1 flex flex-col overflow-hidden bg-white">
           <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-2xl font-bold">Requests</h2>
                 <p className="text-sm text-gray-600">
@@ -214,6 +204,50 @@ export default function RequestsPage() {
                 <Plus className="w-4 h-4" />
                 New Request
               </Button>
+            </div>
+            
+            {/* Risk Filter Chips */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRiskFilter("all")}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  riskFilter === "all"
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setRiskFilter("high")}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  riskFilter === "high"
+                    ? "bg-red-600 text-white"
+                    : "bg-red-50 text-red-700 hover:bg-red-100"
+                }`}
+              >
+                High Risk
+              </button>
+              <button
+                onClick={() => setRiskFilter("needs-follow-up")}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  riskFilter === "needs-follow-up"
+                    ? "bg-yellow-600 text-white"
+                    : "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
+                }`}
+              >
+                Needs Follow-up
+              </button>
+              <button
+                onClick={() => setRiskFilter("low")}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  riskFilter === "low"
+                    ? "bg-green-600 text-white"
+                    : "bg-green-50 text-green-700 hover:bg-green-100"
+                }`}
+              >
+                Low Risk
+              </button>
             </div>
           </div>
 
@@ -247,30 +281,20 @@ export default function RequestsPage() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {requestGroups.map((group) => {
-                      // Determine primary status
-                      const primaryStatus = group.needsReviewCount > 0 
-                        ? "Needs Review" 
-                        : group.pendingCount > 0 
-                        ? "Pending" 
-                        : group.submittedCount > 0 
-                        ? "Submitted" 
-                        : "Complete"
-                      
-                      const statusColor = primaryStatus === "Needs Review"
-                        ? "bg-red-100 text-red-800"
-                        : primaryStatus === "Pending"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : primaryStatus === "Submitted"
-                        ? "bg-purple-100 text-purple-800"
-                        : "bg-green-100 text-green-800"
+                      // Build risk breakdown display
+                      const riskParts: string[] = []
+                      if (group.highCount > 0) riskParts.push(`${group.highCount} High`)
+                      if (group.mediumCount > 0) riskParts.push(`${group.mediumCount} Med`)
+                      if (group.lowCount > 0) riskParts.push(`${group.lowCount} Low`)
+                      if (group.unknownCount > 0) riskParts.push(`${group.unknownCount} Unknown`)
+                      const riskText = riskParts.length > 0 ? riskParts.join(" • ") : "0 Unknown"
                       
                       // Build recipient display
                       const recipientCount = group.totalCount
@@ -292,16 +316,23 @@ export default function RequestsPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
-                              {primaryStatus}
-                            </span>
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {recipientText}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {group.completeCount} / {group.totalCount} ({group.percentComplete}%)
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${
+                                group.highCount > 0 
+                                  ? "text-red-700" 
+                                  : group.mediumCount > 0 
+                                  ? "text-yellow-700" 
+                                  : group.lowCount > 0
+                                  ? "text-green-700"
+                                  : "text-gray-500"
+                              }`}>
+                                {riskText}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDistanceToNow(group.lastActivity, { addSuffix: true })}

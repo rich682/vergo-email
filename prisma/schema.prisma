@@ -167,6 +167,12 @@ model Task {
   documentKey            String?
   hasAttachments         Boolean       @default(false)
   completionPercentage   Int?          // LLM-determined completion percentage (0-100) based on reply intent
+  readStatus             String?         // unread | read | replied
+  riskLevel             String?         // high | medium | low | unknown
+  riskReason            String?         // Short explanation of risk level
+  manualRiskOverride    String?         // high | medium | low | null (if manually set)
+  overrideReason        String?         // Reason for manual override
+  lastActivityAt        DateTime?       // Last activity timestamp (opened, replied, etc.)
   organizationId         String
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt

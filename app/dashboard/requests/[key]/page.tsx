@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
-import { getTaskCompletionState, TaskCompletionState } from "@/lib/taskState"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { formatDistanceToNow } from "date-fns"
+import { Button } from "@/components/ui/button"
 
 export default function RequestDetailPage() {
   const params = useParams()
@@ -66,16 +66,6 @@ export default function RequestDetailPage() {
 
     return allTasks
       .map(task => {
-        // Compute completion state
-        const completionState = getTaskCompletionState({
-          status: task.status,
-          hasAttachments: task.hasAttachments,
-          aiVerified: task.aiVerified ?? null,
-          updatedAt: task.updatedAt,
-          hasReplies: task.hasReplies,
-          latestInboundClassification: task.latestInboundClassification ?? null
-        })
-
         // Compute grouping key
         const grouping = getRequestGrouping({
           campaignName: task.campaignName,
@@ -86,7 +76,6 @@ export default function RequestDetailPage() {
 
         return {
           ...task,
-          completionState,
           computedGroupKey: grouping.groupKey
         }
       })
@@ -106,46 +95,32 @@ export default function RequestDetailPage() {
     return grouping.displayName
   }, [filteredTasks])
 
-  // Compute rollups for the filtered tasks
+  // Compute risk rollups for the filtered tasks
   const rollups = useMemo(() => {
-    const needsReviewCount = filteredTasks.filter(t => t.completionState === "Needs Review").length
-    const pendingCount = filteredTasks.filter(t => t.completionState === "Pending").length
-    const submittedCount = filteredTasks.filter(t => t.completionState === "Submitted").length
-    const completeCount = filteredTasks.filter(t => t.completionState === "Complete").length
     const totalCount = filteredTasks.length
+    const highCount = filteredTasks.filter(t => t.riskLevel === "high").length
+    const mediumCount = filteredTasks.filter(t => t.riskLevel === "medium").length
+    const lowCount = filteredTasks.filter(t => t.riskLevel === "low").length
+    const unknownCount = filteredTasks.filter(t => !t.riskLevel || t.riskLevel === "unknown").length
+    const unreadCount = filteredTasks.filter(t => t.readStatus === "unread").length
     
-    // Calculate completion percentage based on LLM intent analysis (0-100 per task)
-    // Use average of task completion percentages if available, otherwise fall back to binary counting
-    let percentComplete = 0
-    if (totalCount > 0) {
-      const tasksWithCompletion = filteredTasks.filter(t => t.completionPercentage !== null && t.completionPercentage !== undefined)
-      if (tasksWithCompletion.length > 0) {
-        // Use intent-based completion percentages
-        const sum = tasksWithCompletion.reduce((acc, t) => acc + (t.completionPercentage || 0), 0)
-        // For tasks without completion percentage yet, assume 0%
-        const totalSum = sum + (totalCount - tasksWithCompletion.length) * 0
-        percentComplete = Math.round(totalSum / totalCount)
-      } else {
-        // Fall back to binary counting (old method)
-        percentComplete = Math.round((completeCount / totalCount) * 100)
-      }
-    }
-    
-    // Find latest activity (max updatedAt)
+    // Find latest activity (max lastActivityAt or updatedAt)
     const lastActivity = filteredTasks.length > 0
       ? filteredTasks.reduce((latest, task) => {
-          const taskDate = new Date(task.updatedAt)
+          const taskDate = task.lastActivityAt 
+            ? new Date(task.lastActivityAt)
+            : new Date(task.updatedAt)
           return taskDate > latest ? taskDate : latest
         }, new Date(0))
       : new Date()
 
     return {
-      needsReviewCount,
-      pendingCount,
-      submittedCount,
-      completeCount,
       totalCount,
-      percentComplete,
+      highCount,
+      mediumCount,
+      lowCount,
+      unknownCount,
+      unreadCount,
       lastActivity
     }
   }, [filteredTasks])
@@ -218,35 +193,36 @@ export default function RequestDetailPage() {
                 >
                   ← Back to Requests
                 </button>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold">{requestDisplayName}</h2>
-                  <span className="text-lg text-gray-600">
-                    {rollups.completeCount}/{rollups.totalCount} complete ({rollups.percentComplete}%)
-                  </span>
-                </div>
+                <h2 className="text-2xl font-bold">{requestDisplayName}</h2>
               </div>
             </div>
           </div>
 
-          {/* Summary Bar */}
-          <div className="flex-shrink-0 px-6 py-2 border-b border-gray-200 bg-gray-50">
+          {/* Risk Summary Bar */}
+          <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 bg-gray-50">
             <div className="flex items-center gap-4 text-sm">
-              <span className="font-medium text-gray-700">Summary:</span>
-              <span className={`${rollups.needsReviewCount > 0 ? "font-semibold text-red-700" : "text-gray-600"}`}>
-                {rollups.needsReviewCount} Needs Review
+              <span className="font-medium text-gray-700">Risk Summary:</span>
+              <span className={`font-semibold ${rollups.highCount > 0 ? "text-red-700" : "text-gray-600"}`}>
+                High: {rollups.highCount}
               </span>
-              <span className="text-gray-600">•</span>
-              <span className={`${rollups.pendingCount > 0 ? "font-semibold text-yellow-700" : "text-gray-600"}`}>
-                {rollups.pendingCount} Pending
+              <span className={`font-semibold ${rollups.mediumCount > 0 ? "text-yellow-700" : "text-gray-600"}`}>
+                Medium: {rollups.mediumCount}
               </span>
-              <span className="text-gray-600">•</span>
-              <span className={`${rollups.submittedCount > 0 ? "font-semibold text-purple-700" : "text-gray-600"}`}>
-                {rollups.submittedCount} Submitted
+              <span className={`font-semibold ${rollups.lowCount > 0 ? "text-green-700" : "text-gray-600"}`}>
+                Low: {rollups.lowCount}
               </span>
-              <span className="text-gray-600">•</span>
-              <span className="text-gray-500">
-                {rollups.completeCount} Complete
-              </span>
+              {rollups.unknownCount > 0 && (
+                <>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-gray-500">Unknown: {rollups.unknownCount}</span>
+                </>
+              )}
+              {rollups.unreadCount > 0 && (
+                <>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-orange-600">Unread: {rollups.unreadCount}</span>
+                </>
+              )}
               <span className="text-gray-400 ml-auto">
                 Last updated: {formatDistanceToNow(rollups.lastActivity, { addSuffix: true })}
               </span>
@@ -256,47 +232,87 @@ export default function RequestDetailPage() {
           <div className="flex-1 overflow-y-auto p-6 bg-white">
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Responses</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recipients</h3>
                 {filteredTasks.length === 0 ? (
-                  <p className="text-sm text-gray-500">No responses yet</p>
+                  <p className="text-sm text-gray-500">No recipients yet</p>
                 ) : (
-                  <div className="space-y-2">
-                    {filteredTasks.map((task) => {
-                      const completionState = task.completionState || "Pending"
-                      const stateColors: Record<string, string> = {
-                        "Needs Review": "bg-red-100 text-red-800",
-                        "Pending": "bg-yellow-100 text-yellow-800",
-                        "Submitted": "bg-purple-100 text-purple-800",
-                        "Complete": "bg-green-100 text-green-800"
-                      }
-                      
-                      return (
-                        <div
-                          key={task.id}
-                          onClick={() => handleTaskSelect(task.id)}
-                          className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="font-medium text-gray-900">
-                                  {(task as any).entity?.firstName || (task as any).entity?.email || "Unknown"}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason / Snippet</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredTasks.map((task) => {
+                          const riskLevel = task.riskLevel || "unknown"
+                          const riskColors: Record<string, string> = {
+                            "high": "bg-red-100 text-red-800",
+                            "medium": "bg-yellow-100 text-yellow-800",
+                            "low": "bg-green-100 text-green-800",
+                            "unknown": "bg-gray-100 text-gray-800"
+                          }
+                          
+                          const readStatus = task.readStatus || "unknown"
+                          const statusColors: Record<string, string> = {
+                            "unread": "text-gray-500",
+                            "read": "text-blue-600",
+                            "replied": "text-green-600",
+                            "unknown": "text-gray-400"
+                          }
+                          
+                          const entityName = (task as any).entity?.firstName || (task as any).entity?.email || "Unknown"
+                          const entityEmail = (task as any).entity?.email || null
+                          const lastActivityAt = task.lastActivityAt ? new Date(task.lastActivityAt) : new Date(task.updatedAt)
+                          
+                          return (
+                            <tr
+                              key={task.id}
+                              onClick={() => handleTaskSelect(task.id)}
+                              className="hover:bg-gray-50 cursor-pointer transition-colors"
+                            >
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex flex-col">
+                                  <span className="text-sm font-medium text-gray-900">{entityName}</span>
+                                  {entityEmail && (
+                                    <span className="text-xs text-gray-500">{entityEmail}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`text-xs font-medium capitalize ${statusColors[readStatus] || statusColors.unknown}`}>
+                                  {readStatus}
                                 </span>
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${stateColors[completionState] || "bg-gray-100 text-gray-800"}`}>
-                                  {completionState}
-                                </span>
-                              </div>
-                              {task.latestOutboundSubject && (
-                                <p className="text-sm text-gray-600 mb-1">{task.latestOutboundSubject}</p>
-                              )}
-                              <p className="text-xs text-gray-500">
-                                {formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLevel] || riskColors.unknown}`}>
+                                    {riskLevel}
+                                  </span>
+                                  {task.isManualRiskOverride && (
+                                    <span className="text-xs text-gray-500">(Manual)</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="max-w-md">
+                                  <p className="text-sm text-gray-900 truncate">
+                                    {task.riskReason || task.latestResponseText || task.latestOutboundSubject || "—"}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                {formatDistanceToNow(lastActivityAt, { addSuffix: true })}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
