@@ -291,7 +291,7 @@ export class EmailSendingService {
     campaignType?: string
     accountId?: string
     perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
-    deadlineDays?: number | null
+    deadlineDate?: Date | null
   }): Promise<Array<{
     email: string
     taskId: string
@@ -301,12 +301,8 @@ export class EmailSendingService {
   }>> {
     const results = []
 
-    // Calculate deadlineDate if deadlineDays is provided (deadlineDate = now + deadlineDays)
-    const deadlineDate = data.deadlineDays ? (() => {
-      const deadline = new Date()
-      deadline.setDate(deadline.getDate() + data.deadlineDays)
-      return deadline
-    })() : null
+    // Use deadlineDate directly from data (set by user via date picker)
+    const deadlineDate = data.deadlineDate || null
 
     for (const recipient of data.recipients) {
       try {

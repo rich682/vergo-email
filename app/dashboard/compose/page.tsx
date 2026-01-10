@@ -66,7 +66,7 @@ function ComposePageContent() {
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from variables
   
   // Deadline state
-  const [deadlineDays, setDeadlineDays] = useState<number | null>(null) // Number of days after sending for deadline
+  const [deadlineDate, setDeadlineDate] = useState<string>("") // Deadline date (ISO string format)
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return
@@ -147,7 +147,7 @@ function ComposePageContent() {
           selectedRecipients: recipientsData,
           idempotencyKey: newIdempotencyKey,
           requestName: isRequestMode ? requestName.trim() : undefined,
-          deadlineDays: isRequestMode && deadlineDays ? deadlineDays : undefined,
+          deadlineDate: isRequestMode && deadlineDate ? deadlineDate : undefined,
           ...personalizationPayload
         }),
         signal: abortController.signal
@@ -685,20 +685,16 @@ function ComposePageContent() {
           {isRequestMode && (
             <div>
               <Label>
-                Deadline (days after sending)
+                Deadline
               </Label>
               <Input
-                type="number"
-                min="1"
-                placeholder="e.g., 7 (for 7 days after sending)"
-                value={deadlineDays || ""}
-                onChange={(e) => {
-                  const value = e.target.value
-                  setDeadlineDays(value === "" ? null : parseInt(value, 10))
-                }}
+                type="date"
+                value={deadlineDate}
+                onChange={(e) => setDeadlineDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]} // Prevent selecting past dates
               />
               <p className="text-xs text-gray-500 mt-1">
-                Optional: Set a deadline in days after sending. This will be used to calculate risk (read but no reply after deadline = high risk).
+                Optional: Set a deadline date. This will be used to calculate risk (read but no reply after deadline = high risk).
               </p>
             </div>
           )}
