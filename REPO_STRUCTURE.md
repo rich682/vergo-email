@@ -82,3 +82,4 @@ If you're unsure whether a file/folder should exist, check:
 2. Does it follow the naming patterns above?
 3. Run `npm run hygiene` to catch common issues
 
+

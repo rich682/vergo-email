@@ -102,3 +102,4 @@ Each log includes:
 - `result`: `{riskLevel, readStatus}`
 - `method`: (optional) "llm" or "deterministic_fallback"
 
+

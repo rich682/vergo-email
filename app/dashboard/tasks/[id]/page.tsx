@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
-export default function InboxDetailPage() {
+export default function TaskDetailPage() {
   const params = useParams()
   const [task, setTask] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
@@ -25,7 +25,7 @@ export default function InboxDetailPage() {
         setTask(data)
       }
     } catch (error) {
-      console.error("Error fetching inbox item:", error)
+      console.error("Error fetching task:", error)
     }
   }
 
@@ -66,8 +66,8 @@ export default function InboxDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Inbox Details</h2>
-        <p className="text-gray-600">{task.entity?.firstName || task.entity?.email}</p>
+        <h2 className="text-2xl font-bold">Task Details</h2>
+        <p className="text-gray-600">{task.entity?.name || task.entity?.email}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -119,7 +119,7 @@ export default function InboxDetailPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Inbox Info</CardTitle>
+              <CardTitle>Task Info</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <div>
@@ -127,15 +127,9 @@ export default function InboxDetailPage() {
                 <span className="ml-2 text-sm">{task.status}</span>
               </div>
               <div>
-                <span className="text-sm font-medium">Campaign Name:</span>
-                <span className="ml-2 text-sm">{task.campaignName || "None"}</span>
+                <span className="text-sm font-medium">Campaign:</span>
+                <span className="ml-2 text-sm">{task.campaign?.name || "None"}</span>
               </div>
-              {task.campaignType && (
-                <div>
-                  <span className="text-sm font-medium">Campaign Type:</span>
-                  <span className="ml-2 text-sm">{task.campaignType}</span>
-                </div>
-              )}
               {task.aiReasoning && (
                 <div>
                   <span className="text-sm font-medium">AI Reasoning:</span>
@@ -151,15 +145,4 @@ export default function InboxDetailPage() {
     </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
 
