@@ -53,8 +53,9 @@ lerna-debug.log*
 next-env.d.ts
 
 # Prisma
-/prisma/migrations
-prisma/migrations/
+# Migrations are now committed to the repository for production deployments
+# /prisma/migrations
+# prisma/migrations/
 
 # Uploads
 /uploads

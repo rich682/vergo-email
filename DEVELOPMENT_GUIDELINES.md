@@ -6,7 +6,7 @@ Single deployment path: Vercel (Next.js App Router, serverless), build via `npm 
 - Node: **20** (pinned via `.nvmrc` / `.node-version`; engines in `package.json`).
 - Install: `npm ci`.
 - Build check: `npm run build` (pre-push hook runs this).
-- Prisma: `npx prisma db push` (seed optional via `npx prisma db seed`).
+- Prisma: `npx prisma migrate dev --name <name>` for schema changes (creates committed migrations). Seed optional via `npx prisma db seed`.
 - Env: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `OPENAI_API_KEY`; optional `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`; Inngest keys if used locally.
 
 ## Git hygiene

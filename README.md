@@ -25,7 +25,7 @@ AI-powered email response tracking for accounting teams.
    - Inngest keys if used locally.
 3. Prepare DB  
    ```bash
-   npx prisma db push
+   npx prisma migrate dev --name init  # Creates and applies migrations locally
    npx prisma db seed   # optional sample data if seed is configured
    ```
 4. Run app  
@@ -38,7 +38,8 @@ AI-powered email response tracking for accounting teams.
    ```
 
 ## Deployment (Vercel-only)
-- Push to **main** → Vercel builds with `npm run build` on Node 20.
+- Push to **main** → GitHub Actions applies database migrations automatically, then Vercel builds with `npm run build` on Node 20.
+- Migrations run via `.github/workflows/migrate-prod.yml` using `PROD_DATABASE_URL` secret.
 - No alternate pipelines or container builds.
 - Ensure env vars are set in Vercel (same names as above).
 
@@ -92,13 +93,26 @@ Create OAuth credentials in Google Cloud Console, enable Gmail API, and set redi
 ## Development Scripts
 
 - `npm run dev` - Start Next.js development server
-- `npm run setup:db` - Set up database (push schema + seed)
+- `npm run setup:db` - Set up database (migrate + seed)
 - `npm run db:generate` - Generate Prisma client
-- `npm run db:push` - Push database schema changes
-- `npm run db:migrate` - Run database migrations
+- `npm run db:migrate` - Create and apply database migrations (local/dev only)
+- `npm run db:push:dev` - Push schema changes without migration (dev only, discouraged)
 - `npm run db:seed` - Seed database with test data
 - `npm run db:studio` - Open Prisma Studio (database GUI)
 - `npm run dev:full` - Start Next.js dev server (alias for `npm run dev`)
+
+## Database Changes
+
+**Local/Development:**
+1. Modify `prisma/schema.prisma`
+2. Run `npm run db:migrate -- --name descriptive_name` to create migration
+3. Commit `prisma/migrations/*` files
+4. Push to main
+
+**Production:**
+- Migrations apply automatically via GitHub Actions on push to main
+- No manual `DATABASE_URL` setup required
+- Uses `PROD_DATABASE_URL` secret in GitHub Actions
 
 ## License
 

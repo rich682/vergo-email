@@ -38,9 +38,11 @@ This document outlines the canonical structure and hygiene rules for this reposi
 
 ### Database Migrations
 
-- **Use Prisma migrations:** `npm run db:migrate` or `npm run db:push`
+- **Use Prisma migrations:** `npm run db:migrate -- --name <descriptive_name>` for all schema changes
+- **Migrations are committed:** `prisma/migrations/` is tracked in git for production deployments
+- **Production applies automatically:** GitHub Actions runs `prisma migrate deploy` on push to main
 - **Do NOT add raw SQL files:** `apply_migration.sql` should not exist
-- **Schema changes:** Always update `prisma/schema.prisma` and use Prisma commands
+- **Schema changes:** Always update `prisma/schema.prisma` and use `prisma migrate dev` (not `db push` for production)
 
 ### Inngest Event Handlers
 
