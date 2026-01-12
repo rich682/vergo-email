@@ -361,10 +361,10 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             <h4 className="text-sm font-semibold text-gray-900">Reply in-app</h4>
           </div>
           <Textarea
-            placeholder="Type your reply or a prompt to draft a response..."
+            placeholder="Type your prompt or edit the draft..."
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
-            rows={4}
+            className="min-h-[180px]"
           />
           <div className="flex gap-2">
             <Button
@@ -375,21 +375,15 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             >
               {generatingDraft ? "Generating..." : "Generate draft"}
             </Button>
-            <Button
-              size="sm"
-              disabled={sending || !replyText.trim()}
-              onClick={handleReply}
-            >
-              {sending ? "Sending..." : "Send Reply"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={loading}
-              onClick={fetchMessages}
-            >
-              Refresh thread
-            </Button>
+            {replyText.trim() && (
+              <Button
+                size="sm"
+                disabled={sending}
+                onClick={handleReply}
+              >
+                {sending ? "Sending..." : "Send Reply"}
+              </Button>
+            )}
           </div>
         </div>
       </div>
