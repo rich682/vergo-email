@@ -61,6 +61,8 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   const [sending, setSending] = useState(false)
   const [threadExpanded, setThreadExpanded] = useState(true)
   const [markingDone, setMarkingDone] = useState(false)
+  const [generatingDraft, setGeneratingDraft] = useState(false)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -77,6 +79,8 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             )
           : []
         setMessages(sorted)
+        // reset expanded to collapsed by default
+        setExpandedIds(new Set())
       }
     } catch (error) {
       console.error("Error fetching messages:", error)
@@ -113,6 +117,26 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
       console.error("Error sending reply:", error)
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleGenerateDraft = async () => {
+    if (!task || generatingDraft) return
+    setGeneratingDraft(true)
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/reply-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: replyText })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setReplyText(data.draft || "")
+      }
+    } catch (error) {
+      console.error("Error generating draft reply:", error)
+    } finally {
+      setGeneratingDraft(false)
     }
   }
 
@@ -227,6 +251,16 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {task.aiSummary && (
+          <Card className="bg-gray-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">AI Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-gray-900">{task.aiSummary}</p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-3">
@@ -269,30 +303,49 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
                       const result = filtered.join("\n").trim()
                       return result || body
                     })()
+                    const isExpanded = expandedIds.has(msg.id)
                     return (
                       <div key={msg.id} className={`border rounded-md p-3 ${bubble}`}>
                         <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                          <span className="font-medium text-gray-700">
-                            {isInbound ? "Received" : "Sent"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-700">
+                              {isInbound ? "Received" : "Sent"}
+                            </span>
+                            <span className="text-gray-600 truncate max-w-[160px]">
+                              {isInbound ? msg.fromAddress : msg.toAddress}
+                            </span>
+                          </div>
+                          <button
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => {
+                              const next = new Set(expandedIds)
+                              if (next.has(msg.id)) {
+                                next.delete(msg.id)
+                              } else {
+                                next.add(msg.id)
+                              }
+                              setExpandedIds(next)
+                            }}
+                          >
+                            {isExpanded ? "Collapse" : "Expand"}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                          <span>{msg.subject || "(no subject)"}</span>
                           <span>{formatDate(msg.createdAt)}</span>
                         </div>
-                        <div className="text-xs text-gray-600 mb-1">
-                          {isInbound ? `From: ${msg.fromAddress}` : `To: ${msg.toAddress}`}
-                        </div>
-                        {msg.subject && (
-                          <div className="text-xs text-gray-700 font-medium mb-1 truncate">
-                            {msg.subject}
-                          </div>
-                        )}
-                        <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                          {trimmedBody}
-                        </div>
-                        {msg.attachments && typeof msg.attachments === 'object' && 'keys' in msg.attachments && (msg.attachments as any).keys?.length > 0 && (
-                          <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                            <Paperclip className="w-3 h-3" />
-                            {(msg.attachments as any).keys.length} attachment(s)
-                          </div>
+                        {isExpanded && (
+                          <>
+                            <div className="text-sm text-gray-900 whitespace-pre-wrap mt-2">
+                              {trimmedBody}
+                            </div>
+                            {msg.attachments && typeof msg.attachments === 'object' && 'keys' in msg.attachments && (msg.attachments as any).keys?.length > 0 && (
+                              <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                                <Paperclip className="w-3 h-3" />
+                                {(msg.attachments as any).keys.length} attachment(s)
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )
@@ -308,12 +361,20 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             <h4 className="text-sm font-semibold text-gray-900">Reply in-app</h4>
           </div>
           <Textarea
-            placeholder="Type your reply..."
+            placeholder="Type your reply or a prompt to draft a response..."
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             rows={4}
           />
           <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={generatingDraft || !task}
+              onClick={handleGenerateDraft}
+            >
+              {generatingDraft ? "Generating..." : "Generate draft"}
+            </Button>
             <Button
               size="sm"
               disabled={sending || !replyText.trim()}
