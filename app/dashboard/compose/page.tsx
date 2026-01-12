@@ -950,12 +950,12 @@ function ComposePageContent() {
 
           {/* Reminders Section - only in request mode */}
           {isRequestMode && (
-            <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+            <div className="border border-gray-200 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base font-medium">Reminders</Label>
                   <p className="text-xs text-gray-500 mt-1">
-                    Sends only to recipients who haven't replied.
+                    Sends follow-ups only to recipients who haven't replied.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -972,56 +972,54 @@ function ComposePageContent() {
                 </label>
               </div>
 
-              {remindersConfig.enabled && (
-                <>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label className="text-sm">Start delay (days)</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={remindersConfig.startDelayDays}
-                        onChange={(e) =>
-                          updateRemindersConfig({
-                            startDelayDays: Math.max(1, parseInt(e.target.value) || 1)
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Cadence (days)</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={remindersConfig.cadenceDays}
-                        onChange={(e) =>
-                          updateRemindersConfig({
-                            cadenceDays: Math.max(1, parseInt(e.target.value) || 1)
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm">Max reminders</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="5"
-                        value={remindersConfig.maxCount}
-                        onChange={(e) =>
-                          updateRemindersConfig({
-                            maxCount: Math.max(1, Math.min(5, parseInt(e.target.value) || 1))
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-
-                </>
-              )}
+              <div className={`grid grid-cols-3 gap-4 transition-opacity ${remindersConfig.enabled ? "opacity-100" : "opacity-50"}`}>
+                <div>
+                  <Label className="text-sm">Start delay (days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={remindersConfig.startDelayDays}
+                    onChange={(e) =>
+                      updateRemindersConfig({
+                        startDelayDays: Math.max(1, parseInt(e.target.value) || 1)
+                      })
+                    }
+                    className="mt-1"
+                    disabled={!remindersConfig.enabled}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Cadence (days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={remindersConfig.cadenceDays}
+                    onChange={(e) =>
+                      updateRemindersConfig({
+                        cadenceDays: Math.max(1, parseInt(e.target.value) || 1)
+                      })
+                    }
+                    className="mt-1"
+                    disabled={!remindersConfig.enabled}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Max reminders</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={remindersConfig.maxCount}
+                    onChange={(e) =>
+                      updateRemindersConfig({
+                        maxCount: Math.max(1, Math.min(5, parseInt(e.target.value) || 1))
+                      })
+                    }
+                    className="mt-1"
+                    disabled={!remindersConfig.enabled}
+                  />
+                </div>
+              </div>
             </div>
           )}
 
