@@ -46,7 +46,7 @@ export async function POST(
     }
 
     // Send reply email
-    await EmailSendingService.sendEmail({
+    const sent = await EmailSendingService.sendEmail({
       organizationId: session.user.organizationId,
       to: task.entity.email,
       toName: task.entity.firstName,
@@ -54,6 +54,23 @@ export async function POST(
       body: replyBody,
       campaignName: task.campaignName || undefined,
       campaignType: task.campaignType || undefined
+    })
+
+    // Persist outbound message for thread history
+    await prisma.message.create({
+      data: {
+        taskId: task.id,
+        entityId: task.entityId,
+        direction: "OUTBOUND",
+        channel: "EMAIL",
+        subject: `Re: ${task.replyToEmail || task.campaignName || "Your message"}`,
+        body: replyBody,
+        fromAddress: session.user.email || "noreply@vergo.com",
+        toAddress: task.entity.email,
+        providerId: sent?.providerId || null,
+        providerData: sent?.providerData || null,
+        threadId: task.threadId || null,
+      }
     })
 
     return NextResponse.json({ success: true })

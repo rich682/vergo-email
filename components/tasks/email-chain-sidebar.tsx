@@ -65,6 +65,11 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [draftReady, setDraftReady] = useState(false)
 
+  useEffect(() => {
+    setReplyText("")
+    setDraftReady(false)
+  }, [task?.id])
+
   const fetchMessages = useCallback(async () => {
     if (!task) return
 
