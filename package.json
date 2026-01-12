@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && prisma generate && next build",
     "build:ci": "npm run hygiene && npm test && npm run build",
     "start": "next start",
     "lint": "next lint",
