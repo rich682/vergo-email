@@ -39,6 +39,7 @@ interface RequestGroup {
   totalCount: number
   doneCount: number
   repliedCount: number
+  completionPercent: number
   isComplete: boolean
   // Risk rollups
   highCount: number
@@ -141,6 +142,7 @@ export default function RequestsPage() {
       const doneCount = tasks.filter(t => t.status === "FULFILLED").length
       const repliedCount = tasks.filter(t => (t.replyCount || 0) > 0).length
       const isComplete = totalCount > 0 && doneCount === totalCount
+      const completionPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
       const activeTasks = tasks.filter(t => t.status !== "FULFILLED")
       const highCount = activeTasks.filter(t => t.riskLevel === "high").length
       const mediumCount = activeTasks.filter(t => t.riskLevel === "medium").length
@@ -168,6 +170,7 @@ export default function RequestsPage() {
         totalCount,
         doneCount,
         repliedCount,
+        completionPercent,
         isComplete,
         highCount,
         mediumCount,
@@ -197,7 +200,7 @@ export default function RequestsPage() {
         case "recipients":
           return g.totalCount
         case "done":
-          return g.doneCount / Math.max(1, g.totalCount)
+          return g.completionPercent
         case "status":
           return g.isComplete ? 1 : 0
         case "high":
@@ -375,6 +378,7 @@ export default function RequestsPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Done</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Complete</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Replies</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -399,8 +403,9 @@ export default function RequestsPage() {
                       // Build recipient display
                       const recipientCount = group.totalCount
                       const recipientText = `${recipientCount} ${recipientCount === 1 ? 'recipient' : 'recipients'}`
-                      const statusBadge = group.isComplete ? "COMPLETE" : "INCOMPLETE"
+                          const statusBadge = group.isComplete ? "COMPLETE" : "INCOMPLETE"
                       const repliesText = `${group.repliedCount}/${group.totalCount}`
+                          const completionPctText = `${group.completionPercent}%`
                       
                       return (
                         <tr
@@ -423,6 +428,9 @@ export default function RequestsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {group.doneCount}/{group.totalCount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {completionPctText}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {repliesText}
