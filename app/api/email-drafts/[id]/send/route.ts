@@ -8,6 +8,7 @@ import { PersonalizationDataService } from "@/lib/services/personalization-data.
 import { renderTemplate, extractTags } from "@/lib/utils/template-renderer"
 import { normalizeTagName } from "@/lib/utils/csv-parser"
 import { prisma } from "@/lib/prisma"
+import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +25,7 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { recipients, campaignName, emailAccountId, remindersConfig } = body
+    const { recipients: recipientsPayload, campaignName, emailAccountId, remindersConfig } = body
 
     const draft = await EmailDraftService.findById(
       params.id,
@@ -74,7 +75,7 @@ export async function POST(
     }
 
     // Resolve recipients based on personalization mode
-    const recipientList: Array<{ email: string; name?: string; entityId?: string }> = []
+    let recipientList: Array<{ email: string; name?: string; entityId?: string }> = []
     let existingPersonalizationData: any[] = [] // Store for use in CSV mode rendering
 
     if (personalizationMode === "csv") {
@@ -100,40 +101,18 @@ export async function POST(
         })
       }
     } else {
-      // Contact mode: resolve from selected recipients
-      if (recipients?.entityIds) {
-        for (const entityId of recipients.entityIds) {
-          const entity = await EntityService.findById(
-            entityId,
-            session.user.organizationId
-          )
-          if (entity?.email) {
-            recipientList.push({
-              email: entity.email,
-              name: entity.firstName,
-              entityId: entity.id
-            })
-          }
+      // Contact mode: resolve from selected recipients (with optional filter)
+      let selectedRecipients = recipientsPayload ?? (draft as any).suggestedRecipients ?? {}
+      if (typeof selectedRecipients === "string") {
+        try {
+          selectedRecipients = JSON.parse(selectedRecipients)
+        } catch {
+          selectedRecipients = {}
         }
       }
 
-      if (recipients?.groupIds) {
-        for (const groupId of recipients.groupIds) {
-          const entities = await EntityService.findByOrganization(
-            session.user.organizationId,
-            { groupId }
-          )
-          for (const entity of entities) {
-            if (entity.email && !recipientList.find(r => r.email === entity.email)) {
-              recipientList.push({
-                email: entity.email,
-                name: entity.firstName,
-                entityId: entity.id
-              })
-            }
-          }
-        }
-      }
+      const resolved = await resolveRecipientsWithFilter(session.user.organizationId, selectedRecipients)
+      recipientList = resolved.recipients
     }
 
     if (recipientList.length === 0) {

@@ -64,7 +64,7 @@ function ComposePageContent() {
   const [bodyUserEdited, setBodyUserEdited] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   
-  // Recipient source state (exclusive: contact vs CSV)
+  // Recipient source state (default contact; CSV available via deep link)
   const [recipientSource, setRecipientSource] = useState<"contact" | "csv">("contact")
   
   // CSV mode state
@@ -82,6 +82,10 @@ function ComposePageContent() {
   const [csvUploading, setCsvUploading] = useState(false)
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null)
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from CSV or contact fields
+  const [availableStateKeys, setAvailableStateKeys] = useState<Array<{ stateKey: string; count: number }>>([])
+  const [stateFilter, setStateFilter] = useState<{ stateKey: string; mode: "has" | "missing" } | null>(null)
+  const [filterExpanded, setFilterExpanded] = useState(false)
+  const [filterStats, setFilterStats] = useState<{ total: number; included: number; excluded: number } | null>(null)
   
   // Deadline state
   const [deadlineDate, setDeadlineDate] = useState<string>("") // Deadline date (ISO string format)
@@ -101,32 +105,41 @@ function ComposePageContent() {
   const personalizationMode = recipientSource === "csv" && csvData ? "csv" : (recipientSource === "contact" ? "contact" : "none")
   const [blockOnMissingValues, setBlockOnMissingValues] = useState(true)
 
-  // Handle recipient source change with confirmation if data exists
-  const handleRecipientSourceChange = (newSource: "contact" | "csv") => {
-    if (newSource === recipientSource) return
-
-    // Check if we need to show confirmation
-    const hasData = (newSource === "csv" && csvData) || 
-                   (newSource === "contact" && selectedRecipients.length > 0) ||
-                   (recipientSource === "csv" && csvData) ||
-                   (recipientSource === "contact" && selectedRecipients.length > 0)
-
-    if (hasData && !confirm(`Switching to ${newSource === "csv" ? "CSV" : "Contact"} mode will clear existing ${recipientSource === "csv" ? "CSV" : "contact"} data. Continue?`)) {
-      return
-    }
-
-    setRecipientSource(newSource)
-    
-    // Clear conflicting data
-    if (newSource === "csv") {
+  // Honor deep-link CSV mode via ?source=csv, default to contact mode otherwise
+  useEffect(() => {
+    const sourceParam = searchParams.get("source")
+    if (sourceParam === "csv" && recipientSource !== "csv") {
+      setRecipientSource("csv")
       setSelectedRecipients([])
       setRecipientsError(null)
-    } else {
+    } else if (sourceParam !== "csv" && recipientSource !== "contact") {
+      setRecipientSource("contact")
       setCsvData(null)
       setAvailableTags([])
       setCsvUploadError(null)
     }
-  }
+  }, [searchParams, recipientSource])
+
+  // Load available state keys for filtering
+  useEffect(() => {
+    if (!isRequestMode) return
+    const loadStateKeys = async () => {
+      try {
+        const res = await fetch("/api/contacts/state-keys")
+        if (res.ok) {
+          const data = await res.json()
+          setAvailableStateKeys(data || [])
+        }
+      } catch (err) {
+        console.error("Error loading state keys", err)
+      }
+    }
+    loadStateKeys()
+  }, [isRequestMode])
+
+  useEffect(() => {
+    setFilterStats(null)
+  }, [stateFilter])
 
   // Handle CSV file upload
   const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,18 +252,18 @@ function ComposePageContent() {
     setError(null)
     
     try {
-      // Convert selected recipients to API format (required in request mode)
-      const recipientsData = selectedRecipients.length > 0 ? {
-        entityIds: selectedRecipients.filter(r => r.type === "entity").map(r => r.id),
-        groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id)
-      } : undefined
+      const stateFilterPayload =
+        stateFilter && stateFilter.stateKey
+          ? { stateKey: stateFilter.stateKey, mode: stateFilter.mode }
+          : undefined
 
       // Build recipients data based on source
       let finalRecipientsData = undefined
       if (recipientSource === "contact") {
         finalRecipientsData = selectedRecipients.length > 0 ? {
           entityIds: selectedRecipients.filter(r => r.type === "entity").map(r => r.id),
-          groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id)
+          groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id),
+          stateFilter: stateFilterPayload
         } : undefined
         
         if (isRequestMode && (!finalRecipientsData || (finalRecipientsData.entityIds.length === 0 && finalRecipientsData.groupIds.length === 0))) {
@@ -280,6 +293,7 @@ function ComposePageContent() {
         body: JSON.stringify({ 
           prompt,
           selectedRecipients: finalRecipientsData,
+          stateFilter: stateFilterPayload,
           idempotencyKey: newIdempotencyKey,
           requestName: isRequestMode ? requestName.trim() : undefined,
           deadlineDate: isRequestMode && deadlineDate ? deadlineDate : undefined,
@@ -328,6 +342,7 @@ function ComposePageContent() {
           availableTags: personalizationMode === "csv" && csvData ? csvData.tags : (personalizationMode === "contact" ? ["First Name", "Email"] : [])
         }
         setDraft(draftData)
+        setFilterStats(data.recipientStats || null)
         
         // Use templates if available, otherwise fall back to generated subject/body
         const subjectToUse = data.draft.subjectTemplate || data.draft.generatedSubject || ""
@@ -767,48 +782,6 @@ function ComposePageContent() {
             )}
           </div>
 
-          {/* Recipient Source Selector - only in request mode */}
-          {isRequestMode && (
-            <div className="border-b border-gray-200 pb-4">
-              <Label>
-                Recipient source <span className="text-red-500 ml-1">*</span>
-              </Label>
-              <p className="text-xs text-gray-500 mt-1 mb-3">
-                Choose how to select recipients: upload a CSV (contacts and tags from CSV columns) or manually select contacts/groups.
-              </p>
-              <div className="flex gap-6 mt-2">
-                <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1">
-                  <input
-                    type="radio"
-                    name="recipientSource"
-                    value="contact"
-                    checked={recipientSource === "contact"}
-                    onChange={() => handleRecipientSourceChange("contact")}
-                    className="w-4 h-4"
-                  />
-                  <div>
-                    <span className="text-sm font-medium block">Select contacts/groups</span>
-                    <span className="text-xs text-gray-500">Choose from your contact database</span>
-                  </div>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1">
-                  <input
-                    type="radio"
-                    name="recipientSource"
-                    value="csv"
-                    checked={recipientSource === "csv"}
-                    onChange={() => handleRecipientSourceChange("csv")}
-                    className="w-4 h-4"
-                  />
-                  <div>
-                    <span className="text-sm font-medium block">Upload CSV</span>
-                    <span className="text-xs text-gray-500">Contacts + tags from CSV columns</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-          )}
-
           {/* Contact/Group Selector - only shown when contact mode is selected */}
           {isRequestMode && recipientSource === "contact" && (
             <div>
@@ -822,6 +795,7 @@ function ComposePageContent() {
                   if (recipientsError) setRecipientsError(null)
                   // Update available tags for contact mode
                   setAvailableTags(["First Name", "Email"])
+                  setFilterStats(null)
                 }}
                 requireContacts={true}
               />
@@ -831,6 +805,92 @@ function ComposePageContent() {
               {recipientsError && (
                 <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
               )}
+              {stateFilter && filterStats && (
+                <p className="text-xs text-gray-600 mt-2">
+                  {filterStats.excluded} recipient{filterStats.excluded === 1 ? "" : "s"} excluded by filter; {filterStats.included} included.
+                </p>
+              )}
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  className="text-sm text-gray-700 underline"
+                  onClick={() => setFilterExpanded((prev) => !prev)}
+                >
+                  Optional: Filter recipients by data slice
+                </button>
+                {filterExpanded && (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Choose a slice</Label>
+                        <Select
+                          value={stateFilter?.stateKey || ""}
+                          onValueChange={(value) =>
+                            setStateFilter(
+                              value
+                                ? { stateKey: value, mode: stateFilter?.mode || "has" }
+                                : null
+                            )
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={availableStateKeys.length ? "Select data slice" : "No data slices yet"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableStateKeys.length === 0 && (
+                              <SelectItem value="__none" disabled>
+                                No data slices found
+                              </SelectItem>
+                            )}
+                            {availableStateKeys.map((slice) => (
+                              <SelectItem key={slice.stateKey} value={slice.stateKey}>
+                                {slice.stateKey} ({slice.count})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Value filter</Label>
+                        <Select
+                          value={stateFilter?.mode || "has"}
+                          onValueChange={(value) =>
+                            setStateFilter((prev) =>
+                              prev?.stateKey ? { ...prev, mode: value as "has" | "missing" } : prev
+                            )
+                          }
+                          disabled={!stateFilter?.stateKey}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose filter" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="has">has value</SelectItem>
+                            <SelectItem value="missing">is missing</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {stateFilter ? (
+                      <p className="text-xs text-gray-600">
+                        Example: {stateFilter.stateKey} {stateFilter.mode === "missing" ? "is missing" : "has value"}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500">Use data slices (Contact States) to include or exclude recipients.</p>
+                    )}
+                    {stateFilter && (
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs text-gray-600">
+                          Filter applies when generating and sending. Recipients without email are still excluded.
+                        </p>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setStateFilter(null)}>
+                          Clear filter
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

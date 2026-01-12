@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
+import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
 
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
@@ -18,7 +19,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { prompt, selectedRecipients, idempotencyKey, requestName, personalizationMode, availableTags, blockOnMissingValues, deadlineDate } = body
+    const {
+      prompt,
+      selectedRecipients,
+      idempotencyKey,
+      requestName,
+      personalizationMode,
+      availableTags,
+      blockOnMissingValues,
+      deadlineDate
+    } = body
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -27,10 +37,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const recipientsWithFilter = selectedRecipients
+      ? {
+          ...selectedRecipients,
+          stateFilter: selectedRecipients.stateFilter || body.stateFilter || undefined
+        }
+      : undefined
+
     // Validate recipients in request mode (only for contact mode, not CSV mode)
-    if (requestName && selectedRecipients && personalizationMode !== "csv") {
-      const entityIds = selectedRecipients.entityIds || []
-      const groupIds = selectedRecipients.groupIds || []
+    if (requestName && recipientsWithFilter && personalizationMode !== "csv") {
+      const entityIds = recipientsWithFilter.entityIds || []
+      const groupIds = recipientsWithFilter.groupIds || []
       if (entityIds.length === 0 && groupIds.length === 0) {
         return NextResponse.json(
           { error: "At least one contact or group must be selected" },
@@ -170,7 +187,7 @@ export async function POST(request: NextRequest) {
     const generated = await AIEmailGenerationService.generateDraft({
       organizationId: session.user.organizationId,
       prompt,
-      selectedRecipients,
+      selectedRecipients: recipientsWithFilter,
       correlationId: correlationId, // Use original correlationId for tracing
       senderName: user?.name || undefined,
       senderEmail: user?.email || undefined,
@@ -189,6 +206,11 @@ export async function POST(request: NextRequest) {
     const htmlBodyTemplate = generated.htmlBodyTemplate || generated.htmlBody
 
     const dbUpdateStartTime = Date.now()
+    const recipientStats =
+      requestName && recipientsWithFilter && personalizationMode !== "csv"
+        ? await resolveRecipientsWithFilter(session.user.organizationId, recipientsWithFilter)
+        : null
+
     await EmailDraftService.update(draft.id, session.user.organizationId, {
       generatedSubject: generated.subject,
       generatedBody: generated.body,
@@ -200,7 +222,7 @@ export async function POST(request: NextRequest) {
       personalizationMode: personalizationMode || null,
       blockOnMissingValues: blockOnMissingValues ?? true,
       deadlineDate: deadlineDate ? new Date(deadlineDate) : null,
-      suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
+      suggestedRecipients: recipientsWithFilter || generated.suggestedRecipients,
       suggestedCampaignName: finalCampaignName,
       suggestedCampaignType: generated.suggestedCampaignType,
       aiGenerationStatus: "complete" // Always complete (template fallback is still "complete")
@@ -232,7 +254,8 @@ export async function POST(request: NextRequest) {
                 suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
                 suggestedCampaignName: finalCampaignName,
                 suggestedCampaignType: generated.suggestedCampaignType
-              }
+              },
+              recipientStats: recipientStats ? recipientStats.counts : undefined
             })
   } catch (error: any) {
     console.error("Error generating draft:", error)
