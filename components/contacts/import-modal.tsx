@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [syncCustomFields, setSyncCustomFields] = useState(false)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const detectedColumns = useMemo(() => headers.join(", "), [headers])
 
@@ -121,23 +122,23 @@ export function ImportModal({ onClose, onSuccess }: Props) {
         <div className="space-y-2">
           <Label>CSV or Excel file</Label>
           <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+            />
             <Button
               type="button"
               variant="outline"
-              onClick={() => document.getElementById("import-file-input")?.click()}
+              onClick={() => fileInputRef.current?.click()}
             >
               Choose File
             </Button>
             <span className="text-sm text-gray-600">
               {selectedFileName || "No file chosen"}
             </span>
-            <input
-              id="import-file-input"
-              type="file"
-              style={{ display: "none" }}
-              accept=".csv,.xlsx,.xls"
-              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-            />
           </div>
           <p className="text-xs text-gray-500">
             Supported formats: CSV, XLSX, XLS. Columns: email (required), firstName, lastName, phone, type, groups, plus any custom fields.
