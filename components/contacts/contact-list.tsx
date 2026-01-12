@@ -102,8 +102,8 @@ export function ContactList({
           <div className="col-span-2">Name</div>
           <div>Email</div>
           <div>Type</div>
-          <div>States</div>
           <div>Groups</div>
+          <div>Data tags</div>
           <div className="text-right">Actions</div>
         </div>
         {entities.length === 0 && (
@@ -127,6 +127,19 @@ export function ContactList({
               </span>
             </div>
             <div className="flex flex-wrap gap-1">
+              {entity.groups.map((g) => (
+                <span
+                  key={g.id}
+                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                >
+                  {g.name}
+                </span>
+              ))}
+              {entity.groups.length === 0 && (
+                <span className="text-xs text-gray-500">None</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
               {entity.contactStates && entity.contactStates.length > 0 ? (
                 entity.contactStates.slice(0, 3).map((cs, idx) => (
                   <span
@@ -142,19 +155,6 @@ export function ContactList({
               )}
               {entity.contactStates && entity.contactStates.length > 3 && (
                 <span className="text-xs text-gray-500">+{entity.contactStates.length - 3} more</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {entity.groups.map((g) => (
-                <span
-                  key={g.id}
-                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
-                >
-                  {g.name}
-                </span>
-              ))}
-              {entity.groups.length === 0 && (
-                <span className="text-xs text-gray-500">None</span>
               )}
             </div>
             <div className="flex justify-end gap-2">
