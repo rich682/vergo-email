@@ -125,6 +125,14 @@ export default function RequestDetailPage() {
     }
   }, [filteredTasks])
 
+  // Ensure first recipient selected by default
+  useEffect(() => {
+    if (!selectedTaskId && filteredTasks.length > 0) {
+      setSelectedTaskId(filteredTasks[0].id)
+      setSidebarOpen(true)
+    }
+  }, [filteredTasks, selectedTaskId])
+
   // Update selected task when taskId changes
   useEffect(() => {
     if (selectedTaskId) {
@@ -181,8 +189,8 @@ export default function RequestDetailPage() {
   }
 
   return (
-    <div className="w-full h-[calc(100vh-8rem)] flex flex-col border-l border-r border-gray-200">
-      <div className="flex-1 flex overflow-hidden relative bg-gray-50">
+    <div className="w-full h-[calc(100vh-4rem)] flex flex-col border-l border-r border-gray-200">
+      <div className="flex-1 flex overflow-hidden relative bg-white">
         <div className="flex-1 flex flex-col overflow-hidden bg-white">
           <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between">
