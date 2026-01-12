@@ -4,6 +4,7 @@ import { ThreadIdExtractor } from "./thread-id-extractor"
 import { getStorageService } from "./storage.service"
 import { inngest } from "@/inngest/client"
 import { createHash } from "crypto"
+import { ReminderStateService } from "./reminder-state.service"
 
 export interface InboundEmailData {
   from: string
@@ -296,6 +297,9 @@ export class EmailReceptionService {
         readStatus: task.readStatus || null
       }
     }))
+
+    // Stop reminders for this recipient/task on reply
+    await ReminderStateService.stopForReply(task.id, task.entityId)
 
     return {
       taskId: task.id,

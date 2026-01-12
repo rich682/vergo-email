@@ -20,6 +20,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
 
+type RemindersConfigState = {
+  enabled: boolean
+  startDelayDays: number
+  cadenceDays: number
+  maxCount: number
+  approved: boolean
+}
+
 function ComposePageContent() {
   const searchParams = useSearchParams()
   const isRequestMode = searchParams.get('mode') === 'request'
@@ -78,6 +86,18 @@ function ComposePageContent() {
   
   // Deadline state
   const [deadlineDate, setDeadlineDate] = useState<string>("") // Deadline date (ISO string format)
+  
+  // Reminder state
+  const [remindersConfig, setRemindersConfig] = useState<RemindersConfigState>({
+    enabled: false,
+    startDelayDays: 2,
+    cadenceDays: 3,
+    maxCount: 2,
+    approved: false
+  })
+
+  const updateRemindersConfig = (updates: Partial<RemindersConfigState>) =>
+    setRemindersConfig((prev) => ({ ...prev, ...updates }))
   
   // Personalization mode: "none" | "contact" | "csv"
   const personalizationMode = recipientSource === "csv" && csvData ? "csv" : (recipientSource === "contact" ? "contact" : "none")
@@ -424,6 +444,13 @@ function ComposePageContent() {
         throw new Error(errorData.error || "Failed to update draft")
       }
 
+      // Validate reminder approval if enabled
+      if (remindersConfig.enabled && !remindersConfig.approved) {
+        setSendError("Please approve the reminder sequence before submitting.")
+        setSubmitting(false)
+        return
+      }
+
       // Submit the request
       const response = await fetch(`/api/email-drafts/${draft.id}/send`, {
         method: "POST",
@@ -431,7 +458,14 @@ function ComposePageContent() {
         body: JSON.stringify({
           recipients: draft.suggestedRecipients,
           campaignName: isRequestMode ? (requestName.trim() || draft.campaignName || undefined) : (draft.campaignName || undefined),
-          emailAccountId: selectedEmailAccountId
+          emailAccountId: selectedEmailAccountId,
+          remindersConfig: remindersConfig.enabled ? {
+            enabled: true,
+            startDelayHours: remindersConfig.startDelayDays * 24,
+            frequencyHours: remindersConfig.cadenceDays * 24,
+            maxCount: remindersConfig.maxCount,
+            approved: remindersConfig.approved
+          } : undefined
         })
       })
 
@@ -923,6 +957,99 @@ function ComposePageContent() {
               </p>
             </div>
           )}
+
+          {/* Reminders Section - only in request mode */}
+          {isRequestMode && (
+            <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-base font-medium">Reminders</Label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Sends only to recipients who haven't replied.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={remindersConfig.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked
+                      updateRemindersConfig({
+                        enabled,
+                        approved: enabled ? remindersConfig.approved : false
+                      })
+                    }}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium">Enable reminders</span>
+                </label>
+              </div>
+
+              {remindersConfig.enabled && (
+                <>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm">Start delay (days)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={remindersConfig.startDelayDays}
+                        onChange={(e) =>
+                          updateRemindersConfig({
+                            startDelayDays: Math.max(1, parseInt(e.target.value) || 1)
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Cadence (days)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={remindersConfig.cadenceDays}
+                        onChange={(e) =>
+                          updateRemindersConfig({
+                            cadenceDays: Math.max(1, parseInt(e.target.value) || 1)
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Max reminders</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="5"
+                        value={remindersConfig.maxCount}
+                        onChange={(e) =>
+                          updateRemindersConfig({
+                            maxCount: Math.max(1, Math.min(5, parseInt(e.target.value) || 1))
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                    <input
+                      type="checkbox"
+                      id="remindersApproved"
+                      checked={remindersConfig.approved}
+                      onChange={(e) => updateRemindersConfig({ approved: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                    <Label htmlFor="remindersApproved" className="text-sm font-normal cursor-pointer">
+                      I approve this reminder sequence
+                    </Label>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
               <p className="text-sm font-medium text-red-800">{error}</p>
@@ -1055,6 +1182,8 @@ function ComposePageContent() {
                 submitting={submitting}
                 availableTags={availableTags} // Use CSV-derived tags or contact field tags
                 personalizationMode={personalizationMode}
+                remindersConfig={remindersConfig}
+                deadlineDate={deadlineDate ? new Date(deadlineDate) : null}
               />
             </div>
           )}

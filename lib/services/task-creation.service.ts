@@ -14,6 +14,13 @@ export class TaskCreationService {
     replyToEmail: string
     subject?: string
     deadlineDate?: Date | null
+    remindersConfig?: {
+      enabled: boolean
+      startDelayHours: number
+      frequencyHours: number
+      maxCount: number
+      approved: boolean
+    }
   }): Promise<Task> {
     // Find or create entity
     const entity = await EntityService.findOrCreateByEmail({
@@ -32,7 +39,12 @@ export class TaskCreationService {
         status: "AWAITING_RESPONSE",
         threadId: data.threadId,
         replyToEmail: data.replyToEmail,
-        deadlineDate: data.deadlineDate || null
+        deadlineDate: data.deadlineDate || null,
+        remindersEnabled: data.remindersConfig?.enabled || false,
+        remindersStartDelayHours: data.remindersConfig?.enabled ? data.remindersConfig.startDelayHours : null,
+        remindersFrequencyHours: data.remindersConfig?.enabled ? data.remindersConfig.frequencyHours : null,
+        remindersMaxCount: data.remindersConfig?.enabled ? data.remindersConfig.maxCount : null,
+        remindersApproved: data.remindersConfig?.enabled ? data.remindersConfig.approved : false
       }
     })
   }

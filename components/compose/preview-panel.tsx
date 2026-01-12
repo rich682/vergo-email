@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,7 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SelectedRecipient } from "./recipient-selector"
 import { TagInput } from "./tag-input"
 import { renderTemplate } from "@/lib/utils/template-renderer"
-import { X } from "lucide-react"
+import { ReminderTemplateService } from "@/lib/services/reminder-template.service"
+
+type RemindersConfig = {
+  enabled: boolean
+  startDelayDays: number
+  cadenceDays: number
+  maxCount: number
+  approved: boolean
+}
+
+type ReminderTemplateState = {
+  subject: string
+  body: string
+  userEdited: boolean
+}
 
 interface PreviewPanelProps {
   draftId: string
@@ -33,6 +47,9 @@ interface PreviewPanelProps {
   availableTags?: string[]
   personalizationMode?: "none" | "contact" | "csv"
   onTagInsert?: (tag: string, field: "subject" | "body") => void
+  // Reminder props
+  remindersConfig?: RemindersConfig
+  deadlineDate?: Date | null
 }
 
 interface PreviewRecipient {
@@ -59,13 +76,92 @@ export function PreviewPanel({
   submitting = false,
   availableTags = [],
   personalizationMode = "none",
-  onTagInsert
+  onTagInsert,
+  remindersConfig = {
+    enabled: false,
+    startDelayDays: 2,
+    cadenceDays: 3,
+    maxCount: 2,
+    approved: false
+  },
+  deadlineDate = null
 }: PreviewPanelProps) {
   const [previewRecipients, setPreviewRecipients] = useState<PreviewRecipient[]>([])
   const [selectedPreviewRecipient, setSelectedPreviewRecipient] = useState<string | null>(null)
   const [previewSubject, setPreviewSubject] = useState<string>(subject)
   const [previewBody, setPreviewBody] = useState<string>(body)
   const [loadingRecipients, setLoadingRecipients] = useState(false)
+  const [activeReminderIndex, setActiveReminderIndex] = useState(0) // 0 = initial, 1..N = reminders
+  const [reminderTemplates, setReminderTemplates] = useState<ReminderTemplateState[]>([])
+
+  const effectiveReminderCount = useMemo(() => {
+    if (!remindersConfig?.enabled) return 0
+    return Math.min(5, Math.max(0, remindersConfig.maxCount || 0))
+  }, [remindersConfig])
+
+  const generateReminderTemplate = (reminderNumber: number, maxRemindersOverride?: number): ReminderTemplateState => {
+    const maxReminders = maxRemindersOverride ?? effectiveReminderCount || reminderNumber
+    const generated = ReminderTemplateService.generateReminderTemplateWithDeadline({
+      originalSubject: subject,
+      originalBody: body,
+      reminderNumber,
+      maxReminders: maxReminders || reminderNumber,
+      deadlineDate
+    })
+    return { ...generated, userEdited: false }
+  }
+
+  useEffect(() => {
+    if (!remindersConfig?.enabled || effectiveReminderCount === 0) {
+      setReminderTemplates([])
+      setActiveReminderIndex(0)
+      return
+    }
+
+    setReminderTemplates((prev) => {
+      const next: ReminderTemplateState[] = []
+      for (let i = 0; i < effectiveReminderCount; i++) {
+        const reminderNumber = i + 1
+        const generated = generateReminderTemplate(reminderNumber, effectiveReminderCount)
+        const existing = prev[i]
+        next[i] = existing && existing.userEdited ? existing : generated
+      }
+      return next
+    })
+
+    if (activeReminderIndex > effectiveReminderCount) {
+      setActiveReminderIndex(0)
+    }
+  }, [remindersConfig?.enabled, effectiveReminderCount, subject, body, deadlineDate, activeReminderIndex])
+
+  const getTemplateByIndex = (index: number) => {
+    if (index === 0 || !remindersConfig?.enabled) {
+      return { subject, body }
+    }
+
+    const reminderIdx = index - 1
+    const stored = reminderTemplates[reminderIdx]
+    if (stored) {
+      return { subject: stored.subject, body: stored.body }
+    }
+
+    const generated = generateReminderTemplate(index, effectiveReminderCount || index)
+    return { subject: generated.subject, body: generated.body }
+  }
+
+  const activeTemplate = useMemo(
+    () => getTemplateByIndex(activeReminderIndex),
+    [activeReminderIndex, reminderTemplates, remindersConfig?.enabled, subject, body, effectiveReminderCount]
+  )
+
+  const handleReminderTemplateChange = (index: number, field: "subject" | "body", value: string) => {
+    setReminderTemplates((prev) => {
+      const next = [...prev]
+      const existing = next[index] ?? generateReminderTemplate(index + 1, effectiveReminderCount || index + 1)
+      next[index] = { ...existing, [field]: value, userEdited: true }
+      return next
+    })
+  }
 
   // Build contact fields data for contact mode (pure function, no dependencies)
   const buildContactData = (recipient: SelectedRecipient): Record<string, string> => {
@@ -109,38 +205,21 @@ export function PreviewPanel({
           }
           
           setPreviewRecipients(filteredRecipients)
-          
-          // Automatically select and render preview for the first recipient
-          if (filteredRecipients.length > 0) {
-            const firstRecipient = filteredRecipients[0]
-            setSelectedPreviewRecipient(firstRecipient.email)
-            
-            // Immediately render the preview for the first recipient
-            if (personalizationMode === "csv" && firstRecipient.data) {
-              const subjectResult = renderTemplate(subject, firstRecipient.data)
-              const bodyResult = renderTemplate(body, firstRecipient.data)
-              setPreviewSubject(subjectResult.rendered)
-              setPreviewBody(bodyResult.rendered)
-            }
+
+          if (personalizationMode === "csv" && filteredRecipients.length > 0) {
+            setSelectedPreviewRecipient(filteredRecipients[0].email)
           } else {
-            // No recipients found, show template
             setSelectedPreviewRecipient(null)
-            setPreviewSubject(subject)
-            setPreviewBody(body)
           }
         } else {
           setPreviewRecipients([])
           setSelectedPreviewRecipient(null)
-          setPreviewSubject(subject)
-          setPreviewBody(body)
         }
       }
     } catch (error) {
       console.error("Error fetching preview recipients:", error)
       setPreviewRecipients([])
       setSelectedPreviewRecipient(null)
-      setPreviewSubject(subject)
-      setPreviewBody(body)
     } finally {
       setLoadingRecipients(false)
     }
@@ -154,8 +233,8 @@ export function PreviewPanel({
     } else {
       setPreviewRecipients([])
       setSelectedPreviewRecipient(null)
-      setPreviewSubject(subject)
-      setPreviewBody(body)
+      setPreviewSubject(activeTemplate.subject)
+      setPreviewBody(activeTemplate.body)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, personalizationMode, recipients])
@@ -166,22 +245,16 @@ export function PreviewPanel({
       const firstEntityRecipient = recipients.find(r => r.type === "entity" && r.email)
       if (firstEntityRecipient) {
         setSelectedPreviewRecipient(`${firstEntityRecipient.type}-${firstEntityRecipient.id}`)
-        // Render preview immediately
-        const data = buildContactData(firstEntityRecipient)
-        const subjectResult = renderTemplate(subject, data)
-        const bodyResult = renderTemplate(body, data)
-        setPreviewSubject(subjectResult.rendered)
-        setPreviewBody(bodyResult.rendered)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipients, personalizationMode])
+  }, [recipients, personalizationMode, selectedPreviewRecipient])
 
   // Update preview when template or selected recipient changes
   useEffect(() => {
     if (!selectedPreviewRecipient) {
-      setPreviewSubject(subject)
-      setPreviewBody(body)
+      setPreviewSubject(activeTemplate.subject)
+      setPreviewBody(activeTemplate.body)
       return
     }
 
@@ -189,8 +262,8 @@ export function PreviewPanel({
     if (personalizationMode === "csv") {
       const recipient = previewRecipients.find(r => r.email === selectedPreviewRecipient)
       if (recipient) {
-        const subjectResult = renderTemplate(subject, recipient.data)
-        const bodyResult = renderTemplate(body, recipient.data)
+        const subjectResult = renderTemplate(activeTemplate.subject, recipient.data)
+        const bodyResult = renderTemplate(activeTemplate.body, recipient.data)
         setPreviewSubject(subjectResult.rendered)
         setPreviewBody(bodyResult.rendered)
       }
@@ -198,19 +271,26 @@ export function PreviewPanel({
       const recipient = recipients.find(r => `${r.type}-${r.id}` === selectedPreviewRecipient && r.type === "entity" && r.email)
       if (recipient) {
         const data = buildContactData(recipient)
-        const subjectResult = renderTemplate(subject, data)
-        const bodyResult = renderTemplate(body, data)
+        const subjectResult = renderTemplate(activeTemplate.subject, data)
+        const bodyResult = renderTemplate(activeTemplate.body, data)
         setPreviewSubject(subjectResult.rendered)
         setPreviewBody(bodyResult.rendered)
       }
     }
-  }, [subject, body, selectedPreviewRecipient, personalizationMode, previewRecipients, recipients])
+  }, [
+    selectedPreviewRecipient,
+    personalizationMode,
+    previewRecipients,
+    recipients,
+    activeTemplate.subject,
+    activeTemplate.body
+  ])
 
   const handlePreviewRecipientChange = (email: string | "none") => {
     if (email === "none") {
       setSelectedPreviewRecipient(null)
-      setPreviewSubject(subject)
-      setPreviewBody(body)
+      setPreviewSubject(activeTemplate.subject)
+      setPreviewBody(activeTemplate.body)
       return
     }
 
@@ -220,8 +300,8 @@ export function PreviewPanel({
     setSelectedPreviewRecipient(email)
 
     // Render templates with recipient data
-    const subjectResult = renderTemplate(subject, recipient.data)
-    const bodyResult = renderTemplate(body, recipient.data)
+    const subjectResult = renderTemplate(activeTemplate.subject, recipient.data)
+    const bodyResult = renderTemplate(activeTemplate.body, recipient.data)
 
     setPreviewSubject(subjectResult.rendered)
     setPreviewBody(bodyResult.rendered)
@@ -231,8 +311,8 @@ export function PreviewPanel({
   const handleContactPreviewChange = (recipientId: string | "none") => {
     if (recipientId === "none") {
       setSelectedPreviewRecipient(null)
-      setPreviewSubject(subject)
-      setPreviewBody(body)
+      setPreviewSubject(activeTemplate.subject)
+      setPreviewBody(activeTemplate.body)
       return
     }
 
@@ -242,8 +322,8 @@ export function PreviewPanel({
     setSelectedPreviewRecipient(recipientId)
     const data = buildContactData(recipient)
 
-    const subjectResult = renderTemplate(subject, data)
-    const bodyResult = renderTemplate(body, data)
+    const subjectResult = renderTemplate(activeTemplate.subject, data)
+    const bodyResult = renderTemplate(activeTemplate.body, data)
 
     setPreviewSubject(subjectResult.rendered)
     setPreviewBody(bodyResult.rendered)
@@ -269,8 +349,15 @@ export function PreviewPanel({
   }
 
   // Use preview values if a recipient is selected, otherwise use template values
-  const displaySubject = selectedPreviewRecipient ? previewSubject : subject
-  const displayBody = selectedPreviewRecipient ? previewBody : body
+  const displaySubject = selectedPreviewRecipient ? previewSubject : activeTemplate.subject
+  const displayBody = selectedPreviewRecipient ? previewBody : activeTemplate.body
+  const isInitialTemplate = activeReminderIndex === 0
+  const activeReminderArrayIndex = activeReminderIndex > 0 ? activeReminderIndex - 1 : null
+  const submitDisabled =
+    submitting ||
+    !subject.trim() ||
+    !body.trim() ||
+    (remindersConfig?.enabled && !remindersConfig.approved)
 
   return (
     <Card className="h-full flex flex-col">
@@ -282,6 +369,46 @@ export function PreviewPanel({
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
         <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">View:</Label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveReminderIndex(0)}
+                className={`px-3 py-1.5 text-sm rounded border transition ${
+                  activeReminderIndex === 0
+                    ? "bg-blue-50 border-blue-200 text-blue-700"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Initial
+              </button>
+              {Array.from({ length: effectiveReminderCount }).map((_, idx) => {
+                const tabIndex = idx + 1
+                return (
+                  <button
+                    key={`reminder-tab-${tabIndex}`}
+                    type="button"
+                    onClick={() => setActiveReminderIndex(tabIndex)}
+                    className={`px-3 py-1.5 text-sm rounded border transition ${
+                      activeReminderIndex === tabIndex
+                        ? "bg-blue-50 border-blue-200 text-blue-700"
+                        : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    Reminder #{tabIndex}
+                  </button>
+                )
+              })}
+            </div>
+            {remindersConfig?.enabled && effectiveReminderCount > 0 && (
+              <p className="text-xs text-gray-500">
+                Sends only to recipients who haven&apos;t replied. Start delay {remindersConfig.startDelayDays}d,
+                cadence {remindersConfig.cadenceDays}d.
+              </p>
+            )}
+          </div>
+
           <div>
             <Label className="text-sm font-medium text-gray-700">To:</Label>
             <div className="mt-1 flex flex-wrap gap-2">
@@ -355,7 +482,7 @@ export function PreviewPanel({
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label className="text-sm font-medium text-gray-700">Subject:</Label>
-              {!selectedPreviewRecipient && subjectUserEdited && aiSubject && (
+              {isInitialTemplate && !selectedPreviewRecipient && subjectUserEdited && aiSubject && (
                 <button
                   type="button"
                   onClick={onResetSubject}
@@ -371,27 +498,54 @@ export function PreviewPanel({
                 {displaySubject}
               </div>
             ) : personalizationMode !== "none" && availableTags && availableTags.length > 0 ? (
-              <TagInput
-                value={subject}
-                onChange={onSubjectChange}
-                availableTags={availableTags}
-                placeholder="Email subject..."
-                className="w-full"
-              />
+              isInitialTemplate ? (
+                <TagInput
+                  value={subject}
+                  onChange={onSubjectChange}
+                  availableTags={availableTags}
+                  placeholder="Email subject..."
+                  className="w-full"
+                />
+              ) : (
+                <TagInput
+                  value={activeTemplate.subject}
+                  onChange={(value) => {
+                    if (activeReminderArrayIndex !== null) {
+                      handleReminderTemplateChange(activeReminderArrayIndex, "subject", value)
+                    }
+                  }}
+                  availableTags={availableTags}
+                  placeholder="Reminder subject..."
+                  className="w-full"
+                />
+              )
             ) : (
-              <Input
-                value={subject}
-                onChange={(e) => onSubjectChange(e.target.value)}
-                placeholder="Email subject..."
-                className="w-full"
-              />
+              isInitialTemplate ? (
+                <Input
+                  value={subject}
+                  onChange={(e) => onSubjectChange(e.target.value)}
+                  placeholder="Email subject..."
+                  className="w-full"
+                />
+              ) : (
+                <Input
+                  value={activeTemplate.subject}
+                  onChange={(e) => {
+                    if (activeReminderArrayIndex !== null) {
+                      handleReminderTemplateChange(activeReminderArrayIndex, "subject", e.target.value)
+                    }
+                  }}
+                  placeholder="Reminder subject..."
+                  className="w-full"
+                />
+              )
             )}
           </div>
 
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1">
               <Label className="text-sm font-medium text-gray-700">Body:</Label>
-              {!selectedPreviewRecipient && bodyUserEdited && aiBody && (
+              {isInitialTemplate && !selectedPreviewRecipient && bodyUserEdited && aiBody && (
                 <button
                   type="button"
                   onClick={onResetBody}
@@ -407,23 +561,53 @@ export function PreviewPanel({
                 {displayBody}
               </div>
             ) : personalizationMode !== "none" && availableTags && availableTags.length > 0 ? (
-              <TagInput
-                value={body}
-                onChange={onBodyChange}
-                availableTags={availableTags}
-                placeholder="Email body..."
-                multiline
-                rows={8}
-                className="flex-1 min-h-[200px] resize-none"
-              />
+              isInitialTemplate ? (
+                <TagInput
+                  value={body}
+                  onChange={onBodyChange}
+                  availableTags={availableTags}
+                  placeholder="Email body..."
+                  multiline
+                  rows={8}
+                  className="flex-1 min-h-[200px] resize-none"
+                />
+              ) : (
+                <TagInput
+                  value={activeTemplate.body}
+                  onChange={(value) => {
+                    if (activeReminderArrayIndex !== null) {
+                      handleReminderTemplateChange(activeReminderArrayIndex, "body", value)
+                    }
+                  }}
+                  availableTags={availableTags}
+                  placeholder="Reminder body..."
+                  multiline
+                  rows={8}
+                  className="flex-1 min-h-[200px] resize-none"
+                />
+              )
             ) : (
-              <Textarea
-                value={body}
-                onChange={(e) => onBodyChange(e.target.value)}
-                placeholder="Email body..."
-                className="flex-1 min-h-[200px] resize-none"
-                rows={8}
-              />
+              isInitialTemplate ? (
+                <Textarea
+                  value={body}
+                  onChange={(e) => onBodyChange(e.target.value)}
+                  placeholder="Email body..."
+                  className="flex-1 min-h-[200px] resize-none"
+                  rows={8}
+                />
+              ) : (
+                <Textarea
+                  value={activeTemplate.body}
+                  onChange={(e) => {
+                    if (activeReminderArrayIndex !== null) {
+                      handleReminderTemplateChange(activeReminderArrayIndex, "body", e.target.value)
+                    }
+                  }}
+                  placeholder="Reminder body..."
+                  className="flex-1 min-h-[200px] resize-none"
+                  rows={8}
+                />
+              )
             )}
           </div>
         </div>
@@ -431,7 +615,7 @@ export function PreviewPanel({
         <div className="flex-shrink-0 flex flex-col gap-2 pt-4 border-t bg-white">
           <Button
             onClick={onSubmit}
-            disabled={submitting || !subject.trim() || !body.trim()}
+            disabled={submitDisabled}
             className="w-full"
           >
             {submitting ? "Submitting..." : "Submit Request"}

@@ -10,6 +10,8 @@ import { decrypt } from "@/lib/encryption"
 import { EmailAccountService } from "./email-account.service"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
+import { ReminderStateService } from "./reminder-state.service"
+import { prisma } from "@/lib/prisma"
 
 export class EmailSendingService {
   static generateThreadId(): string {
@@ -281,6 +283,109 @@ export class EmailSendingService {
     }
   }
 
+  // Send an outbound email that belongs to an existing task (used for reminders)
+  static async sendEmailForExistingTask(data: {
+    taskId: string
+    entityId: string
+    organizationId: string
+    to: string
+    subject: string
+    body: string
+    htmlBody?: string
+    accountId?: string
+  }): Promise<{ messageId: string }> {
+    // Resolve account (reuse same logic as sendEmail)
+    let account: EmailAccount | ConnectedEmailAccount | null = null
+
+    if (data.accountId) {
+      account = await EmailAccountService.getById(data.accountId, data.organizationId)
+      if (!account) {
+        account = await prisma.connectedEmailAccount.findFirst({
+          where: {
+            id: data.accountId,
+            organizationId: data.organizationId,
+            isActive: true
+          }
+        })
+      }
+    } else {
+      account = await EmailAccountService.getFirstActive(data.organizationId)
+      if (!account) {
+        account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
+      }
+    }
+
+    if (!account) {
+      throw new Error("No active email account found for reminder send")
+    }
+
+    const replyTo = account.email
+    const trackingToken = TrackingPixelService.generateTrackingToken()
+    const trackingUrl = TrackingPixelService.generateTrackingUrl(trackingToken)
+    let htmlBodyWithTracking = data.htmlBody
+    if (data.htmlBody) {
+      htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(data.htmlBody, trackingUrl)
+    }
+
+    let sendResult: { messageId: string; providerData: any }
+
+    if ("provider" in account && (account as EmailAccount).provider === EmailProvider.GMAIL && "tokenExpiresAt" in account) {
+      const provider = new GmailProvider()
+      sendResult = await provider.sendEmail({
+        account: account as EmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    } else if ("provider" in account && (account as EmailAccount).provider === EmailProvider.MICROSOFT) {
+      const provider = new MicrosoftProvider()
+      sendResult = await provider.sendEmail({
+        account: account as EmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    } else if ((account as ConnectedEmailAccount).provider === "GMAIL") {
+      sendResult = await this.sendViaGmail({
+        account: account as ConnectedEmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    } else {
+      sendResult = await this.sendViaSMTP({
+        account: account as ConnectedEmailAccount,
+        to: data.to,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        replyTo
+      })
+    }
+
+    // Log outbound message against existing task/entity
+    await TaskCreationService.logOutboundMessage({
+      taskId: data.taskId,
+      entityId: data.entityId,
+      subject: data.subject,
+      body: data.body,
+      htmlBody: htmlBodyWithTracking,
+      fromAddress: account.email,
+      toAddress: data.to,
+      providerId: sendResult.messageId,
+      providerData: sendResult.providerData,
+      trackingToken
+    })
+
+    return { messageId: sendResult.messageId }
+  }
+
   static async sendBulkEmail(data: {
     organizationId: string
     recipients: Array<{ email: string; name?: string }>
@@ -292,6 +397,13 @@ export class EmailSendingService {
     accountId?: string
     perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
     deadlineDate?: Date | null
+    remindersConfig?: {
+      enabled: boolean
+      startDelayHours: number
+      frequencyHours: number
+      maxCount: number
+      approved: boolean
+    }
   }): Promise<Array<{
     email: string
     taskId: string
@@ -322,7 +434,8 @@ export class EmailSendingService {
           campaignName: data.campaignName,
           campaignType: data.campaignType,
           accountId: data.accountId,
-          deadlineDate
+          deadlineDate,
+          remindersConfig: data.remindersConfig
         })
 
         results.push({
@@ -337,6 +450,22 @@ export class EmailSendingService {
           messageId: "",
           error: error.message
         })
+      }
+    }
+
+    // Initialize reminder state for each successfully created task (idempotent)
+    if (data.remindersConfig?.enabled) {
+      const successfulTaskIds = results
+        .map(r => r.taskId)
+        .filter((id): id is string => Boolean(id))
+      if (successfulTaskIds.length > 0) {
+        for (const taskId of successfulTaskIds) {
+          try {
+            await ReminderStateService.initializeForTask(taskId, data.remindersConfig)
+          } catch (error) {
+            console.error("[EmailSendingService] Failed to initialize reminders for task", taskId, error)
+          }
+        }
       }
     }
 

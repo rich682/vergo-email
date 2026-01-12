@@ -24,7 +24,7 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { recipients, campaignName, emailAccountId } = body
+    const { recipients, campaignName, emailAccountId, remindersConfig } = body
 
     const draft = await EmailDraftService.findById(
       params.id,
@@ -384,6 +384,7 @@ export async function POST(
       campaignName: campaignName || draft.suggestedCampaignName || undefined,
       accountId: emailAccountId,
       deadlineDate: deadlineDate || undefined,
+      remindersConfig: remindersConfig || undefined,
       // Pass per-recipient rendered emails if personalization is enabled
       perRecipientEmails: personalizationMode !== "none" ? renderedEmails.map(e => ({
         email: e.email,

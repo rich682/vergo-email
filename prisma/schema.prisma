@@ -112,6 +112,7 @@ model Entity {
   groups       EntityGroup[]
   tasks        Task[]
   messages     Message[]
+  reminderStates ReminderState[]
 
   @@index([organizationId])
   @@index([email])
@@ -174,12 +175,19 @@ model Task {
   overrideReason         String? // Reason for manual override
   lastActivityAt         DateTime? // Last activity timestamp (opened, replied, etc.)
   deadlineDate           DateTime? // Deadline/due date for the request (set during compose)
+  // Reminder configuration fields (additive, nullable for backward compatibility)
+  remindersEnabled         Boolean       @default(false)
+  remindersStartDelayHours Int?         // Hours/days before first reminder (converted to hours)
+  remindersFrequencyHours  Int?         // Hours/days between reminders (converted to hours)
+  remindersMaxCount        Int?         // Maximum reminders (1-5)
+  remindersApproved        Boolean      @default(false) // Whether user approved the sequence
   organizationId         String
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
   entity   Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
   messages Message[]
+  reminderStates ReminderState[]
 
   @@index([organizationId])
   @@index([entityId])
@@ -372,4 +380,28 @@ model PersonalizationData {
   @@unique([emailDraftId, recipientEmail])
   @@index([emailDraftId])
   @@index([recipientEmail])
+}
+
+model ReminderState {
+  id              String   @id @default(cuid())
+  taskId          String   // Link to Task (the request)
+  entityId        String   // Recipient entity
+  reminderNumber  Int      // Which reminder this is (1, 2, 3, etc.)
+  sentCount       Int      @default(0) // How many reminders sent (incremented when sent)
+  nextSendAt      DateTime? // When next reminder should be sent (null if stopped or max reached)
+  lastSentAt      DateTime? // When last reminder was sent
+  stoppedReason   String?  // "replied" | "max_reached" | "manual_stop" | null
+  scheduledEventId String? @unique // Inngest event ID for idempotency (prevents duplicate sends)
+  organizationId  String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, entityId]) // One state per task+entity
+  @@index([taskId])
+  @@index([entityId])
+  @@index([organizationId, nextSendAt]) // For querying tasks that need reminders
+  @@index([scheduledEventId]) // For idempotency checks
 }

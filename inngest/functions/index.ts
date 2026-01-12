@@ -1,5 +1,6 @@
 import { inngest } from "../client"
 import { prisma } from "@/lib/prisma"
+import { runDueRemindersOnce } from "@/lib/services/reminder-runner.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 import OpenAI from "openai"
@@ -477,6 +478,29 @@ Use plain language. Be concise.`
         }
       } catch (error: any) {
         console.error("[Inngest Sync] Error syncing Gmail accounts:", error)
+        // Don't throw - allow retry on next schedule
+        return {
+          success: false,
+          error: error.message
+        }
+      }
+    }
+  ),
+  // Scheduled function to send due reminders
+  inngest.createFunction(
+    {
+      id: "reminder/send-due",
+      name: "Send Due Reminders"
+    },
+    {
+      cron: "*/15 * * * *" // Run every 15 minutes
+    },
+    async () => {
+      try {
+        const result = await runDueRemindersOnce()
+        return { success: true, ...result }
+      } catch (error: any) {
+        console.error("[Inngest Reminder] Error in reminder cron job:", error)
         // Don't throw - allow retry on next schedule
         return {
           success: false,
