@@ -1,16 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
+import { GroupsManager } from "@/components/contacts/groups-manager"
+import { Users, Settings } from "lucide-react"
 
 interface Group {
   id: string
   name: string
   color?: string
+  _count?: { entities: number }
 }
 
 interface Entity {
@@ -25,7 +27,10 @@ interface Entity {
   contactStates?: Array<{ stateKey: string; metadata?: any; updatedAt?: string }>
 }
 
+type TabType = "contacts" | "groups"
+
 export default function ContactsPage() {
+  const [activeTab, setActiveTab] = useState<TabType>("contacts")
   const [entities, setEntities] = useState<Entity[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,77 +101,120 @@ export default function ContactsPage() {
             <h2 className="text-2xl font-bold">Contacts</h2>
             <p className="text-sm text-gray-600">Manage people and organizations</p>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowImport(!showImport)
-                setShowForm(false)
-                setEditingEntity(null)
-              }}
-            >
-              {showImport ? "Cancel" : "Import Contacts"}
-            </Button>
-            <Button
-              onClick={() => {
-                setShowForm(!showForm)
-                setShowImport(false)
-                setEditingEntity(null)
-              }}
-            >
-              {showForm ? "Cancel" : "Add Contact"}
-            </Button>
-          </div>
+          {activeTab === "contacts" && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImport(!showImport)
+                  setShowForm(false)
+                  setEditingEntity(null)
+                }}
+              >
+                {showImport ? "Cancel" : "Import Contacts"}
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowForm(!showForm)
+                  setShowImport(false)
+                  setEditingEntity(null)
+                }}
+              >
+                {showForm ? "Cancel" : "Add Contact"}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mt-4 border-b border-gray-200 -mb-px">
+          <button
+            onClick={() => setActiveTab("contacts")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "contacts"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Contacts
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("groups")
+              setShowForm(false)
+              setShowImport(false)
+              setEditingEntity(null)
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "groups"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Manage Groups
+          </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden bg-gray-50 border-t border-gray-200">
-        <div className="h-full flex flex-col">
-          {showForm && (
-            <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
-              <ContactForm
-                key={editingEntity?.id || "new"}
-                entity={editingEntity || undefined}
-                onSuccess={handleFormSuccess}
-                onCancel={() => {
-                  setShowForm(false)
-                  setEditingEntity(null)
-                }}
-              />
-            </div>
-          )}
-
-          {showImport && (
-            <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
-              <ImportModal
-                onSuccess={fetchEntities}
-                onClose={() => setShowImport(false)}
-              />
-            </div>
-          )}
-
-          <div className="flex-1 overflow-auto p-6">
-            {loading ? (
-              <div className="border border-gray-200 rounded-lg bg-white py-8 text-center text-gray-500">
-                Loading contacts...
+        {activeTab === "contacts" ? (
+          <div className="h-full flex flex-col">
+            {showForm && (
+              <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
+                <ContactForm
+                  key={editingEntity?.id || "new"}
+                  entity={editingEntity || undefined}
+                  onSuccess={handleFormSuccess}
+                  onCancel={() => {
+                    setShowForm(false)
+                    setEditingEntity(null)
+                  }}
+                />
               </div>
-            ) : (
-              <ContactList
-                entities={entities}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                search={search}
-                onSearchChange={setSearch}
-                selectedGroupId={selectedGroupId}
-                onGroupFilterChange={setSelectedGroupId}
-                groups={groups}
-              />
             )}
+
+            {showImport && (
+              <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
+                <ImportModal
+                  onSuccess={fetchEntities}
+                  onClose={() => setShowImport(false)}
+                />
+              </div>
+            )}
+
+            <div className="flex-1 overflow-auto p-6">
+              {loading ? (
+                <div className="border border-gray-200 rounded-lg bg-white py-8 text-center text-gray-500">
+                  Loading contacts...
+                </div>
+              ) : (
+                <ContactList
+                  entities={entities}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  search={search}
+                  onSearchChange={setSearch}
+                  selectedGroupId={selectedGroupId}
+                  onGroupFilterChange={setSelectedGroupId}
+                  groups={groups}
+                />
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="h-full overflow-auto p-6">
+            <div className="max-w-2xl">
+              <GroupsManager
+                groups={groups}
+                onGroupsChange={fetchGroups}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
-

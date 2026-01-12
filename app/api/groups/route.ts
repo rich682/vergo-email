@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
       name: group.name,
       description: group.description,
       color: group.color,
-      entityCount: groupWithEntities.entities.length,
+      entityCount: groupWithEntities.entities?.length || 0,
+      _count: { entities: groupWithEntities.entities?.length || 0 },
       createdAt: group.createdAt,
       updatedAt: group.updatedAt
     }
