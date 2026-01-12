@@ -190,6 +190,26 @@ export default function RequestDetailPage() {
     setSidebarOpen(true)
   }
 
+  // Navigation: find current index in filtered list
+  const currentTaskIndex = useMemo(() => {
+    if (!selectedTaskId) return -1
+    return filteredTasks.findIndex(t => t.id === selectedTaskId)
+  }, [selectedTaskId, filteredTasks])
+
+  const handleNavigatePrev = useCallback(() => {
+    if (currentTaskIndex > 0) {
+      const prevTask = filteredTasks[currentTaskIndex - 1]
+      setSelectedTaskId(prevTask.id)
+    }
+  }, [currentTaskIndex, filteredTasks])
+
+  const handleNavigateNext = useCallback(() => {
+    if (currentTaskIndex < filteredTasks.length - 1) {
+      const nextTask = filteredTasks[currentTaskIndex + 1]
+      setSelectedTaskId(nextTask.id)
+    }
+  }, [currentTaskIndex, filteredTasks])
+
   if (loading && allTasks.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -430,6 +450,10 @@ export default function RequestDetailPage() {
             setSidebarOpen(false)
           }}
           onTaskUpdated={fetchTasks}
+          onNavigatePrev={handleNavigatePrev}
+          onNavigateNext={handleNavigateNext}
+          currentIndex={currentTaskIndex >= 0 ? currentTaskIndex : undefined}
+          totalCount={filteredTasks.length}
         />
       </div>
     </div>

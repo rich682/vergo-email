@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Paperclip, ChevronDown, ChevronUp } from "lucide-react"
+import { Paperclip, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDistanceToNow } from "date-fns"
@@ -52,9 +52,22 @@ interface EmailChainSidebarProps {
   isOpen: boolean
   onClose: () => void // kept for signature compatibility
   onTaskUpdated?: () => void
+  // Navigation props
+  onNavigatePrev?: () => void
+  onNavigateNext?: () => void
+  currentIndex?: number
+  totalCount?: number
 }
 
-export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSidebarProps) {
+export function EmailChainSidebar({ 
+  task, 
+  isOpen, 
+  onTaskUpdated,
+  onNavigatePrev,
+  onNavigateNext,
+  currentIndex,
+  totalCount
+}: EmailChainSidebarProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [replyText, setReplyText] = useState("")
@@ -220,16 +233,13 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
     <div className="absolute right-0 top-0 h-full w-full max-w-[700px] md:w-[42vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="flex items-start justify-between gap-3 p-4">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-900 truncate">
                 {task.entity?.firstName || task.entity?.email || "Unknown"}
               </h3>
               {task.entity?.email && (
                 <span className="text-xs text-gray-500 truncate">{task.entity.email}</span>
-              )}
-              {task.entity && "phone" in task.entity && (task.entity as any).phone && (
-                <span className="text-xs text-gray-500 truncate">{(task.entity as any).phone}</span>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -242,23 +252,47 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
                 {`Risk: ${riskLabelDisplay}`}
               </span>
-              <span className="text-xs text-gray-500">
-                Last activity: {task.updatedAt ? formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true }) : "Unknown"}
-              </span>
-              {typeof task.messageCount === "number" && (
-                <span className="text-xs text-gray-500">Messages: {task.messageCount}</span>
-              )}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant={isDone ? "outline" : "default"}
-            disabled={markingDone}
-            onClick={handleMarkDone}
-            className="whitespace-nowrap"
-          >
-            {markingDone ? "Updating..." : isDone ? "Mark Undone" : "Mark Done"}
-          </Button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Navigation buttons */}
+            {totalCount !== undefined && totalCount > 1 && (
+              <div className="flex items-center gap-1 mr-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentIndex === 0}
+                  onClick={onNavigatePrev}
+                  className="h-8 w-8 p-0"
+                  title="Previous contact"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-gray-500 min-w-[3rem] text-center">
+                  {(currentIndex ?? 0) + 1} / {totalCount}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentIndex === totalCount - 1}
+                  onClick={onNavigateNext}
+                  className="h-8 w-8 p-0"
+                  title="Next contact"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            <Button
+              size="sm"
+              variant={isDone ? "outline" : "default"}
+              disabled={markingDone}
+              onClick={handleMarkDone}
+              className="whitespace-nowrap"
+            >
+              {markingDone ? "Updating..." : isDone ? "Mark Undone" : "Mark Done"}
+            </Button>
+          </div>
         </div>
       </div>
 
