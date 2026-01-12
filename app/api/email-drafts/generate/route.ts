@@ -66,27 +66,33 @@ export async function POST(request: NextRequest) {
         recipientsWithFilter
       )
       
-      // Derive available tags from contact states - support both single key and multiple keys
+      // Get selected data field keys - support both single key and multiple keys
       const selectedKeys = recipientsWithFilter.stateFilter?.stateKeys?.length 
         ? recipientsWithFilter.stateFilter.stateKeys 
         : recipientsWithFilter.stateFilter?.stateKey 
           ? [recipientsWithFilter.stateFilter.stateKey]
           : []
       
+      // Start with base contact fields
+      const dataKeys = new Set<string>(["First Name", "Email"])
+      
+      // Add selected data personalization fields as available tags
+      // (even if no recipients, so LLM knows what fields to use)
+      for (const key of selectedKeys) {
+        dataKeys.add(key)
+      }
+      
+      // If we have recipients, also derive tags from their actual contact state metadata
       if (selectedKeys.length > 0 && resolvedRecipients.recipients.length > 0) {
-        // Collect all unique keys from the selected data fields' metadata across recipients
-        const dataKeys = new Set<string>(["First Name", "Email"])
         for (const recipient of resolvedRecipients.recipients) {
           const data = buildRecipientPersonalizationData(recipient, selectedKeys)
           for (const key of Object.keys(data)) {
             dataKeys.add(key)
           }
         }
-        derivedTags = Array.from(dataKeys)
-      } else {
-        // No data fields selected - use basic contact fields
-        derivedTags = ["First Name", "Email"]
       }
+      
+      derivedTags = Array.from(dataKeys)
     }
 
     const correlationId = idempotencyKey || `gen-${Date.now()}-${Math.random().toString(36).substring(7)}`

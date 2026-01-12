@@ -134,11 +134,14 @@ export class AIEmailGenerationService {
             subjectText = `Invoice {{${invoiceVar}}} - Payment Due`
           }
           bodyText += `. Can you let us know when you'll be able to pay it?\n\nThank you for your prompt attention.\n\nBest regards,`
+        } else if (lowerPrompt.includes('document') || lowerPrompt.includes('deadline') || lowerPrompt.includes('submit')) {
+          // Document request template
+          bodyText = `${greeting}\n\n${data.prompt}\n\nPlease submit the required documents at your earliest convenience.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = `Document Request`
         } else {
-          // Generic template with variables - use first variable in subject if available
-          const firstVar = data.availableTags[0]
-          bodyText = `${greeting}\n\n${data.prompt}\n\nRelevant details: ${data.availableTags.map(t => `{{${t}}}`).join(', ')}\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = firstVar ? `Request: {{${firstVar}}}` : `Request: ${subject}`
+          // Generic professional template - don't expose raw tags
+          bodyText = `${greeting}\n\n${data.prompt}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = `Request: ${subject}`
         }
       }
       
