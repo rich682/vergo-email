@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Resolve recipients early to derive available tags from slice data
+    // Resolve recipients early to derive available tags from data personalization fields
     let resolvedRecipients: Awaited<ReturnType<typeof resolveRecipientsWithFilter>> | null = null
     let derivedTags: string[] = providedTags || []
     
@@ -66,20 +66,25 @@ export async function POST(request: NextRequest) {
         recipientsWithFilter
       )
       
-      // Derive available tags from contact states if a slice is selected
-      const selectedSliceKey = recipientsWithFilter.stateFilter?.stateKey
-      if (selectedSliceKey && resolvedRecipients.recipients.length > 0) {
-        // Collect all unique keys from the selected slice's metadata across recipients
-        const sliceKeys = new Set<string>(["First Name", "Email"])
+      // Derive available tags from contact states - support both single key and multiple keys
+      const selectedKeys = recipientsWithFilter.stateFilter?.stateKeys?.length 
+        ? recipientsWithFilter.stateFilter.stateKeys 
+        : recipientsWithFilter.stateFilter?.stateKey 
+          ? [recipientsWithFilter.stateFilter.stateKey]
+          : []
+      
+      if (selectedKeys.length > 0 && resolvedRecipients.recipients.length > 0) {
+        // Collect all unique keys from the selected data fields' metadata across recipients
+        const dataKeys = new Set<string>(["First Name", "Email"])
         for (const recipient of resolvedRecipients.recipients) {
-          const data = buildRecipientPersonalizationData(recipient, selectedSliceKey)
+          const data = buildRecipientPersonalizationData(recipient, selectedKeys)
           for (const key of Object.keys(data)) {
-            sliceKeys.add(key)
+            dataKeys.add(key)
           }
         }
-        derivedTags = Array.from(sliceKeys)
+        derivedTags = Array.from(dataKeys)
       } else {
-        // No slice selected - use basic contact fields
+        // No data fields selected - use basic contact fields
         derivedTags = ["First Name", "Email"]
       }
     }

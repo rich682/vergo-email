@@ -83,7 +83,7 @@ function ComposePageContent() {
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null)
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from CSV or contact fields
   const [availableStateKeys, setAvailableStateKeys] = useState<Array<{ stateKey: string; count: number }>>([])
-  const [stateFilter, setStateFilter] = useState<string | null>(null)
+  const [selectedDataFields, setSelectedDataFields] = useState<string[]>([]) // Multiple data personalization fields
   const [requireSliceData, setRequireSliceData] = useState(false)
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [filterStats, setFilterStats] = useState<{ total: number; included: number; excluded: number } | null>(null)
@@ -140,7 +140,7 @@ function ComposePageContent() {
 
   useEffect(() => {
     setFilterStats(null)
-  }, [stateFilter])
+  }, [selectedDataFields])
 
   // Handle CSV file upload
   const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -253,8 +253,9 @@ function ComposePageContent() {
     setError(null)
     
     try {
-      const stateFilterPayload = stateFilter
-        ? { stateKey: stateFilter, mode: requireSliceData ? "has" : undefined }
+      // Build state filter payload - supports multiple data fields
+      const stateFilterPayload = selectedDataFields.length > 0
+        ? { stateKeys: selectedDataFields, mode: requireSliceData ? "has" : undefined }
         : undefined
 
       // Build recipients data based on source
@@ -813,69 +814,95 @@ function ComposePageContent() {
               {recipientsError && (
                 <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
               )}
-              {stateFilter && filterStats && (
+              {selectedDataFields.length > 0 && filterStats && (
                 <p className="text-xs text-gray-600 mt-2">
                   {filterStats.excluded} recipient{filterStats.excluded === 1 ? "" : "s"} excluded by filter; {filterStats.included} included.
                 </p>
               )}
-              <div className="mt-4 space-y-2">
-                <button
-                  type="button"
-                  className="text-sm text-gray-700 underline"
-                  onClick={() => setFilterExpanded((prev) => !prev)}
-                >
-                  Optional: Personalize with data slice
-                </button>
-                {filterExpanded && (
-                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
-                    <div className="space-y-2">
-                      <Label>Choose a slice</Label>
-                      <Select
-                        value={stateFilter || ""}
-                        onValueChange={(value) => setStateFilter(value || null)}
+            </div>
+          )}
+
+          {/* Data Personalization - only shown in contact mode */}
+          {isRequestMode && recipientSource === "contact" && (
+            <div>
+              <Label>
+                Data personalization
+              </Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Add contact data fields to personalize each email.
+              </p>
+              
+              {/* Selected data fields as pills */}
+              {selectedDataFields.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {selectedDataFields.map((field) => (
+                    <span
+                      key={field}
+                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-3 py-1 text-sm"
+                    >
+                      {field}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDataFields(prev => prev.filter(f => f !== field))}
+                        className="ml-1 text-blue-600 hover:text-blue-800"
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder={availableStateKeys.length ? "Select data slice" : "No data slices yet"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableStateKeys.length === 0 && (
-                            <SelectItem value="__none" disabled>
-                              No data slices found
-                            </SelectItem>
-                          )}
-                          {availableStateKeys.map((slice) => (
-                            <SelectItem key={slice.stateKey} value={slice.stateKey}>
-                              {slice.stateKey}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        id="requireSliceData"
-                        type="checkbox"
-                        checked={requireSliceData}
-                        onChange={(e) => setRequireSliceData(e.target.checked)}
-                        disabled={!stateFilter}
-                      />
-                      <Label htmlFor="requireSliceData" className="text-sm font-normal">
-                        Only include recipients with slice data
-                      </Label>
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      Only recipients with this data will be included when the toggle is on. Slice values are available to personalize drafts.
-                    </p>
-                    {stateFilter && (
-                      <div className="flex justify-between items-center">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setStateFilter(null)}>
-                          Clear slice
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              
+              {/* Dropdown to add more fields */}
+              <Select
+                value=""
+                onValueChange={(value) => {
+                  if (value && !selectedDataFields.includes(value)) {
+                    setSelectedDataFields(prev => [...prev, value])
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={
+                    availableStateKeys.length === 0 
+                      ? "No data fields available" 
+                      : selectedDataFields.length === 0 
+                        ? "Select data fields to personalize..." 
+                        : "Add another field..."
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableStateKeys.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      No data fields found. Import contacts with custom fields first.
+                    </SelectItem>
+                  ) : (
+                    availableStateKeys
+                      .filter(field => !selectedDataFields.includes(field.stateKey))
+                      .map((field) => (
+                        <SelectItem key={field.stateKey} value={field.stateKey}>
+                          {field.stateKey}
+                        </SelectItem>
+                      ))
+                  )}
+                </SelectContent>
+              </Select>
+              
+              {/* Filter toggle */}
+              {selectedDataFields.length > 0 && (
+                <div className="flex items-center gap-2 mt-3">
+                  <input
+                    id="requireSliceData"
+                    type="checkbox"
+                    checked={requireSliceData}
+                    onChange={(e) => setRequireSliceData(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  <Label htmlFor="requireSliceData" className="text-sm font-normal">
+                    Only include recipients who have all selected data fields
+                  </Label>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma"
 
+// Support both single stateKey (legacy) and multiple stateKeys
 export type RecipientFilter = {
-  stateKey: string
-  mode: "has" | "missing"
+  stateKey?: string // Legacy single key
+  stateKeys?: string[] // Multiple keys
+  mode?: "has" | "missing"
 }
 
 export type RecipientSelection = {
@@ -68,12 +70,19 @@ export async function resolveRecipientsWithFilter(
 
   const baseEntities = Array.from(dedupedByEmail.values())
 
-  const filteredEntities = selection.stateFilter?.stateKey
+  // Get filter keys - support both legacy single key and multiple keys
+  const filterKeys = selection.stateFilter?.stateKeys?.length 
+    ? selection.stateFilter.stateKeys 
+    : selection.stateFilter?.stateKey 
+      ? [selection.stateFilter.stateKey]
+      : []
+
+  // Apply filter if keys are specified and mode is "has"
+  const filteredEntities = filterKeys.length > 0 && selection.stateFilter?.mode === "has"
     ? baseEntities.filter((entity) => {
-        const hasState = (entity.contactStates || []).some(
-          (cs) => cs.stateKey === selection.stateFilter?.stateKey
-        )
-        return selection.stateFilter?.mode === "missing" ? !hasState : hasState
+        // Check if entity has ALL selected state keys
+        const entityStateKeys = new Set((entity.contactStates || []).map(cs => cs.stateKey))
+        return filterKeys.every(key => entityStateKeys.has(key))
       })
     : baseEntities
 
@@ -105,10 +114,11 @@ export async function resolveRecipientsWithFilter(
 /**
  * Build personalization data for a recipient from their contact info and states.
  * This creates a flat key-value map suitable for template rendering.
+ * Supports both single key (legacy) and multiple keys.
  */
 export function buildRecipientPersonalizationData(
   recipient: ResolvedRecipient,
-  selectedSliceKey?: string | null
+  selectedKeys?: string | string[] | null
 ): Record<string, string> {
   const data: Record<string, string> = {
     "First Name": recipient.firstName || recipient.name || "",
@@ -119,22 +129,35 @@ export function buildRecipientPersonalizationData(
     data["Last Name"] = recipient.lastName
   }
 
-  // Add all contact states as potential merge fields
+  // Normalize to array
+  const keysArray = selectedKeys 
+    ? (Array.isArray(selectedKeys) ? selectedKeys : [selectedKeys])
+    : []
+
+  // Add contact states as merge fields
   for (const cs of recipient.contactStates) {
-    // If a specific slice is selected, prioritize it
-    if (selectedSliceKey && cs.stateKey === selectedSliceKey) {
-      // Flatten metadata into the data object
-      if (cs.metadata && typeof cs.metadata === "object") {
-        for (const [key, value] of Object.entries(cs.metadata)) {
-          if (value !== null && value !== undefined) {
-            data[key] = String(value)
+    // If specific keys are selected, only include those
+    if (keysArray.length > 0) {
+      if (keysArray.includes(cs.stateKey)) {
+        // Flatten metadata into the data object
+        if (cs.metadata && typeof cs.metadata === "object") {
+          for (const [key, value] of Object.entries(cs.metadata)) {
+            if (value !== null && value !== undefined) {
+              data[key] = String(value)
+            }
           }
         }
+        // Also add the state key itself as a tag with its value
+        if (cs.metadata) {
+          // If metadata is a simple value, use it directly
+          const metaValue = typeof cs.metadata === "object" 
+            ? (Object.values(cs.metadata)[0] ?? "")
+            : cs.metadata
+          data[cs.stateKey] = String(metaValue)
+        }
       }
-      // Also add the slice key itself as a tag
-      data[cs.stateKey] = cs.metadata ? JSON.stringify(cs.metadata) : ""
-    } else if (!selectedSliceKey) {
-      // No specific slice selected - include all states
+    } else {
+      // No specific keys selected - include all states
       if (cs.metadata && typeof cs.metadata === "object") {
         for (const [key, value] of Object.entries(cs.metadata)) {
           if (value !== null && value !== undefined) {

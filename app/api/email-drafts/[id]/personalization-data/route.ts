@@ -196,13 +196,17 @@ export async function GET(
         recipientSelection
       )
       
-      // Get selected slice key from the filter
-      const selectedSliceKey = recipientSelection.stateFilter?.stateKey || null
+      // Get selected data field keys from the filter - support both single and multiple
+      const selectedKeys = recipientSelection.stateFilter?.stateKeys?.length 
+        ? recipientSelection.stateFilter.stateKeys 
+        : recipientSelection.stateFilter?.stateKey 
+          ? [recipientSelection.stateFilter.stateKey]
+          : null
       
       // Build personalization data for each recipient
       const sample = resolved.recipients.slice(0, 10).map(recipient => ({
         email: recipient.email,
-        data: buildRecipientPersonalizationData(recipient, selectedSliceKey)
+        data: buildRecipientPersonalizationData(recipient, selectedKeys)
       }))
 
       return NextResponse.json({
