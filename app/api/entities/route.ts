@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
 import { DomainDetectionService } from "@/lib/services/domain-detection.service"
+import { ContactStateService } from "@/lib/services/contact-state.service"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { firstName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
+    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
 
     if (!firstName || !email) {
       return NextResponse.json(
@@ -99,6 +100,17 @@ export async function POST(request: NextRequest) {
       organizationId: session.user.organizationId,
       groupIds: groupIds || []
     })
+
+    // Store lastName as a ContactState if provided
+    if (lastName && lastName.trim()) {
+      await ContactStateService.upsert({
+        entityId: entity.id,
+        organizationId: session.user.organizationId,
+        stateKey: "lastName",
+        metadata: { value: lastName.trim() },
+        source: "manual"
+      })
+    }
 
     // Fetch with groups
     const entityWithGroups = await EntityService.findById(

@@ -12,6 +12,11 @@ interface Group {
   color?: string | null
 }
 
+interface ContactState {
+  stateKey: string
+  metadata?: any
+}
+
 interface EntityInput {
   id?: string
   firstName?: string
@@ -20,6 +25,7 @@ interface EntityInput {
   contactType?: string
   contactTypeCustomLabel?: string
   groups?: { id: string; name: string }[]
+  contactStates?: ContactState[]
 }
 
 interface ContactFormProps {
@@ -28,8 +34,25 @@ interface ContactFormProps {
   onCancel: () => void
 }
 
+// Helper to extract lastName from contactStates
+function getLastNameFromStates(contactStates?: ContactState[]): string {
+  if (!contactStates) return ""
+  const lastNameState = contactStates.find(cs => cs.stateKey === "lastName")
+  if (lastNameState?.metadata) {
+    // metadata could be { value: "Smith" } or just the value directly
+    if (typeof lastNameState.metadata === "object" && lastNameState.metadata.value) {
+      return lastNameState.metadata.value
+    }
+    if (typeof lastNameState.metadata === "string") {
+      return lastNameState.metadata
+    }
+  }
+  return ""
+}
+
 export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
   const [firstName, setFirstName] = useState(entity?.firstName || "")
+  const [lastName, setLastName] = useState(getLastNameFromStates(entity?.contactStates))
   const [email, setEmail] = useState(entity?.email || "")
   const [phone, setPhone] = useState(entity?.phone || "")
   const [contactType, setContactType] = useState(entity?.contactType || "UNKNOWN")
@@ -58,6 +81,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
 
   useEffect(() => {
     setFirstName(entity?.firstName || "")
+    setLastName(getLastNameFromStates(entity?.contactStates))
     setEmail(entity?.email || "")
     setPhone(entity?.phone || "")
     setContactType(entity?.contactType || "UNKNOWN")
@@ -73,6 +97,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     try {
       const payload = {
         firstName,
+        lastName: lastName.trim() || undefined,
         email,
         phone: phone || undefined,
         contactType,
@@ -104,17 +129,29 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <Label htmlFor="firstName">First Name</Label>
-        <Input
-          id="firstName"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          placeholder="First name"
-          required
-        />
-        <p className="text-xs text-gray-500">Used for email personalization (e.g., "Dear Sarah,")</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">First Name</Label>
+          <Input
+            id="firstName"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="First name"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Last Name <span className="text-gray-400 text-xs font-normal">(optional)</span></Label>
+          <Input
+            id="lastName"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Last name"
+          />
+        </div>
       </div>
+      <p className="text-xs text-gray-500 -mt-2">First name is used for email personalization (e.g., "Dear Sarah,")</p>
+      
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -127,7 +164,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="phone">Phone (optional)</Label>
+        <Label htmlFor="phone">Phone <span className="text-gray-400 text-xs font-normal">(optional)</span></Label>
         <Input
           id="phone"
           value={phone}

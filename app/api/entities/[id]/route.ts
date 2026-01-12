@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
 import { DomainDetectionService } from "@/lib/services/domain-detection.service"
+import { ContactStateService } from "@/lib/services/contact-state.service"
 
 export async function GET(
   request: NextRequest,
@@ -78,7 +79,7 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { firstName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
+    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
 
     // Update entity fields
     const updateData: any = {}
@@ -95,6 +96,22 @@ export async function PATCH(
         session.user.organizationId,
         updateData
       )
+    }
+
+    // Update lastName as ContactState if provided
+    if (lastName !== undefined) {
+      if (lastName && lastName.trim()) {
+        await ContactStateService.upsert({
+          entityId: params.id,
+          organizationId: session.user.organizationId,
+          stateKey: "lastName",
+          metadata: { value: lastName.trim() },
+          source: "manual"
+        })
+      } else {
+        // If lastName is empty, delete the ContactState
+        await ContactStateService.delete(params.id, "lastName")
+      }
     }
 
     // Update groups if provided
