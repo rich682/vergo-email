@@ -352,7 +352,7 @@ export function EmailChainSidebar({
         {task.aiSummary && (
           <Card className="bg-gray-50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">AI Summary</CardTitle>
+              <CardTitle className="text-sm">AI Risk Summary</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-sm text-gray-900">{task.aiSummary}</p>

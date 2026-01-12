@@ -980,13 +980,8 @@ function ComposePageContent() {
           <div className={draft?.id && isRequestMode ? 'space-y-6' : ''}>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{isRequestMode ? "What are you collecting?" : "Natural Language Input"}</CardTitle>
-          <CardDescription>
-            {isRequestMode 
-              ? "Describe what you need from recipients (e.g., W-9 forms, expense reports, timesheets)"
-              : "Example: \"send email to my employees asking for expense reports\""}
-          </CardDescription>
+        <CardHeader className="pb-4">
+          <CardTitle>{isRequestMode ? "New Request" : "Compose Email"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {isRequestMode && (

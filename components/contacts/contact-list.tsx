@@ -103,7 +103,7 @@ export function ContactList({
           <div>Email</div>
           <div>Type</div>
           <div>Groups</div>
-          <div>Data tags</div>
+          <div>Personalization</div>
           <div className="text-right">Actions</div>
         </div>
         {entities.length === 0 && (

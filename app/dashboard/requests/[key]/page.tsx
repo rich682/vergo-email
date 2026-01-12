@@ -20,7 +20,6 @@ export default function RequestDetailPage() {
   const [recipientSearch, setRecipientSearch] = useState("")
   const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low" | "bounced">("all")
-  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read" | "noReplies">("all")
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
   // Decode the groupKey from URL
@@ -116,31 +115,13 @@ export default function RequestDetailPage() {
       })
     }
 
-    // Read filter (heuristic: latest inbound within 24h = unread; if no replies = noReplies)
-    if (readFilter !== "all") {
-      tasks = tasks.filter((t) => {
-        const hasReplies = t.hasReplies || (t.replyCount && t.replyCount > 0)
-        if (!hasReplies) {
-          return readFilter === "noReplies"
-        }
-        const latestInboundDate = t.latestInboundDate || t.lastActivityAt || t.updatedAt
-        const dt = latestInboundDate ? new Date(latestInboundDate) : null
-        const diffHours = dt ? (Date.now() - dt.getTime()) / 36e5 : 9999
-        const status = diffHours <= 24 ? "unread" : "read"
-        if (readFilter === "unread") return status === "unread"
-        if (readFilter === "read") return status === "read"
-        if (readFilter === "noReplies") return false
-        return true
-      })
-    }
-
     // Recipient filter (single-select)
     if (selectedRecipientId !== "all") {
       tasks = tasks.filter(t => t.id === selectedRecipientId)
     }
 
     return tasks
-  }, [groupedTasks, completionFilter, riskFilter, selectedRecipientId, readFilter])
+  }, [groupedTasks, completionFilter, riskFilter, selectedRecipientId])
 
   const completionStats = useMemo(() => {
     const total = filteredTasks.length
@@ -394,17 +375,17 @@ export default function RequestDetailPage() {
                     </SelectContent>
                   </Select>
                   <Select value={completionFilter} onValueChange={(v) => setCompletionFilter(v as any)}>
-                    <SelectTrigger className="w-full md:w-40">
-                      <SelectValue placeholder="Completion" />
+                    <SelectTrigger className="w-full md:w-32">
+                      <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All completion</SelectItem>
-                      <SelectItem value="in-progress">In progress</SelectItem>
+                      <SelectItem value="all">All status</SelectItem>
+                      <SelectItem value="in-progress">Active</SelectItem>
                       <SelectItem value="done">Done</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={riskFilter} onValueChange={(v) => setRiskFilter(v as any)}>
-                    <SelectTrigger className="w-full md:w-40">
+                    <SelectTrigger className="w-full md:w-32">
                       <SelectValue placeholder="Risk" />
                     </SelectTrigger>
                     <SelectContent>
@@ -413,17 +394,6 @@ export default function RequestDetailPage() {
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="low">Low</SelectItem>
                       <SelectItem value="bounced">Bounced</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={readFilter} onValueChange={(v) => setReadFilter(v as any)}>
-                    <SelectTrigger className="w-full md:w-40">
-                      <SelectValue placeholder="Read status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All read</SelectItem>
-                      <SelectItem value="unread">Unread</SelectItem>
-                      <SelectItem value="read">Read</SelectItem>
-                      <SelectItem value="noReplies">No replies</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -436,11 +406,10 @@ export default function RequestDetailPage() {
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">Recipient</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Completion</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Read</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Replied</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[90px]">Status</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[90px]">Risk</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">AI Summary</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">AI Risk Summary</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -492,18 +461,13 @@ export default function RequestDetailPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDone ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
-                                  {isDone ? "Done" : "In progress"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${readPill}`}>
-                                  {readStatus === "noReplies" ? "No replies" : readStatus === "unread" ? "Unread" : "Read"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${hasReplied ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
-                                  {hasReplied ? "Replied" : "Not replied"}
+                                  {hasReplied ? "Replied" : "Pending"}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDone ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
+                                  {isDone ? "Done" : "Active"}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
@@ -516,7 +480,7 @@ export default function RequestDetailPage() {
                               <td className="px-4 py-3">
                                 <div className="max-w-md">
                                   <p className="text-sm text-gray-900 truncate">
-                                    {task.aiSummary || task.latestResponseText || task.latestOutboundSubject || task.riskReason || "—"}
+                                    {task.aiSummary || task.riskReason || "—"}
                                   </p>
                                 </div>
                               </td>
