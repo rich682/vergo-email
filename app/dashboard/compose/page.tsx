@@ -980,10 +980,7 @@ function ComposePageContent() {
           <div className={draft?.id && isRequestMode ? 'space-y-6' : ''}>
 
       <Card>
-        <CardHeader className="pb-4">
-          <CardTitle>{isRequestMode ? "New Request" : "Compose Email"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-6 space-y-4">
           {isRequestMode && (
             <div>
               <Label>
