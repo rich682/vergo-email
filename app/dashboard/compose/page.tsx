@@ -1379,7 +1379,7 @@ function ComposePageContent() {
             {loading 
               ? (isRequestMode ? "Creating request..." : "Creating draft...")
               : isRequestMode 
-                ? "Generate Request" 
+                ? "AI Generate" 
                 : "Generate Draft"}
           </Button>
         </CardContent>
