@@ -77,11 +77,62 @@ export function EmailChainSidebar({
   const [generatingDraft, setGeneratingDraft] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [draftReady, setDraftReady] = useState(false)
+  const [reminderData, setReminderData] = useState<{
+    enabled: boolean
+    state: {
+      nextSendAt: string | null
+      sentCount: number
+      remainingReminders: number
+      isFinalReminder: boolean
+      stoppedReason: string | null
+    } | null
+  } | null>(null)
+  const [cancellingReminders, setCancellingReminders] = useState(false)
 
   useEffect(() => {
     setReplyText("")
     setDraftReady(false)
   }, [task?.id])
+
+  // Fetch reminder data
+  const fetchReminders = useCallback(async () => {
+    if (!task) return
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/reminders`)
+      if (response.ok) {
+        const data = await response.json()
+        setReminderData(data)
+      }
+    } catch (error) {
+      console.error("Error fetching reminders:", error)
+    }
+  }, [task?.id])
+
+  useEffect(() => {
+    if (task && isOpen) {
+      fetchReminders()
+    } else {
+      setReminderData(null)
+    }
+  }, [task?.id, isOpen, fetchReminders])
+
+  const handleCancelReminders = async () => {
+    if (!task || cancellingReminders) return
+    setCancellingReminders(true)
+    try {
+      const response = await fetch(`/api/tasks/${task.id}/reminders`, {
+        method: "DELETE"
+      })
+      if (response.ok) {
+        fetchReminders()
+        onTaskUpdated?.()
+      }
+    } catch (error) {
+      console.error("Error cancelling reminders:", error)
+    } finally {
+      setCancellingReminders(false)
+    }
+  }
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -305,6 +356,54 @@ export function EmailChainSidebar({
             </CardHeader>
             <CardContent className="pt-0">
               <p className="text-sm text-gray-900">{task.aiSummary}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Reminders Section */}
+        {reminderData && reminderData.enabled && reminderData.state && (
+          <Card className={reminderData.state.stoppedReason ? "bg-gray-50" : "bg-blue-50 border-blue-200"}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <span>Reminders</span>
+                {reminderData.state.isFinalReminder && !reminderData.state.stoppedReason && (
+                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                    Final reminder
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              {reminderData.state.stoppedReason ? (
+                <p className="text-sm text-gray-600">
+                  Reminders stopped: {reminderData.state.stoppedReason === "replied" ? "Recipient replied" : reminderData.state.stoppedReason}
+                </p>
+              ) : reminderData.state.nextSendAt ? (
+                <>
+                  <p className="text-sm text-gray-900">
+                    Next reminder: <span className="font-medium">{formatDistanceToNow(new Date(reminderData.state.nextSendAt), { addSuffix: true })}</span>
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {reminderData.state.sentCount} sent, {reminderData.state.remainingReminders} remaining
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Reminder emails will appear in the thread once sent.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCancelReminders}
+                    disabled={cancellingReminders}
+                    className="mt-2"
+                  >
+                    {cancellingReminders ? "Cancelling..." : "Cancel Reminders"}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  All reminders sent ({reminderData.state.sentCount} total)
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

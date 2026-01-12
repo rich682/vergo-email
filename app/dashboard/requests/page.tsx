@@ -276,24 +276,66 @@ export default function RequestsPage() {
             {filteredSortedGroups.length === 0 ? (
               requestGroups.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[400px] p-6">
-                  <div className="text-center max-w-md">
+                  <div className="text-center max-w-lg">
                     <div className="mb-4 flex justify-center">
-                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                         </svg>
                       </div>
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No requests yet</h3>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Welcome to Vergo</h3>
                     <p className="text-sm text-gray-600 mb-6">
-                      Start by creating your first request. You'll be able to track who has responded and who still needs to follow up.
+                      Get started in 3 easy steps to track document requests and follow-ups.
                     </p>
+                    
+                    {/* Getting Started Steps */}
+                    <div className="text-left bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">Import your contacts</h4>
+                          <p className="text-xs text-gray-600 mt-0.5">Upload a CSV or Excel file with your clients, vendors, or employees.</p>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto text-blue-600"
+                            onClick={() => router.push('/dashboard/contacts')}
+                          >
+                            Go to Contacts →
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">Create a request</h4>
+                          <p className="text-xs text-gray-600 mt-0.5">Send personalized emails asking for W-9s, invoices, or any documents.</p>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto text-blue-600"
+                            onClick={() => router.push('/dashboard/compose?mode=request')}
+                          >
+                            Create Request →
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">Track replies</h4>
+                          <p className="text-xs text-gray-600 mt-0.5">See who has responded, who needs a reminder, and manage risk levels.</p>
+                        </div>
+                      </div>
+                    </div>
+
                     <Button
                       onClick={() => router.push('/dashboard/compose?mode=request')}
                       className="flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
-                      Create Request
+                      Create Your First Request
                     </Button>
                   </div>
                 </div>

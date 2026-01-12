@@ -388,6 +388,8 @@ model EmailDraft {
   status                EmailDraftStatus @default(DRAFT)
   idempotencyKey        String?          @unique
   aiGenerationStatus    String? // "processing", "complete", "failed", "timeout"
+  sentAt                DateTime? // Timestamp when draft was sent (for idempotency)
+  sendAttemptId         String? // Unique ID for send attempt tracking
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 

@@ -205,14 +205,46 @@ export async function DELETE(
   }
 
   try {
+    // First verify the entity exists and belongs to this organization
+    // This prevents leaking existence of entities in other orgs
+    const entity = await EntityService.findById(
+      params.id,
+      session.user.organizationId
+    )
+
+    if (!entity) {
+      // Return 404 whether entity doesn't exist or belongs to different org
+      // This prevents enumeration attacks
+      return NextResponse.json(
+        { error: "Entity not found" },
+        { status: 404 }
+      )
+    }
+
     await EntityService.delete(params.id, session.user.organizationId)
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error("Error deleting entity:", error)
+    // Check for Prisma "record not found" error
+    if (error.code === "P2025") {
+      return NextResponse.json(
+        { error: "Entity not found" },
+        { status: 404 }
+      )
+    }
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }
     )
   }
 }
+
+/*
+ * Manual Verification Steps for Org Scoping:
+ * 1. Create entity in Org A, note the ID
+ * 2. Switch to Org B (different user/session)
+ * 3. Try DELETE /api/entities/{orgA_entity_id}
+ * 4. Should return 404, not 500 or success
+ * 5. Entity in Org A should still exist
+ */
 

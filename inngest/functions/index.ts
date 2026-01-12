@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { runDueRemindersOnce } from "@/lib/services/reminder-runner.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
+import { ReminderStateService } from "@/lib/services/reminder-state.service"
 import OpenAI from "openai"
 import { createHash } from "crypto"
 
@@ -70,6 +71,16 @@ export const functions = [
             aiReasoning: classification.reasoning
           }
         })
+
+        // Stop reminders for this recipient/task, but only if not a bounce or out-of-office
+        // Bounces should NOT stop reminders since they indicate delivery issues
+        if (message.task?.entityId) {
+          await ReminderStateService.stopForReplyIfNotBounce(
+            message.taskId!,
+            message.task.entityId,
+            classification.classification
+          )
+        }
 
         // Analyze reply intent to determine if task is fulfilled
         if (taskId && message.task) {

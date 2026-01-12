@@ -180,11 +180,20 @@ async function addGroupByName(name: string, organizationId: string, groupIds: st
 }
 
 export class UnifiedImportService {
+  // Maximum file size for imports (5MB)
+  static readonly MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
+
   static async importContacts(
     file: File,
     organizationId: string,
     options?: { syncCustomFields?: boolean }
   ): Promise<ImportSummary> {
+    // Check file size limit
+    if (file.size > UnifiedImportService.MAX_FILE_SIZE_BYTES) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2)
+      throw new Error(`File too large (${sizeMB}MB). Maximum allowed size is 5MB. Please split the file or remove extra columns.`)
+    }
+
     const buffer = await file.arrayBuffer()
     const { rows, headers } = parseWorkbook(buffer)
     const syncCustomFields = options?.syncCustomFields === true

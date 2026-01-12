@@ -384,7 +384,14 @@ export function PreviewPanel({
           {/* Preview as recipient dropdown */}
           {personalizationMode !== "none" && (
             <div>
-              <Label className="text-sm font-medium text-gray-700">Preview as recipient:</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-700">Preview as recipient:</Label>
+                {previewRecipients.length > 0 && selectedPreviewRecipient && (
+                  <span className="text-xs text-gray-500">
+                    {previewRecipients.findIndex(r => r.email === selectedPreviewRecipient) + 1} of {previewRecipients.length}
+                  </span>
+                )}
+              </div>
               <Select
                 value={selectedPreviewRecipient || "none"}
                 onValueChange={handlePreviewRecipientChange}
@@ -397,9 +404,9 @@ export function PreviewPanel({
                   {loadingRecipients ? (
                     <SelectItem value="loading" disabled>Loading recipients...</SelectItem>
                   ) : (
-                    previewRecipients.map((r) => (
+                    previewRecipients.map((r, idx) => (
                       <SelectItem key={r.email} value={r.email}>
-                        {r.data["First Name"] ? `${r.data["First Name"]} (${r.email})` : r.email}
+                        {idx + 1}. {r.data["First Name"] ? `${r.data["First Name"]} (${r.email})` : r.email}
                       </SelectItem>
                     ))
                   )}

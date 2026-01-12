@@ -5,6 +5,7 @@ import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { humanizeStateKey } from "@/lib/utils/humanize"
 
 type ImportSummary = {
   contactsCreated: number
@@ -31,14 +32,20 @@ type Props = {
 export function ImportModal({ onClose, onSuccess }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [headers, setHeaders] = useState<string[]>([])
+  const [previewRows, setPreviewRows] = useState<any[][]>([])
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [syncCustomFields, setSyncCustomFields] = useState(false)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const detectedColumns = useMemo(() => headers.join(", "), [headers])
+
+  // Maximum file size (5MB)
+  const MAX_FILE_SIZE_MB = 5
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
   const handleFileChange = async (selected: File | null) => {
     setFile(selected)
@@ -50,6 +57,15 @@ export function ImportModal({ onClose, onSuccess }: Props) {
 
     if (!selected) return
 
+    // Check file size
+    if (selected.size > MAX_FILE_SIZE_BYTES) {
+      const sizeMB = (selected.size / (1024 * 1024)).toFixed(2)
+      setError(`File too large (${sizeMB}MB). Maximum allowed size is ${MAX_FILE_SIZE_MB}MB. Please split the file or remove extra columns.`)
+      setFile(null)
+      setSelectedFileName(null)
+      return
+    }
+
     try {
       const buffer = await selected.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: "array" })
@@ -58,6 +74,11 @@ export function ImportModal({ onClose, onSuccess }: Props) {
       const firstRow = rows[0] || []
       const cols = firstRow.map((c) => (c ? c.toString() : "")).filter(Boolean)
       setHeaders(cols)
+      
+      // Store preview rows (first 5 data rows)
+      const dataRows = rows.slice(1, 6)
+      setPreviewRows(dataRows)
+      setShowPreview(true)
     } catch (err: any) {
       setError(err?.message || "Failed to read file")
     }
@@ -151,45 +172,135 @@ export function ImportModal({ onClose, onSuccess }: Props) {
             checked={syncCustomFields}
             onChange={(e) => setSyncCustomFields(e.target.checked)}
           />
-          <Label htmlFor="syncCustomFields" className="text-sm font-normal">
+          <Label htmlFor="syncCustomFields" className="text-sm font-normal flex items-center gap-1">
             Sync custom fields from this file (remove values not present)
+            <span 
+              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-xs cursor-help"
+              title="When enabled, blank cells will remove existing values for those fields. Formula errors (#REF!, #VALUE!) are treated as blank."
+            >
+              ?
+            </span>
           </Label>
         </div>
 
-        {headers.length > 0 && (
-          <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-            <div className="font-medium">Detected headers</div>
-            <div className="mt-1 break-words">{detectedColumns}</div>
+        {/* Preview Section */}
+        {showPreview && headers.length > 0 && (
+          <div className="rounded-md border border-gray-200 bg-white p-3 text-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="font-medium text-gray-900">Preview</div>
+              <span className="text-xs text-gray-500">{previewRows.length} of {previewRows.length}+ rows shown</span>
+            </div>
+            
+            {/* Column mapping */}
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-gray-600">Detected columns:</div>
+              <div className="flex flex-wrap gap-1">
+                {headers.map((h, i) => {
+                  const isCore = ["email", "firstname", "first_name", "lastname", "last_name", "phone", "type", "groups"].includes(h.toLowerCase().replace(/\s+/g, "_"))
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                        isCore 
+                          ? "bg-blue-100 text-blue-800" 
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {humanizeStateKey(h)}
+                      {!isCore && <span className="ml-1 text-gray-400">(custom)</span>}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+            
+            {/* Data preview table */}
+            {previewRows.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs border border-gray-200 rounded">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {headers.map((h, i) => (
+                        <th key={i} className="px-2 py-1 text-left font-medium text-gray-600 border-b">
+                          {humanizeStateKey(h)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, rowIdx) => (
+                      <tr key={rowIdx} className={rowIdx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        {headers.map((_, colIdx) => (
+                          <td key={colIdx} className="px-2 py-1 text-gray-700 border-b truncate max-w-[150px]">
+                            {row[colIdx] !== undefined && row[colIdx] !== null ? String(row[colIdx]) : ""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
 
         {summary && (
-          <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-800 space-y-1">
-            <div className="font-medium">Import summary</div>
-            <div>Total rows: {summary.totalRows}</div>
-            <div>Rows with email: {summary.rowsWithEmail}</div>
-            <div>Distinct emails: {summary.distinctEmailsProcessed}</div>
-            <div>Contacts created: {summary.contactsCreated}</div>
-            <div>Contacts updated: {summary.contactsUpdated}</div>
-            <div>Groups created: {summary.groupsCreated}</div>
-            <div>Custom fields created: {summary.customFieldsCreated}</div>
-            <div>Custom fields overwritten: {summary.customFieldsUpdated}</div>
-            <div>Custom fields deleted: {summary.customFieldsDeleted}</div>
-            <div>Rows skipped (missing email): {summary.skippedMissingEmail}</div>
-            {summary.skippedSamples && summary.skippedSamples.length > 0 && (
-              <div className="text-xs text-gray-600">
-                Examples:{" "}
-                {summary.skippedSamples
-                  .map((s) => `Row ${s.rowNumber}: ${s.reason}`)
-                  .join("; ")}
+          <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="font-semibold text-green-800">Import Complete</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700">
+              <div className="flex justify-between">
+                <span>New contacts:</span>
+                <span className="font-medium">{summary.contactsCreated}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Updated contacts:</span>
+                <span className="font-medium">{summary.contactsUpdated}</span>
+              </div>
+              {summary.groupsCreated > 0 && (
+                <div className="flex justify-between">
+                  <span>New groups:</span>
+                  <span className="font-medium">{summary.groupsCreated}</span>
+                </div>
+              )}
+              {summary.customFieldsCreated > 0 && (
+                <div className="flex justify-between">
+                  <span>Custom fields added:</span>
+                  <span className="font-medium">{summary.customFieldsCreated}</span>
+                </div>
+              )}
+              {summary.customFieldsUpdated > 0 && (
+                <div className="flex justify-between">
+                  <span>Custom fields updated:</span>
+                  <span className="font-medium">{summary.customFieldsUpdated}</span>
+                </div>
+              )}
+              {summary.customFieldsDeleted > 0 && (
+                <div className="flex justify-between">
+                  <span>Custom fields removed:</span>
+                  <span className="font-medium">{summary.customFieldsDeleted}</span>
+                </div>
+              )}
+            </div>
+            
+            {summary.skippedMissingEmail > 0 && (
+              <div className="text-xs text-yellow-700 bg-yellow-50 rounded p-2 mt-2">
+                <span className="font-medium">{summary.skippedMissingEmail} row(s) skipped</span> - missing email address
+                {summary.sampleMissingEmailRowNumbers && summary.sampleMissingEmailRowNumbers.length > 0 && (
+                  <span className="block mt-1">Rows: {summary.sampleMissingEmailRowNumbers.slice(0, 5).join(", ")}{summary.sampleMissingEmailRowNumbers.length > 5 ? "..." : ""}</span>
+                )}
               </div>
             )}
-            {summary.sampleMissingEmailRowNumbers && summary.sampleMissingEmailRowNumbers.length > 0 && (
-              <div className="text-xs text-gray-600">
-                Missing email rows (samples): {summary.sampleMissingEmailRowNumbers.join(", ")}
-              </div>
-            )}
+            
+            <div className="text-xs text-gray-500 pt-2 border-t border-green-200">
+              Processed {summary.rowsWithEmail} of {summary.totalRows} rows ({summary.distinctEmailsProcessed} unique emails)
+            </div>
           </div>
         )}
 

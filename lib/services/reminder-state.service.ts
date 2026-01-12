@@ -91,4 +91,24 @@ export class ReminderStateService {
       console.error("[ReminderStateService] Failed to stop reminders on reply:", error)
     }
   }
+
+  /**
+   * Stop reminders for a reply, but only if it's not a bounce or out-of-office
+   * Bounces and OOO should not stop reminders since they indicate delivery issues
+   */
+  static async stopForReplyIfNotBounce(
+    taskId: string, 
+    entityId: string, 
+    classification?: string | null
+  ) {
+    // Don't stop reminders for bounces or out-of-office replies
+    const nonStopClassifications = ["BOUNCE", "OUT_OF_OFFICE"]
+    if (classification && nonStopClassifications.includes(classification.toUpperCase())) {
+      console.log(`[ReminderStateService] Not stopping reminders for ${classification} classification (taskId: ${taskId})`)
+      return
+    }
+
+    // Stop reminders for legitimate replies
+    await this.stopForReply(taskId, entityId)
+  }
 }

@@ -6,6 +6,30 @@ import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.ser
 import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
 
+// In-memory rate limiting (best-effort, resets on cold start)
+// This is acceptable for serverless as it provides some protection without external dependencies
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10 // 10 requests per minute per org
+
+function checkRateLimit(orgId: string): { allowed: boolean; retryAfterMs?: number } {
+  const now = Date.now()
+  const entry = rateLimitMap.get(orgId)
+  
+  if (!entry || now > entry.resetAt) {
+    // Start new window
+    rateLimitMap.set(orgId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return { allowed: true }
+  }
+  
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return { allowed: false, retryAfterMs: entry.resetAt - now }
+  }
+  
+  entry.count++
+  return { allowed: true }
+}
+
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
   const session = await getServerSession(authOptions)
@@ -14,6 +38,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
+    )
+  }
+
+  // Check rate limit
+  const rateLimitResult = checkRateLimit(session.user.organizationId)
+  if (!rateLimitResult.allowed) {
+    const retryAfterSeconds = Math.ceil((rateLimitResult.retryAfterMs || 60000) / 1000)
+    return NextResponse.json(
+      { 
+        error: "Rate limit exceeded. Please wait before generating more drafts.",
+        retryAfterSeconds
+      },
+      { 
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfterSeconds)
+        }
+      }
     )
   }
 

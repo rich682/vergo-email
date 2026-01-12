@@ -5,15 +5,26 @@ import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 import { EntityService } from "@/lib/services/entity.service"
 import { PersonalizationDataService } from "@/lib/services/personalization-data.service"
-import { renderTemplate, extractTags } from "@/lib/utils/template-renderer"
+import { renderTemplate, extractTags, validateRenderedContent } from "@/lib/utils/template-renderer"
 import { normalizeTagName } from "@/lib/utils/csv-parser"
 import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
+import crypto from "crypto"
+
+// Structured logging helper
+function logSendEvent(event: string, data: Record<string, any>) {
+  console.log(JSON.stringify({
+    event,
+    timestamp: new Date().toISOString(),
+    ...data
+  }))
+}
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const startTime = Date.now()
   const session = await getServerSession(authOptions)
   
   if (!session?.user?.organizationId) {
@@ -23,21 +34,58 @@ export async function POST(
     )
   }
 
+  const orgId = session.user.organizationId
+  const draftId = params.id
+
   try {
     const body = await request.json()
     const { recipients: recipientsPayload, campaignName, emailAccountId, remindersConfig } = body
 
+    // Log send attempt start
+    logSendEvent("send_attempt_start", {
+      orgId,
+      draftId,
+      hasReminders: !!remindersConfig?.enabled
+    })
+
     const draft = await EmailDraftService.findById(
-      params.id,
-      session.user.organizationId
+      draftId,
+      orgId
     )
 
     if (!draft) {
+      logSendEvent("send_attempt_failure", {
+        orgId,
+        draftId,
+        reason: "draft_not_found",
+        latencyMs: Date.now() - startTime
+      })
       return NextResponse.json(
         { error: "Draft not found" },
         { status: 404 }
       )
     }
+
+    // IDEMPOTENCY CHECK: If draft was already sent, return cached result
+    const draftWithSentAt = draft as typeof draft & { sentAt?: Date | null; sendAttemptId?: string | null }
+    if (draftWithSentAt.sentAt) {
+      logSendEvent("send_attempt_skipped_already_sent", {
+        orgId,
+        draftId,
+        sentAt: draftWithSentAt.sentAt.toISOString(),
+        sendAttemptId: draftWithSentAt.sendAttemptId,
+        latencyMs: Date.now() - startTime
+      })
+      return NextResponse.json({
+        success: true,
+        alreadySent: true,
+        sentAt: draftWithSentAt.sentAt,
+        sendAttemptId: draftWithSentAt.sendAttemptId
+      })
+    }
+
+    // Generate unique send attempt ID for this request
+    const sendAttemptId = crypto.randomUUID()
 
     // Get user and organization for signature
     const user = await prisma.user.findUnique({
@@ -307,6 +355,13 @@ export async function POST(
     if (blockOnMissingValues && personalizationMode !== "none") {
       const recipientsWithMissing = renderedEmails.filter(e => e.renderStatus === "missing")
       if (recipientsWithMissing.length > 0) {
+        logSendEvent("send_attempt_failure", {
+          orgId,
+          draftId,
+          reason: "missing_tags",
+          affectedRecipients: recipientsWithMissing.length,
+          latencyMs: Date.now() - startTime
+        })
         return NextResponse.json(
           {
             error: `Missing required tags for ${recipientsWithMissing.length} recipient(s)`,
@@ -319,6 +374,51 @@ export async function POST(
           { status: 400 }
         )
       }
+    }
+
+    // FINAL VALIDATION: Check for unresolved {{variables}} in rendered content
+    // This catches any tokens that weren't properly substituted
+    const recipientsWithUnresolved: Array<{ email: string; unresolvedTokens: string[]; missingPlaceholders: string[] }> = []
+    
+    for (const email of renderedEmails) {
+      const validation = validateRenderedContent(email.subject, email.body)
+      if (!validation.valid) {
+        recipientsWithUnresolved.push({
+          email: email.email,
+          unresolvedTokens: validation.unresolvedTokens,
+          missingPlaceholders: validation.missingPlaceholders
+        })
+      }
+    }
+
+    if (recipientsWithUnresolved.length > 0) {
+      // Collect all unique unresolved tokens
+      const allUnresolvedTokens = [...new Set(recipientsWithUnresolved.flatMap(r => r.unresolvedTokens))]
+      const allMissingPlaceholders = [...new Set(recipientsWithUnresolved.flatMap(r => r.missingPlaceholders))]
+      
+      logSendEvent("send_attempt_failure", {
+        orgId,
+        draftId,
+        reason: "unresolved_variables",
+        unresolvedTokens: allUnresolvedTokens,
+        missingPlaceholders: allMissingPlaceholders,
+        affectedRecipients: recipientsWithUnresolved.length,
+        latencyMs: Date.now() - startTime
+      })
+
+      return NextResponse.json(
+        {
+          error: `Unresolved variables found in ${recipientsWithUnresolved.length} recipient(s). Please check your template and recipient data.`,
+          code: "UNRESOLVED_VARIABLES",
+          unresolvedTokens: allUnresolvedTokens,
+          missingPlaceholders: allMissingPlaceholders,
+          affectedRecipients: recipientsWithUnresolved.slice(0, 10).map(r => ({
+            email: r.email,
+            issues: [...r.unresolvedTokens, ...r.missingPlaceholders.map(p => `[MISSING: ${p}]`)]
+          }))
+        },
+        { status: 400 }
+      )
     }
 
     // Persist personalization data and rendered emails
@@ -355,7 +455,7 @@ export async function POST(
 
     // Send emails with per-recipient rendering
     const results = await EmailSendingService.sendBulkEmail({
-      organizationId: session.user.organizationId,
+      organizationId: orgId,
       recipients: renderedEmails.map(e => ({ email: e.email, name: e.name })),
       subject: subjectTemplate, // Will be overridden per-recipient if personalization
       body: bodyTemplate, // Will be overridden per-recipient if personalization
@@ -373,18 +473,45 @@ export async function POST(
       })) : undefined
     })
 
-    // Update draft status
-    await EmailDraftService.update(
-      params.id,
-      session.user.organizationId,
-      { status: "SENT" }
-    )
+    // Update draft status with sentAt timestamp (atomic update for idempotency)
+    // Use conditional update to prevent race conditions
+    const sentAt = new Date()
+    await prisma.emailDraft.update({
+      where: {
+        id: draftId,
+        organizationId: orgId,
+        sentAt: null // Only update if not already sent
+      },
+      data: {
+        status: "SENT",
+        sentAt,
+        sendAttemptId
+      }
+    })
+
+    // Log success
+    logSendEvent("send_attempt_success", {
+      orgId,
+      draftId,
+      sendAttemptId,
+      recipientCount: renderedEmails.length,
+      latencyMs: Date.now() - startTime
+    })
 
     return NextResponse.json({
       success: true,
-      results
+      results,
+      sendAttemptId,
+      sentAt
     })
   } catch (error: any) {
+    // Log failure
+    logSendEvent("send_attempt_failure", {
+      orgId,
+      draftId,
+      reason: error.message || "unknown_error",
+      latencyMs: Date.now() - startTime
+    })
     console.error("Error sending email:", error)
     return NextResponse.json(
       { error: error.message || "Internal server error" },
@@ -392,4 +519,15 @@ export async function POST(
     )
   }
 }
+
+/*
+ * Manual Verification Steps for Idempotency:
+ * 1. Create and generate a draft
+ * 2. Send the draft via POST /api/email-drafts/{id}/send
+ * 3. Note the sendAttemptId in response
+ * 4. Immediately send again (same endpoint, same payload)
+ * 5. Second response should have alreadySent: true
+ * 6. Check logs for send_attempt_skipped_already_sent event
+ * 7. Verify only one set of emails was actually sent
+ */
 

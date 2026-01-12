@@ -298,8 +298,9 @@ export class EmailReceptionService {
       }
     }))
 
-    // Stop reminders for this recipient/task on reply
-    await ReminderStateService.stopForReply(task.id, task.entityId)
+    // NOTE: Reminders are stopped in the Inngest classify-message function AFTER classification
+    // This ensures bounces and out-of-office replies don't stop reminders
+    // See: inngest/functions/index.ts -> classify-message -> ReminderStateService.stopForReplyIfNotBounce
 
     return {
       taskId: task.id,

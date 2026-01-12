@@ -19,12 +19,21 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
+import { humanizeStateKey } from "@/lib/utils/humanize"
 
 type RemindersConfigState = {
   enabled: boolean
   startDelayDays: number
   cadenceDays: number
   maxCount: number
+}
+
+type SendConfirmationData = {
+  totalRecipients: number
+  includedRecipients: number
+  excludedRecipients: number
+  excludedReasons: Array<{ reason: string; count: number }>
+  recipientEmails?: string[] // First few emails for preview
 }
 
 function ComposePageContent() {
@@ -89,6 +98,14 @@ function ComposePageContent() {
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [filterStats, setFilterStats] = useState<{ total: number; included: number; excluded: number } | null>(null)
   
+  // Send confirmation dialog state
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
+  const [sendConfirmData, setSendConfirmData] = useState<SendConfirmationData | null>(null)
+  const [sendConfirmLoading, setSendConfirmLoading] = useState(false)
+  
+  // Success screen state
+  const [sendSuccess, setSendSuccess] = useState<{ requestName: string; requestKey: string; recipientCount: number } | null>(null)
+  
   // Deadline state
   const [deadlineDate, setDeadlineDate] = useState<string>("") // Deadline date (ISO string format)
   
@@ -121,6 +138,101 @@ function ComposePageContent() {
       setCsvUploadError(null)
     }
   }, [searchParams, recipientSource])
+
+  // Draft auto-save to localStorage
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false)
+  const [savedDraftData, setSavedDraftData] = useState<any>(null)
+  const DRAFT_STORAGE_KEY = "vergo_compose_draft"
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    if (!isRequestMode) return
+    try {
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Only show restore if draft is less than 24 hours old
+        const savedAt = new Date(parsed.savedAt)
+        const hoursSinceSave = (Date.now() - savedAt.getTime()) / (1000 * 60 * 60)
+        if (hoursSinceSave < 24 && parsed.requestName) {
+          setSavedDraftData(parsed)
+          setShowRestorePrompt(true)
+        } else {
+          // Clear old draft
+          localStorage.removeItem(DRAFT_STORAGE_KEY)
+        }
+      }
+    } catch (e) {
+      console.error("Error loading saved draft:", e)
+    }
+  }, [isRequestMode])
+
+  // Auto-save draft every 30 seconds
+  useEffect(() => {
+    if (!isRequestMode || !requestName.trim()) return
+
+    const saveDraft = () => {
+      try {
+        const draftData = {
+          requestName,
+          prompt,
+          deadlineDate,
+          remindersConfig,
+          selectedDataFields,
+          requireSliceData,
+          savedAt: new Date().toISOString()
+        }
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData))
+      } catch (e) {
+        console.error("Error saving draft:", e)
+      }
+    }
+
+    const interval = setInterval(saveDraft, 30000) // Save every 30 seconds
+    
+    // Also save on beforeunload
+    const handleBeforeUnload = () => saveDraft()
+    window.addEventListener("beforeunload", handleBeforeUnload)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [isRequestMode, requestName, prompt, deadlineDate, remindersConfig, selectedDataFields, requireSliceData])
+
+  // Clear draft on successful send
+  const clearSavedDraft = () => {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    } catch (e) {
+      console.error("Error clearing draft:", e)
+    }
+  }
+
+  const handleRestoreDraft = () => {
+    if (savedDraftData) {
+      setRequestName(savedDraftData.requestName || "")
+      setPrompt(savedDraftData.prompt || "")
+      setDeadlineDate(savedDraftData.deadlineDate || "")
+      if (savedDraftData.remindersConfig) {
+        setRemindersConfig(savedDraftData.remindersConfig)
+      }
+      if (savedDraftData.selectedDataFields) {
+        setSelectedDataFields(savedDraftData.selectedDataFields)
+      }
+      if (savedDraftData.requireSliceData !== undefined) {
+        setRequireSliceData(savedDraftData.requireSliceData)
+      }
+    }
+    setShowRestorePrompt(false)
+    setSavedDraftData(null)
+  }
+
+  const handleDiscardDraft = () => {
+    clearSavedDraft()
+    setShowRestorePrompt(false)
+    setSavedDraftData(null)
+  }
 
   // Load available state keys for filtering
   useEffect(() => {
@@ -447,7 +559,60 @@ function ComposePageContent() {
     return null
   }
 
-  const handlePreviewSubmit = async () => {
+  // Fetch recipient counts for send confirmation
+  const fetchRecipientCounts = async (): Promise<SendConfirmationData | null> => {
+    if (!draft) return null
+    
+    try {
+      // Build recipients payload same as send
+      let recipientsPayload = draft.suggestedRecipients
+      if (recipientSource === "contact") {
+        const entityIds = selectedRecipients.filter(r => r.type === "entity").map(r => r.id)
+        const contactTypes = selectedRecipients.filter(r => r.type === "contactType").map(r => r.id)
+        const groupIds = selectedGroups.filter(r => r.type === "group").map(r => r.id)
+        const stateFilterPayload = selectedDataFields.length > 0
+          ? { stateKeys: selectedDataFields, mode: requireSliceData ? "has" : undefined }
+          : undefined
+        recipientsPayload = { entityIds, groupIds, contactTypes, stateFilter: stateFilterPayload }
+      }
+      
+      const response = await fetch(`/api/email-drafts/${draft.id}/recipient-counts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipients: recipientsPayload })
+      })
+      
+      if (!response.ok) {
+        // Fallback to filter stats if available
+        if (filterStats) {
+          return {
+            totalRecipients: filterStats.total,
+            includedRecipients: filterStats.included,
+            excludedRecipients: filterStats.excluded,
+            excludedReasons: filterStats.excluded > 0 ? [{ reason: "Missing required fields or filter criteria", count: filterStats.excluded }] : []
+          }
+        }
+        return null
+      }
+      
+      return await response.json()
+    } catch (error) {
+      console.error("Error fetching recipient counts:", error)
+      // Fallback to filter stats
+      if (filterStats) {
+        return {
+          totalRecipients: filterStats.total,
+          includedRecipients: filterStats.included,
+          excludedRecipients: filterStats.excluded,
+          excludedReasons: filterStats.excluded > 0 ? [{ reason: "Missing required fields or filter criteria", count: filterStats.excluded }] : []
+        }
+      }
+      return null
+    }
+  }
+
+  // Show send confirmation dialog
+  const handleShowSendConfirmation = async () => {
     if (!draft || submitting) return
 
     // Validate Request Name in request mode
@@ -459,7 +624,56 @@ function ComposePageContent() {
       }
       setRequestNameError(null)
     }
+    
+    // Validate deadline is not in the past
+    if (deadlineDate) {
+      const deadline = new Date(deadlineDate)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (deadline < today) {
+        setSendError("Deadline cannot be in the past. Please select a future date.")
+        return
+      }
+    }
 
+    setSendConfirmLoading(true)
+    setSendError(null)
+    
+    try {
+      const counts = await fetchRecipientCounts()
+      if (counts) {
+        setSendConfirmData(counts)
+        setSendConfirmOpen(true)
+      } else {
+        // If we can't get counts, show a basic confirmation
+        setSendConfirmData({
+          totalRecipients: filterStats?.total || selectedRecipients.length || 1,
+          includedRecipients: filterStats?.included || selectedRecipients.length || 1,
+          excludedRecipients: filterStats?.excluded || 0,
+          excludedReasons: []
+        })
+        setSendConfirmOpen(true)
+      }
+    } catch (error) {
+      console.error("Error preparing send confirmation:", error)
+      // Show basic confirmation anyway
+      setSendConfirmData({
+        totalRecipients: selectedRecipients.length || 1,
+        includedRecipients: selectedRecipients.length || 1,
+        excludedRecipients: 0,
+        excludedReasons: []
+      })
+      setSendConfirmOpen(true)
+    } finally {
+      setSendConfirmLoading(false)
+    }
+  }
+
+  // Execute send after confirmation
+  const handleConfirmedSend = async () => {
+    if (!draft || submitting) return
+
+    setSendConfirmOpen(false)
     setSubmitting(true)
     setSendError(null)
 
@@ -499,7 +713,8 @@ function ComposePageContent() {
             enabled: true,
             startDelayHours: remindersConfig.startDelayDays * 24,
             frequencyHours: remindersConfig.cadenceDays * 24,
-            maxCount: remindersConfig.maxCount
+            maxCount: remindersConfig.maxCount,
+            approved: true
           } : undefined
         })
       })
@@ -511,7 +726,7 @@ function ComposePageContent() {
 
       const result = await response.json()
       
-      // In request mode, redirect to request detail page
+      // Show success screen instead of redirecting immediately
       if (isRequestMode) {
         const finalRequestName = requestName.trim() || (draft.campaignName || "").trim()
         if (finalRequestName) {
@@ -523,15 +738,13 @@ function ComposePageContent() {
           })
           const encodedKey = encodeURIComponent(grouping.groupKey)
           
-          // Get recipient count from draft
-          const entityCount = draft.suggestedRecipients?.entityIds?.length || 0
-          const groupCount = draft.suggestedRecipients?.groupIds?.length || 0
-          const estimatedRecipientCount = entityCount + (groupCount > 0 ? 1 : 0)
-          
-          const toastMessage = `Request created\n"${finalRequestName}" • 0/${estimatedRecipientCount || entityCount} complete`
-          alert(toastMessage)
-          
-          window.location.href = `/dashboard/requests/${encodedKey}`
+          clearSavedDraft() // Clear auto-saved draft on success
+          setSendSuccess({
+            requestName: finalRequestName,
+            requestKey: encodedKey,
+            recipientCount: sendConfirmData?.includedRecipients || 0
+          })
+          setSubmitting(false)
         } else {
           window.location.href = "/dashboard/requests"
         }
@@ -540,12 +753,14 @@ function ComposePageContent() {
       }
     } catch (error: any) {
       console.error("Error submitting request:", error)
-      // Only set error if not already handled (e.g., missing tags error)
-      if (!sendError) {
-        setSendError(error.message || "Failed to submit request. Please try again.")
-      }
+      setSendError(error.message || "Failed to submit request. Please try again.")
       setSubmitting(false)
     }
+  }
+
+  const handlePreviewSubmit = async () => {
+    // Now routes through confirmation dialog
+    await handleShowSendConfirmation()
   }
 
   const handleSend = async () => {
@@ -812,11 +1027,11 @@ function ComposePageContent() {
             )}
           </div>
 
-          {/* Stakeholders Selector - contacts and/or types (mandatory) */}
+          {/* Recipients Selector - contacts and/or types (mandatory) */}
           {isRequestMode && recipientSource === "contact" && (
             <div>
               <Label>
-                Stakeholders <span className="text-red-500 ml-1">*</span>
+                Recipients <span className="text-red-500 ml-1">*</span>
               </Label>
               <RecipientSelector
                 selectedRecipients={selectedRecipients}
@@ -882,7 +1097,7 @@ function ComposePageContent() {
                       key={field}
                       className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 px-3 py-1 text-sm"
                     >
-                      {field}
+                      {humanizeStateKey(field)}
                       <button
                         type="button"
                         onClick={() => setSelectedDataFields(prev => prev.filter(f => f !== field))}
@@ -923,7 +1138,7 @@ function ComposePageContent() {
                       .filter(field => !selectedDataFields.includes(field.stateKey))
                       .map((field) => (
                         <SelectItem key={field.stateKey} value={field.stateKey}>
-                          {field.stateKey}
+                          {humanizeStateKey(field.stateKey)}
                         </SelectItem>
                       ))
                   )}
@@ -941,7 +1156,7 @@ function ComposePageContent() {
                     className="w-4 h-4 rounded border-gray-300"
                   />
                   <Label htmlFor="requireSliceData" className="text-sm font-normal">
-                    Only include recipients who have all selected data fields
+                    Require all selected fields (exclude recipients missing data)
                   </Label>
                 </div>
               )}
@@ -1232,6 +1447,146 @@ function ComposePageContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Send Confirmation Dialog */}
+      <Dialog open={sendConfirmOpen} onOpenChange={setSendConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Send</DialogTitle>
+            <DialogDescription>
+              Review the recipient count before sending.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {sendConfirmData && (
+              <>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-blue-700">
+                    {sendConfirmData.includedRecipients}
+                  </div>
+                  <div className="text-sm text-blue-600">
+                    recipient{sendConfirmData.includedRecipients !== 1 ? 's' : ''} will receive this email
+                  </div>
+                </div>
+                
+                {sendConfirmData.excludedRecipients > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-yellow-800">
+                      {sendConfirmData.excludedRecipients} recipient{sendConfirmData.excludedRecipients !== 1 ? 's' : ''} excluded
+                    </div>
+                    {sendConfirmData.excludedReasons.length > 0 && (
+                      <ul className="mt-2 text-xs text-yellow-700 list-disc list-inside">
+                        {sendConfirmData.excludedReasons.map((r, i) => (
+                          <li key={i}>{r.reason}: {r.count}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                
+                {sendConfirmData.includedRecipients === 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="text-sm font-medium text-red-800">
+                      No recipients to send to. Please check your recipient selection and filters.
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmedSend} 
+              disabled={submitting || !sendConfirmData || sendConfirmData.includedRecipients === 0}
+            >
+              {submitting ? "Sending..." : `Send to ${sendConfirmData?.includedRecipients || 0} recipient${(sendConfirmData?.includedRecipients || 0) !== 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Draft Prompt */}
+      <Dialog open={showRestorePrompt} onOpenChange={setShowRestorePrompt}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restore Unsent Draft?</DialogTitle>
+            <DialogDescription>
+              You have an unsaved draft from a previous session. Would you like to restore it?
+            </DialogDescription>
+          </DialogHeader>
+          {savedDraftData && (
+            <div className="py-4">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="font-medium text-gray-900">{savedDraftData.requestName}</p>
+                {savedDraftData.prompt && (
+                  <p className="text-gray-600 mt-1 line-clamp-2">{savedDraftData.prompt}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Saved {new Date(savedDraftData.savedAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={handleDiscardDraft} className="w-full sm:w-auto">
+              Discard
+            </Button>
+            <Button onClick={handleRestoreDraft} className="w-full sm:w-auto">
+              Restore Draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Screen */}
+      {sendSuccess && (
+        <Dialog open={true} onOpenChange={() => {}}>
+          <DialogContent className="sm:max-w-md">
+            <div className="text-center py-6">
+              <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <DialogTitle className="text-xl mb-2">Request Sent!</DialogTitle>
+              <DialogDescription className="text-base">
+                "{sendSuccess.requestName}" has been sent to {sendSuccess.recipientCount} recipient{sendSuccess.recipientCount !== 1 ? 's' : ''}.
+              </DialogDescription>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setSendSuccess(null)
+                  // Reset form for new request
+                  setDraft(null)
+                  setPrompt("")
+                  setRequestName("")
+                  setPreviewSubject("")
+                  setPreviewBody("")
+                  setSelectedRecipients([])
+                  setSelectedGroups([])
+                  setSelectedDataFields([])
+                }}
+                className="w-full sm:w-auto"
+              >
+                Create Another Request
+              </Button>
+              <Button 
+                onClick={() => {
+                  window.location.href = `/dashboard/requests/${sendSuccess.requestKey}`
+                }}
+                className="w-full sm:w-auto"
+              >
+                View Request
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
           </div>
           {draft?.id && isRequestMode && (
             <div className="h-full flex flex-col">

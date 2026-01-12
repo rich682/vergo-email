@@ -6,6 +6,7 @@ import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
 
 export default function RequestDetailPage() {
   const params = useParams()
@@ -20,6 +21,7 @@ export default function RequestDetailPage() {
   const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low" | "bounced">("all")
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read" | "noReplies">("all")
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
   // Decode the groupKey from URL
   const groupKey = useMemo(() => {
@@ -210,6 +212,68 @@ export default function RequestDetailPage() {
     }
   }, [currentTaskIndex, filteredTasks])
 
+  // Bulk action: Mark all filtered tasks as done
+  const handleMarkAllDone = useCallback(async () => {
+    const tasksToUpdate = filteredTasks.filter(t => t.status !== "FULFILLED")
+    if (tasksToUpdate.length === 0) return
+    
+    if (!confirm(`Mark ${tasksToUpdate.length} task(s) as done?`)) return
+    
+    setBulkActionLoading(true)
+    try {
+      await Promise.all(
+        tasksToUpdate.map(task =>
+          fetch(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "FULFILLED" })
+          })
+        )
+      )
+      fetchTasks()
+    } catch (error) {
+      console.error("Error marking tasks as done:", error)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }, [filteredTasks, fetchTasks])
+
+  // Bulk action: Dismiss all bounced tasks
+  const handleDismissAllBounced = useCallback(async () => {
+    const bouncedTasks = filteredTasks.filter(t => t.riskLevel === "bounced" && t.status !== "FULFILLED")
+    if (bouncedTasks.length === 0) return
+    
+    if (!confirm(`Dismiss ${bouncedTasks.length} bounced task(s)? This will mark them as done.`)) return
+    
+    setBulkActionLoading(true)
+    try {
+      await Promise.all(
+        bouncedTasks.map(task =>
+          fetch(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "FULFILLED" })
+          })
+        )
+      )
+      fetchTasks()
+    } catch (error) {
+      console.error("Error dismissing bounced tasks:", error)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }, [filteredTasks, fetchTasks])
+
+  // Count bounced tasks for UI
+  const bouncedCount = useMemo(() => {
+    return filteredTasks.filter(t => t.riskLevel === "bounced" && t.status !== "FULFILLED").length
+  }, [filteredTasks])
+
+  // Count in-progress tasks for UI
+  const inProgressCount = useMemo(() => {
+    return filteredTasks.filter(t => t.status !== "FULFILLED").length
+  }, [filteredTasks])
+
   if (loading && allTasks.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -268,11 +332,35 @@ export default function RequestDetailPage() {
                   <h3 className="text-lg font-semibold text-gray-900">
                     {completionStats.done}/{completionStats.total} done • {completionStats.percent}%
                   </h3>
-                  {completionStats.isComplete && (
-                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
-                      COMPLETE
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {completionStats.isComplete && (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                        COMPLETE
+                      </span>
+                    )}
+                    {/* Bulk actions */}
+                    {bouncedCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDismissAllBounced}
+                        disabled={bulkActionLoading}
+                        className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                      >
+                        {bulkActionLoading ? "..." : `Dismiss ${bouncedCount} Bounced`}
+                      </Button>
+                    )}
+                    {inProgressCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleMarkAllDone}
+                        disabled={bulkActionLoading}
+                      >
+                        {bulkActionLoading ? "..." : `Mark ${inProgressCount} Done`}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-3 mb-4">

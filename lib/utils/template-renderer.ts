@@ -140,3 +140,68 @@ export function validateTags(
   }
 }
 
+/**
+ * Check if rendered content contains unresolved {{...}} tokens
+ * Returns the list of unresolved tokens found
+ */
+export function findUnresolvedTokens(content: string): string[] {
+  const tokenPattern = /\{\{([^}]+)\}\}/g
+  const tokens: string[] = []
+  let match
+
+  while ((match = tokenPattern.exec(content)) !== null) {
+    const token = match[0] // Full match including {{ }}
+    if (!tokens.includes(token)) {
+      tokens.push(token)
+    }
+  }
+
+  return tokens
+}
+
+/**
+ * Check if rendered content contains [MISSING: ...] placeholders
+ * Returns the list of missing field names
+ */
+export function findMissingPlaceholders(content: string): string[] {
+  const placeholderPattern = /\[MISSING:\s*([^\]]+)\]/g
+  const placeholders: string[] = []
+  let match
+
+  while ((match = placeholderPattern.exec(content)) !== null) {
+    const fieldName = match[1].trim()
+    if (!placeholders.includes(fieldName)) {
+      placeholders.push(fieldName)
+    }
+  }
+
+  return placeholders
+}
+
+/**
+ * Validate that rendered content has no unresolved tokens or missing placeholders
+ * Used as final check before sending emails
+ */
+export function validateRenderedContent(
+  subject: string,
+  body: string
+): { 
+  valid: boolean
+  unresolvedTokens: string[]
+  missingPlaceholders: string[]
+} {
+  const unresolvedInSubject = findUnresolvedTokens(subject)
+  const unresolvedInBody = findUnresolvedTokens(body)
+  const unresolvedTokens = [...new Set([...unresolvedInSubject, ...unresolvedInBody])]
+
+  const missingInSubject = findMissingPlaceholders(subject)
+  const missingInBody = findMissingPlaceholders(body)
+  const missingPlaceholders = [...new Set([...missingInSubject, ...missingInBody])]
+
+  return {
+    valid: unresolvedTokens.length === 0 && missingPlaceholders.length === 0,
+    unresolvedTokens,
+    missingPlaceholders
+  }
+}
+
