@@ -25,7 +25,6 @@ type RemindersConfigState = {
   startDelayDays: number
   cadenceDays: number
   maxCount: number
-  approved: boolean
 }
 
 function ComposePageContent() {
@@ -92,8 +91,7 @@ function ComposePageContent() {
     enabled: false,
     startDelayDays: 2,
     cadenceDays: 3,
-    maxCount: 2,
-    approved: false
+    maxCount: 2
   })
 
   const updateRemindersConfig = (updates: Partial<RemindersConfigState>) =>
@@ -444,13 +442,6 @@ function ComposePageContent() {
         throw new Error(errorData.error || "Failed to update draft")
       }
 
-      // Validate reminder approval if enabled
-      if (remindersConfig.enabled && !remindersConfig.approved) {
-        setSendError("Please approve the reminder sequence before submitting.")
-        setSubmitting(false)
-        return
-      }
-
       // Submit the request
       const response = await fetch(`/api/email-drafts/${draft.id}/send`, {
         method: "POST",
@@ -463,8 +454,7 @@ function ComposePageContent() {
             enabled: true,
             startDelayHours: remindersConfig.startDelayDays * 24,
             frequencyHours: remindersConfig.cadenceDays * 24,
-            maxCount: remindersConfig.maxCount,
-            approved: remindersConfig.approved
+            maxCount: remindersConfig.maxCount
           } : undefined
         })
       })
@@ -761,7 +751,23 @@ function ComposePageContent() {
             </div>
           )}
           
-          {/* Recipient Source Selector - only in request mode - BEFORE prompt for better UX */}
+          {/* Prompt input */}
+          <div>
+            <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
+            <Textarea
+              placeholder={isRequestMode ? "Please submit your W-9 form for tax year 2023..." : "Describe the email you want to send..."}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={4}
+            />
+            {isRequestMode && (
+              <p className="text-xs text-gray-500 mt-1">
+                Be specific about what you need and when it's due. {availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
+              </p>
+            )}
+          </div>
+
+          {/* Recipient Source Selector - only in request mode */}
           {isRequestMode && (
             <div className="border-b border-gray-200 pb-4">
               <Label>
@@ -802,22 +808,6 @@ function ComposePageContent() {
               </div>
             </div>
           )}
-
-          {/* Prompt input */}
-          <div>
-            <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
-            <Textarea
-              placeholder={isRequestMode ? "Please submit your W-9 form for tax year 2023..." : "Describe the email you want to send..."}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
-            />
-            {isRequestMode && (
-              <p className="text-xs text-gray-500 mt-1">
-                Be specific about what you need and when it's due. {availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
-              </p>
-            )}
-          </div>
 
           {/* Contact/Group Selector - only shown when contact mode is selected */}
           {isRequestMode && recipientSource === "contact" && (
@@ -944,7 +934,7 @@ function ComposePageContent() {
           {isRequestMode && (
             <div>
               <Label>
-                Deadline
+                Request Deadline
               </Label>
               <Input
                 type="date"
@@ -953,7 +943,7 @@ function ComposePageContent() {
                 min={new Date().toISOString().split('T')[0]} // Prevent selecting past dates
               />
               <p className="text-xs text-gray-500 mt-1">
-                Optional: Set a deadline date. This will be used to calculate risk (read but no reply after deadline = high risk).
+                Optional: Set a request deadline. Used to calculate risk (read but no reply after the deadline = high risk).
               </p>
             </div>
           )}
@@ -974,10 +964,7 @@ function ComposePageContent() {
                     checked={remindersConfig.enabled}
                     onChange={(e) => {
                       const enabled = e.target.checked
-                      updateRemindersConfig({
-                        enabled,
-                        approved: enabled ? remindersConfig.approved : false
-                      })
+                      updateRemindersConfig({ enabled })
                     }}
                     className="w-4 h-4 rounded border-gray-300"
                   />
@@ -1033,18 +1020,6 @@ function ComposePageContent() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                    <input
-                      type="checkbox"
-                      id="remindersApproved"
-                      checked={remindersConfig.approved}
-                      onChange={(e) => updateRemindersConfig({ approved: e.target.checked })}
-                      className="w-4 h-4 rounded border-gray-300"
-                    />
-                    <Label htmlFor="remindersApproved" className="text-sm font-normal cursor-pointer">
-                      I approve this reminder sequence
-                    </Label>
-                  </div>
                 </>
               )}
             </div>

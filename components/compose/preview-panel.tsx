@@ -17,7 +17,6 @@ type RemindersConfig = {
   startDelayDays: number
   cadenceDays: number
   maxCount: number
-  approved: boolean
 }
 
 type ReminderTemplateState = {
@@ -81,8 +80,7 @@ export function PreviewPanel({
     enabled: false,
     startDelayDays: 2,
     cadenceDays: 3,
-    maxCount: 2,
-    approved: false
+    maxCount: 2
   },
   deadlineDate = null
 }: PreviewPanelProps) {
@@ -356,8 +354,7 @@ export function PreviewPanel({
   const submitDisabled =
     submitting ||
     !subject.trim() ||
-    !body.trim() ||
-    (remindersConfig?.enabled && !remindersConfig.approved)
+    !body.trim()
 
   return (
     <Card className="h-full flex flex-col">

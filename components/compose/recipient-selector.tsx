@@ -60,12 +60,6 @@ export function RecipientSelector({
     }
 
     const query = input.trim()
-    if (query.length < 1) {
-      setSearchResults({ entities: [], groups: [] })
-      setShowResults(false)
-      return
-    }
-
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const response = await fetch(`/api/recipients/search?q=${encodeURIComponent(query)}`)
@@ -77,7 +71,7 @@ export function RecipientSelector({
       } catch (error) {
         console.error("Error searching recipients:", error)
       }
-    }, 300)
+    }, query.length < 1 ? 150 : 300)
   }, [input])
 
   // Close results when clicking outside
@@ -156,8 +150,9 @@ export function RecipientSelector({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => {
-            if (input.trim().length >= 1) {
-              setShowResults(true)
+            setShowResults(true)
+            if (input.trim().length === 0) {
+              setInput("") // trigger fetch-all path
             }
           }}
         />
