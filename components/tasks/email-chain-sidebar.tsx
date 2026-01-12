@@ -51,14 +51,18 @@ interface EmailChainSidebarProps {
   task: Task | null
   isOpen: boolean
   onClose: () => void // kept for signature compatibility
+  onTaskUpdated?: () => void
 }
 
-export function EmailChainSidebar({ task, isOpen }: EmailChainSidebarProps) {
+export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSidebarProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [replyText, setReplyText] = useState("")
   const [sending, setSending] = useState(false)
   const [threadExpanded, setThreadExpanded] = useState(true)
+  const [aiExpanded, setAiExpanded] = useState(false)
+  const [advancedExpanded, setAdvancedExpanded] = useState(false)
+  const [markingDone, setMarkingDone] = useState(false)
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -136,8 +140,14 @@ export function EmailChainSidebar({ task, isOpen }: EmailChainSidebarProps) {
     latestInboundClassification: latestClassification
   })
   const stateColors = getStateBadgeColors(taskState)
+  const isDone = effectiveStatus === "FULFILLED"
+  const completionLabel = isDone ? "Done" : "In progress"
+  const completionColors = isDone
+    ? "bg-green-100 text-green-800"
+    : "bg-blue-100 text-blue-800"
 
   const riskLabelRaw = (task.riskLevel || latestClassification || "unknown").toString().toLowerCase()
+  const riskLabelDisplay = riskLabelRaw.charAt(0).toUpperCase() + riskLabelRaw.slice(1)
   const riskColors: Record<string, string> = {
     high: "bg-red-100 text-red-800",
     medium: "bg-yellow-100 text-yellow-800",
@@ -145,22 +155,53 @@ export function EmailChainSidebar({ task, isOpen }: EmailChainSidebarProps) {
     unknown: "bg-gray-100 text-gray-800",
   }
 
+  const handleMarkDone = async () => {
+    if (!task || isDone || markingDone) return
+    setMarkingDone(true)
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "FULFILLED" })
+      })
+      if (response.ok) {
+        fetchMessages()
+        onTaskUpdated?.()
+      }
+    } catch (error) {
+      console.error("Error marking task done:", error)
+    } finally {
+      setMarkingDone(false)
+    }
+  }
+
   return (
-    <div className="absolute right-0 top-0 h-full w-full max-w-[1100px] md:w-[65vw] md:max-w-[1200px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-gray-900 truncate">
-            {task.campaignName || "Task Details"}
-          </h3>
-          {task.entity && (
-            <p className="text-xs text-gray-500 truncate">
-              {task.entity.firstName || task.entity.email}
-            </p>
-          )}
+    <div className="absolute right-0 top-0 h-full w-full max-w-[640px] md:w-[45vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">
+              {task.campaignName || "Task Details"}
+            </h3>
+            {task.entity && (
+              <p className="text-xs text-gray-500 truncate">
+                {task.entity.firstName || task.entity.email}
+              </p>
+            )}
+          </div>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
+            {`Risk: ${riskLabelDisplay}`}
+          </span>
         </div>
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
-          {riskLabelRaw}
-        </span>
+        <div className="px-4 pb-3">
+          <Button
+            className="w-full"
+            disabled={isDone || markingDone}
+            onClick={handleMarkDone}
+          >
+            {isDone ? "Done" : markingDone ? "Marking..." : "Mark Done"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -173,6 +214,9 @@ export function EmailChainSidebar({ task, isOpen }: EmailChainSidebarProps) {
               {task.entity?.email && (
                 <span className="text-xs text-gray-500">{task.entity.email}</span>
               )}
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completionColors}`}>
+                {completionLabel}
+              </span>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stateColors.bg} ${stateColors.text}`}>
                 {taskState}
               </span>
@@ -275,6 +319,78 @@ export function EmailChainSidebar({ task, isOpen }: EmailChainSidebarProps) {
             </Button>
           </div>
         </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <button
+              onClick={() => setAiExpanded(!aiExpanded)}
+              className="flex items-center justify-between w-full"
+            >
+              <CardTitle className="text-sm">AI Summary + Risk</CardTitle>
+              {aiExpanded ? (
+                <ChevronUp className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+          </CardHeader>
+          {aiExpanded && (
+            <CardContent className="space-y-2 text-sm text-gray-700">
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
+                  {`Risk: ${riskLabelDisplay}`}
+                </span>
+                {task.isManualRiskOverride && (
+                  <span className="text-[11px] text-gray-500">(Manual override)</span>
+                )}
+              </div>
+              {task.aiSummary ? (
+                <p className="text-gray-800">{task.aiSummary}</p>
+              ) : (
+                <p className="text-gray-500">No AI summary available.</p>
+              )}
+              {task.aiReasoning && (
+                <p className="text-xs text-gray-500">Reasoning: {task.aiReasoning}</p>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <button
+              onClick={() => setAdvancedExpanded(!advancedExpanded)}
+              className="flex items-center justify-between w-full"
+            >
+              <CardTitle className="text-sm">Advanced</CardTitle>
+              {advancedExpanded ? (
+                <ChevronUp className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+          </CardHeader>
+          {advancedExpanded && (
+            <CardContent className="space-y-2 text-sm text-gray-700">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Verification status</span>
+                <span className="font-medium">{task.aiVerified ? "Verified" : "Not verified"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Attachments summary</span>
+                <span className="font-medium">
+                  {task.hasAttachments ? "Attachments present" : "None"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Manual overrides</span>
+                <span className="font-medium">
+                  {task.isManualRiskOverride ? "Risk override" : "Default risk"}
+                </span>
+              </div>
+            </CardContent>
+          )}
+        </Card>
       </div>
     </div>
   )

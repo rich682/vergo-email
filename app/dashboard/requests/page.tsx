@@ -36,6 +36,8 @@ interface RequestGroup {
   groupType: string
   tasks: Task[]
   totalCount: number
+  doneCount: number
+  isComplete: boolean
   // Risk rollups
   highCount: number
   mediumCount: number
@@ -118,10 +120,13 @@ export default function RequestsPage() {
       })
 
       const totalCount = tasks.length
-      const highCount = tasks.filter(t => t.riskLevel === "high").length
-      const mediumCount = tasks.filter(t => t.riskLevel === "medium").length
-      const lowCount = tasks.filter(t => t.riskLevel === "low").length
-      const unknownCount = tasks.filter(t => !t.riskLevel || t.riskLevel === "unknown").length
+      const doneCount = tasks.filter(t => t.status === "FULFILLED").length
+      const isComplete = totalCount > 0 && doneCount === totalCount
+      const activeTasks = tasks.filter(t => t.status !== "FULFILLED")
+      const highCount = activeTasks.filter(t => t.riskLevel === "high").length
+      const mediumCount = activeTasks.filter(t => t.riskLevel === "medium").length
+      const lowCount = activeTasks.filter(t => t.riskLevel === "low").length
+      const unknownCount = activeTasks.filter(t => !t.riskLevel || t.riskLevel === "unknown").length
       
       // Find latest activity (max lastActivityAt or updatedAt)
       const lastActivity = tasks.reduce((latest, task) => {
@@ -137,6 +142,8 @@ export default function RequestsPage() {
         groupType: grouping.groupType,
         tasks,
         totalCount,
+        doneCount,
+        isComplete,
         highCount,
         mediumCount,
         lowCount,
@@ -156,6 +163,11 @@ export default function RequestsPage() {
       return b.lastActivity.getTime() - a.lastActivity.getTime()
     })
   }, [allTasks])
+
+  const completedRequests = useMemo(
+    () => requestGroups.filter(g => g.isComplete).length,
+    [requestGroups]
+  )
 
   const handleRequestClick = (groupKey: string) => {
     const encodedKey = encodeURIComponent(groupKey)
@@ -181,7 +193,7 @@ export default function RequestsPage() {
               <div>
                 <h2 className="text-2xl font-bold">Requests</h2>
                 <p className="text-sm text-gray-600">
-                  {requestGroups.length} request{requestGroups.length !== 1 ? 's' : ''} • {allTasks.length} total tasks
+                  {completedRequests}/{requestGroups.length} requests complete • {allTasks.length} total tasks
                 </p>
               </div>
               <Button
@@ -225,6 +237,8 @@ export default function RequestsPage() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Done</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <span className="text-red-700">High</span>
                       </th>
@@ -247,6 +261,7 @@ export default function RequestsPage() {
                       // Build recipient display
                       const recipientCount = group.totalCount
                       const recipientText = `${recipientCount} ${recipientCount === 1 ? 'recipient' : 'recipients'}`
+                      const statusBadge = group.isComplete ? "COMPLETE" : "INCOMPLETE"
                       
                       return (
                         <tr
@@ -266,6 +281,14 @@ export default function RequestsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {recipientText}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {group.doneCount}/{group.totalCount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${group.isComplete ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
+                              {statusBadge}
+                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <span className={`text-sm font-semibold ${

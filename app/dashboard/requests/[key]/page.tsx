@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 import { getRequestGrouping } from "@/lib/requestGrouping"
-import { formatDistanceToNow } from "date-fns"
-import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function RequestDetailPage() {
   const params = useParams()
@@ -15,6 +15,9 @@ export default function RequestDetailPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
+  const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all")
 
   // Decode the groupKey from URL
   const groupKey = useMemo(() => {
@@ -61,7 +64,7 @@ export default function RequestDetailPage() {
   }, [fetchTasks])
 
   // Filter tasks by groupKey
-  const filteredTasks = useMemo(() => {
+  const groupedTasks = useMemo(() => {
     if (!groupKey) return []
 
     return allTasks
@@ -82,6 +85,44 @@ export default function RequestDetailPage() {
       .filter(task => task.computedGroupKey === groupKey)
   }, [allTasks, groupKey])
 
+  const filteredTasks = useMemo(() => {
+    let tasks = [...groupedTasks]
+
+    // Completion filter first
+    if (completionFilter === "done") {
+      tasks = tasks.filter(t => t.status === "FULFILLED")
+    } else if (completionFilter === "in-progress") {
+      tasks = tasks.filter(t => t.status !== "FULFILLED")
+    }
+
+    // Risk filter applies only to non-done tasks
+    if (riskFilter !== "all") {
+      tasks = tasks.filter(t => {
+        if (t.status === "FULFILLED") return true
+        return (t.riskLevel || "unknown") === riskFilter
+      })
+    }
+
+    // Search filter last (name/email)
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      tasks = tasks.filter(t => {
+        const name = t.entity?.firstName?.toLowerCase() || ""
+        const email = t.entity?.email?.toLowerCase() || ""
+        return name.includes(term) || email.includes(term)
+      })
+    }
+
+    return tasks
+  }, [groupedTasks, completionFilter, riskFilter, searchTerm])
+
+  const completionStats = useMemo(() => {
+    const total = filteredTasks.length
+    const done = filteredTasks.filter(t => t.status === "FULFILLED").length
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0
+    return { total, done, percent, isComplete: total > 0 && done === total }
+  }, [filteredTasks])
+
   // Get display name for this request
   const requestDisplayName = useMemo(() => {
     if (filteredTasks.length === 0) return "Request"
@@ -95,36 +136,6 @@ export default function RequestDetailPage() {
     return grouping.displayName
   }, [filteredTasks])
 
-  // Compute risk rollups for the filtered tasks
-  const rollups = useMemo(() => {
-    const totalCount = filteredTasks.length
-    const highCount = filteredTasks.filter(t => t.riskLevel === "high").length
-    const mediumCount = filteredTasks.filter(t => t.riskLevel === "medium").length
-    const lowCount = filteredTasks.filter(t => t.riskLevel === "low").length
-    const unknownCount = filteredTasks.filter(t => !t.riskLevel || t.riskLevel === "unknown").length
-    const unreadCount = filteredTasks.filter(t => t.readStatus === "unread").length
-    
-    // Find latest activity (max lastActivityAt or updatedAt)
-    const lastActivity = filteredTasks.length > 0
-      ? filteredTasks.reduce((latest, task) => {
-          const taskDate = task.lastActivityAt 
-            ? new Date(task.lastActivityAt)
-            : new Date(task.updatedAt)
-          return taskDate > latest ? taskDate : latest
-        }, new Date(0))
-      : new Date()
-
-    return {
-      totalCount,
-      highCount,
-      mediumCount,
-      lowCount,
-      unknownCount,
-      unreadCount,
-      lastActivity
-    }
-  }, [filteredTasks])
-
   // Ensure first recipient selected by default
   useEffect(() => {
     if (!selectedTaskId && filteredTasks.length > 0) {
@@ -136,7 +147,7 @@ export default function RequestDetailPage() {
   // Update selected task when taskId changes
   useEffect(() => {
     if (selectedTaskId) {
-      const task = filteredTasks.find(t => t.id === selectedTaskId)
+      const task = groupedTasks.find(t => t.id === selectedTaskId)
       if (task) {
         setSelectedTask(task)
         setSidebarOpen(true)
@@ -156,7 +167,7 @@ export default function RequestDetailPage() {
       setSelectedTask(null)
       setSidebarOpen(false)
     }
-  }, [selectedTaskId, filteredTasks])
+  }, [selectedTaskId, groupedTasks])
 
   const handleTaskSelect = (taskId: string) => {
     setSelectedTaskId(taskId)
@@ -206,35 +217,53 @@ export default function RequestDetailPage() {
             </div>
           </div>
 
-          {/* Risk Summary Bar */}
-          <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 bg-gray-50">
-            <div className="flex items-center gap-4 text-sm">
-              <span className="font-medium text-gray-700">Risk Summary:</span>
-              <span className={`font-semibold ${rollups.highCount > 0 ? "text-red-700" : "text-gray-600"}`}>
-                High: {rollups.highCount}
-              </span>
-              <span className={`font-semibold ${rollups.mediumCount > 0 ? "text-yellow-700" : "text-gray-600"}`}>
-                Medium: {rollups.mediumCount}
-              </span>
-              <span className={`font-semibold ${rollups.lowCount > 0 ? "text-green-700" : "text-gray-600"}`}>
-                Low: {rollups.lowCount}
-              </span>
-              {rollups.unknownCount > 0 && (
-                <>
-                  <span className="text-gray-400">•</span>
-                  <span className="text-gray-500">Unknown: {rollups.unknownCount}</span>
-                </>
-              )}
-              <span className="text-gray-400 ml-auto">
-                Last updated: {formatDistanceToNow(rollups.lastActivity, { addSuffix: true })}
-              </span>
-            </div>
-          </div>
-
           <div className="flex-1 overflow-y-auto p-6 bg-white">
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recipients</h3>
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                  <h3 className="text-lg font-semibold text-gray-900">Recipients</h3>
+                  <div className="flex items-center gap-3 text-sm text-gray-700">
+                    <span className="font-medium">
+                      {completionStats.done}/{completionStats.total} done • {completionStats.percent}%
+                    </span>
+                    {completionStats.isComplete && (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                        COMPLETE
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search name or email"
+                    className="w-full md:w-64"
+                  />
+                  <Select value={completionFilter} onValueChange={(v) => setCompletionFilter(v as any)}>
+                    <SelectTrigger className="w-full md:w-40">
+                      <SelectValue placeholder="Completion" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All completion</SelectItem>
+                      <SelectItem value="in-progress">In progress</SelectItem>
+                      <SelectItem value="done">Done</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={riskFilter} onValueChange={(v) => setRiskFilter(v as any)}>
+                    <SelectTrigger className="w-full md:w-40">
+                      <SelectValue placeholder="Risk" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All risk</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {filteredTasks.length === 0 ? (
                   <p className="text-sm text-gray-500">No recipients yet</p>
                 ) : (
@@ -243,8 +272,8 @@ export default function RequestDetailPage() {
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Snippet</th>
                         </tr>
                       </thead>
@@ -252,10 +281,14 @@ export default function RequestDetailPage() {
                         {filteredTasks.map((task) => {
                           const entityName = (task as any).entity?.firstName || (task as any).entity?.email || "Unknown"
                           const entityEmail = (task as any).entity?.email || null
-                          const lastActivityAt = task.lastActivityAt ? new Date(task.lastActivityAt) : new Date(task.updatedAt)
-                          const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
-                          const statusLabel = hasReplied ? "Replied" : "Awaiting response"
-                          const statusColor = hasReplied ? "text-green-600" : "text-gray-700"
+                          const isDone = task.status === "FULFILLED"
+                          const riskLabel = (task.riskLevel || "—").toString().toLowerCase()
+                          const riskTitle = riskLabel === "—" ? "—" : riskLabel.charAt(0).toUpperCase() + riskLabel.slice(1)
+                          const displayRisk = isDone
+                            ? "—"
+                            : riskLabel === "unknown"
+                              ? "—"
+                              : `Risk: ${riskTitle}`
 
                           return (
                             <tr
@@ -272,12 +305,16 @@ export default function RequestDetailPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
-                                <span className={`text-xs font-medium ${statusColor}`}>
-                                  {statusLabel}
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDone ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
+                                  {isDone ? "Done" : "In progress"}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                {formatDistanceToNow(lastActivityAt, { addSuffix: true })}
+                              <td className="px-4 py-3">
+                                <div className="max-w-[180px]">
+                                  <span className="text-sm text-gray-900 truncate">
+                                    {displayRisk}
+                                  </span>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
                                 <div className="max-w-md">
@@ -306,6 +343,7 @@ export default function RequestDetailPage() {
             setSelectedTaskId(null)
             setSidebarOpen(false)
           }}
+          onTaskUpdated={fetchTasks}
         />
       </div>
     </div>
