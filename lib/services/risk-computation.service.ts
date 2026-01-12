@@ -99,7 +99,25 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
     const responseText = (input.latestResponseText || "").toLowerCase()
     
     // High risk phrases
-    const highRiskPhrases = ["dispute", "wrong", "can't", "cannot", "next year", "won't", "will not", "refuse", "denied", "incorrect", "error"]
+    const highRiskPhrases = [
+      "dispute",
+      "wrong",
+      "can't",
+      "cannot",
+      "next year",
+      "won't",
+      "will not",
+      "refuse",
+      "denied",
+      "incorrect",
+      "error",
+      "no idea",
+      "don't know",
+      "not sure",
+      "what are you talking",
+      "who are you",
+      "wrong person"
+    ]
     const hasHighRiskPhrase = highRiskPhrases.some(phrase => responseText.includes(phrase))
     
     if (hasHighRiskPhrase) {
@@ -205,6 +223,12 @@ export async function computeRiskWithLLM(input: RiskComputationInput & {
     const requestContext = input.requestPrompt || input.requestSubject || "Request"
     const requestBodyPreview = input.requestBody ? input.requestBody.substring(0, 500) : ""
     const replyPreview = input.replyText.substring(0, 800)
+    let deadlineDays: number | null = null
+    if (input.deadlineDate) {
+      const deadline = input.deadlineDate instanceof Date ? input.deadlineDate : new Date(input.deadlineDate)
+      const now = new Date()
+      deadlineDays = Math.floor((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    }
     
     // Call LLM for risk assessment
     const response = await Promise.race([
@@ -216,12 +240,14 @@ export async function computeRiskWithLLM(input: RiskComputationInput & {
             content: `You are an AI assistant that assesses risk for accounting requests based on email replies.
 
 Analyze the reply in the context of the original request and assign a risk level:
-- **HIGH**: Request is unlikely to be fulfilled (disputed, denied, delayed significantly, or unclear commitment)
+- **HIGH**: Request is unlikely to be fulfilled (disputed, denied, confused, delayed beyond or close to deadline, unclear commitment)
 - **MEDIUM**: Request may be fulfilled but needs follow-up (partial commitment, questions, or vague responses)
 - **LOW**: Request is likely fulfilled or will be fulfilled soon (positive indicators, strong commitment, or already completed)
 
 Consider:
-- The urgency/timeline of the original request
+- The urgency/timeline of the original request and how it compares to the reply commitment
+- If the reply shows confusion/doesn't recognize the request, treat as HIGH
+- If the reply promises a date after the deadline or is overdue (days until deadline is negative), treat as HIGH
 - The recipient's response indicates they will complete the request vs. they cannot/will not
 - Whether attachments were sent (indicates fulfillment)
 - Whether the reply contains concerning language (disputes, denials, delays)
@@ -252,6 +278,7 @@ Additional Context:
 - Attachments Verified: ${input.aiVerified === true ? "Yes" : input.aiVerified === false ? "No" : "Pending"}
 - Classification: ${input.latestInboundClassification || "N/A"}
 - Deadline Date: ${input.deadlineDate ? new Date(input.deadlineDate).toISOString().split('T')[0] : "None"}
+- Days Until Deadline (negative = overdue): ${deadlineDays !== null ? deadlineDays : "N/A"}
 
 Analyze the risk level based on the reply content and request context.`
           }

@@ -377,12 +377,11 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
         const responsePreview = responseBody.substring(0, 200) // First 200 chars only
 
         // Build prompt
-        const prompt = `You are summarizing a task for an accounting team. Generate a 2-3 sentence summary in plain language.
+        const prompt = `You are summarizing a task for an accounting team. Generate ONE short sentence (max 25 words), plain language, no names.
 
 Task Context:
 - Request: ${requestSubject}${requestPreview ? ` - ${requestPreview}` : ""}
 - Campaign: ${task.campaignName || "N/A"}
-- Contact: ${task.entity.firstName || task.entity.email || "Unknown"}
 
 Response Received:
 - Subject: ${responseSubject || "No subject"}
@@ -394,7 +393,7 @@ Response Received:
 Current Task Status: ${task.status}
 
 Generate a JSON response with:
-1. "summary": 2-3 sentences explaining: what was requested, what was received, current state, and what to do next (if anything)
+1. "summary": ONE short sentence (max 25 words) explaining: what was requested and the latest reply outcome (no names, no fluff)
 2. "confidence": "High", "Medium", or "Low" based on how clear the information is
 3. "nextStep": A short actionable next step (e.g., "Review document", "Follow up", "No action needed") or null if complete
 
