@@ -229,8 +229,10 @@ function ComposePageContent() {
     // Validate recipients based on recipient source
     if (isRequestMode) {
       if (recipientSource === "contact") {
-        if (selectedRecipients.length === 0) {
-          setRecipientsError("At least one contact or group must be selected")
+        // Check if any stakeholder (contact or type) is selected
+        const hasStakeholders = selectedRecipients.some(r => r.type === "entity" || r.type === "contactType")
+        if (!hasStakeholders) {
+          setRecipientsError("At least one contact or type must be selected as stakeholder")
           return
         }
         setRecipientsError(null)
