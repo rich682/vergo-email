@@ -39,7 +39,7 @@ export default async function DashboardLayout({
           <div className="flex items-center gap-6">
             <Link href="/dashboard/requests" className="flex-shrink-0">
               <h1 className="text-xl font-bold cursor-pointer hover:text-gray-700 transition-colors">
-                Vergo Inbox
+                Vergo
               </h1>
             </Link>
             <NavLinks />
