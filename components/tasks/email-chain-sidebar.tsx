@@ -70,7 +70,13 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
       const response = await fetch(`/api/tasks/${task.id}/messages`)
       if (response.ok) {
         const data = await response.json()
-        setMessages(data)
+        const sorted = Array.isArray(data)
+          ? [...data].sort(
+              (a: Message, b: Message) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            )
+          : []
+        setMessages(sorted)
       }
     } catch (error) {
       console.error("Error fetching messages:", error)
@@ -259,6 +265,20 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
                     const bubble = isInbound
                       ? "bg-blue-50 border-blue-200"
                       : "bg-gray-50 border-gray-200"
+                    const trimmedBody = (() => {
+                      const body = msg.body || ""
+                      if (!body.trim()) return "(no content)"
+                      const lines = body.split("\n")
+                      const filtered = []
+                      for (const line of lines) {
+                        const trimmed = line.trim()
+                        if (trimmed.startsWith(">")) break
+                        if (/^On .*wrote:$/i.test(trimmed)) break
+                        filtered.push(line)
+                      }
+                      const result = filtered.join("\n").trim()
+                      return result || body
+                    })()
                     return (
                       <div key={msg.id} className={`border rounded-md p-3 ${bubble}`}>
                         <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
@@ -276,7 +296,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
                           </div>
                         )}
                         <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                          {msg.body || "(no content)"}
+                          {trimmedBody}
                         </div>
                         {msg.attachments && typeof msg.attachments === 'object' && 'keys' in msg.attachments && (msg.attachments as any).keys?.length > 0 && (
                           <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
