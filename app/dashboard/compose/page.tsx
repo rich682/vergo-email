@@ -83,7 +83,8 @@ function ComposePageContent() {
   const [csvUploadError, setCsvUploadError] = useState<string | null>(null)
   const [availableTags, setAvailableTags] = useState<string[]>([]) // Derived from CSV or contact fields
   const [availableStateKeys, setAvailableStateKeys] = useState<Array<{ stateKey: string; count: number }>>([])
-  const [stateFilter, setStateFilter] = useState<{ stateKey: string; mode: "has" | "missing" } | null>(null)
+  const [stateFilter, setStateFilter] = useState<string | null>(null)
+  const [requireSliceData, setRequireSliceData] = useState(false)
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [filterStats, setFilterStats] = useState<{ total: number; included: number; excluded: number } | null>(null)
   
@@ -252,10 +253,9 @@ function ComposePageContent() {
     setError(null)
     
     try {
-      const stateFilterPayload =
-        stateFilter && stateFilter.stateKey
-          ? { stateKey: stateFilter.stateKey, mode: stateFilter.mode }
-          : undefined
+      const stateFilterPayload = stateFilter
+        ? { stateKey: stateFilter, mode: requireSliceData ? "has" : undefined }
+        : undefined
 
       // Build recipients data based on source
       let finalRecipientsData = undefined
@@ -333,16 +333,24 @@ function ComposePageContent() {
           }
         }
 
+        // Use tags from response (derived from slice data) or fallback to defaults
+        const responseTags = data.draft.availableTags || (personalizationMode === "csv" && csvData ? csvData.tags : (personalizationMode === "contact" ? ["First Name", "Email"] : []))
+        
         const draftData = {
           id: data.id,
           ...data.draft,
           campaignName: isRequestMode ? requestName.trim() : (data.draft.suggestedCampaignName || undefined),
           aiGenerationStatus: "complete",
           personalizationMode,
-          availableTags: personalizationMode === "csv" && csvData ? csvData.tags : (personalizationMode === "contact" ? ["First Name", "Email"] : [])
+          availableTags: responseTags
         }
         setDraft(draftData)
         setFilterStats(data.recipientStats || null)
+        
+        // Update available tags state with derived tags from slice
+        if (responseTags && responseTags.length > 0) {
+          setAvailableTags(responseTags)
+        }
         
         // Use templates if available, otherwise fall back to generated subject/body
         const subjectToUse = data.draft.subjectTemplate || data.draft.generatedSubject || ""
@@ -816,75 +824,52 @@ function ComposePageContent() {
                   className="text-sm text-gray-700 underline"
                   onClick={() => setFilterExpanded((prev) => !prev)}
                 >
-                  Optional: Filter recipients by data slice
+                  Optional: Personalize with data slice
                 </button>
                 {filterExpanded && (
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label>Choose a slice</Label>
-                        <Select
-                          value={stateFilter?.stateKey || ""}
-                          onValueChange={(value) =>
-                            setStateFilter(
-                              value
-                                ? { stateKey: value, mode: stateFilter?.mode || "has" }
-                                : null
-                            )
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={availableStateKeys.length ? "Select data slice" : "No data slices yet"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableStateKeys.length === 0 && (
-                              <SelectItem value="__none" disabled>
-                                No data slices found
-                              </SelectItem>
-                            )}
-                            {availableStateKeys.map((slice) => (
-                              <SelectItem key={slice.stateKey} value={slice.stateKey}>
-                                {slice.stateKey} ({slice.count})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label>Value filter</Label>
-                        <Select
-                          value={stateFilter?.mode || "has"}
-                          onValueChange={(value) =>
-                            setStateFilter((prev) =>
-                              prev?.stateKey ? { ...prev, mode: value as "has" | "missing" } : prev
-                            )
-                          }
-                          disabled={!stateFilter?.stateKey}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose filter" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="has">has value</SelectItem>
-                            <SelectItem value="missing">is missing</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    <div className="space-y-2">
+                      <Label>Choose a slice</Label>
+                      <Select
+                        value={stateFilter || ""}
+                        onValueChange={(value) => setStateFilter(value || null)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={availableStateKeys.length ? "Select data slice" : "No data slices yet"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableStateKeys.length === 0 && (
+                            <SelectItem value="__none" disabled>
+                              No data slices found
+                            </SelectItem>
+                          )}
+                          {availableStateKeys.map((slice) => (
+                            <SelectItem key={slice.stateKey} value={slice.stateKey}>
+                              {slice.stateKey}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    {stateFilter ? (
-                      <p className="text-xs text-gray-600">
-                        Example: {stateFilter.stateKey} {stateFilter.mode === "missing" ? "is missing" : "has value"}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-gray-500">Use data slices (Contact States) to include or exclude recipients.</p>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="requireSliceData"
+                        type="checkbox"
+                        checked={requireSliceData}
+                        onChange={(e) => setRequireSliceData(e.target.checked)}
+                        disabled={!stateFilter}
+                      />
+                      <Label htmlFor="requireSliceData" className="text-sm font-normal">
+                        Only include recipients with slice data
+                      </Label>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      Only recipients with this data will be included when the toggle is on. Slice values are available to personalize drafts.
+                    </p>
                     {stateFilter && (
                       <div className="flex justify-between items-center">
-                        <p className="text-xs text-gray-600">
-                          Filter applies when generating and sending. Recipients without email are still excluded.
-                        </p>
                         <Button type="button" variant="ghost" size="sm" onClick={() => setStateFilter(null)}>
-                          Clear filter
+                          Clear slice
                         </Button>
                       </div>
                     )}

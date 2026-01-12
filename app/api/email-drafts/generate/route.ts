@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
-import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
+import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
 
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       idempotencyKey,
       requestName,
       personalizationMode,
-      availableTags,
+      availableTags: providedTags,
       blockOnMissingValues,
       deadlineDate
     } = body
@@ -53,6 +53,34 @@ export async function POST(request: NextRequest) {
           { error: "At least one contact or group must be selected" },
           { status: 400 }
         )
+      }
+    }
+
+    // Resolve recipients early to derive available tags from slice data
+    let resolvedRecipients: Awaited<ReturnType<typeof resolveRecipientsWithFilter>> | null = null
+    let derivedTags: string[] = providedTags || []
+    
+    if (recipientsWithFilter && personalizationMode === "contact") {
+      resolvedRecipients = await resolveRecipientsWithFilter(
+        session.user.organizationId,
+        recipientsWithFilter
+      )
+      
+      // Derive available tags from contact states if a slice is selected
+      const selectedSliceKey = recipientsWithFilter.stateFilter?.stateKey
+      if (selectedSliceKey && resolvedRecipients.recipients.length > 0) {
+        // Collect all unique keys from the selected slice's metadata across recipients
+        const sliceKeys = new Set<string>(["First Name", "Email"])
+        for (const recipient of resolvedRecipients.recipients) {
+          const data = buildRecipientPersonalizationData(recipient, selectedSliceKey)
+          for (const key of Object.keys(data)) {
+            sliceKeys.add(key)
+          }
+        }
+        derivedTags = Array.from(sliceKeys)
+      } else {
+        // No slice selected - use basic contact fields
+        derivedTags = ["First Name", "Email"]
       }
     }
 
@@ -183,6 +211,10 @@ export async function POST(request: NextRequest) {
     // Synchronous generation path (default) - no Inngest handler exists
     // This ensures < 2s completion in normal conditions with deterministic fallback
     const aiStartTime = Date.now()
+    
+    // Use derived tags from slice data (contact mode) or provided tags (CSV mode)
+    const tagsForGeneration = derivedTags.length > 0 ? derivedTags : (providedTags || undefined)
+    
     // AI service now always returns (template fallback on timeout/error), never throws
     const generated = await AIEmailGenerationService.generateDraft({
       organizationId: session.user.organizationId,
@@ -192,7 +224,7 @@ export async function POST(request: NextRequest) {
       senderName: user?.name || undefined,
       senderEmail: user?.email || undefined,
       senderCompany: user?.organization?.name || undefined,
-      availableTags: availableTags || undefined,
+      availableTags: tagsForGeneration,
       personalizationMode: personalizationMode || undefined
     })
     const aiEndTime = Date.now()
@@ -206,9 +238,11 @@ export async function POST(request: NextRequest) {
     const htmlBodyTemplate = generated.htmlBodyTemplate || generated.htmlBody
 
     const dbUpdateStartTime = Date.now()
+    
+    // Use already-resolved recipients if available, otherwise resolve now
     const recipientStats =
       requestName && recipientsWithFilter && personalizationMode !== "csv"
-        ? await resolveRecipientsWithFilter(session.user.organizationId, recipientsWithFilter)
+        ? (resolvedRecipients || await resolveRecipientsWithFilter(session.user.organizationId, recipientsWithFilter))
         : null
 
     await EmailDraftService.update(draft.id, session.user.organizationId, {
@@ -218,7 +252,7 @@ export async function POST(request: NextRequest) {
       subjectTemplate: subjectTemplate || null,
       bodyTemplate: bodyTemplate || null,
       htmlBodyTemplate: htmlBodyTemplate || null,
-      availableTags: availableTags || null,
+      availableTags: tagsForGeneration || null,
       personalizationMode: personalizationMode || null,
       blockOnMissingValues: blockOnMissingValues ?? true,
       deadlineDate: deadlineDate ? new Date(deadlineDate) : null,
@@ -253,7 +287,8 @@ export async function POST(request: NextRequest) {
                 htmlBodyTemplate: htmlBodyTemplate || generated.htmlBody,
                 suggestedRecipients: selectedRecipients || generated.suggestedRecipients,
                 suggestedCampaignName: finalCampaignName,
-                suggestedCampaignType: generated.suggestedCampaignType
+                suggestedCampaignType: generated.suggestedCampaignType,
+                availableTags: tagsForGeneration
               },
               recipientStats: recipientStats ? recipientStats.counts : undefined
             })

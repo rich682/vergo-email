@@ -3,6 +3,7 @@
  * 
  * Handles storing CSV-based personalization data during draft generation.
  * Used to persist CSV rows as PersonalizationData records.
+ * Also returns user signature for preview rendering.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -11,6 +12,7 @@ import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { PersonalizationDataService } from "@/lib/services/personalization-data.service"
 import { EntityService } from "@/lib/services/entity.service"
+import { prisma } from "@/lib/prisma"
 
 export async function POST(
   request: NextRequest,
@@ -121,23 +123,108 @@ export async function GET(
       )
     }
 
-    // Fetch personalization data
-    const personalizationData = await PersonalizationDataService.findByDraftId(params.id)
+    // Check personalization mode from draft
+    const personalizationMode = (draft as any).personalizationMode || "none"
+    
+    // Get user signature for preview
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { organization: true }
+    })
+    
+    let signature: string = ""
+    if (user?.signature && user.signature.trim() !== '') {
+      signature = user.signature
+    } else {
+      // Build signature from user/org data as fallback
+      const signatureParts: string[] = []
+      if (user?.name) signatureParts.push(user.name)
+      if (user?.organization?.name) signatureParts.push(user.organization.name)
+      if (user?.email) signatureParts.push(user.email)
+      signature = signatureParts.length > 0 ? signatureParts.join('\n') : (user?.email || '')
+    }
+    
+    // For CSV mode, use stored personalization data
+    if (personalizationMode === "csv") {
+      const personalizationData = await PersonalizationDataService.findByDraftId(params.id)
+      const sample = personalizationData.slice(0, 10).map(p => ({
+        email: p.recipientEmail,
+        data: p.dataJson as Record<string, string>
+      }))
 
-    // Return a sample for preview (first 5 recipients)
-    const sample = personalizationData.slice(0, 5).map(p => ({
-      email: p.recipientEmail,
-      data: p.dataJson as Record<string, string>
-    }))
+      return NextResponse.json({
+        success: true,
+        sample,
+        total: personalizationData.length,
+        mode: "csv",
+        signature
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
+      })
+    }
+    
+    // For contact mode, build personalization data from resolved recipients
+    if (personalizationMode === "contact") {
+      const { resolveRecipientsWithFilter, buildRecipientPersonalizationData } = await import("@/lib/services/recipient-filter.service")
+      
+      const suggestedRecipients = (draft as any).suggestedRecipients
+      if (!suggestedRecipients) {
+        return NextResponse.json({
+          success: true,
+          sample: [],
+          total: 0,
+          mode: "contact",
+          signature
+        })
+      }
+      
+      // Parse suggestedRecipients if it's a string
+      let recipientSelection = suggestedRecipients
+      if (typeof suggestedRecipients === "string") {
+        try {
+          recipientSelection = JSON.parse(suggestedRecipients)
+        } catch {
+          recipientSelection = {}
+        }
+      }
+      
+      // Resolve recipients with their contact states
+      const resolved = await resolveRecipientsWithFilter(
+        session.user.organizationId,
+        recipientSelection
+      )
+      
+      // Get selected slice key from the filter
+      const selectedSliceKey = recipientSelection.stateFilter?.stateKey || null
+      
+      // Build personalization data for each recipient
+      const sample = resolved.recipients.slice(0, 10).map(recipient => ({
+        email: recipient.email,
+        data: buildRecipientPersonalizationData(recipient, selectedSliceKey)
+      }))
 
+      return NextResponse.json({
+        success: true,
+        sample,
+        total: resolved.recipients.length,
+        mode: "contact",
+        signature
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
+      })
+    }
+
+    // No personalization mode - return empty
     return NextResponse.json({
       success: true,
-      sample,
-      total: personalizationData.length
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate'
-      }
+      sample: [],
+      total: 0,
+      mode: "none",
+      signature
     })
   } catch (error: any) {
     console.error("Error fetching personalization data:", error)

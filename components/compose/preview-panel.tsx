@@ -91,6 +91,7 @@ export function PreviewPanel({
   const [loadingRecipients, setLoadingRecipients] = useState(false)
   const [activeReminderIndex, setActiveReminderIndex] = useState(0) // 0 = initial, 1..N = reminders
   const [reminderTemplates, setReminderTemplates] = useState<ReminderTemplateState[]>([])
+  const [userSignature, setUserSignature] = useState<string>("")
 
   const effectiveReminderCount = useMemo(() => {
     if (!remindersConfig?.enabled) return 0
@@ -179,32 +180,21 @@ export function PreviewPanel({
       })
       if (response.ok) {
         const data = await response.json()
+        
+        // Store user signature for preview
+        if (data.signature) {
+          setUserSignature(data.signature)
+        }
+        
         if (data.success && data.sample && data.sample.length > 0) {
-          // In CSV mode, show all CSV recipients (no filtering by selected contacts)
-          // In contact mode, filter to only show selected recipients
-          let filteredRecipients: PreviewRecipient[] = []
-          
-          if (personalizationMode === "csv") {
-            // CSV mode: show all CSV recipients (no filtering needed)
-            filteredRecipients = data.sample
-          } else {
-            // Contact mode: filter to only include recipients that are actually selected
-            const selectedEmails = new Set(
-              recipients
-                .filter(r => r.type === "entity" && r.email)
-                .map(r => r.email?.toLowerCase().trim())
-                .filter((email): email is string => Boolean(email))
-            )
-            
-            // Only include personalization data for selected recipients
-            filteredRecipients = data.sample.filter((r: PreviewRecipient) => 
-              selectedEmails.has(r.email.toLowerCase().trim())
-            )
-          }
+          // Both CSV and contact mode now return personalization data from the API
+          // The API handles filtering and building personalization data appropriately
+          const filteredRecipients: PreviewRecipient[] = data.sample
           
           setPreviewRecipients(filteredRecipients)
 
-          if (personalizationMode === "csv" && filteredRecipients.length > 0) {
+          // Auto-select first recipient for preview
+          if (filteredRecipients.length > 0) {
             setSelectedPreviewRecipient(filteredRecipients[0].email)
           } else {
             setSelectedPreviewRecipient(null)
@@ -237,16 +227,14 @@ export function PreviewPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, personalizationMode, recipients])
 
-  // Auto-select first recipient when recipients are available and none is selected (fallback for contact mode)
+  // Auto-select first recipient when preview recipients are loaded (for both CSV and contact mode)
+  // This is now handled in fetchPreviewRecipients, but keep as fallback
   useEffect(() => {
-    if (personalizationMode === "contact" && recipients.length > 0 && !selectedPreviewRecipient) {
-      const firstEntityRecipient = recipients.find(r => r.type === "entity" && r.email)
-      if (firstEntityRecipient) {
-        setSelectedPreviewRecipient(`${firstEntityRecipient.type}-${firstEntityRecipient.id}`)
-      }
+    if (personalizationMode !== "none" && previewRecipients.length > 0 && !selectedPreviewRecipient) {
+      setSelectedPreviewRecipient(previewRecipients[0].email)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipients, personalizationMode, selectedPreviewRecipient])
+  }, [previewRecipients, personalizationMode, selectedPreviewRecipient])
 
   // Update preview when template or selected recipient changes
   useEffect(() => {
@@ -256,34 +244,22 @@ export function PreviewPanel({
       return
     }
 
-    // Re-render preview if recipient is selected
-    if (personalizationMode === "csv") {
-      const recipient = previewRecipients.find(r => r.email === selectedPreviewRecipient)
-      if (recipient) {
-        const subjectResult = renderTemplate(activeTemplate.subject, recipient.data)
-        const bodyResult = renderTemplate(activeTemplate.body, recipient.data)
-        setPreviewSubject(subjectResult.rendered)
-        setPreviewBody(bodyResult.rendered)
-      }
-    } else if (personalizationMode === "contact") {
-      const recipient = recipients.find(r => `${r.type}-${r.id}` === selectedPreviewRecipient && r.type === "entity" && r.email)
-      if (recipient) {
-        const data = buildContactData(recipient)
-        const subjectResult = renderTemplate(activeTemplate.subject, data)
-        const bodyResult = renderTemplate(activeTemplate.body, data)
-        setPreviewSubject(subjectResult.rendered)
-        setPreviewBody(bodyResult.rendered)
-      }
+    // Re-render preview using fetched personalization data (works for both CSV and contact mode)
+    const recipient = previewRecipients.find(r => r.email === selectedPreviewRecipient)
+    if (recipient) {
+      const subjectResult = renderTemplate(activeTemplate.subject, recipient.data)
+      const bodyResult = renderTemplate(activeTemplate.body, recipient.data)
+      setPreviewSubject(subjectResult.rendered)
+      setPreviewBody(bodyResult.rendered)
     }
   }, [
     selectedPreviewRecipient,
-    personalizationMode,
     previewRecipients,
-    recipients,
     activeTemplate.subject,
     activeTemplate.body
   ])
 
+  // Unified handler for preview recipient change (works for both CSV and contact mode)
   const handlePreviewRecipientChange = (email: string | "none") => {
     if (email === "none") {
       setSelectedPreviewRecipient(null)
@@ -300,28 +276,6 @@ export function PreviewPanel({
     // Render templates with recipient data
     const subjectResult = renderTemplate(activeTemplate.subject, recipient.data)
     const bodyResult = renderTemplate(activeTemplate.body, recipient.data)
-
-    setPreviewSubject(subjectResult.rendered)
-    setPreviewBody(bodyResult.rendered)
-  }
-
-  // Handle contact mode preview
-  const handleContactPreviewChange = (recipientId: string | "none") => {
-    if (recipientId === "none") {
-      setSelectedPreviewRecipient(null)
-      setPreviewSubject(activeTemplate.subject)
-      setPreviewBody(activeTemplate.body)
-      return
-    }
-
-    const recipient = recipients.find(r => `${r.type}-${r.id}` === recipientId)
-    if (!recipient) return
-
-    setSelectedPreviewRecipient(recipientId)
-    const data = buildContactData(recipient)
-
-    const subjectResult = renderTemplate(activeTemplate.subject, data)
-    const bodyResult = renderTemplate(activeTemplate.body, data)
 
     setPreviewSubject(subjectResult.rendered)
     setPreviewBody(bodyResult.rendered)
@@ -348,7 +302,11 @@ export function PreviewPanel({
 
   // Use preview values if a recipient is selected, otherwise use template values
   const displaySubject = selectedPreviewRecipient ? previewSubject : activeTemplate.subject
-  const displayBody = selectedPreviewRecipient ? previewBody : activeTemplate.body
+  // Append signature to body for preview (matches send behavior)
+  const bodyWithoutSignature = selectedPreviewRecipient ? previewBody : activeTemplate.body
+  const displayBody = userSignature 
+    ? `${bodyWithoutSignature}\n\n${userSignature}`
+    : bodyWithoutSignature
   const isInitialTemplate = activeReminderIndex === 0
   const activeReminderArrayIndex = activeReminderIndex > 0 ? activeReminderIndex - 1 : null
   const submitDisabled =
@@ -429,48 +387,27 @@ export function PreviewPanel({
               <Label className="text-sm font-medium text-gray-700">Preview as recipient:</Label>
               <Select
                 value={selectedPreviewRecipient || "none"}
-                onValueChange={(value) => {
-                  if (personalizationMode === "csv") {
-                    handlePreviewRecipientChange(value)
-                  } else if (personalizationMode === "contact") {
-                    handleContactPreviewChange(value)
-                  }
-                }}
+                onValueChange={handlePreviewRecipientChange}
               >
                 <SelectTrigger className="w-full mt-1">
                   <SelectValue placeholder="Select a recipient to preview" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Template (no preview)</SelectItem>
-                  {personalizationMode === "csv" && (
-                    <>
-                      {loadingRecipients ? (
-                        <SelectItem value="loading" disabled>Loading recipients...</SelectItem>
-                      ) : (
-                        previewRecipients.map((r) => (
-                          <SelectItem key={r.email} value={r.email}>
-                            {r.email}
-                          </SelectItem>
-                        ))
-                      )}
-                    </>
-                  )}
-                  {personalizationMode === "contact" && (
-                    <>
-                      {recipients
-                        .filter((r) => r.type === "entity" && r.email)
-                        .map((r) => (
-                          <SelectItem key={`${r.type}-${r.id}`} value={`${r.type}-${r.id}`}>
-                            {r.name} ({r.email})
-                          </SelectItem>
-                        ))}
-                    </>
+                  {loadingRecipients ? (
+                    <SelectItem value="loading" disabled>Loading recipients...</SelectItem>
+                  ) : (
+                    previewRecipients.map((r) => (
+                      <SelectItem key={r.email} value={r.email}>
+                        {r.data["First Name"] ? `${r.data["First Name"]} (${r.email})` : r.email}
+                      </SelectItem>
+                    ))
                   )}
                 </SelectContent>
               </Select>
               {selectedPreviewRecipient && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Showing rendered preview. Missing tags are marked as [MISSING: Tag].
+                  Showing rendered preview for this recipient. Missing tags are marked as [MISSING: Tag].
                 </p>
               )}
             </div>
