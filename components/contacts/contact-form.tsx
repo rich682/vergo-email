@@ -105,14 +105,15 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="space-y-2">
-        <Label htmlFor="firstName">Name</Label>
+        <Label htmlFor="firstName">First Name</Label>
         <Input
           id="firstName"
           value={firstName}
           onChange={(e) => setFirstName(e.target.value)}
-          placeholder="Contact name"
+          placeholder="First name"
           required
         />
+        <p className="text-xs text-gray-500">Used for email personalization (e.g., "Dear Sarah,")</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
