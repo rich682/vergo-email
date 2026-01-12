@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Paperclip, Send, Check, ChevronDown, ChevronUp, AlertCircle, Clock, CheckCircle } from "lucide-react"
+import { X, Paperclip, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDistanceToNow } from "date-fns"
@@ -58,12 +58,13 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
   const [replyText, setReplyText] = useState("")
   const [sending, setSending] = useState(false)
   const [markingRead, setMarkingRead] = useState(false)
-  const [threadExpanded, setThreadExpanded] = useState(false)
-  const [summaryExpanded, setSummaryExpanded] = useState(true)
+  const [threadExpanded, setThreadExpanded] = useState(true)
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
   const [overrideStatus, setOverrideStatus] = useState<string | null>(null)
   const [overrideMessage, setOverrideMessage] = useState<string | null>(null)
   const [overrideRisk, setOverrideRisk] = useState<string | null>(null)
   const [riskOverrideMessage, setRiskOverrideMessage] = useState<string | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -104,7 +105,7 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
 
       if (response.ok) {
         setReplyText("")
-        fetchMessages() // Refresh messages
+        fetchMessages()
       }
     } catch (error) {
       console.error("Error sending reply:", error)
@@ -125,16 +126,14 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
       })
 
       if (response.ok) {
-        fetchMessages() // Refresh messages
-        // Also refresh the task to update the read status
+        fetchMessages()
         if (task.id) {
           fetch(`/api/tasks/${task.id}`, {
             credentials: 'include'
           })
             .then(r => r.json())
-            .then(data => {
-              // Update parent component if needed
-              window.location.reload() // Simple refresh to update tab counts
+            .then(() => {
+              window.location.reload()
             })
             .catch(console.error)
         }
@@ -163,7 +162,6 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
 
   if (!isOpen || !task) return null
 
-  // Handle manual status override
   const handleStatusOverride = async (newStatus: "FULFILLED" | "FLAGGED" | "MANUAL_REVIEW" | "REJECTED") => {
     if (!task?.id) return
 
@@ -183,23 +181,17 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
         throw new Error(errorData.error || "Failed to update status")
       }
 
-      const data = await response.json()
-      
-      // Update local task state optimistically
       if (task) {
         task.status = newStatus
         task.updatedAt = new Date().toISOString()
       }
 
-      // Show success message
       setOverrideMessage("Status updated successfully")
       setTimeout(() => {
         setOverrideMessage(null)
         setOverrideStatus(null)
       }, 2000)
 
-      // Refresh the page to update the list view
-      // In a more sophisticated implementation, we'd update the parent state
       setTimeout(() => {
         window.location.reload()
       }, 500)
@@ -211,7 +203,6 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
     }
   }
 
-  // Handle manual risk override
   const handleRiskOverride = async (riskLevel: "high" | "medium" | "low" | "unknown") => {
     if (!task?.id) return
 
@@ -234,9 +225,6 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
         throw new Error(errorData.error || "Failed to update risk")
       }
 
-      const data = await response.json()
-      
-      // Update local task state optimistically
       if (task) {
         task.riskLevel = riskLevel
         task.manualRiskOverride = riskLevel
@@ -244,14 +232,12 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
         task.updatedAt = new Date().toISOString()
       }
 
-      // Show success message
       setRiskOverrideMessage("Risk level updated successfully")
       setTimeout(() => {
         setRiskOverrideMessage(null)
         setOverrideRisk(null)
       }, 2000)
 
-      // Refresh the page to update the list view
       setTimeout(() => {
         window.location.reload()
       }, 500)
@@ -263,13 +249,11 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
     }
   }
 
-  // Get latest inbound message classification from messages
   const latestInboundMessage = messages
     .filter(m => m.direction === "INBOUND")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
   const latestClassification = latestInboundMessage?.aiClassification || task.latestInboundClassification || null
 
-  // Compute task state (use override status if set)
   const effectiveStatus = overrideStatus || task.status
   const taskState = getTaskCompletionState({
     status: effectiveStatus,
@@ -281,7 +265,6 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
   })
   const stateColors = getStateBadgeColors(taskState)
   
-  // Get attachment count
   const attachmentCount = messages.reduce((count, msg) => {
     if (msg.attachments && typeof msg.attachments === 'object' && 'keys' in msg.attachments) {
       return count + ((msg.attachments as any).keys?.length || 0)
@@ -289,15 +272,13 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
     return count
   }, 0)
   
-  // Get verification status
   const verificationStatus = task.hasAttachments 
     ? (task.aiVerified === true ? "verified" : task.aiVerified === false ? "failed" : "pending")
     : null
 
   return (
-    <div className="absolute right-0 top-0 h-full w-96 bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+    <div className="absolute right-0 top-0 h-full w-full max-w-[640px] md:w-[45vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-gray-900 truncate">
             {task.campaignName || "Task Details"}
@@ -317,90 +298,107 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
         </button>
       </div>
 
-      {/* Summary Card */}
-      <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-gray-50 overflow-y-auto">
-        <Card className="mb-4">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">Status</CardTitle>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <Card className="bg-gray-50">
+          <CardContent className="py-3 px-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-gray-900">
+                {task.entity?.firstName || task.entity?.email || "Unknown"}
+              </span>
+              {task.entity?.email && (
+                <span className="text-xs text-gray-500">{task.entity.email}</span>
+              )}
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stateColors.bg} ${stateColors.text}`}>
                 {taskState}
               </span>
+              <span className="text-xs text-gray-500">
+                Last activity: {task.updatedAt ? formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true }) : "Unknown"}
+              </span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {/* Contact & Request */}
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Contact</div>
-              <div className="font-medium text-gray-900">
-                {task.entity?.firstName || task.entity?.email || "Unknown"}
-              </div>
-              {task.entity?.email && (
-                <div className="text-xs text-gray-500 mt-0.5">{task.entity.email}</div>
-              )}
-            </div>
-            
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Request</div>
-              <div className="text-gray-900">{task.campaignName || "No campaign name"}</div>
-            </div>
-
-            {/* Status Grid */}
-            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-200">
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Last Activity</div>
-                <div className="text-xs text-gray-900">
-                  {task.updatedAt 
-                    ? formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })
-                    : "Unknown"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Messages</div>
-                <div className="text-xs text-gray-900">{task.messageCount || messages.length || 0}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Attachments</div>
-                <div className="text-xs text-gray-900">{attachmentCount || 0}</div>
-              </div>
-            </div>
-
-            {/* Reason (Classification) */}
-            {latestClassification && (
-              <div className="pt-2 border-t border-gray-200">
-                <div className="text-xs text-gray-500 mb-1">Reason</div>
-                <div className="text-xs text-gray-900 capitalize">
-                  {latestClassification.toLowerCase()}
-                </div>
-              </div>
-            )}
-
-            {/* Verification Status */}
-            {verificationStatus && (
-              <div className="pt-2 border-t border-gray-200">
-                <div className="text-xs text-gray-500 mb-1">Verification</div>
-                <div className={`text-xs font-medium ${
-                  verificationStatus === "verified" ? "text-green-600" :
-                  verificationStatus === "failed" ? "text-red-600" :
-                  "text-yellow-600"
-                }`}>
-                  {verificationStatus === "verified" ? "✓ Verified" :
-                   verificationStatus === "failed" ? "✗ Verification failed" :
-                   "⏳ Verifying..."}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        {/* AI Summary */}
+        <Card>
+          <CardHeader className="pb-3">
+            <button
+              onClick={() => setThreadExpanded(!threadExpanded)}
+              className="flex items-center justify-between w-full"
+            >
+              <CardTitle className="text-sm">Thread</CardTitle>
+              {threadExpanded ? (
+                <ChevronUp className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+          </CardHeader>
+          {threadExpanded && (
+            <CardContent className="space-y-3">
+              {loading ? (
+                <p className="text-sm text-gray-500">Loading thread...</p>
+              ) : messages.length === 0 ? (
+                <p className="text-sm text-gray-500">No messages yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {messages.map((msg) => (
+                    <div key={msg.id} className="border border-gray-200 rounded-md p-3">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span className="font-medium text-gray-700">{msg.direction === "INBOUND" ? "Received" : "Sent"}</span>
+                        <span>{formatDate(msg.createdAt)}</span>
+                      </div>
+                      <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                        {msg.body || "(no content)"}
+                      </div>
+                      {msg.attachments && typeof msg.attachments === 'object' && 'keys' in msg.attachments && (msg.attachments as any).keys?.length > 0 && (
+                        <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                          <Paperclip className="w-3 h-3" />
+                          {(msg.attachments as any).keys.length} attachment(s)
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        <div className="p-4 border border-gray-200 rounded-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-gray-900">Reply in-app</h4>
+          </div>
+          <Textarea
+            placeholder="Type your reply..."
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            rows={4}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={sending || !replyText.trim()}
+              onClick={handleReply}
+            >
+              {sending ? "Sending..." : "Send Reply"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading}
+              onClick={fetchMessages}
+            >
+              Refresh thread
+            </Button>
+          </div>
+        </div>
+
         <Card>
           <CardHeader className="pb-3">
             <button
               onClick={() => setSummaryExpanded(!summaryExpanded)}
               className="flex items-center justify-between w-full"
             >
-              <CardTitle className="text-sm">Summary</CardTitle>
+              <CardTitle className="text-sm">AI Summary & Risk</CardTitle>
               {summaryExpanded ? (
                 <ChevronUp className="w-4 h-4 text-gray-400" />
               ) : (
@@ -409,7 +407,7 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
             </button>
           </CardHeader>
           {summaryExpanded && (
-            <CardContent>
+            <CardContent className="space-y-3 text-sm">
               {task.aiSummary ? (
                 <div className="text-sm text-gray-700">
                   {task.aiSummary}
@@ -434,256 +432,170 @@ export function EmailChainSidebar({ task, isOpen, onClose }: EmailChainSidebarPr
                   Summary not available yet
                 </div>
               )}
+              {latestClassification && (
+                <div className="pt-2 border-t border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Latest classification</div>
+                  <div className="text-xs text-gray-900 capitalize">
+                    {latestClassification.toLowerCase()}
+                  </div>
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
 
-        {/* Manual Override */}
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs text-gray-500 mb-2">Manual Override</div>
-          {overrideMessage && (
-            <div className={`mb-2 text-xs p-2 rounded ${
-              overrideMessage.includes("success") 
-                ? "bg-green-50 text-green-700 border border-green-200" 
-                : "bg-red-50 text-red-700 border border-red-200"
-            }`}>
-              {overrideMessage}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs"
-              disabled={overrideStatus !== null}
-              onClick={() => handleStatusOverride("FULFILLED")}
+        <Card>
+          <CardHeader className="pb-3">
+            <button
+              onClick={() => setAdvancedOpen(!advancedOpen)}
+              className="flex items-center justify-between w-full"
             >
-              {overrideStatus === "FULFILLED" ? "Updating..." : "Mark Complete"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs"
-              disabled={overrideStatus !== null}
-              onClick={() => handleStatusOverride("MANUAL_REVIEW")}
-            >
-              {overrideStatus === "MANUAL_REVIEW" ? "Updating..." : "Needs Review"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs"
-              disabled={overrideStatus !== null}
-              onClick={() => handleStatusOverride("FLAGGED")}
-            >
-              {overrideStatus === "FLAGGED" ? "Updating..." : "Flag"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Risk Override */}
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs text-gray-500 mb-2">
-            Risk Level {task.isManualRiskOverride && <span className="text-orange-600">(Manual)</span>}
-          </div>
-          <div className="mb-2">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-              task.riskLevel === "high" ? "bg-red-100 text-red-800" :
-              task.riskLevel === "medium" ? "bg-yellow-100 text-yellow-800" :
-              task.riskLevel === "low" ? "bg-green-100 text-green-800" :
-              "bg-gray-100 text-gray-800"
-            }`}>
-              {task.riskLevel || "unknown"}
-            </span>
-            {task.riskReason && (
-              <p className="text-xs text-gray-600 mt-1">{task.riskReason}</p>
-            )}
-          </div>
-          {riskOverrideMessage && (
-            <div className={`mb-2 text-xs p-2 rounded ${
-              riskOverrideMessage.includes("success") 
-                ? "bg-green-50 text-green-700 border border-green-200" 
-                : "bg-red-50 text-red-700 border border-red-200"
-            }`}>
-              {riskOverrideMessage}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
-              disabled={overrideRisk !== null}
-              onClick={() => handleRiskOverride("high")}
-            >
-              {overrideRisk === "high" ? "Updating..." : "High"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
-              disabled={overrideRisk !== null}
-              onClick={() => handleRiskOverride("medium")}
-            >
-              {overrideRisk === "medium" ? "Updating..." : "Medium"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-              disabled={overrideRisk !== null}
-              onClick={() => handleRiskOverride("low")}
-            >
-              {overrideRisk === "low" ? "Updating..." : "Low"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs"
-              disabled={overrideRisk !== null}
-              onClick={() => handleRiskOverride("unknown")}
-            >
-              {overrideRisk === "unknown" ? "Updating..." : "Clear"}
-            </Button>
-          </div>
-          {task.readStatus === "unread" && task.riskLevel === "high" && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs w-full"
-                onClick={() => {
-                  // Placeholder for resend/remind functionality
-                  alert("Resend/Remind functionality coming soon")
-                }}
-              >
-                Resend / Remind
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Thread Section - Collapsed by Default */}
-      <div className="flex-1 overflow-y-auto border-t border-gray-200">
-        <button
-          onClick={() => setThreadExpanded(!threadExpanded)}
-          className="w-full px-4 py-3 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 border-b border-gray-200 flex items-center justify-between"
-        >
-          <span>View email thread ({messages.length} messages)</span>
-          {threadExpanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          )}
-        </button>
-
-        {threadExpanded && (
-          <div className="p-4 space-y-4">
-            {loading ? (
-              <div className="text-center text-gray-500 py-8">Loading messages...</div>
-            ) : messages.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">No messages yet</div>
-            ) : (
-              messages.map((message) => (
-              <div
-                key={message.id}
-                className={`
-                  rounded-lg p-3 border
-                  ${message.direction === "INBOUND" 
-                    ? "bg-blue-50 border-blue-200" 
-                    : "bg-gray-50 border-gray-200"
-                  }
-                `}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-gray-900">
-                      {message.direction === "INBOUND" ? "From" : "To"}: {message.fromAddress}
-                    </div>
-                    {message.subject && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        {message.subject}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end ml-2 flex-shrink-0">
-                    <div className="text-xs text-gray-500">
-                      {formatDate(message.createdAt)}
-                    </div>
-                    {message.direction === "OUTBOUND" && message.openedAt && (
-                      <div className="flex items-center gap-1 text-xs text-green-600 mt-1" title={message.openedCount && message.openedCount > 1 ? `Opened ${message.openedCount} times` : "Opened"}>
-                        <Check className="w-3 h-3" />
-                        {message.lastOpenedAt && (
-                          <span>
-                            {formatDistanceToNow(new Date(message.lastOpenedAt), { addSuffix: true })}
-                          </span>
-                        )}
-                      </div>
-                    )}
+              <CardTitle className="text-sm">Advanced</CardTitle>
+              {advancedOpen ? (
+                <ChevronUp className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+          </CardHeader>
+          {advancedOpen && (
+            <CardContent className="space-y-4 text-sm">
+              {verificationStatus && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Verification</div>
+                  <div className={`text-xs font-medium ${
+                    verificationStatus === "verified" ? "text-green-600" :
+                    verificationStatus === "failed" ? "text-red-600" :
+                    "text-yellow-600"
+                  }`}>
+                    {verificationStatus === "verified" ? "✓ Verified" :
+                     verificationStatus === "failed" ? "✗ Verification failed" :
+                     "⏳ Verifying..."}
                   </div>
                 </div>
+              )}
 
-                {message.attachments && typeof message.attachments === 'object' && 'keys' in message.attachments && Array.isArray((message.attachments as any).keys) && (message.attachments as any).keys.length > 0 && (
-                  <div className="flex items-center gap-1 mb-2 text-xs text-gray-600">
-                    <Paperclip className="w-3 h-3" />
-                    <span>{(message.attachments as any).keys.length} attachment(s)</span>
+              {attachmentCount > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Attachments</div>
+                  <div className="text-xs text-gray-900">{attachmentCount}</div>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-gray-200">
+                <div className="text-xs text-gray-500 mb-2">Manual Overrides</div>
+                {overrideMessage && (
+                  <div className={`mb-2 text-xs p-2 rounded ${
+                    overrideMessage.includes("success") 
+                      ? "bg-green-50 text-green-700 border border-green-200" 
+                      : "bg-red-50 text-red-700 border border-red-200"
+                  }`}>
+                    {overrideMessage}
                   </div>
                 )}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideStatus !== null}
+                    onClick={() => handleStatusOverride("FULFILLED")}
+                  >
+                    {overrideStatus === "FULFILLED" ? "Updating..." : "Mark Complete"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideStatus !== null}
+                    onClick={() => handleStatusOverride("MANUAL_REVIEW")}
+                  >
+                    {overrideStatus === "MANUAL_REVIEW" ? "Updating..." : "Needs Review"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideStatus !== null}
+                    onClick={() => handleStatusOverride("FLAGGED")}
+                  >
+                    {overrideStatus === "FLAGGED" ? "Updating..." : "Flag"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideStatus !== null}
+                    onClick={() => handleStatusOverride("REJECTED")}
+                  >
+                    {overrideStatus === "REJECTED" ? "Updating..." : "Reject"}
+                  </Button>
+                </div>
 
-                {message.htmlBody ? (
-                  <div 
-                    className="text-sm text-gray-700 break-words prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: message.htmlBody }}
-                  />
-                ) : message.body ? (
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-                    {message.body}
+                {riskOverrideMessage && (
+                  <div className={`mb-2 text-xs p-2 rounded ${
+                    riskOverrideMessage.includes("success") 
+                      ? "bg-green-50 text-green-700 border border-green-200" 
+                      : "bg-red-50 text-red-700 border red-200"
+                  }`}>
+                    {riskOverrideMessage}
                   </div>
-                ) : (
-                  <div className="text-sm text-gray-400 italic">No content</div>
                 )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideRisk !== null}
+                    onClick={() => handleRiskOverride("high")}
+                  >
+                    {overrideRisk === "high" ? "Updating..." : "High Risk"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideRisk !== null}
+                    onClick={() => handleRiskOverride("medium")}
+                  >
+                    {overrideRisk === "medium" ? "Updating..." : "Medium Risk"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideRisk !== null}
+                    onClick={() => handleRiskOverride("low")}
+                  >
+                    {overrideRisk === "low" ? "Updating..." : "Low Risk"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={overrideRisk !== null}
+                    onClick={() => handleRiskOverride("unknown")}
+                  >
+                    {overrideRisk === "unknown" ? "Updating..." : "Unknown"}
+                  </Button>
+                </div>
               </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* Reply Box */}
-      {task && (
-        <div className="border-t border-gray-200 p-4 space-y-2">
-          {/* Mark as Read button for testing (only show if not already read) */}
-          {messages.some(m => m.direction === "OUTBOUND" && !m.openedAt) && (
-            <Button
-              onClick={handleMarkAsRead}
-              disabled={markingRead}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {markingRead ? "Marking..." : "Mark as Read (Test)"}
-            </Button>
+              <div className="pt-2 border-t border-gray-200">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={markingRead}
+                  onClick={handleMarkAsRead}
+                  className="text-xs"
+                >
+                  {markingRead ? "Marking..." : "Mark as read"}
+                </Button>
+              </div>
+            </CardContent>
           )}
-          <Textarea
-            placeholder="Type your reply..."
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            rows={4}
-            className="mb-2"
-          />
-          <Button
-            onClick={handleReply}
-            disabled={!replyText.trim() || sending}
-            className="w-full"
-            size="sm"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            {sending ? "Sending..." : "Send Reply"}
-          </Button>
-        </div>
-      )}
+        </Card>
+      </div>
     </div>
   )
 }
-

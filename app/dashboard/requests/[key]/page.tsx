@@ -217,12 +217,6 @@ export default function RequestDetailPage() {
                   <span className="text-gray-500">Unknown: {rollups.unknownCount}</span>
                 </>
               )}
-              {rollups.unreadCount > 0 && (
-                <>
-                  <span className="text-gray-400">•</span>
-                  <span className="text-orange-600">Unread: {rollups.unreadCount}</span>
-                </>
-              )}
               <span className="text-gray-400 ml-auto">
                 Last updated: {formatDistanceToNow(rollups.lastActivity, { addSuffix: true })}
               </span>
@@ -242,52 +236,19 @@ export default function RequestDetailPage() {
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <span className="text-red-700">High</span>
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <span className="text-yellow-700">Medium</span>
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            <span className="text-green-700">Low</span>
-                          </th>
-                          {filteredTasks.some(t => !t.riskLevel || t.riskLevel === "unknown") && (
-                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              <span className="text-gray-500">Unknown</span>
-                            </th>
-                          )}
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason / Snippet</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Snippet</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {filteredTasks.map((task) => {
-                          const riskLevel = task.riskLevel || "unknown"
-                          const riskColors: Record<string, string> = {
-                            "high": "bg-red-100 text-red-800",
-                            "medium": "bg-yellow-100 text-yellow-800",
-                            "low": "bg-green-100 text-green-800",
-                            "unknown": "bg-gray-100 text-gray-800"
-                          }
-                          
-                          const readStatus = task.readStatus || "unknown"
-                          const statusColors: Record<string, string> = {
-                            "unread": "text-gray-500",
-                            "read": "text-blue-600",
-                            "replied": "text-green-600",
-                            "unknown": "text-gray-400"
-                          }
-                          
                           const entityName = (task as any).entity?.firstName || (task as any).entity?.email || "Unknown"
                           const entityEmail = (task as any).entity?.email || null
                           const lastActivityAt = task.lastActivityAt ? new Date(task.lastActivityAt) : new Date(task.updatedAt)
-                          
-                          // Determine which risk column to show
-                          const isHigh = riskLevel === "high" ? 1 : 0
-                          const isMedium = riskLevel === "medium" ? 1 : 0
-                          const isLow = riskLevel === "low" ? 1 : 0
-                          const isUnknown = riskLevel === "unknown" || !riskLevel ? 1 : 0
-                          
+                          const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
+                          const statusLabel = hasReplied ? "Replied" : "Awaiting response"
+                          const statusColor = hasReplied ? "text-green-600" : "text-gray-700"
+
                           return (
                             <tr
                               key={task.id}
@@ -303,66 +264,19 @@ export default function RequestDetailPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
-                                <span className={`text-xs font-medium capitalize ${statusColors[readStatus] || statusColors.unknown}`}>
-                                  {readStatus}
+                                <span className={`text-xs font-medium ${statusColor}`}>
+                                  {statusLabel}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-center">
-                                {isHigh > 0 ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                    {isHigh}
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-gray-400">—</span>
-                                )}
-                                {task.isManualRiskOverride && riskLevel === "high" && (
-                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
-                                )}
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                {formatDistanceToNow(lastActivityAt, { addSuffix: true })}
                               </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-center">
-                                {isMedium > 0 ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                    {isMedium}
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-gray-400">—</span>
-                                )}
-                                {task.isManualRiskOverride && riskLevel === "medium" && (
-                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-center">
-                                {isLow > 0 ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                    {isLow}
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-gray-400">—</span>
-                                )}
-                                {task.isManualRiskOverride && riskLevel === "low" && (
-                                  <span className="text-xs text-gray-500 ml-1">(M)</span>
-                                )}
-                              </td>
-                              {filteredTasks.some(t => !t.riskLevel || t.riskLevel === "unknown") && (
-                                <td className="px-4 py-3 whitespace-nowrap text-center">
-                                  {isUnknown > 0 ? (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                      {isUnknown}
-                                    </span>
-                                  ) : (
-                                    <span className="text-sm text-gray-400">—</span>
-                                  )}
-                                </td>
-                              )}
                               <td className="px-4 py-3">
                                 <div className="max-w-md">
                                   <p className="text-sm text-gray-900 truncate">
                                     {task.riskReason || task.latestResponseText || task.latestOutboundSubject || "—"}
                                   </p>
                                 </div>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                {formatDistanceToNow(lastActivityAt, { addSuffix: true })}
                               </td>
                             </tr>
                           )
