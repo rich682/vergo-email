@@ -1,9 +1,16 @@
 import { withAuth } from "next-auth/middleware"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 
 export default withAuth(
-  function middleware(req) {
-    // Add any additional middleware logic here
+  function middleware(req: NextRequest) {
+    const { pathname } = req.nextUrl
+
+    // Allow Inngest to access its endpoint without auth/cookies
+    if (pathname.startsWith("/api/inngest")) {
+      return NextResponse.next()
+    }
+
     return NextResponse.next()
   },
   {
@@ -21,6 +28,7 @@ export const config = {
     "/api/email-accounts/:path*",
     "/api/oauth/:path*",
     "/api/webhooks/:path*",
+    "/api/inngest/:path*",
   ],
 }
 
