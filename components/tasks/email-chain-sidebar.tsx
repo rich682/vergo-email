@@ -217,7 +217,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   }
 
   return (
-    <div className="absolute right-0 top-0 h-full w-full max-w-[900px] md:w-[55vw] md:max-w-[900px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
+    <div className="absolute right-0 top-0 h-full w-full max-w-[700px] md:w-[42vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="flex items-start justify-between gap-3 p-4">
           <div className="flex flex-col gap-1">

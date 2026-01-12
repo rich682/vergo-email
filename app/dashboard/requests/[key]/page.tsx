@@ -160,14 +160,6 @@ export default function RequestDetailPage() {
     return grouping.displayName
   }, [filteredTasks])
 
-  // Ensure first recipient selected by default
-  useEffect(() => {
-    if (!selectedTaskId && filteredTasks.length > 0) {
-      setSelectedTaskId(filteredTasks[0].id)
-      setSidebarOpen(true)
-    }
-  }, [filteredTasks, selectedTaskId])
-
   // Update selected task when taskId changes
   useEffect(() => {
     if (selectedTaskId) {
@@ -195,6 +187,7 @@ export default function RequestDetailPage() {
 
   const handleTaskSelect = (taskId: string) => {
     setSelectedTaskId(taskId)
+    setSidebarOpen(true)
   }
 
   if (loading && allTasks.length === 0) {
@@ -230,7 +223,7 @@ export default function RequestDetailPage() {
           className="flex-1 flex flex-col overflow-hidden bg-white transition-[padding]"
           style={
             sidebarOpen
-              ? { paddingRight: "clamp(280px, 50vw, 820px)" }
+              ? { paddingRight: "clamp(240px, 42vw, 700px)" }
               : undefined
           }
         >
