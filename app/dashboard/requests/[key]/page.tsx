@@ -207,7 +207,14 @@ export default function RequestDetailPage() {
   return (
     <div className="w-full h-[calc(100vh-4rem)] flex flex-col border-l border-r border-gray-200">
       <div className="flex-1 flex overflow-hidden relative bg-white">
-        <div className="flex-1 flex flex-col overflow-hidden bg-white">
+        <div
+          className="flex-1 flex flex-col overflow-hidden bg-white transition-[padding]"
+          style={
+            sidebarOpen
+              ? { paddingRight: "clamp(320px, 55vw, 900px)" }
+              : undefined
+          }
+        >
           <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between">
               <div>
