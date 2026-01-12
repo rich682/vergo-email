@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { GroupService } from "@/lib/services/group.service"
 import { EntityService } from "@/lib/services/entity.service"
+import { ContactType } from "@prisma/client"
 import * as XLSX from "xlsx"
 
 type ParsedRow = {
@@ -33,6 +34,40 @@ const CORE_FIELDS = [
   "type",
   "groups"
 ]
+
+const CONTACT_TYPE_VALUES = new Set<ContactType>([
+  "UNKNOWN",
+  "EMPLOYEE",
+  "VENDOR",
+  "CLIENT",
+  "CONTRACTOR",
+  "MANAGEMENT",
+  "CUSTOM"
+])
+
+function normalizeContactType(raw?: string | null): {
+  contactType?: ContactType
+  contactTypeCustomLabel?: string | null
+  provided: boolean
+} {
+  if (!raw) return { provided: false }
+  const trimmed = raw.toString().trim()
+  if (!trimmed) return { provided: false }
+  const upper = trimmed.toUpperCase()
+  if (CONTACT_TYPE_VALUES.has(upper as ContactType)) {
+    return {
+      contactType: upper as ContactType,
+      contactTypeCustomLabel: upper === "CUSTOM" ? trimmed : null,
+      provided: true
+    }
+  }
+  console.warn(`Import contacts: unknown contactType "${raw}", coercing to CUSTOM with custom label.`)
+  return {
+    contactType: "CUSTOM",
+    contactTypeCustomLabel: trimmed,
+    provided: true
+  }
+}
 
 function normalizeHeader(header: string): string {
   return header?.trim().toLowerCase()
@@ -160,24 +195,41 @@ export class UnifiedImportService {
         continue
       }
 
+      const normalizedType = normalizeContactType(row.contactType)
+
       const existing = await EntityService.findByEmail(row.email, organizationId)
       let entity = existing
 
       if (!existing) {
+        const contactTypeData =
+          normalizedType.provided
+            ? {
+                contactType: normalizedType.contactType,
+                contactTypeCustomLabel: normalizedType.contactTypeCustomLabel ?? null
+              }
+            : {}
         const created = await EntityService.create({
           firstName: row.firstName || row.lastName || row.email.split("@")[0],
           email: row.email,
           phone: row.phone,
-          contactType: row.contactType,
-          organizationId
+          organizationId,
+          ...contactTypeData
         })
         entity = created
         summary.contactsCreated += 1
       } else {
+        const contactTypeData =
+          normalizedType.provided
+            ? {
+                contactType: normalizedType.contactType ?? existing.contactType,
+                contactTypeCustomLabel:
+                  normalizedType.contactTypeCustomLabel ?? null
+              }
+            : {}
         await EntityService.update(existing.id, organizationId, {
           firstName: row.firstName || existing.firstName,
           phone: row.phone || existing.phone,
-          contactType: row.contactType || existing.contactType
+          ...contactTypeData
         })
         entity = existing
         summary.contactsUpdated += 1
