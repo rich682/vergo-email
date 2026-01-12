@@ -310,7 +310,7 @@ export default function RequestDetailPage() {
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Completion</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Replied</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[90px]">Risk</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">Snippet</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">AI Summary</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -325,6 +325,14 @@ export default function RequestDetailPage() {
                             : riskLabel === "unknown" || riskLabel === "—"
                               ? "—"
                               : riskTitle
+                          const riskColor =
+                            riskLabel === "high"
+                              ? "text-red-700 bg-red-50"
+                              : riskLabel === "medium"
+                                ? "text-yellow-700 bg-yellow-50"
+                                : riskLabel === "low"
+                                  ? "text-green-700 bg-green-50"
+                                  : "text-gray-600 bg-gray-100"
                           const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
 
                           return (
@@ -353,7 +361,7 @@ export default function RequestDetailPage() {
                               </td>
                               <td className="px-4 py-3">
                                 <div className="max-w-[180px]">
-                                  <span className="text-sm text-gray-900 truncate">
+                                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${riskColor}`}>
                                     {riskDisplay}
                                   </span>
                                 </div>
@@ -361,7 +369,7 @@ export default function RequestDetailPage() {
                               <td className="px-4 py-3">
                                 <div className="max-w-md">
                                   <p className="text-sm text-gray-900 truncate">
-                                    {task.riskReason || task.latestResponseText || task.latestOutboundSubject || "—"}
+                                    {task.aiSummary || task.latestResponseText || task.latestOutboundSubject || task.riskReason || "—"}
                                   </p>
                                 </div>
                               </td>

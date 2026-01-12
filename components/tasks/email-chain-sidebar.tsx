@@ -160,20 +160,21 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   }
 
   const handleMarkDone = async () => {
-    if (!task || isDone || markingDone) return
+    if (!task || markingDone) return
+    const nextStatus = isDone ? "AWAITING_RESPONSE" : "FULFILLED"
     setMarkingDone(true)
     try {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "FULFILLED" })
+        body: JSON.stringify({ status: nextStatus })
       })
       if (response.ok) {
         fetchMessages()
         onTaskUpdated?.()
       }
     } catch (error) {
-      console.error("Error marking task done:", error)
+      console.error("Error updating task status:", error)
     } finally {
       setMarkingDone(false)
     }
@@ -183,50 +184,27 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
     <div className="absolute right-0 top-0 h-full w-full max-w-[900px] md:w-[55vw] md:max-w-[900px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="flex items-start justify-between gap-3 p-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900 truncate">
-                  {task.campaignName || "Task Details"}
-                </h3>
-                {task.entity && (
-                  <p className="text-xs text-gray-500 truncate">
-                    {task.entity.firstName || task.entity.email}
-                  </p>
-                )}
-              </div>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
-                {`Risk: ${riskLabelDisplay}`}
-              </span>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            variant={isDone ? "secondary" : "default"}
-            disabled={isDone || markingDone}
-            onClick={handleMarkDone}
-            className="whitespace-nowrap"
-          >
-            {isDone ? "Done" : markingDone ? "Marking..." : "Mark Done"}
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <Card className="bg-gray-50">
-          <CardContent className="py-3 px-4 flex flex-col gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-gray-900">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">
                 {task.entity?.firstName || task.entity?.email || "Unknown"}
-              </span>
+              </h3>
               {task.entity?.email && (
-                <span className="text-xs text-gray-500">{task.entity.email}</span>
+                <span className="text-xs text-gray-500 truncate">{task.entity.email}</span>
               )}
+              {task.entity && "phone" in task.entity && (task.entity as any).phone && (
+                <span className="text-xs text-gray-500 truncate">{(task.entity as any).phone}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${completionColors}`}>
                 {completionLabel}
               </span>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${stateColors.bg} ${stateColors.text}`}>
                 {taskState}
+              </span>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
+                {`Risk: ${riskLabelDisplay}`}
               </span>
               <span className="text-xs text-gray-500">
                 Last activity: {task.updatedAt ? formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true }) : "Unknown"}
@@ -235,8 +213,20 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
                 <span className="text-xs text-gray-500">Messages: {task.messageCount}</span>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <Button
+            size="sm"
+            variant={isDone ? "outline" : "default"}
+            disabled={markingDone}
+            onClick={handleMarkDone}
+            className="whitespace-nowrap"
+          >
+            {markingDone ? "Updating..." : isDone ? "Mark Undone" : "Mark Done"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
         <Card>
           <CardHeader className="pb-3">
