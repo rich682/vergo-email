@@ -72,6 +72,7 @@ model Organization {
 
   users                  User[]
   entities               Entity[]
+  contactStates          ContactState[]
   groups                 Group[]
   connectedEmailAccounts ConnectedEmailAccount[]
   automationRules        AutomationRule[]
