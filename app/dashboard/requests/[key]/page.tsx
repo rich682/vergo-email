@@ -223,7 +223,7 @@ export default function RequestDetailPage() {
           className="flex-1 flex flex-col overflow-hidden bg-white transition-[padding]"
           style={
             sidebarOpen
-              ? { paddingRight: "clamp(240px, 42vw, 700px)" }
+              ? { paddingRight: "clamp(260px, 45vw, 760px)" }
               : undefined
           }
         >
@@ -245,17 +245,14 @@ export default function RequestDetailPage() {
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Recipients</h3>
-                  <div className="flex items-center gap-3 text-sm text-gray-700">
-                    <span className="font-medium">
-                      {completionStats.done}/{completionStats.total} done • {completionStats.percent}%
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {completionStats.done}/{completionStats.total} done • {completionStats.percent}%
+                  </h3>
+                  {completionStats.isComplete && (
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                      COMPLETE
                     </span>
-                    {completionStats.isComplete && (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
-                        COMPLETE
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-3 mb-4">

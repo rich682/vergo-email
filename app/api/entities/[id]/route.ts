@@ -34,20 +34,29 @@ export async function GET(
     : false
 
   // Type assertion needed because Prisma includes groups but TypeScript doesn't infer it
-  const entityWithGroups = entity as typeof entity & {
-    groups: Array<{ group: { id: string; name: string; color: string | null } }>
-  }
+    const entityWithGroups = entity as typeof entity & {
+      groups: Array<{ group: { id: string; name: string; color: string | null } }>
+      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
+    }
 
   return NextResponse.json({
     id: entity.id,
     firstName: entity.firstName,
     email: entity.email,
     phone: entity.phone,
+    contactType: entity.contactType,
+    contactTypeCustomLabel: entity.contactTypeCustomLabel,
     isInternal,
     groups: entityWithGroups.groups.map(eg => ({
       id: eg.group.id,
       name: eg.group.name,
       color: eg.group.color
+    })),
+    contactStates: entityWithGroups.contactStates?.map((cs) => ({
+      stateKey: cs.stateKey,
+      metadata: cs.metadata,
+      updatedAt: cs.updatedAt,
+      source: cs.source
     })),
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt
@@ -69,13 +78,16 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { firstName, email, phone, groupIds } = body
+    const { firstName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
 
     // Update entity fields
     const updateData: any = {}
     if (firstName !== undefined) updateData.firstName = firstName
     if (email !== undefined) updateData.email = email
     if (phone !== undefined) updateData.phone = phone
+
+    if (contactType !== undefined) updateData.contactType = contactType
+    if (contactTypeCustomLabel !== undefined) updateData.contactTypeCustomLabel = contactTypeCustomLabel
 
     if (Object.keys(updateData).length > 0) {
       await EntityService.update(
@@ -128,6 +140,7 @@ export async function PATCH(
 
     const updatedWithGroups = updated as typeof updated & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
+      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
     }
 
     return NextResponse.json({
@@ -135,11 +148,19 @@ export async function PATCH(
       firstName: updated.firstName,
       email: updated.email,
       phone: updated.phone,
+      contactType: updated.contactType,
+      contactTypeCustomLabel: updated.contactTypeCustomLabel,
       isInternal,
       groups: updatedWithGroups.groups.map(eg => ({
         id: eg.group.id,
         name: eg.group.name,
         color: eg.group.color
+      })),
+      contactStates: updatedWithGroups.contactStates?.map((cs) => ({
+        stateKey: cs.stateKey,
+        metadata: cs.metadata,
+        updatedAt: cs.updatedAt,
+        source: cs.source
       })),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt

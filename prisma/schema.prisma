@@ -104,6 +104,8 @@ model Entity {
   firstName      String
   email          String?
   phone          String?
+  contactType    ContactType @default(UNKNOWN)
+  contactTypeCustomLabel String?
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -113,6 +115,7 @@ model Entity {
   tasks        Task[]
   messages     Message[]
   reminderStates ReminderState[]
+  contactStates ContactState[]
 
   @@index([organizationId])
   @@index([email])
@@ -147,6 +150,40 @@ model EntityGroup {
   @@unique([entityId, groupId])
   @@index([entityId])
   @@index([groupId])
+}
+
+enum ContactType {
+  UNKNOWN
+  EMPLOYEE
+  VENDOR
+  CLIENT
+  CONTRACTOR
+  MANAGEMENT
+  CUSTOM
+}
+
+enum ContactStateSource {
+  CSV_UPLOAD
+  MANUAL
+  FUTURE_AUTOMATION
+}
+
+model ContactState {
+  id              String              @id @default(cuid())
+  organizationId  String
+  entityId        String
+  stateKey        String
+  metadata        Json?
+  source          ContactStateSource  @default(CSV_UPLOAD)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entity       Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entityId, stateKey])
+  @@index([organizationId, stateKey])
+  @@index([entityId])
 }
 
 model Task {

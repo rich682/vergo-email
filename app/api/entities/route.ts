@@ -17,12 +17,16 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get("search")
   const groupId = searchParams.get("groupId")
+  const contactType = searchParams.get("contactType") || undefined
+  const stateKey = searchParams.get("stateKey") || undefined
 
   const entities = await EntityService.findByOrganization(
     session.user.organizationId,
     {
       search: search || undefined,
-      groupId: groupId || undefined
+      groupId: groupId || undefined,
+      contactType,
+      stateKey
     }
   )
 
@@ -35,6 +39,7 @@ export async function GET(request: NextRequest) {
 
     const entityWithGroups = entity as typeof entity & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
+      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
     }
 
     return {
@@ -42,11 +47,19 @@ export async function GET(request: NextRequest) {
       firstName: entity.firstName,
       email: entity.email,
       phone: entity.phone,
+      contactType: entity.contactType,
+      contactTypeCustomLabel: entity.contactTypeCustomLabel,
       isInternal,
       groups: entityWithGroups.groups.map(eg => ({
         id: eg.group.id,
         name: eg.group.name,
         color: eg.group.color
+      })),
+      contactStates: entityWithGroups.contactStates?.map((cs) => ({
+        stateKey: cs.stateKey,
+        metadata: cs.metadata,
+        updatedAt: cs.updatedAt,
+        source: cs.source
       })),
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt
@@ -68,7 +81,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { firstName, email, phone, groupIds } = body
+    const { firstName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
 
     if (!firstName || !email) {
       return NextResponse.json(
@@ -81,6 +94,8 @@ export async function POST(request: NextRequest) {
       firstName,
       email,
       phone: phone || undefined,
+      contactType,
+      contactTypeCustomLabel,
       organizationId: session.user.organizationId,
       groupIds: groupIds || []
     })
@@ -111,6 +126,8 @@ export async function POST(request: NextRequest) {
       firstName: entityWithGroups.firstName,
       email: entityWithGroups.email,
       phone: entityWithGroups.phone,
+      contactType: entityWithGroups.contactType,
+      contactTypeCustomLabel: entityWithGroups.contactTypeCustomLabel,
       isInternal,
       groups: entityWithGroupsTyped.groups.map(eg => ({
         id: eg.group.id,

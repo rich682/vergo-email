@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ContactForm } from "@/components/contacts/contact-form"
 import { CSVUpload } from "@/components/contacts/csv-upload"
 import { ContactList } from "@/components/contacts/contact-list"
+import { StatesCSVUpload } from "@/components/contacts/states-csv-upload"
 
 interface Group {
   id: string
@@ -20,6 +21,9 @@ interface Entity {
   phone?: string
   isInternal?: boolean
   groups: Group[]
+  contactType?: string
+  contactTypeCustomLabel?: string
+  contactStates?: Array<{ stateKey: string; metadata?: any; updatedAt?: string }>
 }
 
 export default function ContactsPage() {
@@ -30,6 +34,7 @@ export default function ContactsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
   const [showForm, setShowForm] = useState(false)
   const [showCSV, setShowCSV] = useState(false)
+  const [showStatesCSV, setShowStatesCSV] = useState(false)
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
 
   useEffect(() => {
@@ -79,6 +84,11 @@ export default function ContactsPage() {
     fetchEntities()
   }
 
+  const handleStatesCSVSuccess = () => {
+    setShowStatesCSV(false)
+    fetchEntities()
+  }
+
   const handleEdit = (entity: Entity) => {
     setEditingEntity(entity)
     setShowForm(true)
@@ -103,16 +113,29 @@ export default function ContactsPage() {
               variant="outline"
               onClick={() => {
                 setShowCSV(!showCSV)
+                setShowStatesCSV(false)
                 setShowForm(false)
                 setEditingEntity(null)
               }}
             >
-              {showCSV ? "Cancel" : "Import CSV"}
+              {showCSV ? "Cancel" : "Import Contacts CSV"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowStatesCSV(!showStatesCSV)
+                setShowCSV(false)
+                setShowForm(false)
+                setEditingEntity(null)
+              }}
+            >
+              {showStatesCSV ? "Cancel" : "Upload States CSV"}
             </Button>
             <Button
               onClick={() => {
                 setShowForm(!showForm)
                 setShowCSV(false)
+                setShowStatesCSV(false)
                 setEditingEntity(null)
               }}
             >
@@ -141,6 +164,12 @@ export default function ContactsPage() {
           {showCSV && (
             <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
               <CSVUpload onSuccess={handleCSVSuccess} />
+            </div>
+          )}
+
+          {showStatesCSV && (
+            <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
+              <StatesCSVUpload onSuccess={handleStatesCSVSuccess} />
             </div>
           )}
 

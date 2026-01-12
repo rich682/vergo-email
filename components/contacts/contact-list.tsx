@@ -18,6 +18,14 @@ interface Entity {
   phone?: string
   isInternal?: boolean
   groups: Group[]
+  contactType?: string
+  contactTypeCustomLabel?: string
+  contactStates?: Array<{
+    stateKey: string
+    metadata?: any
+    updatedAt?: string
+    source?: string
+  }>
 }
 
 interface ContactListProps {
@@ -90,9 +98,11 @@ export function ContactList({
       </div>
 
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-        <div className="grid grid-cols-5 gap-3 px-4 py-3 text-sm font-medium text-gray-600 border-b border-gray-200">
+        <div className="grid grid-cols-7 gap-3 px-4 py-3 text-sm font-medium text-gray-600 border-b border-gray-200">
           <div className="col-span-2">Name</div>
           <div>Email</div>
+          <div>Type</div>
+          <div>States</div>
           <div>Groups</div>
           <div className="text-right">Actions</div>
         </div>
@@ -102,13 +112,38 @@ export function ContactList({
         {entities.map((entity) => (
           <div
             key={entity.id}
-            className="grid grid-cols-5 gap-3 px-4 py-3 text-sm border-b border-gray-100 last:border-0"
+            className="grid grid-cols-7 gap-3 px-4 py-3 text-sm border-b border-gray-100 last:border-0"
           >
             <div className="col-span-2">
               <div className="font-medium">{entity.firstName}</div>
               {entity.phone && <div className="text-xs text-gray-500">{entity.phone}</div>}
             </div>
             <div className="break-all">{entity.email}</div>
+            <div>
+              <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
+                {entity.contactType === "CUSTOM"
+                  ? entity.contactTypeCustomLabel || "Custom"
+                  : entity.contactType || "Unknown"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {entity.contactStates && entity.contactStates.length > 0 ? (
+                entity.contactStates.slice(0, 3).map((cs, idx) => (
+                  <span
+                    key={`${cs.stateKey}-${idx}`}
+                    className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                    title={cs.stateKey}
+                  >
+                    {cs.stateKey}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-gray-500">None</span>
+              )}
+              {entity.contactStates && entity.contactStates.length > 3 && (
+                <span className="text-xs text-gray-500">+{entity.contactStates.length - 3} more</span>
+              )}
+            </div>
             <div className="flex flex-wrap gap-1">
               {entity.groups.map((g) => (
                 <span

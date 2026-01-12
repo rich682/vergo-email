@@ -9,12 +9,16 @@ export class EntityService {
     phone?: string
     organizationId: string
     groupIds?: string[]
+    contactType?: any
+    contactTypeCustomLabel?: string
   }): Promise<Entity> {
     const entity = await prisma.entity.create({
       data: {
         firstName: data.firstName,
         email: data.email,
         phone: data.phone,
+        contactType: data.contactType,
+        contactTypeCustomLabel: data.contactTypeCustomLabel,
         organizationId: data.organizationId
       }
     })
@@ -45,7 +49,8 @@ export class EntityService {
           include: {
             group: true
           }
-        }
+        },
+        contactStates: true
       }
     })
   }
@@ -64,7 +69,8 @@ export class EntityService {
           include: {
             group: true
           }
-        }
+        },
+        contactStates: true
       }
     })
   }
@@ -92,6 +98,8 @@ export class EntityService {
     options?: {
       groupId?: string
       search?: string
+      contactType?: string
+      stateKey?: string
     }
   ): Promise<Entity[]> {
     const where: any = {
@@ -113,6 +121,18 @@ export class EntityService {
       ]
     }
 
+    if (options?.contactType) {
+      where.contactType = options.contactType
+    }
+
+    if (options?.stateKey) {
+      where.contactStates = {
+        some: {
+          stateKey: options.stateKey
+        }
+      }
+    }
+
     return prisma.entity.findMany({
       where,
       include: {
@@ -120,6 +140,8 @@ export class EntityService {
           include: {
             group: true
           }
+        },
+        contactStates: true
         }
       },
       orderBy: {
@@ -131,7 +153,7 @@ export class EntityService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<Entity, "firstName" | "email" | "phone">>
+    data: Partial<Pick<Entity, "firstName" | "email" | "phone" | "contactType" | "contactTypeCustomLabel">>
   ): Promise<Entity> {
     return prisma.entity.update({
       where: {

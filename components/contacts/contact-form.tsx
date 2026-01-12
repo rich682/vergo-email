@@ -16,6 +16,8 @@ interface EntityInput {
   firstName?: string
   email?: string
   phone?: string
+  contactType?: string
+  contactTypeCustomLabel?: string
   groups?: { id: string; name: string }[]
 }
 
@@ -29,6 +31,8 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
   const [firstName, setFirstName] = useState(entity?.firstName || "")
   const [email, setEmail] = useState(entity?.email || "")
   const [phone, setPhone] = useState(entity?.phone || "")
+  const [contactType, setContactType] = useState(entity?.contactType || "UNKNOWN")
+  const [contactTypeCustomLabel, setContactTypeCustomLabel] = useState(entity?.contactTypeCustomLabel || "")
   const [groupIds, setGroupIds] = useState<string[]>(
     entity?.groups?.map((g) => g.id) || []
   )
@@ -55,6 +59,8 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     setFirstName(entity?.firstName || "")
     setEmail(entity?.email || "")
     setPhone(entity?.phone || "")
+    setContactType(entity?.contactType || "UNKNOWN")
+    setContactTypeCustomLabel(entity?.contactTypeCustomLabel || "")
     setGroupIds(entity?.groups?.map((g) => g.id) || [])
   }, [entity])
 
@@ -74,6 +80,8 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         firstName,
         email,
         phone: phone || undefined,
+        contactType,
+        contactTypeCustomLabel: contactType === "CUSTOM" ? contactTypeCustomLabel || undefined : undefined,
         groupIds
       }
 
@@ -130,6 +138,32 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
           onChange={(e) => setPhone(e.target.value)}
           placeholder="(555) 123-4567"
         />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="contactType">Contact Type</Label>
+        <select
+          id="contactType"
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+          value={contactType}
+          onChange={(e) => setContactType(e.target.value)}
+        >
+          <option value="UNKNOWN">Unknown</option>
+          <option value="EMPLOYEE">Employee</option>
+          <option value="VENDOR">Vendor</option>
+          <option value="CLIENT">Client</option>
+          <option value="CONTRACTOR">Contractor</option>
+          <option value="MANAGEMENT">Management</option>
+          <option value="CUSTOM">Custom</option>
+        </select>
+        {contactType === "CUSTOM" && (
+          <Input
+            id="contactTypeCustomLabel"
+            value={contactTypeCustomLabel}
+            onChange={(e) => setContactTypeCustomLabel(e.target.value)}
+            placeholder="Custom type label"
+            className="mt-2"
+          />
+        )}
       </div>
       <div className="space-y-2">
         <Label>Groups</Label>
