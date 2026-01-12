@@ -6,6 +6,7 @@ export interface CSVRow {
   email: string
   phone?: string
   tags: string[]
+  groups?: string[]
 }
 
 export interface ImportResult {
@@ -20,10 +21,18 @@ export class CSVImportService {
     const lines = csvText.split("\n").filter(line => line.trim())
     if (lines.length === 0) return []
 
-    // Check if first line is headers
-    const firstLine = lines[0].toLowerCase()
-    const hasHeaders = firstLine.includes("firstname") || firstLine.includes("first name") || 
-                      firstLine.includes("email") || firstLine.includes("phone")
+    const headerColumns = this.parseCSVLine(lines[0])
+    const lowerHeaders = headerColumns.map(h => h.toLowerCase())
+    const hasHeaders = lowerHeaders.some(h =>
+      h.includes("firstname") || h.includes("first name") || h === "name" || h === "email" || h === "phone"
+    )
+
+    const firstNameIndex = hasHeaders
+      ? lowerHeaders.findIndex(h => h === "firstname" || h === "first name" || h === "name")
+      : 0
+    const emailIndex = hasHeaders ? lowerHeaders.findIndex(h => h === "email") : 1
+    const phoneIndex = hasHeaders ? lowerHeaders.findIndex(h => h === "phone") : 2
+    const groupsIndex = hasHeaders ? lowerHeaders.findIndex(h => h === "groups") : -1
 
     const dataLines = hasHeaders ? lines.slice(1) : lines
     const rows: CSVRow[] = []
@@ -33,27 +42,36 @@ export class CSVImportService {
       if (!line) continue
 
       const columns = this.parseCSVLine(line)
-      if (columns.length < 2) continue // Need at least firstName and email
+      const getValue = (idx: number) => (idx >= 0 && idx < columns.length ? columns[idx]?.trim() : "")
 
-      const firstName = columns[0]?.trim()
-      const email = columns[1]?.trim()
-      const phone = columns[2]?.trim() || undefined
+      const firstName = getValue(firstNameIndex >= 0 ? firstNameIndex : 0)
+      const email = getValue(emailIndex >= 0 ? emailIndex : 1)
+      const phoneRaw = getValue(phoneIndex >= 0 ? phoneIndex : 2)
+      const phone = phoneRaw || undefined
 
-      // Extract tags from remaining columns
+      const groupsCell = groupsIndex >= 0 ? getValue(groupsIndex) : ""
+      const groups = groupsCell
+        ? groupsCell.split(",").map(g => g.trim()).filter(Boolean)
+        : []
+
+      const usedIndexes = new Set(
+        [firstNameIndex, emailIndex, phoneIndex, groupsIndex].filter((v) => v >= 0)
+      )
+
       const tags: string[] = []
-      for (let j = 3; j < columns.length; j++) {
-        const tag = columns[j]?.trim()
-        if (tag) {
-          tags.push(tag)
-        }
-      }
+      columns.forEach((col, idx) => {
+        if (usedIndexes.has(idx)) return
+        const tag = col?.trim()
+        if (tag) tags.push(tag)
+      })
 
       if (firstName && email) {
         rows.push({
           firstName,
           email,
           phone,
-          tags
+          tags,
+          groups
         })
       }
     }
@@ -118,6 +136,27 @@ export class CSVImportService {
     const groupMap = new Map<string, string>() // name -> id
     existingGroups.forEach(g => groupMap.set(g.name.toLowerCase(), g.id))
 
+    const addGroupByName = async (name: string, groupIds: string[]) => {
+      const trimmed = name.trim()
+      if (!trimmed) return
+      const lower = trimmed.toLowerCase()
+
+      let groupId = groupMap.get(lower)
+      if (!groupId) {
+        const newGroup = await GroupService.create({
+          name: trimmed,
+          organizationId,
+          color: this.generateColorForGroup(trimmed)
+        })
+        groupMap.set(lower, newGroup.id)
+        groupId = newGroup.id
+      }
+
+      if (!groupIds.includes(groupId)) {
+        groupIds.push(groupId)
+      }
+    }
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       
@@ -133,28 +172,18 @@ export class CSVImportService {
         // Start with groups from UI selector (applied to all contacts)
         const groupIds: string[] = options?.groupIds ? [...options.groupIds] : []
         
+        // Add groups from groups column (comma-separated names)
+        if (row.groups && row.groups.length > 0) {
+          for (const groupName of row.groups) {
+            await addGroupByName(groupName, groupIds)
+          }
+        }
+
         // Add groups from CSV tags (columns 3+)
         for (const tagName of row.tags) {
           if (!tagName) continue
           
-          const tagLower = tagName.toLowerCase()
-          let groupId = groupMap.get(tagLower)
-          
-          if (!groupId) {
-            // Create new group
-            const newGroup = await GroupService.create({
-              name: tagName,
-              organizationId,
-              color: this.generateColorForGroup(tagName)
-            })
-            groupMap.set(tagLower, newGroup.id)
-            groupId = newGroup.id
-          }
-          
-          // Only add if not already in list (avoid duplicates)
-          if (!groupIds.includes(groupId)) {
-            groupIds.push(groupId)
-          }
+          await addGroupByName(tagName, groupIds)
         }
 
         // Check if entity exists by email

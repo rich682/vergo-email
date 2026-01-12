@@ -90,7 +90,9 @@ export function CSVUpload({ onSuccess }: CSVUploadProps) {
           accept=".csv,text/csv"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
-        <p className="text-xs text-gray-500">Headers: firstName,email,phone</p>
+        <p className="text-xs text-gray-500">
+          Headers: firstName,email,phone (optional),groups (comma-separated names)
+        </p>
       </div>
 
       <label className="inline-flex items-center gap-2 text-sm text-gray-700">

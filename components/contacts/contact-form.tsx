@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { GroupsInput } from "@/components/contacts/groups-input"
 
 interface Group {
   id: string
@@ -63,12 +64,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     setContactTypeCustomLabel(entity?.contactTypeCustomLabel || "")
     setGroupIds(entity?.groups?.map((g) => g.id) || [])
   }, [entity])
-
-  const toggleGroup = (id: string) => {
-    setGroupIds((prev) =>
-      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
-    )
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -167,28 +162,11 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
       </div>
       <div className="space-y-2">
         <Label>Groups</Label>
-        <div className="flex flex-wrap gap-2">
-          {groups.length === 0 && (
-            <p className="text-sm text-gray-500">No groups available</p>
-          )}
-          {groups.map((g) => {
-            const checked = groupIds.includes(g.id)
-            return (
-              <button
-                type="button"
-                key={g.id}
-                onClick={() => toggleGroup(g.id)}
-                className={`rounded-full px-3 py-1 text-sm border ${
-                  checked
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-800 border-gray-200"
-                }`}
-              >
-                {g.name}
-              </button>
-            )
-          })}
-        </div>
+        <GroupsInput
+          existingGroups={groups}
+          selectedGroupIds={groupIds}
+          onChangeSelected={setGroupIds}
+        />
       </div>
 
       {error && (
