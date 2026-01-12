@@ -60,8 +60,6 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   const [replyText, setReplyText] = useState("")
   const [sending, setSending] = useState(false)
   const [threadExpanded, setThreadExpanded] = useState(true)
-  const [aiExpanded, setAiExpanded] = useState(false)
-  const [advancedExpanded, setAdvancedExpanded] = useState(false)
   const [markingDone, setMarkingDone] = useState(false)
 
   const fetchMessages = useCallback(async () => {
@@ -176,28 +174,32 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   }
 
   return (
-    <div className="absolute right-0 top-0 h-full w-full max-w-[640px] md:w-[45vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
+    <div className="absolute right-0 top-0 h-full w-full max-w-[900px] md:w-[60vw] md:max-w-[1100px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
-        <div className="flex items-center justify-between p-4">
+        <div className="flex items-start justify-between gap-3 p-4">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">
-              {task.campaignName || "Task Details"}
-            </h3>
-            {task.entity && (
-              <p className="text-xs text-gray-500 truncate">
-                {task.entity.firstName || task.entity.email}
-              </p>
-            )}
+            <div className="flex items-start gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900 truncate">
+                  {task.campaignName || "Task Details"}
+                </h3>
+                {task.entity && (
+                  <p className="text-xs text-gray-500 truncate">
+                    {task.entity.firstName || task.entity.email}
+                  </p>
+                )}
+              </div>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
+                {`Risk: ${riskLabelDisplay}`}
+              </span>
+            </div>
           </div>
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
-            {`Risk: ${riskLabelDisplay}`}
-          </span>
-        </div>
-        <div className="px-4 pb-3">
           <Button
-            className="w-full"
+            size="sm"
+            variant={isDone ? "secondary" : "default"}
             disabled={isDone || markingDone}
             onClick={handleMarkDone}
+            className="whitespace-nowrap"
           >
             {isDone ? "Done" : markingDone ? "Marking..." : "Mark Done"}
           </Button>
@@ -319,78 +321,6 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             </Button>
           </div>
         </div>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <button
-              onClick={() => setAiExpanded(!aiExpanded)}
-              className="flex items-center justify-between w-full"
-            >
-              <CardTitle className="text-sm">AI Summary + Risk</CardTitle>
-              {aiExpanded ? (
-                <ChevronUp className="w-4 h-4 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              )}
-            </button>
-          </CardHeader>
-          {aiExpanded && (
-            <CardContent className="space-y-2 text-sm text-gray-700">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${riskColors[riskLabelRaw] || riskColors.unknown}`}>
-                  {`Risk: ${riskLabelDisplay}`}
-                </span>
-                {task.isManualRiskOverride && (
-                  <span className="text-[11px] text-gray-500">(Manual override)</span>
-                )}
-              </div>
-              {task.aiSummary ? (
-                <p className="text-gray-800">{task.aiSummary}</p>
-              ) : (
-                <p className="text-gray-500">No AI summary available.</p>
-              )}
-              {task.aiReasoning && (
-                <p className="text-xs text-gray-500">Reasoning: {task.aiReasoning}</p>
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <button
-              onClick={() => setAdvancedExpanded(!advancedExpanded)}
-              className="flex items-center justify-between w-full"
-            >
-              <CardTitle className="text-sm">Advanced</CardTitle>
-              {advancedExpanded ? (
-                <ChevronUp className="w-4 h-4 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              )}
-            </button>
-          </CardHeader>
-          {advancedExpanded && (
-            <CardContent className="space-y-2 text-sm text-gray-700">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Verification status</span>
-                <span className="font-medium">{task.aiVerified ? "Verified" : "Not verified"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Attachments summary</span>
-                <span className="font-medium">
-                  {task.hasAttachments ? "Attachments present" : "None"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Manual overrides</span>
-                <span className="font-medium">
-                  {task.isManualRiskOverride ? "Risk override" : "Default risk"}
-                </span>
-              </div>
-            </CardContent>
-          )}
-        </Card>
       </div>
     </div>
   )

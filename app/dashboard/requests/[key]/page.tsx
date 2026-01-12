@@ -15,7 +15,8 @@ export default function RequestDetailPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string>("all")
+  const [recipientSearch, setRecipientSearch] = useState("")
   const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all")
 
@@ -85,6 +86,15 @@ export default function RequestDetailPage() {
       .filter(task => task.computedGroupKey === groupKey)
   }, [allTasks, groupKey])
 
+  const recipientOptions = useMemo(() => {
+    return groupedTasks.map((task) => {
+      const name = task.entity?.firstName || task.entity?.email || "Unknown"
+      const email = task.entity?.email
+      const label = email ? `${name} (${email})` : name
+      return { id: task.id, label }
+    })
+  }, [groupedTasks])
+
   const filteredTasks = useMemo(() => {
     let tasks = [...groupedTasks]
 
@@ -103,18 +113,13 @@ export default function RequestDetailPage() {
       })
     }
 
-    // Search filter last (name/email)
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      tasks = tasks.filter(t => {
-        const name = t.entity?.firstName?.toLowerCase() || ""
-        const email = t.entity?.email?.toLowerCase() || ""
-        return name.includes(term) || email.includes(term)
-      })
+    // Recipient filter (single-select)
+    if (selectedRecipientId !== "all") {
+      tasks = tasks.filter(t => t.id === selectedRecipientId)
     }
 
     return tasks
-  }, [groupedTasks, completionFilter, riskFilter, searchTerm])
+  }, [groupedTasks, completionFilter, riskFilter, selectedRecipientId])
 
   const completionStats = useMemo(() => {
     const total = filteredTasks.length
@@ -235,12 +240,35 @@ export default function RequestDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-3 mb-4">
-                  <Input
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search name or email"
-                    className="w-full md:w-64"
-                  />
+                  <Select
+                    value={selectedRecipientId}
+                    onValueChange={(v) => setSelectedRecipientId(v)}
+                    onOpenChange={(open) => {
+                      if (!open) setRecipientSearch("")
+                    }}
+                  >
+                    <SelectTrigger className="w-full md:w-64">
+                      <SelectValue placeholder="Select recipient" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <div className="px-2 py-1.5">
+                        <Input
+                          value={recipientSearch}
+                          onChange={(e) => setRecipientSearch(e.target.value)}
+                          placeholder="Search recipient"
+                          className="h-8"
+                        />
+                      </div>
+                      <SelectItem value="all">All recipients</SelectItem>
+                      {recipientOptions
+                        .filter((opt) => opt.label.toLowerCase().includes(recipientSearch.toLowerCase()))
+                        .map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={completionFilter} onValueChange={(v) => setCompletionFilter(v as any)}>
                     <SelectTrigger className="w-full md:w-40">
                       <SelectValue placeholder="Completion" />
@@ -273,6 +301,7 @@ export default function RequestDetailPage() {
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Replied</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Snippet</th>
                         </tr>
@@ -284,11 +313,12 @@ export default function RequestDetailPage() {
                           const isDone = task.status === "FULFILLED"
                           const riskLabel = (task.riskLevel || "—").toString().toLowerCase()
                           const riskTitle = riskLabel === "—" ? "—" : riskLabel.charAt(0).toUpperCase() + riskLabel.slice(1)
-                          const displayRisk = isDone
+                          const riskDisplay = isDone
                             ? "—"
-                            : riskLabel === "unknown"
+                            : riskLabel === "unknown" || riskLabel === "—"
                               ? "—"
-                              : `Risk: ${riskTitle}`
+                              : riskTitle
+                          const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
 
                           return (
                             <tr
@@ -309,10 +339,15 @@ export default function RequestDetailPage() {
                                   {isDone ? "Done" : "In progress"}
                                 </span>
                               </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${hasReplied ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
+                                  {hasReplied ? "Replied" : "Not replied"}
+                                </span>
+                              </td>
                               <td className="px-4 py-3">
                                 <div className="max-w-[180px]">
                                   <span className="text-sm text-gray-900 truncate">
-                                    {displayRisk}
+                                    {riskDisplay}
                                   </span>
                                 </div>
                               </td>
