@@ -15,7 +15,13 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token }) => !!token,
+      authorized: ({ token, req }) => {
+        const pathname = req.nextUrl.pathname
+        if (pathname.startsWith("/api/inngest")) {
+          return true
+        }
+        return !!token
+      },
     },
   }
 )
@@ -28,7 +34,6 @@ export const config = {
     "/api/email-accounts/:path*",
     "/api/oauth/:path*",
     "/api/webhooks/:path*",
-    "/api/inngest/:path*",
   ],
 }
 
