@@ -119,22 +119,23 @@ export function ImportModal({ onClose, onSuccess }: Props) {
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
-          <Label htmlFor="import-file">CSV or Excel file</Label>
+          <Label>CSV or Excel file</Label>
           <div className="flex items-center gap-3">
-            <label
-              htmlFor="import-file"
-              className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => document.getElementById("import-file-input")?.click()}
             >
               Choose File
-            </label>
+            </Button>
             <span className="text-sm text-gray-600">
               {selectedFileName || "No file chosen"}
             </span>
             <input
-              id="import-file"
+              id="import-file-input"
               type="file"
-              className="sr-only"
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              style={{ display: "none" }}
+              accept=".csv,.xlsx,.xls"
               onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
             />
           </div>

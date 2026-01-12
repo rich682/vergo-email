@@ -189,7 +189,7 @@ model ContactState {
 
 model Task {
   id                     String        @id @default(cuid())
-  entityId               String
+  entityId               String?       // Optional: contact may be deleted but task history preserved
   campaignName           String?
   campaignType           CampaignType?
   status                 TaskStatus    @default(AWAITING_RESPONSE)
@@ -223,7 +223,7 @@ model Task {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
-  entity   Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  entity   Entity?   @relation(fields: [entityId], references: [id], onDelete: SetNull)
   messages Message[]
   reminderStates ReminderState[]
 
@@ -239,7 +239,7 @@ model Task {
 model Message {
   id               String           @id @default(cuid())
   taskId           String
-  entityId         String
+  entityId         String?          // Optional: contact may be deleted but message history preserved
   direction        MessageDirection
   channel          MessageChannel   @default(EMAIL)
   subject          String?
@@ -260,8 +260,8 @@ model Message {
   aiReasoning      String? // Brief explanation of classification
   createdAt        DateTime         @default(now())
 
-  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
   @@index([entityId])
@@ -425,7 +425,7 @@ model PersonalizationData {
 model ReminderState {
   id              String   @id @default(cuid())
   taskId          String   // Link to Task (the request)
-  entityId        String   // Recipient entity
+  entityId        String?  // Recipient entity (optional: contact may be deleted)
   reminderNumber  Int      // Which reminder this is (1, 2, 3, etc.)
   sentCount       Int      @default(0) // How many reminders sent (incremented when sent)
   nextSendAt      DateTime? // When next reminder should be sent (null if stopped or max reached)
@@ -436,8 +436,8 @@ model ReminderState {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
 
   @@unique([taskId, entityId]) // One state per task+entity
   @@index([taskId])
