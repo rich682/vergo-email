@@ -17,9 +17,10 @@ type ImportSummary = {
   skippedMissingEmail: number
   totalRows: number
   rowsWithEmail: number
-  distinctEmails: number
+  distinctEmailsProcessed: number
   headers: string[]
   skippedSamples?: Array<{ rowNumber: number; reason: string }>
+  sampleMissingEmailRowNumbers?: number[]
 }
 
 type Props = {
@@ -34,6 +35,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [syncCustomFields, setSyncCustomFields] = useState(false)
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
 
   const detectedColumns = useMemo(() => headers.join(", "), [headers])
 
@@ -43,6 +45,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
     setError(null)
     setHeaders([])
     setSyncCustomFields(false)
+    setSelectedFileName(selected ? selected.name : null)
 
     if (!selected) return
 
@@ -147,12 +150,16 @@ export function ImportModal({ onClose, onSuccess }: Props) {
           </div>
         )}
 
+        {selectedFileName && (
+          <div className="text-xs text-gray-600">Selected file: {selectedFileName}</div>
+        )}
+
         {summary && (
           <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-800 space-y-1">
             <div className="font-medium">Import summary</div>
             <div>Total rows: {summary.totalRows}</div>
             <div>Rows with email: {summary.rowsWithEmail}</div>
-            <div>Distinct emails: {summary.distinctEmails}</div>
+            <div>Distinct emails: {summary.distinctEmailsProcessed}</div>
             <div>Contacts created: {summary.contactsCreated}</div>
             <div>Contacts updated: {summary.contactsUpdated}</div>
             <div>Groups created: {summary.groupsCreated}</div>
@@ -168,6 +175,11 @@ export function ImportModal({ onClose, onSuccess }: Props) {
                   .join("; ")}
               </div>
             )}
+            {summary.sampleMissingEmailRowNumbers && summary.sampleMissingEmailRowNumbers.length > 0 && (
+              <div className="text-xs text-gray-600">
+                Missing email rows (samples): {summary.sampleMissingEmailRowNumbers.join(", ")}
+              </div>
+            )}
           </div>
         )}
 
@@ -178,7 +190,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
         )}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={uploading}>
+          <Button type="submit" disabled={uploading || !file}>
             {uploading ? "Importing..." : "Import"}
           </Button>
           <Button type="button" variant="outline" onClick={onClose} disabled={uploading}>

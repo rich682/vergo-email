@@ -26,9 +26,10 @@ export type ImportSummary = {
   skippedMissingEmail: number
   totalRows: number
   rowsWithEmail: number
-  distinctEmails: number
+  distinctEmailsProcessed: number
   headers: string[]
   skippedSamples: Array<{ rowNumber: number; reason: string }>
+  sampleMissingEmailRowNumbers: number[]
 }
 
 const CORE_FIELDS = [
@@ -199,9 +200,10 @@ export class UnifiedImportService {
       skippedMissingEmail: 0,
       totalRows: rows.length,
       rowsWithEmail: 0,
-      distinctEmails: 0,
+      distinctEmailsProcessed: 0,
       headers,
-      skippedSamples: []
+      skippedSamples: [],
+      sampleMissingEmailRowNumbers: []
     }
 
     const normalizedHeaders = headers.map(normalizeHeader)
@@ -229,6 +231,9 @@ export class UnifiedImportService {
         if (summary.skippedSamples.length < 10) {
           summary.skippedSamples.push({ rowNumber, reason: "Missing email" })
         }
+        if (summary.sampleMissingEmailRowNumbers.length < 10) {
+          summary.sampleMissingEmailRowNumbers.push(rowNumber)
+        }
         continue
       }
 
@@ -236,7 +241,7 @@ export class UnifiedImportService {
       const emailKey = row.email.toLowerCase()
       if (!seenEmails.has(emailKey)) {
         seenEmails.add(emailKey)
-        summary.distinctEmails = seenEmails.size
+        summary.distinctEmailsProcessed = seenEmails.size
       }
 
       const normalizedType = normalizeContactType(row.contactType)
