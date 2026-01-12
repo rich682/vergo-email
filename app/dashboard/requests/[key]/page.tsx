@@ -19,6 +19,7 @@ export default function RequestDetailPage() {
   const [recipientSearch, setRecipientSearch] = useState("")
   const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all")
+  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read" | "noReplies">("all")
 
   // Decode the groupKey from URL
   const groupKey = useMemo(() => {
@@ -113,13 +114,31 @@ export default function RequestDetailPage() {
       })
     }
 
+    // Read filter (heuristic: latest inbound within 24h = unread; if no replies = noReplies)
+    if (readFilter !== "all") {
+      tasks = tasks.filter((t) => {
+        const hasReplies = t.hasReplies || (t.replyCount && t.replyCount > 0)
+        if (!hasReplies) {
+          return readFilter === "noReplies"
+        }
+        const latestInboundDate = t.latestInboundDate || t.lastActivityAt || t.updatedAt
+        const dt = latestInboundDate ? new Date(latestInboundDate) : null
+        const diffHours = dt ? (Date.now() - dt.getTime()) / 36e5 : 9999
+        const status = diffHours <= 24 ? "unread" : "read"
+        if (readFilter === "unread") return status === "unread"
+        if (readFilter === "read") return status === "read"
+        if (readFilter === "noReplies") return false
+        return true
+      })
+    }
+
     // Recipient filter (single-select)
     if (selectedRecipientId !== "all") {
       tasks = tasks.filter(t => t.id === selectedRecipientId)
     }
 
     return tasks
-  }, [groupedTasks, completionFilter, riskFilter, selectedRecipientId])
+  }, [groupedTasks, completionFilter, riskFilter, selectedRecipientId, readFilter])
 
   const completionStats = useMemo(() => {
     const total = filteredTasks.length
@@ -211,7 +230,7 @@ export default function RequestDetailPage() {
           className="flex-1 flex flex-col overflow-hidden bg-white transition-[padding]"
           style={
             sidebarOpen
-              ? { paddingRight: "clamp(320px, 55vw, 900px)" }
+              ? { paddingRight: "clamp(280px, 50vw, 820px)" }
               : undefined
           }
         >
@@ -297,6 +316,17 @@ export default function RequestDetailPage() {
                       <SelectItem value="low">Low</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={readFilter} onValueChange={(v) => setReadFilter(v as any)}>
+                    <SelectTrigger className="w-full md:w-40">
+                      <SelectValue placeholder="Read status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All read</SelectItem>
+                      <SelectItem value="unread">Unread</SelectItem>
+                      <SelectItem value="read">Read</SelectItem>
+                      <SelectItem value="noReplies">No replies</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {filteredTasks.length === 0 ? (
@@ -308,6 +338,7 @@ export default function RequestDetailPage() {
                         <tr>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">Recipient</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Completion</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Read</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]">Replied</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[90px]">Risk</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[140px]">AI Summary</th>
@@ -334,6 +365,16 @@ export default function RequestDetailPage() {
                                   ? "text-green-700 bg-green-50"
                                   : "text-gray-600 bg-gray-100"
                           const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
+                          const latestInboundDate = (task as any).latestInboundDate || task.lastActivityAt || task.updatedAt
+                          const dt = latestInboundDate ? new Date(latestInboundDate) : null
+                          const diffHours = dt ? (Date.now() - dt.getTime()) / 36e5 : 9999
+                          const readStatus = hasReplied ? (diffHours <= 24 ? "unread" : "read") : "noReplies"
+                          const readPill =
+                            readStatus === "unread"
+                              ? "bg-red-100 text-red-800"
+                              : readStatus === "read"
+                                ? "bg-gray-100 text-gray-700"
+                                : "bg-gray-50 text-gray-500 border"
 
                           return (
                             <tr
@@ -352,6 +393,11 @@ export default function RequestDetailPage() {
                               <td className="px-4 py-3 whitespace-nowrap">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isDone ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
                                   {isDone ? "Done" : "In progress"}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${readPill}`}>
+                                  {readStatus === "noReplies" ? "No replies" : readStatus === "unread" ? "Unread" : "Read"}
                                 </span>
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
