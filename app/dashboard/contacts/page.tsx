@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
-import { StatesCSVUpload } from "@/components/contacts/states-csv-upload"
 import { ImportModal } from "@/components/contacts/import-modal"
 
 interface Group {
@@ -34,7 +33,6 @@ export default function ContactsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [showStatesCSV, setShowStatesCSV] = useState(false)
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
 
   useEffect(() => {
@@ -79,15 +77,10 @@ export default function ContactsPage() {
     fetchEntities()
   }
 
-  const handleStatesCSVSuccess = () => {
-    setShowStatesCSV(false)
-    fetchEntities()
-  }
-
   const handleEdit = (entity: Entity) => {
     setEditingEntity(entity)
     setShowForm(true)
-    setShowCSV(false)
+    setShowImport(false)
   }
 
   const handleDelete = () => {
@@ -108,7 +101,6 @@ export default function ContactsPage() {
               variant="outline"
               onClick={() => {
                 setShowImport(!showImport)
-                setShowStatesCSV(false)
                 setShowForm(false)
                 setEditingEntity(null)
               }}
@@ -116,21 +108,9 @@ export default function ContactsPage() {
               {showImport ? "Cancel" : "Import Contacts"}
             </Button>
             <Button
-              variant="outline"
-              onClick={() => {
-                setShowStatesCSV(!showStatesCSV)
-                setShowImport(false)
-                setShowForm(false)
-                setEditingEntity(null)
-              }}
-            >
-              {showStatesCSV ? "Cancel" : "Upload States CSV (Legacy)"}
-            </Button>
-            <Button
               onClick={() => {
                 setShowForm(!showForm)
                 setShowImport(false)
-                setShowStatesCSV(false)
                 setEditingEntity(null)
               }}
             >
@@ -162,12 +142,6 @@ export default function ContactsPage() {
                 onSuccess={fetchEntities}
                 onClose={() => setShowImport(false)}
               />
-            </div>
-          )}
-
-          {showStatesCSV && (
-            <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
-              <StatesCSVUpload onSuccess={handleStatesCSVSuccess} />
             </div>
           )}
 

@@ -96,24 +96,14 @@ export function ImportModal({ onClose, onSuccess }: Props) {
         </p>
       </div>
 
-      <div className="flex gap-3 text-sm text-gray-600">
-        <a
-          className="underline"
-          href="/api/templates/contacts-basic"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Download basic template
-        </a>
-        <a
-          className="underline"
-          href="/api/templates/contacts-advanced"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Download advanced template
-        </a>
-      </div>
+      <a
+        className="text-sm text-gray-600 underline"
+        href="/api/templates/contacts"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Download template
+      </a>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
