@@ -142,6 +142,17 @@ function ComposePageContent() {
     setFilterStats(null)
   }, [selectedDataFields])
 
+  // Update availableTags when selectedDataFields changes (for contact mode)
+  useEffect(() => {
+    if (recipientSource === "contact") {
+      // Base tags always available
+      const baseTags = ["First Name", "Email"]
+      // Add selected data personalization fields
+      const allTags = [...baseTags, ...selectedDataFields]
+      setAvailableTags(allTags)
+    }
+  }, [selectedDataFields, recipientSource])
+
   // Handle CSV file upload
   const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -802,8 +813,6 @@ function ComposePageContent() {
                 onRecipientsChange={(recipients) => {
                   setSelectedRecipients(recipients)
                   if (recipientsError) setRecipientsError(null)
-                  // Update available tags for contact mode
-                  setAvailableTags(["First Name", "Email"])
                   setFilterStats(null)
                 }}
                 requireContacts={true}
