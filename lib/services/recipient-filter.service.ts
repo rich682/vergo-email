@@ -10,6 +10,7 @@ export type RecipientFilter = {
 export type RecipientSelection = {
   entityIds?: string[]
   groupIds?: string[]
+  contactTypes?: string[] // Contact types like "CLIENT", "VENDOR", etc.
   stateFilter?: RecipientFilter
 }
 
@@ -42,14 +43,17 @@ export async function resolveRecipientsWithFilter(
 ): Promise<ResolveResult> {
   const entityIds = selection.entityIds?.filter(Boolean) || []
   const groupIds = selection.groupIds?.filter(Boolean) || []
+  const contactTypes = selection.contactTypes?.filter(Boolean) || []
 
-  const [directEntities, groupEntities] = await Promise.all([
+  const [directEntities, groupEntities, typeEntities] = await Promise.all([
+    // Direct entity selection
     entityIds.length
       ? prisma.entity.findMany({
           where: { organizationId, id: { in: entityIds } },
           include: { contactStates: true }
         })
       : Promise.resolve([]),
+    // Entities from groups (used as filter if contactTypes are selected)
     groupIds.length
       ? prisma.entity.findMany({
           where: {
@@ -58,12 +62,47 @@ export async function resolveRecipientsWithFilter(
           },
           include: { contactStates: true }
         })
+      : Promise.resolve([]),
+    // Entities by contact type
+    contactTypes.length
+      ? prisma.entity.findMany({
+          where: {
+            organizationId,
+            contactType: { in: contactTypes as any[] }
+          },
+          include: { contactStates: true }
+        })
       : Promise.resolve([])
   ])
 
+  // Combine entities based on selection logic:
+  // - If contactTypes are selected, start with those entities
+  // - If groups are also selected, filter to only entities in those groups
+  // - Direct entityIds are always included
+  let combinedEntities: typeof directEntities = []
+  
+  if (contactTypes.length > 0) {
+    // Start with type-based entities
+    let typeBasedEntities = typeEntities
+    
+    // If groups are selected, filter to only entities in those groups
+    if (groupIds.length > 0) {
+      const groupEntityIds = new Set(groupEntities.map(e => e.id))
+      typeBasedEntities = typeEntities.filter(e => groupEntityIds.has(e.id))
+    }
+    
+    combinedEntities = [...typeBasedEntities, ...directEntities]
+  } else if (groupIds.length > 0) {
+    // No types selected, but groups are - use group entities
+    combinedEntities = [...groupEntities, ...directEntities]
+  } else {
+    // Only direct entities
+    combinedEntities = directEntities
+  }
+
   // Deduplicate by email (case-insensitive)
   const dedupedByEmail = new Map<string, (typeof directEntities)[number]>()
-  for (const entity of [...directEntities, ...groupEntities]) {
+  for (const entity of combinedEntities) {
     if (!entity.email) continue
     dedupedByEmail.set(entity.email.toLowerCase(), entity)
   }

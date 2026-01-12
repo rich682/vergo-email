@@ -85,6 +85,7 @@ function ComposePageContent() {
   const [availableStateKeys, setAvailableStateKeys] = useState<Array<{ stateKey: string; count: number }>>([])
   const [selectedDataFields, setSelectedDataFields] = useState<string[]>([]) // Multiple data personalization fields
   const [requireSliceData, setRequireSliceData] = useState(false)
+  const [selectedGroups, setSelectedGroups] = useState<SelectedRecipient[]>([]) // Groups filter (optional)
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [filterStats, setFilterStats] = useState<{ total: number; included: number; excluded: number } | null>(null)
   
@@ -272,14 +273,21 @@ function ComposePageContent() {
       // Build recipients data based on source
       let finalRecipientsData = undefined
       if (recipientSource === "contact") {
-        finalRecipientsData = selectedRecipients.length > 0 ? {
-          entityIds: selectedRecipients.filter(r => r.type === "entity").map(r => r.id),
-          groupIds: selectedRecipients.filter(r => r.type === "group").map(r => r.id),
+        // Stakeholders: individual contacts and contact types
+        const entityIds = selectedRecipients.filter(r => r.type === "entity").map(r => r.id)
+        const contactTypes = selectedRecipients.filter(r => r.type === "contactType").map(r => r.id)
+        // Groups: optional filter from separate selector
+        const groupIds = selectedGroups.filter(r => r.type === "group").map(r => r.id)
+        
+        finalRecipientsData = (selectedRecipients.length > 0 || selectedGroups.length > 0) ? {
+          entityIds,
+          groupIds,
+          contactTypes,
           stateFilter: stateFilterPayload
         } : undefined
         
-        if (isRequestMode && (!finalRecipientsData || (finalRecipientsData.entityIds.length === 0 && finalRecipientsData.groupIds.length === 0))) {
-          setRecipientsError("At least one contact or group must be selected")
+        if (isRequestMode && (!finalRecipientsData || (entityIds.length === 0 && contactTypes.length === 0))) {
+          setRecipientsError("At least one contact or type must be selected")
           setLoading(false)
           return
         }
@@ -802,11 +810,11 @@ function ComposePageContent() {
             )}
           </div>
 
-          {/* Contact/Group Selector - only shown when contact mode is selected */}
+          {/* Stakeholders Selector - contacts and/or types (mandatory) */}
           {isRequestMode && recipientSource === "contact" && (
             <div>
               <Label>
-                Who needs to respond? <span className="text-red-500 ml-1">*</span>
+                Stakeholders <span className="text-red-500 ml-1">*</span>
               </Label>
               <RecipientSelector
                 selectedRecipients={selectedRecipients}
@@ -816,14 +824,37 @@ function ComposePageContent() {
                   setFilterStats(null)
                 }}
                 requireContacts={true}
+                mode="stakeholders"
+                placeholder="Search contacts or types..."
               />
               <p className="text-xs text-gray-500 mt-1">
-                Select people or groups who must complete this request.
+                Select individual contacts or contact types (e.g., Clients, Vendors).
               </p>
               {recipientsError && (
                 <p className="text-xs text-red-600 mt-1">{recipientsError}</p>
               )}
-              {selectedDataFields.length > 0 && filterStats && (
+            </div>
+          )}
+
+          {/* Groups Selector - optional filter */}
+          {isRequestMode && recipientSource === "contact" && (
+            <div>
+              <Label>
+                Groups <span className="text-gray-400 text-xs font-normal ml-1">(optional)</span>
+              </Label>
+              <RecipientSelector
+                selectedRecipients={selectedGroups}
+                onRecipientsChange={(groups) => {
+                  setSelectedGroups(groups)
+                  setFilterStats(null)
+                }}
+                mode="groups"
+                placeholder="Filter by groups..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Optionally narrow recipients by group (e.g., NY Office, Marketing Team).
+              </p>
+              {(selectedDataFields.length > 0 || selectedGroups.length > 0) && filterStats && (
                 <p className="text-xs text-gray-600 mt-2">
                   {filterStats.excluded} recipient{filterStats.excluded === 1 ? "" : "s"} excluded by filter; {filterStats.included} included.
                 </p>
