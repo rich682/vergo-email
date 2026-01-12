@@ -202,6 +202,7 @@ export function EmailChainSidebar({
   const riskLabelRaw = (task.riskLevel || latestClassification || "unknown").toString().toLowerCase()
   const riskLabelDisplay = riskLabelRaw.charAt(0).toUpperCase() + riskLabelRaw.slice(1)
   const riskColors: Record<string, string> = {
+    bounced: "bg-orange-100 text-orange-800",
     high: "bg-red-100 text-red-800",
     medium: "bg-yellow-100 text-yellow-800",
     low: "bg-green-100 text-green-800",

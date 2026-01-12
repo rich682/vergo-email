@@ -3,7 +3,7 @@
  * Provides deterministic fallbacks and LLM integration hooks
  */
 
-export type RiskLevel = "high" | "medium" | "low" | "unknown"
+export type RiskLevel = "high" | "medium" | "low" | "bounced" | "unknown"
 export type ReadStatus = "unread" | "read" | "replied"
 
 export interface RiskComputationInput {
@@ -19,6 +19,7 @@ export interface RiskComputationInput {
   lastActivityAt?: Date | null
   deadlineDate?: Date | string | null // Deadline/due date for the request
   requestSentAt?: Date | string | null // When the request email was sent (for calculating days since)
+  fromAddress?: string | null // From address of the latest inbound message (for bounce detection)
 }
 
 export interface RiskComputationResult {
@@ -28,14 +29,105 @@ export interface RiskComputationResult {
 }
 
 /**
+ * Detect if a message is a bounce/delivery failure
+ * Returns true if the message appears to be from a mail server indicating delivery failure
+ */
+export function detectBounce(input: { 
+  latestResponseText?: string | null
+  latestInboundClassification?: string | null 
+  fromAddress?: string | null
+}): boolean {
+  // Check classification first (most reliable)
+  if (input.latestInboundClassification === "BOUNCE") {
+    return true
+  }
+  
+  const text = (input.latestResponseText || "").toLowerCase()
+  const from = (input.fromAddress || "").toLowerCase()
+  
+  // Check from address patterns
+  if (from.includes("mailer-daemon") || from.includes("postmaster") || from.includes("mail delivery")) {
+    return true
+  }
+  
+  // Check body patterns for bounce indicators
+  const bouncePatterns = [
+    "address not found",
+    "address couldn't be found",
+    "user unknown",
+    "no such user",
+    "mailbox not found",
+    "mailbox unavailable",
+    "550 5.1.1",
+    "550-5.1.1",
+    "action: failed",
+    "delivery status notification",
+    "the email account that you tried to reach does not exist",
+    "wasn't delivered to",
+    "could not be delivered",
+    "permanent failure",
+    "undeliverable"
+  ]
+  
+  return bouncePatterns.some(pattern => text.includes(pattern))
+}
+
+/**
+ * Detect if a message is an out-of-office auto-reply
+ */
+export function detectOutOfOffice(input: { 
+  latestResponseText?: string | null
+  latestInboundClassification?: string | null 
+}): boolean {
+  if (input.latestInboundClassification === "OUT_OF_OFFICE") {
+    return true
+  }
+  
+  const text = (input.latestResponseText || "").toLowerCase()
+  
+  const oooPatterns = [
+    "out of office",
+    "out of the office",
+    "automatic reply",
+    "auto-reply",
+    "i am currently away",
+    "i'm currently away",
+    "on vacation",
+    "on leave",
+    "limited access to email"
+  ]
+  
+  return oooPatterns.some(pattern => text.includes(pattern))
+}
+
+/**
  * Compute deterministic risk level based on read status and basic heuristics
  * Default behavior (no AI yet):
+ * - bounced -> bounced (delivery failure)
  * - unread -> high
  * - read/no reply -> medium
  * - replied -> low (or medium/high based on content)
  * - unknown if insufficient data
  */
 export function computeDeterministicRisk(input: RiskComputationInput): RiskComputationResult {
+  // First check for bounce/delivery failure
+  if (detectBounce(input)) {
+    return {
+      riskLevel: "bounced",
+      riskReason: "Email delivery failed - address not found or invalid",
+      readStatus: "replied" // Technically there's a "reply" from the mail server
+    }
+  }
+  
+  // Check for out-of-office (treat as medium risk - need to follow up later)
+  if (detectOutOfOffice(input)) {
+    return {
+      riskLevel: "medium",
+      riskReason: "Recipient is out of office - follow up when they return",
+      readStatus: "replied"
+    }
+  }
+  
   // Determine read status based on current state
   // Priority: replied > read > unread
   let readStatus: ReadStatus = "unknown" as ReadStatus

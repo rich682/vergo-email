@@ -145,6 +145,7 @@ export async function GET(request: NextRequest) {
     const latestClassificationMap = new Map<string, string | null>()
     const latestResponseTextMap = new Map<string, string | null>()
     const latestInboundDateMap = new Map<string, Date | null>()
+    const latestFromAddressMap = new Map<string, string>()
     if (taskIds.length > 0) {
       // Get all inbound messages with classification and body
       const inboundMessages = await prisma.message.findMany({
@@ -156,7 +157,8 @@ export async function GET(request: NextRequest) {
           taskId: true,
           aiClassification: true,
           body: true,
-          createdAt: true
+          createdAt: true,
+          fromAddress: true
         },
         orderBy: {
           createdAt: "desc"
@@ -181,6 +183,11 @@ export async function GET(request: NextRequest) {
         if (!latestInboundDateMap.has(message.taskId)) {
           latestInboundDateMap.set(message.taskId, message.createdAt)
         }
+        
+        // Store latest from address for bounce detection
+        if (!latestFromAddressMap.has(message.taskId) && message.fromAddress) {
+          latestFromAddressMap.set(message.taskId, message.fromAddress)
+        }
       }
     }
 
@@ -191,6 +198,7 @@ export async function GET(request: NextRequest) {
       const latestClassification = latestClassificationMap.get(task.id) || null
       const latestResponseText = latestResponseTextMap.get(task.id) || null
       const latestInboundDate = latestInboundDateMap.get(task.id) || null
+      const latestFromAddress = latestFromAddressMap.get(task.id) || null
       
       // For readStatus computation, openedAt and lastOpenedAt should only be used if they're actual Date values
       // Newly sent emails should have null for these fields until the tracking pixel is hit
@@ -209,7 +217,8 @@ export async function GET(request: NextRequest) {
         hasAttachments: task.hasAttachments,
         aiVerified: task.aiVerified,
         lastActivityAt: latestInboundDate || task.lastActivityAt || task.updatedAt,
-        deadlineDate: task.deadlineDate || null
+        deadlineDate: task.deadlineDate || null,
+        fromAddress: latestFromAddress
       })
       
       // Use manual override if present, otherwise use persisted risk if available, otherwise compute fresh

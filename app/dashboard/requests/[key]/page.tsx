@@ -18,7 +18,7 @@ export default function RequestDetailPage() {
   const [selectedRecipientId, setSelectedRecipientId] = useState<string>("all")
   const [recipientSearch, setRecipientSearch] = useState("")
   const [completionFilter, setCompletionFilter] = useState<"all" | "in-progress" | "done">("all")
-  const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low">("all")
+  const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium" | "low" | "bounced">("all")
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read" | "noReplies">("all")
 
   // Decode the groupKey from URL
@@ -324,6 +324,7 @@ export default function RequestDetailPage() {
                       <SelectItem value="high">High</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="bounced">Bounced</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={readFilter} onValueChange={(v) => setReadFilter(v as any)}>
@@ -367,13 +368,15 @@ export default function RequestDetailPage() {
                               ? "—"
                               : riskTitle
                           const riskColor =
-                            riskLabel === "high"
-                              ? "text-red-700 bg-red-50"
-                              : riskLabel === "medium"
-                                ? "text-yellow-700 bg-yellow-50"
-                                : riskLabel === "low"
-                                  ? "text-green-700 bg-green-50"
-                                  : "text-gray-600 bg-gray-100"
+                            riskLabel === "bounced"
+                              ? "text-orange-700 bg-orange-50"
+                              : riskLabel === "high"
+                                ? "text-red-700 bg-red-50"
+                                : riskLabel === "medium"
+                                  ? "text-yellow-700 bg-yellow-50"
+                                  : riskLabel === "low"
+                                    ? "text-green-700 bg-green-50"
+                                    : "text-gray-600 bg-gray-100"
                           const hasReplied = task.hasReplies || (task.replyCount && task.replyCount > 0)
                           const latestInboundDate = (task as any).latestInboundDate || task.lastActivityAt || task.updatedAt
                           const dt = latestInboundDate ? new Date(latestInboundDate) : null
