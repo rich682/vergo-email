@@ -126,6 +126,7 @@ export default function ContactsPage() {
           {showForm && (
             <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
               <ContactForm
+                key={editingEntity?.id || "new"}
                 entity={editingEntity || undefined}
                 onSuccess={handleFormSuccess}
                 onCancel={() => {
