@@ -50,6 +50,12 @@ export default function RequestsPage() {
   const router = useRouter()
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<"all" | "complete" | "incomplete">("all")
+  const [replyFilter, setReplyFilter] = useState<"all" | "replied" | "unreplied">("all")
+  const [sortKey, setSortKey] = useState<
+    "lastActivity" | "name" | "recipients" | "done" | "status" | "high" | "medium" | "low" | "replies"
+  >("lastActivity")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -121,6 +127,7 @@ export default function RequestsPage() {
 
       const totalCount = tasks.length
       const doneCount = tasks.filter(t => t.status === "FULFILLED").length
+      const repliedCount = tasks.filter(t => (t.replyCount || 0) > 0).length
       const isComplete = totalCount > 0 && doneCount === totalCount
       const activeTasks = tasks.filter(t => t.status !== "FULFILLED")
       const highCount = activeTasks.filter(t => t.riskLevel === "high").length
@@ -143,6 +150,7 @@ export default function RequestsPage() {
         tasks,
         totalCount,
         doneCount,
+        repliedCount,
         isComplete,
         highCount,
         mediumCount,
@@ -152,17 +160,52 @@ export default function RequestsPage() {
       })
     }
 
-    // Sort: Highest High count first, then Medium, then Last updated
-    return groups.sort((a, b) => {
-      if (a.highCount !== b.highCount) {
-        return b.highCount - a.highCount
-      }
-      if (a.mediumCount !== b.mediumCount) {
-        return b.mediumCount - a.mediumCount
-      }
-      return b.lastActivity.getTime() - a.lastActivity.getTime()
-    })
+    return groups
   }, [allTasks])
+
+  const filteredSortedGroups = useMemo(() => {
+    const filtered = requestGroups.filter((g) => {
+      if (statusFilter === "complete" && !g.isComplete) return false
+      if (statusFilter === "incomplete" && g.isComplete) return false
+      if (replyFilter === "replied" && g.repliedCount === 0) return false
+      if (replyFilter === "unreplied" && g.repliedCount > 0) return false
+      return true
+    })
+
+    const sortValue = (g: RequestGroup) => {
+      switch (sortKey) {
+        case "name":
+          return g.displayName?.toLowerCase() || ""
+        case "recipients":
+          return g.totalCount
+        case "done":
+          return g.doneCount / Math.max(1, g.totalCount)
+        case "status":
+          return g.isComplete ? 1 : 0
+        case "high":
+          return g.highCount
+        case "medium":
+          return g.mediumCount
+        case "low":
+          return g.lowCount
+        case "replies":
+          return g.repliedCount / Math.max(1, g.totalCount)
+        case "lastActivity":
+        default:
+          return g.lastActivity.getTime()
+      }
+    }
+
+    const sorted = [...filtered].sort((a, b) => {
+      const av = sortValue(a)
+      const bv = sortValue(b)
+      if (av === bv) return 0
+      if (sortDir === "asc") return av > bv ? 1 : -1
+      return av < bv ? 1 : -1
+    })
+
+    return sorted
+  }, [requestGroups, statusFilter, replyFilter, sortKey, sortDir])
 
   const completedRequests = useMemo(
     () => requestGroups.filter(g => g.isComplete).length,
@@ -207,7 +250,7 @@ export default function RequestsPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto bg-white">
-            {requestGroups.length === 0 ? (
+            {filteredSortedGroups.length === 0 ? (
               <div className="flex items-center justify-center min-h-[400px] p-6">
                 <div className="text-center max-w-md">
                   <div className="mb-4 flex justify-center">
@@ -232,12 +275,64 @@ export default function RequestsPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
+                <div className="flex flex-wrap gap-3 px-6 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">Status</span>
+                    <select
+                      className="text-sm border rounded px-2 py-1"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                    >
+                      <option value="all">All</option>
+                      <option value="complete">Complete</option>
+                      <option value="incomplete">Incomplete</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">Replies</span>
+                    <select
+                      className="text-sm border rounded px-2 py-1"
+                      value={replyFilter}
+                      onChange={(e) => setReplyFilter(e.target.value as any)}
+                    >
+                      <option value="all">All</option>
+                      <option value="replied">Replied</option>
+                      <option value="unreplied">No replies</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">Sort</span>
+                    <select
+                      className="text-sm border rounded px-2 py-1"
+                      value={sortKey}
+                      onChange={(e) => setSortKey(e.target.value as any)}
+                    >
+                      <option value="lastActivity">Last Updated</option>
+                      <option value="name">Name</option>
+                      <option value="recipients">Recipients</option>
+                      <option value="done">Done %</option>
+                      <option value="status">Status</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                      <option value="replies">Replies</option>
+                    </select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+                    >
+                      {sortDir === "asc" ? "Asc" : "Desc"}
+                    </Button>
+                  </div>
+                </div>
                 <table className="w-full border-collapse">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipients</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Done</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Replies</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <span className="text-red-700">High</span>
@@ -257,11 +352,12 @@ export default function RequestsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {requestGroups.map((group) => {
+                    {filteredSortedGroups.map((group) => {
                       // Build recipient display
                       const recipientCount = group.totalCount
                       const recipientText = `${recipientCount} ${recipientCount === 1 ? 'recipient' : 'recipients'}`
                       const statusBadge = group.isComplete ? "COMPLETE" : "INCOMPLETE"
+                      const repliesText = `${group.repliedCount}/${group.totalCount}`
                       
                       return (
                         <tr
@@ -284,6 +380,9 @@ export default function RequestsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {group.doneCount}/{group.totalCount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {repliesText}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${group.isComplete ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
