@@ -116,33 +116,48 @@ export class AIEmailGenerationService {
         // This is a fallback, so keep it simple but useful
         const lowerPrompt = data.prompt.toLowerCase()
         
-        // Determine greeting based on personalization mode
-        const greeting = data.personalizationMode === "csv" && data.selectedRecipients 
-          ? "Dear {{First Name}}," // First Name will be available from contact database
-          : "Hello,"
+        // Always use personalized greeting with First Name when contacts are selected
+        const greeting = "Dear {{First Name}},"
         
         // Try to detect context and create appropriate template
         if (lowerPrompt.includes('invoice') || lowerPrompt.includes('payment')) {
-          const invoiceVar = data.availableTags.find(t => t.toLowerCase().includes('invoice') || t.toLowerCase().includes('number')) || data.availableTags[0]
+          const invoiceVar = data.availableTags.find(t => t.toLowerCase().includes('invoice') && t.toLowerCase().includes('number'))
           const dueDateVar = data.availableTags.find(t => t.toLowerCase().includes('due') || t.toLowerCase().includes('date'))
+          const amountVar = data.availableTags.find(t => t.toLowerCase().includes('amount') || t.toLowerCase().includes('total'))
           
-          bodyText = `${greeting}\n\nI am looking for an update on invoice {{${invoiceVar}}}`
-          if (dueDateVar) {
-            bodyText += ` with a due date of {{${dueDateVar}}}, which is past due`
-            subjectText = `Invoice {{${invoiceVar}}} - Payment Due {{${dueDateVar}}}`
+          bodyText = `${greeting}\n\n`
+          if (invoiceVar) {
+            bodyText += `I am writing regarding invoice {{${invoiceVar}}}`
+            subjectText = `Invoice {{${invoiceVar}}} - Payment Request`
           } else {
-            subjectText = `Invoice {{${invoiceVar}}} - Payment Due`
+            bodyText += `I am writing regarding your outstanding invoice`
+            subjectText = `Invoice Payment Request`
           }
-          bodyText += `. Can you let us know when you'll be able to pay it?\n\nThank you for your prompt attention.\n\nBest regards,`
+          
+          if (amountVar) {
+            bodyText += ` for the amount of \${{${amountVar}}}`
+          }
+          
+          if (dueDateVar) {
+            bodyText += ` with a due date of {{${dueDateVar}}}`
+            if (invoiceVar) {
+              subjectText = `Invoice {{${invoiceVar}}} - Due {{${dueDateVar}}}`
+            }
+          }
+          
+          bodyText += `.\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
         } else if (lowerPrompt.includes('document') || lowerPrompt.includes('deadline') || lowerPrompt.includes('submit')) {
           // Document request template
           bodyText = `${greeting}\n\n${data.prompt}\n\nPlease submit the required documents at your earliest convenience.\n\nThank you for your prompt attention.\n\nBest regards,`
           subjectText = `Document Request`
         } else {
-          // Generic professional template - don't expose raw tags
+          // Generic professional template
           bodyText = `${greeting}\n\n${data.prompt}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
           subjectText = `Request: ${subject}`
         }
+      } else {
+        // No tags available - still use personalized greeting
+        bodyText = `Dear {{First Name}},\n\n${data.prompt}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
       }
       
       const bodyWithSignature = signature

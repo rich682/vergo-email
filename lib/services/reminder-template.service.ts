@@ -34,12 +34,39 @@ export class ReminderTemplateService {
       return `Follow-up: ${originalSubject}`
     }
 
-    return `Follow-up #${reminderNumber}: ${originalSubject}`
+    return `Reminder ${reminderNumber}: ${originalSubject}`
+  }
+
+  /**
+   * Extract the core request from the original body
+   * Removes greeting, closing, and signature to get the main message
+   */
+  private static extractCoreRequest(originalBody: string): string {
+    let body = originalBody
+
+    // Remove common greetings
+    body = body.replace(/^(Dear\s+\{\{[^}]+\}\},?\s*\n*|Dear\s+[^,\n]+,?\s*\n*|Hello,?\s*\n*|Hi,?\s*\n*)/i, '')
+    
+    // Remove common closings and everything after
+    const closingPatterns = [
+      /\n*(Thank you for your prompt attention[^\n]*\n*Best regards,?.*)/is,
+      /\n*(Thank you[^\n]*\n*Best regards,?.*)/is,
+      /\n*(Best regards,?.*)/is,
+      /\n*(Kind regards,?.*)/is,
+      /\n*(Thanks,?.*)/is,
+      /\n*(Sincerely,?.*)/is,
+    ]
+    
+    for (const pattern of closingPatterns) {
+      body = body.replace(pattern, '')
+    }
+
+    return body.trim()
   }
 
   /**
    * Generate reminder body based on reminder number and max reminders
-   * Includes original request context and escalating tone
+   * Creates a reworded follow-up, not just a prefix on the original
    */
   static getReminderBody(
     originalBody: string,
@@ -48,27 +75,50 @@ export class ReminderTemplateService {
     deadlineDate?: Date | null
   ): string {
     const isFinal = reminderNumber === maxReminders
+    const coreRequest = this.extractCoreRequest(originalBody)
 
-    let intro: string
-    let closing: string
+    // Build deadline context if available
+    const deadlineContext = deadlineDate
+      ? ` The deadline is ${deadlineDate.toLocaleDateString()}.`
+      : ''
 
     if (isFinal) {
-      intro = "This is a final reminder regarding my previous request:"
-      closing = deadlineDate
-        ? `Please respond by ${deadlineDate.toLocaleDateString()} or let me know if there are any issues.`
-        : "Please respond at your earliest convenience or let me know if there are any issues."
-    } else if (reminderNumber === 1) {
-      intro = "Just following up on my previous request:"
-      closing = "Please let me know if you have any questions."
-    } else {
-      intro = "I wanted to follow up again on my previous request:"
-      closing = "Please respond at your earliest convenience."
-    }
+      return `Dear {{First Name}},
 
-    // Construct the reminder body
-    // Note: The actual greeting (Hi [Name],) and signature will be added by the email sending service
-    // This template focuses on the reminder content itself
-    return `${intro}\n\n${originalBody}\n\n${closing}`
+This is my final follow-up regarding our previous correspondence.${deadlineContext}
+
+${coreRequest}
+
+I understand you may be busy, but I would greatly appreciate a response at your earliest convenience. If there are any issues or concerns preventing you from responding, please let me know and I'll be happy to assist.
+
+Thank you for your attention to this matter.
+
+Best regards,`
+    } else if (reminderNumber === 1) {
+      return `Dear {{First Name}},
+
+I wanted to follow up on my previous email.${deadlineContext}
+
+${coreRequest}
+
+Please let me know if you need any additional information or have any questions.
+
+Thank you,
+
+Best regards,`
+    } else {
+      return `Dear {{First Name}},
+
+I'm following up again on my earlier request.${deadlineContext}
+
+${coreRequest}
+
+I would appreciate an update when you have a moment. Please don't hesitate to reach out if you have any questions.
+
+Thank you,
+
+Best regards,`
+    }
   }
 
   /**
