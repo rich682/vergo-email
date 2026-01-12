@@ -237,7 +237,8 @@ export async function POST(request: NextRequest) {
       senderEmail: user?.email || undefined,
       senderCompany: user?.organization?.name || undefined,
       availableTags: tagsForGeneration,
-      personalizationMode: personalizationMode || undefined
+      personalizationMode: personalizationMode || undefined,
+      deadlineDate: deadlineDate ? new Date(deadlineDate) : null
     })
     const aiEndTime = Date.now()
 

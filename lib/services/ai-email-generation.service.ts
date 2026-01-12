@@ -54,6 +54,8 @@ export class AIEmailGenerationService {
     // Personalization fields
     availableTags?: string[] // Array of tag names that can be used in templates
     personalizationMode?: "none" | "contact" | "csv"
+    // Request deadline (for display in email)
+    deadlineDate?: Date | null
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -94,6 +96,17 @@ export class AIEmailGenerationService {
       timeMs: aiStartTime
     }))
     
+    // Format deadline date for display
+    const formatDeadline = (date: Date | null | undefined): string | null => {
+      if (!date) return null
+      return date.toLocaleDateString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+      })
+    }
+    const formattedDeadline = formatDeadline(data.deadlineDate)
+    
     // Deterministic template fallback for fast completion
     const getTemplateFallback = (): GeneratedEmailDraft => {
       const subject = data.prompt.length > 50 
@@ -110,6 +123,11 @@ export class AIEmailGenerationService {
       // For template fallback, create a basic template that includes variables if available
       let bodyText = data.prompt
       let subjectText = `Request: ${subject}`
+      
+      // Build deadline text if available
+      const deadlineText = formattedDeadline 
+        ? `\n\nThe deadline for this request is ${formattedDeadline}.`
+        : ''
       
       if (data.availableTags && data.availableTags.length > 0) {
         // Create a simple template that incorporates variables naturally
@@ -145,19 +163,19 @@ export class AIEmailGenerationService {
             }
           }
           
-          bodyText += `.\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
+          bodyText += `.${deadlineText}\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
         } else if (lowerPrompt.includes('document') || lowerPrompt.includes('deadline') || lowerPrompt.includes('submit')) {
           // Document request template
-          bodyText = `${greeting}\n\n${data.prompt}\n\nPlease submit the required documents at your earliest convenience.\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = `Document Request`
+          bodyText = `${greeting}\n\n${data.prompt}${deadlineText}\n\nPlease submit the required documents at your earliest convenience.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = formattedDeadline ? `Document Request - Due ${formattedDeadline}` : `Document Request`
         } else {
           // Generic professional template
-          bodyText = `${greeting}\n\n${data.prompt}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
+          bodyText = `${greeting}\n\n${data.prompt}${deadlineText}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
           subjectText = `Request: ${subject}`
         }
       } else {
         // No tags available - still use personalized greeting
-        bodyText = `Dear {{First Name}},\n\n${data.prompt}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
+        bodyText = `Dear {{First Name}},\n\n${data.prompt}${deadlineText}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
       }
       
       const bodyWithSignature = signature
@@ -312,6 +330,7 @@ export class AIEmailGenerationService {
             content: `Context: ${JSON.stringify(context, null, 2)}
 
 User request: "${data.prompt}"
+${formattedDeadline ? `\nREQUEST DEADLINE: ${formattedDeadline} - This is the deadline for the request. Include this deadline in the email body (e.g., "The deadline for this request is ${formattedDeadline}." or "Please respond by ${formattedDeadline}."). Do NOT use this deadline in the subject line unless it's the most relevant piece of information.` : ''}
 ${data.availableTags && data.availableTags.length > 0 ? `
 
 CRITICAL - INTELLIGENT VARIABLE USAGE:
