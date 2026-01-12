@@ -268,6 +268,8 @@ model ConnectedEmailAccount {
   accessToken    String? // Encrypted
   refreshToken   String? // Encrypted
   tokenExpiresAt DateTime?
+  syncCursor     Json?
+  lastSyncAt     DateTime?
   smtpHost       String?
   smtpPort       Int?
   smtpUser       String?

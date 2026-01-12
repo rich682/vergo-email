@@ -3,8 +3,9 @@ import { google } from "googleapis"
 import { EmailReceptionService, InboundEmailData } from "@/lib/services/email-reception.service"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { prisma } from "@/lib/prisma"
-import { simpleParser } from "mailparser"
 import { createHash } from "crypto"
+import { GmailIngestProvider } from "@/lib/providers/email-ingest/gmail-ingest.provider"
+import { ProviderCursor } from "@/lib/providers/email-ingest/types"
 
 export async function POST(request: NextRequest) {
   // Always return 200 OK to prevent Gmail from retrying
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
 
     if (body.message?.data) {
       const messageId = Buffer.from(body.message.data, "base64").toString()
+      const ingestProvider = new GmailIngestProvider()
 
       // Route to correct account: Try to identify account from emailAddress attribute first
       let accounts = []
@@ -76,8 +78,7 @@ export async function POST(request: NextRequest) {
 
           const gmail = google.gmail({ version: "v1", auth: oauth2Client })
 
-          // Fetch the message with full headers to get In-Reply-To and References
-          // If this fails (e.g., message not found in this account), try next account
+          // Fetch the message with full payload; try next account on 404
           let message
           try {
             message = await gmail.users.messages.get({
@@ -86,7 +87,6 @@ export async function POST(request: NextRequest) {
               format: "raw"
             })
           } catch (fetchError: any) {
-            // Message not found in this account - try next account
             if (fetchError.code === 404) {
               continue
             }
@@ -97,82 +97,85 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // Parse the message
-          const parsed = await simpleParser(
-            Buffer.from(message.data.raw, "base64")
+          const normalized = await ingestProvider.normalizeRawMessage(
+            account,
+            message.data
           )
 
-          // Extract In-Reply-To and References headers for matching replies to original messages
-          const inReplyToHeader = parsed.headers.get("in-reply-to") || parsed.headers.get("In-Reply-To") || ""
-          const referencesHeader = parsed.headers.get("references") || parsed.headers.get("References") || ""
-          
-          // Clean up message IDs (remove < > brackets and extract ID)
-          // Gmail message IDs are in format: <unique-id@mail.gmail.com> or similar
-          const extractMessageId = (header: string): string | null => {
-            if (!header) return null
-            // Extract message ID from header (format: <message-id@domain>)
-            const match = header.match(/<([^>]+)>/)
-            return match ? match[1] : null
+          if (!normalized) {
+            continue
           }
-          const inReplyToMessageId = extractMessageId(inReplyToHeader)
-          
-          // Also get Gmail thread ID from the message data
-          const gmailThreadId = message.data.threadId || null
 
-          // Structured log for inbound message fetch
-          const accountHash = createHash('sha256').update(account.id).digest('hex').substring(0, 16)
-          console.log(JSON.stringify({
-            event: 'inbound_message_fetched',
-            timestampMs: Date.now(),
-            accountHash,
-            threadId: gmailThreadId || null,
-            messageIdHeader: inReplyToMessageId || null,
-            hasInReplyTo: !!inReplyToMessageId
-          }))
+          // Ensure provider flag is present for dedupe consistency
+          normalized.providerData = {
+            ...(normalized.providerData || {}),
+            provider: "GMAIL"
+          }
 
-          // Extract attachments
-          const attachments: Array<{
-            filename: string
-            content: Buffer
-            contentType: string
-          }> = []
-
-          if (parsed.attachments) {
-            for (const attachment of parsed.attachments) {
-              attachments.push({
-                filename: attachment.filename || "attachment",
-                content: attachment.content as Buffer,
-                contentType: attachment.contentType || "application/octet-stream"
-              })
+          // De-dupe by provider + providerId (scoped to account via provider)
+          const existing = await prisma.message.findFirst({
+            where: {
+              providerId: normalized.providerId,
+              providerData: {
+                path: ["provider"],
+                equals: "GMAIL"
+              }
             }
+          })
+          if (existing) {
+            const accountHash = createHash('sha256').update(account.id).digest('hex').substring(0, 16)
+            console.log(JSON.stringify({
+              event: 'webhook_duplicate_skipped',
+              timestampMs: Date.now(),
+              accountHash,
+              providerId: normalized.providerId
+            }))
+            processed = true
+            continue
           }
 
-          // Process email
-          const getAddressText = (addr: any): string => {
-            if (!addr) return ""
-            if (typeof addr === 'string') return addr
-            if (Array.isArray(addr)) return addr[0]?.text || addr[0]?.address || ""
-            return addr.text || addr.address || ""
-          }
-          
           const emailData: InboundEmailData = {
-            from: getAddressText(parsed.from),
-            to: getAddressText(parsed.to),
-            replyTo: parsed.replyTo ? getAddressText(parsed.replyTo) : undefined,
-            subject: parsed.subject,
-            body: parsed.text || "",
-            htmlBody: parsed.html || undefined,
-            providerId: messageId,
-            providerData: {
-              ...message.data,
-              inReplyTo: inReplyToMessageId,
-              references: referencesHeader,
-              threadId: gmailThreadId
-            },
-            attachments: attachments.length > 0 ? attachments : undefined
+            from: normalized.from,
+            to: normalized.to,
+            replyTo: normalized.replyTo || undefined,
+            subject: normalized.subject || undefined,
+            body: normalized.body || undefined,
+            htmlBody: normalized.htmlBody || undefined,
+            providerId: normalized.providerId,
+            providerData: normalized.providerData,
+            attachments: normalized.attachments
           }
 
           await EmailReceptionService.processInboundEmail(emailData)
+          // Advance cursor if webhook provides a newer historyId (merge existing cursor)
+          if (historyId) {
+            const existingCursor = (account.syncCursor as ProviderCursor) || {}
+            const currentCursor = existingCursor.gmail ? { ...existingCursor.gmail } : {}
+            const currentHistory =
+              currentCursor?.historyId &&
+              !Number.isNaN(Number(currentCursor.historyId))
+                ? BigInt(currentCursor.historyId)
+                : null
+            const incomingHistory = !Number.isNaN(Number(historyId))
+              ? BigInt(historyId)
+              : null
+            if (
+              incomingHistory &&
+              (!currentHistory || incomingHistory > currentHistory)
+            ) {
+              const mergedCursor: ProviderCursor = {
+                ...existingCursor,
+                gmail: { historyId: historyId.toString() }
+              }
+              await prisma.connectedEmailAccount.update({
+                where: { id: account.id },
+                data: {
+                  syncCursor: mergedCursor,
+                  lastSyncAt: new Date()
+                }
+              })
+            }
+          }
           processed = true
           break // Successfully processed, stop trying other accounts
         } catch (error: any) {
