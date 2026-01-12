@@ -12,6 +12,7 @@ interface Task {
   campaignName: string | null
   campaignType: string | null
   updatedAt: string
+  createdAt: string
   hasAttachments: boolean
   aiVerified: boolean | null
   hasReplies: boolean
@@ -37,6 +38,7 @@ interface RequestGroup {
   tasks: Task[]
   totalCount: number
   doneCount: number
+  repliedCount: number
   isComplete: boolean
   // Risk rollups
   highCount: number
@@ -44,6 +46,7 @@ interface RequestGroup {
   lowCount: number
   unknownCount: number
   lastActivity: Date
+  createdLatest: Date
 }
 
 export default function RequestsPage() {
@@ -53,8 +56,17 @@ export default function RequestsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "complete" | "incomplete">("all")
   const [replyFilter, setReplyFilter] = useState<"all" | "replied" | "unreplied">("all")
   const [sortKey, setSortKey] = useState<
-    "lastActivity" | "name" | "recipients" | "done" | "status" | "high" | "medium" | "low" | "replies"
-  >("lastActivity")
+    | "lastActivity"
+    | "created"
+    | "name"
+    | "recipients"
+    | "done"
+    | "status"
+    | "high"
+    | "medium"
+    | "low"
+    | "replies"
+  >("created")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
   const fetchTasks = useCallback(async () => {
@@ -142,6 +154,11 @@ export default function RequestsPage() {
           : new Date(task.updatedAt)
         return taskDate > latest ? taskDate : latest
       }, new Date(0))
+      // Find newest createdAt among grouped tasks
+      const createdLatest = tasks.reduce((latest, task) => {
+        const taskDate = task.createdAt ? new Date(task.createdAt) : new Date(0)
+        return taskDate > latest ? taskDate : latest
+      }, new Date(0))
 
       groups.push({
         groupKey: grouping.groupKey,
@@ -156,7 +173,8 @@ export default function RequestsPage() {
         mediumCount,
         lowCount,
         unknownCount,
-        lastActivity
+        lastActivity,
+        createdLatest
       })
     }
 
@@ -190,6 +208,8 @@ export default function RequestsPage() {
           return g.lowCount
         case "replies":
           return g.repliedCount / Math.max(1, g.totalCount)
+        case "created":
+          return g.createdLatest.getTime()
         case "lastActivity":
         default:
           return g.lastActivity.getTime()
@@ -251,28 +271,50 @@ export default function RequestsPage() {
 
           <div className="flex-1 overflow-y-auto bg-white">
             {filteredSortedGroups.length === 0 ? (
-              <div className="flex items-center justify-center min-h-[400px] p-6">
-                <div className="text-center max-w-md">
-                  <div className="mb-4 flex justify-center">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                      </svg>
+              requestGroups.length === 0 ? (
+                <div className="flex items-center justify-center min-h-[400px] p-6">
+                  <div className="text-center max-w-md">
+                    <div className="mb-4 flex justify-center">
+                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">No requests yet</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                      Start by creating your first request. You'll be able to track who has responded and who still needs to follow up.
+                    </p>
+                    <Button
+                      onClick={() => router.push('/dashboard/compose?mode=request')}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create Request
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center min-h-[200px] p-6">
+                  <div className="text-center max-w-md space-y-3">
+                    <h3 className="text-lg font-semibold text-gray-900">No requests match the current filters</h3>
+                    <p className="text-sm text-gray-600">Try adjusting filters or sorting.</p>
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setStatusFilter("all")
+                          setReplyFilter("all")
+                          setSortKey("created")
+                          setSortDir("desc")
+                        }}
+                      >
+                        Reset filters
+                      </Button>
                     </div>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">No requests yet</h3>
-                  <p className="text-sm text-gray-600 mb-6">
-                    Start by creating your first request. You'll be able to track who has responded and who still needs to follow up.
-                  </p>
-                  <Button
-                    onClick={() => router.push('/dashboard/compose?mode=request')}
-                    className="flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Create Request
-                  </Button>
                 </div>
-              </div>
+              )
             ) : (
               <div className="overflow-x-auto">
                 <div className="flex flex-wrap gap-3 px-6 py-3">
@@ -307,6 +349,7 @@ export default function RequestsPage() {
                       value={sortKey}
                       onChange={(e) => setSortKey(e.target.value as any)}
                     >
+                      <option value="created">Date Created</option>
                       <option value="lastActivity">Last Updated</option>
                       <option value="name">Name</option>
                       <option value="recipients">Recipients</option>
