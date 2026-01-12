@@ -63,6 +63,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
   const [markingDone, setMarkingDone] = useState(false)
   const [generatingDraft, setGeneratingDraft] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [draftReady, setDraftReady] = useState(false)
 
   const fetchMessages = useCallback(async () => {
     if (!task) return
@@ -81,6 +82,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
         setMessages(sorted)
         // reset expanded to collapsed by default
         setExpandedIds(new Set())
+        setDraftReady(false)
       }
     } catch (error) {
       console.error("Error fetching messages:", error)
@@ -111,6 +113,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
 
       if (response.ok) {
         setReplyText("")
+        setDraftReady(false)
         fetchMessages()
       }
     } catch (error) {
@@ -131,7 +134,11 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
       })
       if (response.ok) {
         const data = await response.json()
-        setReplyText(data.draft || "")
+        const draft = data.draft || ""
+        const signature = "\n\nBest regards,\n[Your Name]\n[Your Company]"
+        const withSignature = draft.includes("Best regards") ? draft : `${draft}${signature}`
+        setReplyText(withSignature)
+        setDraftReady(true)
       }
     } catch (error) {
       console.error("Error generating draft reply:", error)
@@ -363,8 +370,11 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
           <Textarea
             placeholder="Type your prompt or edit the draft..."
             value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            className="min-h-[180px]"
+            onChange={(e) => {
+              setReplyText(e.target.value)
+              setDraftReady(false)
+            }}
+            className="min-h-[220px]"
           />
           <div className="flex gap-2">
             <Button
@@ -375,7 +385,7 @@ export function EmailChainSidebar({ task, isOpen, onTaskUpdated }: EmailChainSid
             >
               {generatingDraft ? "Generating..." : "Generate draft"}
             </Button>
-            {replyText.trim() && (
+            {draftReady && replyText.trim() && (
               <Button
                 size="sm"
                 disabled={sending}
