@@ -142,7 +142,6 @@ export class EntityService {
           }
         },
         contactStates: true
-        }
       },
       orderBy: {
         firstName: "asc"
