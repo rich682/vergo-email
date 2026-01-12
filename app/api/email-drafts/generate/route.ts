@@ -47,10 +47,11 @@ export async function POST(request: NextRequest) {
     // Validate recipients in request mode (only for contact mode, not CSV mode)
     if (requestName && recipientsWithFilter && personalizationMode !== "csv") {
       const entityIds = recipientsWithFilter.entityIds || []
-      const groupIds = recipientsWithFilter.groupIds || []
-      if (entityIds.length === 0 && groupIds.length === 0) {
+      const contactTypes = recipientsWithFilter.contactTypes || []
+      // Stakeholders = individual contacts OR contact types (groups are optional filter)
+      if (entityIds.length === 0 && contactTypes.length === 0) {
         return NextResponse.json(
-          { error: "At least one contact or group must be selected" },
+          { error: "At least one contact or type must be selected as stakeholder" },
           { status: 400 }
         )
       }
