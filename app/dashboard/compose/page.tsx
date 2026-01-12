@@ -1011,20 +1011,32 @@ function ComposePageContent() {
             </div>
           )}
           
-          {/* Prompt input */}
+          {/* AI Prompt input */}
           <div>
-            <Label>{isRequestMode ? "What are you requesting?" : "Message"}</Label>
+            <Label className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L9.19 8.63L2 9.24L7.46 13.97L5.82 21L12 17.27L18.18 21L16.54 13.97L22 9.24L14.81 8.63L12 2Z" />
+              </svg>
+              {isRequestMode ? "Describe your request" : "Describe your email"}
+            </Label>
+            <p className="text-xs text-gray-500 mb-2">
+              AI will generate a professional email based on your description
+            </p>
             <Textarea
-              placeholder={isRequestMode ? "Please submit your W-9 form for tax year 2023..." : "Describe the email you want to send..."}
+              placeholder={isRequestMode 
+                ? "e.g., Request W-9 forms for tax year 2023. Mention it's needed for 1099 filing and the deadline is January 31st." 
+                : "e.g., Follow up on the invoice we sent last week..."}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
+              className="bg-gradient-to-br from-white to-indigo-50/30 border-indigo-100 focus:border-indigo-300 focus:ring-indigo-200"
             />
-            {isRequestMode && (
-              <p className="text-xs text-gray-500 mt-1">
-                Be specific about what you need and when it's due. {availableTags.length > 0 && `Available tags: ${availableTags.map(t => `{{${t}}}`).join(", ")}`}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Don't write the full email here — just describe what you need. AI handles the rest.
+            </p>
           </div>
 
           {/* Recipients Selector - contacts and/or types (mandatory) */}
