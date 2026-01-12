@@ -39,6 +39,7 @@ export function RecipientSelector({
   }>({ entities: [], groups: [], contactTypes: [] })
   const [showResults, setShowResults] = useState(false)
   const [hasContacts, setHasContacts] = useState(true)
+  const [hasFocused, setHasFocused] = useState(false) // Track if user has focused the input
   const router = useRouter()
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -60,8 +61,10 @@ export function RecipientSelector({
     checkContacts()
   }, [])
 
-  // Search for contacts/groups/types
+  // Search for contacts/groups/types - only after user has focused
   useEffect(() => {
+    if (!hasFocused) return // Don't search until user has focused the input
+    
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current)
     }
@@ -79,7 +82,7 @@ export function RecipientSelector({
         console.error("Error searching recipients:", error)
       }
     }, query.length < 1 ? 150 : 300)
-  }, [input])
+  }, [input, hasFocused])
 
   // Close results when clicking outside
   useEffect(() => {
@@ -194,9 +197,12 @@ export function RecipientSelector({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => {
-            setShowResults(true)
-            if (input.trim().length === 0) {
-              setInput("") // trigger fetch-all path
+            setHasFocused(true)
+            // Trigger search on focus if we haven't searched yet
+            if (!hasFocused) {
+              setInput("") // This will trigger the search effect
+            } else {
+              setShowResults(true)
             }
           }}
         />
