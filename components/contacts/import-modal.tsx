@@ -12,8 +12,14 @@ type ImportSummary = {
   groupsCreated: number
   customFieldsCreated: number
   customFieldsUpdated: number
+  customFieldsDeleted: number
   skipped: number
+  skippedMissingEmail: number
+  totalRows: number
+  rowsWithEmail: number
+  distinctEmails: number
   headers: string[]
+  skippedSamples?: Array<{ rowNumber: number; reason: string }>
 }
 
 type Props = {
@@ -27,6 +33,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [syncCustomFields, setSyncCustomFields] = useState(false)
 
   const detectedColumns = useMemo(() => headers.join(", "), [headers])
 
@@ -35,6 +42,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
     setSummary(null)
     setError(null)
     setHeaders([])
+    setSyncCustomFields(false)
 
     if (!selected) return
 
@@ -65,6 +73,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("syncCustomFields", syncCustomFields ? "true" : "false")
 
       const res = await fetch("/api/entities/import", {
         method: "POST",
@@ -119,6 +128,17 @@ export function ImportModal({ onClose, onSuccess }: Props) {
             custom fields.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="syncCustomFields"
+            type="checkbox"
+            checked={syncCustomFields}
+            onChange={(e) => setSyncCustomFields(e.target.checked)}
+          />
+          <Label htmlFor="syncCustomFields" className="text-sm font-normal">
+            Sync custom fields from this file (remove values not present)
+          </Label>
+        </div>
 
         {headers.length > 0 && (
           <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
@@ -130,12 +150,24 @@ export function ImportModal({ onClose, onSuccess }: Props) {
         {summary && (
           <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-800 space-y-1">
             <div className="font-medium">Import summary</div>
+            <div>Total rows: {summary.totalRows}</div>
+            <div>Rows with email: {summary.rowsWithEmail}</div>
+            <div>Distinct emails: {summary.distinctEmails}</div>
             <div>Contacts created: {summary.contactsCreated}</div>
             <div>Contacts updated: {summary.contactsUpdated}</div>
             <div>Groups created: {summary.groupsCreated}</div>
             <div>Custom fields created: {summary.customFieldsCreated}</div>
             <div>Custom fields overwritten: {summary.customFieldsUpdated}</div>
-            <div>Rows skipped (missing email): {summary.skipped}</div>
+            <div>Custom fields deleted: {summary.customFieldsDeleted}</div>
+            <div>Rows skipped (missing email): {summary.skippedMissingEmail}</div>
+            {summary.skippedSamples && summary.skippedSamples.length > 0 && (
+              <div className="text-xs text-gray-600">
+                Examples:{" "}
+                {summary.skippedSamples
+                  .map((s) => `Row ${s.rowNumber}: ${s.reason}`)
+                  .join("; ")}
+              </div>
+            )}
           </div>
         )}
 

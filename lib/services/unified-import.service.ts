@@ -12,6 +12,7 @@ type ParsedRow = {
   contactType?: string
   groups: string[]
   customFields: Record<string, any>
+  customFieldsRaw: Record<string, string | null>
 }
 
 export type ImportSummary = {
@@ -20,8 +21,14 @@ export type ImportSummary = {
   groupsCreated: number
   customFieldsCreated: number
   customFieldsUpdated: number
+  customFieldsDeleted: number
   skipped: number
+  skippedMissingEmail: number
+  totalRows: number
+  rowsWithEmail: number
+  distinctEmails: number
   headers: string[]
+  skippedSamples: Array<{ rowNumber: number; reason: string }>
 }
 
 const CORE_FIELDS = [
@@ -102,6 +109,7 @@ function parseWorkbook(buffer: ArrayBuffer): { rows: ParsedRow[]; headers: strin
   }
 
   const headers = Object.keys(json[0] || {}).map((h) => h.toString())
+  const normalizedHeaders = headers.map(normalizeHeader)
 
   const rows: ParsedRow[] = json.map((row) => {
     const normalizedEntries = Object.entries(row).reduce<Record<string, any>>((acc, [k, v]) => {
@@ -119,8 +127,11 @@ function parseWorkbook(buffer: ArrayBuffer): { rows: ParsedRow[]; headers: strin
         : []
 
     const customFields: Record<string, any> = {}
+    const customFieldsRaw: Record<string, string | null> = {}
     for (const [key, value] of Object.entries(normalizedEntries)) {
       if (!CORE_FIELDS.includes(key)) {
+        const rawString = value === undefined || value === null ? null : value.toString().trim()
+        customFieldsRaw[key] = rawString
         const coerced = coerceValue(value)
         if (coerced !== null) {
           customFields[key] = coerced
@@ -137,7 +148,8 @@ function parseWorkbook(buffer: ArrayBuffer): { rows: ParsedRow[]; headers: strin
         ? normalizedEntries["type"].toString().toUpperCase()
         : undefined,
       groups,
-      customFields
+      customFields,
+      customFieldsRaw
     }
   })
 
@@ -167,9 +179,14 @@ async function addGroupByName(name: string, organizationId: string, groupIds: st
 }
 
 export class UnifiedImportService {
-  static async importContacts(file: File, organizationId: string): Promise<ImportSummary> {
+  static async importContacts(
+    file: File,
+    organizationId: string,
+    options?: { syncCustomFields?: boolean }
+  ): Promise<ImportSummary> {
     const buffer = await file.arrayBuffer()
     const { rows, headers } = parseWorkbook(buffer)
+    const syncCustomFields = options?.syncCustomFields === true
 
     const summary: ImportSummary = {
       contactsCreated: 0,
@@ -177,22 +194,49 @@ export class UnifiedImportService {
       groupsCreated: 0,
       customFieldsCreated: 0,
       customFieldsUpdated: 0,
+      customFieldsDeleted: 0,
       skipped: 0,
-      headers
+      skippedMissingEmail: 0,
+      totalRows: rows.length,
+      rowsWithEmail: 0,
+      distinctEmails: 0,
+      headers,
+      skippedSamples: []
     }
 
-    if (!headers.some((h) => normalizeHeader(h) === "email")) {
+    const normalizedHeaders = headers.map(normalizeHeader)
+    if (!normalizedHeaders.some((h) => h === "email")) {
       throw new Error("Missing required column: email")
     }
+
+    const customFieldColumns = normalizedHeaders.filter(
+      (h) => h && !CORE_FIELDS.includes(h)
+    )
+
+    const seenEmails = new Set<string>()
 
     const existingGroups = await GroupService.findByOrganization(organizationId)
     const groupMap = new Map<string, string>()
     existingGroups.forEach((g) => groupMap.set(g.name.toLowerCase(), g.id))
 
-    for (const row of rows) {
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx]
+      const rowNumber = idx + 2 // sheet_to_json drops header row; data starts at 2
+
       if (!row.email) {
         summary.skipped += 1
+        summary.skippedMissingEmail += 1
+        if (summary.skippedSamples.length < 10) {
+          summary.skippedSamples.push({ rowNumber, reason: "Missing email" })
+        }
         continue
+      }
+
+      summary.rowsWithEmail += 1
+      const emailKey = row.email.toLowerCase()
+      if (!seenEmails.has(emailKey)) {
+        seenEmails.add(emailKey)
+        summary.distinctEmails = seenEmails.size
       }
 
       const normalizedType = normalizeContactType(row.contactType)
@@ -251,6 +295,38 @@ export class UnifiedImportService {
       const customEntries = { ...row.customFields }
       if (row.lastName) {
         customEntries["lastName"] = row.lastName
+      }
+
+      // Sync deletions: remove states for columns present in file but blank in this row
+      if (syncCustomFields && customFieldColumns.length > 0) {
+        for (const stateKey of customFieldColumns) {
+          if (!stateKey) continue
+          const rawValue = row.customFieldsRaw?.[stateKey]
+          const isBlank = rawValue === null || rawValue === ""
+          if (isBlank) {
+            const existingField = await prisma.contactState.findUnique({
+              where: {
+                organizationId_entityId_stateKey: {
+                  organizationId,
+                  entityId: entity.id,
+                  stateKey
+                }
+              }
+            })
+            if (existingField) {
+              await prisma.contactState.delete({
+                where: {
+                  organizationId_entityId_stateKey: {
+                    organizationId,
+                    entityId: entity.id,
+                    stateKey
+                  }
+                }
+              })
+              summary.customFieldsDeleted += 1
+            }
+          }
+        }
       }
 
       for (const [stateKeyRaw, value] of Object.entries(customEntries)) {

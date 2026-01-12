@@ -12,6 +12,11 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData()
   const file = formData.get("file")
+  const syncCustomFieldsRaw = formData.get("syncCustomFields")
+  const syncCustomFields =
+    typeof syncCustomFieldsRaw === "string"
+      ? ["true", "1", "on", "yes"].includes(syncCustomFieldsRaw.toLowerCase())
+      : false
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "File is required" }, { status: 400 })
@@ -20,7 +25,8 @@ export async function POST(request: NextRequest) {
   try {
     const summary = await UnifiedImportService.importContacts(
       file,
-      session.user.organizationId
+      session.user.organizationId,
+      { syncCustomFields }
     )
 
     return NextResponse.json(summary)
