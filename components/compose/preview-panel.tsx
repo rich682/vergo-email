@@ -100,7 +100,7 @@ export function PreviewPanel({
   }, [remindersConfig])
 
   const generateReminderTemplate = (reminderNumber: number, maxRemindersOverride?: number): ReminderTemplateState => {
-    const maxReminders = maxRemindersOverride ?? effectiveReminderCount || reminderNumber
+    const maxReminders = maxRemindersOverride ?? (effectiveReminderCount || reminderNumber)
     const generated = ReminderTemplateService.generateReminderTemplateWithDeadline({
       originalSubject: subject,
       originalBody: body,
