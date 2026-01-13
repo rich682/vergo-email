@@ -40,7 +40,6 @@ export function QuestCreator() {
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: string; name: string }>>([])
   const [availableTags, setAvailableTags] = useState<Array<{ stateKey: string; count: number }>>([])
   const [currentQuest, setCurrentQuest] = useState<any>(null)
-  const [standingQuestsEnabled, setStandingQuestsEnabled] = useState(false)
   const [resolvedRecipients, setResolvedRecipients] = useState<Array<{ email: string; name?: string; contactType?: string }>>([])
   const [editedSubject, setEditedSubject] = useState("")
   const [editedBody, setEditedBody] = useState("")
@@ -63,7 +62,6 @@ export function QuestCreator() {
           setAvailableContactTypes(data.contactTypes || [])
           setAvailableGroups(data.groups || [])
           setAvailableTags(data.stateKeys || [])
-          setStandingQuestsEnabled(data.standingQuestsEnabled || false)
         }
       } catch (error) {
         console.error("Failed to fetch context:", error)
@@ -609,7 +607,6 @@ export function QuestCreator() {
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}
                     loading={isProcessing}
-                    standingQuestsEnabled={standingQuestsEnabled}
                   />
                 )}
                 {message.type === "preview" && message.quest && renderPreview(message.quest)}

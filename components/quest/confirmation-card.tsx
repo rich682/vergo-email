@@ -26,7 +26,6 @@ interface ConfirmationCardProps {
   ) => void
   onCancel: () => void
   loading?: boolean
-  standingQuestsEnabled?: boolean
 }
 
 const DAYS_OF_WEEK = [
@@ -59,8 +58,7 @@ export function ConfirmationCard({
   recipients = [],
   onConfirm,
   onCancel,
-  loading = false,
-  standingQuestsEnabled = false
+  loading = false
 }: ConfirmationCardProps) {
   // Editable state initialized from interpretation
   const [selectedTypes, setSelectedTypes] = useState<string[]>(
@@ -150,7 +148,7 @@ export function ConfirmationCard({
 
     // Build standing schedule if recurring is selected
     let standingSchedule: StandingQuestSchedule | undefined
-    if (requestType === "recurring" && standingQuestsEnabled) {
+    if (requestType === "recurring") {
       standingSchedule = {
         frequency: recurringFrequency,
         dayOfWeek: recurringFrequency === "weekly" ? parseInt(recurringDayOfWeek) : undefined,
@@ -408,13 +406,11 @@ export function ConfirmationCard({
             </button>
             <button
               type="button"
-              onClick={() => standingQuestsEnabled && setRequestType("recurring")}
+              onClick={() => setRequestType("recurring")}
               className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
                 requestType === "recurring"
                   ? "bg-purple-50 border-purple-300 text-purple-700"
-                  : standingQuestsEnabled
-                    ? "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                    : "bg-gray-50 border-gray-200 text-gray-400"
+                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -423,14 +419,7 @@ export function ConfirmationCard({
                 </svg>
                 Recurring
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {standingQuestsEnabled ? "Send on a schedule forever" : "Send on a repeating schedule"}
-              </p>
-              {!standingQuestsEnabled && (
-                <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-medium">
-                  Coming Soon
-                </span>
-              )}
+              <p className="text-xs text-gray-500 mt-1">Send on a schedule forever</p>
             </button>
           </div>
         </div>
