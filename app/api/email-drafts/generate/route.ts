@@ -12,6 +12,11 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10 // 10 requests per minute per org
 
+// Export for testing - allows resetting rate limit state between tests
+export function _resetRateLimitForTesting() {
+  rateLimitMap.clear()
+}
+
 function checkRateLimit(orgId: string): { allowed: boolean; retryAfterMs?: number } {
   const now = Date.now()
   const entry = rateLimitMap.get(orgId)

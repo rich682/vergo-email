@@ -140,7 +140,7 @@ vi.mock('@/inngest/client', () => ({
 }))
 
 // Import after mocks
-import { POST } from '@/app/api/email-drafts/generate/route'
+import { POST, _resetRateLimitForTesting } from '@/app/api/email-drafts/generate/route'
 import { EmailDraftService } from '@/lib/services/email-draft.service'
 
 describe('POST /api/email-drafts/generate', () => {
@@ -151,6 +151,7 @@ describe('POST /api/email-drafts/generate', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     mockDraftsStore.clear()
+    _resetRateLimitForTesting() // Reset rate limit between tests
     
     // Set up mock implementations
     const { EmailDraftService } = await import('@/lib/services/email-draft.service')
