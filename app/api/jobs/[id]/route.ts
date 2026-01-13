@@ -57,9 +57,16 @@ export async function GET(
     const canEdit = await JobService.canUserAccessJob(userId, userRole, job, 'edit')
     const canManageCollaborators = await JobService.canUserAccessJob(userId, userRole, job, 'manage_collaborators')
 
+    // Extract stakeholders from labels for convenience
+    const labels = job.labels as any
+    const stakeholders = labels?.stakeholders || []
+
     return NextResponse.json({
       success: true,
-      job,
+      job: {
+        ...job,
+        stakeholders
+      },
       permissions: {
         canEdit,
         canManageCollaborators,
@@ -114,7 +121,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, ownerId } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId } = body
 
     // Validate status if provided
     if (status && !Object.values(JobStatus).includes(status)) {
@@ -135,6 +142,15 @@ export async function PATCH(
       }
     }
 
+    // Merge stakeholders into labels if provided
+    let updatedLabels = labels
+    if (stakeholders !== undefined) {
+      updatedLabels = {
+        ...(labels || existingJob.labels || {}),
+        stakeholders
+      }
+    }
+
     const job = await JobService.update(id, organizationId, {
       name: name?.trim(),
       description: description !== undefined ? description?.trim() || null : undefined,
@@ -142,7 +158,7 @@ export async function PATCH(
       ownerId: ownerId || undefined,
       status: status || undefined,
       dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined,
-      labels: labels !== undefined ? labels : undefined
+      labels: updatedLabels !== undefined ? updatedLabels : undefined
     })
 
     if (!job) {

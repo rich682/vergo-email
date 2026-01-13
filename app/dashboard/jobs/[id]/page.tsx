@@ -25,7 +25,7 @@ import {
 import { 
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
-  Plus, ChevronDown, ChevronUp, ExternalLink, Bell, RefreshCw, Eye
+  Plus, ChevronDown, ChevronUp, ExternalLink, Bell, RefreshCw, Eye, Tag, Building2
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -66,6 +66,12 @@ interface JobComment {
   }
 }
 
+interface JobStakeholder {
+  type: "contact_type" | "group" | "individual"
+  id: string
+  name: string
+}
+
 interface Job {
   id: string
   name: string
@@ -74,6 +80,7 @@ interface Job {
   status: "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
   dueDate: string | null
   labels: string[] | null
+  stakeholders?: JobStakeholder[]
   createdAt: string
   updatedAt: string
   owner: JobOwner
@@ -148,6 +155,25 @@ interface JobRequest {
   }
 }
 
+interface ContactType {
+  value: string
+  label: string
+  count: number
+}
+
+interface Group {
+  id: string
+  name: string
+  memberCount: number
+}
+
+interface Entity {
+  id: string
+  firstName: string
+  lastName: string | null
+  email: string | null
+}
+
 // ============================================
 // Next Action Logic
 // ============================================
@@ -173,9 +199,6 @@ function computeNextAction(
   const now = new Date()
   const dueDate = job.dueDate ? new Date(job.dueDate) : null
   const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : null
-  const progressPercent = job.taskCount > 0 
-    ? Math.round((job.respondedCount / job.taskCount) * 100) 
-    : 0
 
   // Priority 1: No requests yet
   if (job.taskCount === 0) {
@@ -194,20 +217,20 @@ function computeNextAction(
     return {
       priority: 2,
       severity: "high",
-      message: `Due date passed!`,
-      subMessage: `This job was due ${format(dueDate, "MMM d, yyyy")}`,
+      message: `Deadline passed!`,
+      subMessage: `This item was due ${format(dueDate, "MMM d, yyyy")}`,
       primaryAction: { label: "Mark Complete" },
-      secondaryAction: { label: "Extend Due Date" },
+      secondaryAction: { label: "Extend Deadline" },
       dismissible: false
     }
   }
 
   // Priority 3: Due soon and behind
-  if (dueDate && daysUntilDue !== null && daysUntilDue <= 2 && progressPercent < 50) {
+  if (dueDate && daysUntilDue !== null && daysUntilDue <= 2 && job.respondedCount < job.taskCount) {
     return {
       priority: 3,
       severity: "high",
-      message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}, only ${progressPercent}% complete`,
+      message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`,
       subMessage: `${awaitingTasks.length} recipient${awaitingTasks.length !== 1 ? "s" : ""} still awaiting response`,
       primaryAction: { label: "Send Bulk Reminder" },
       dismissible: false
@@ -311,6 +334,18 @@ const SEVERITY_STYLES = {
   success: "bg-green-50 border-green-200 text-green-800"
 }
 
+// Helper to get initials
+function getInitials(name: string | null, email: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return parts[0]?.[0]?.toUpperCase() || email[0]?.toUpperCase() || "?"
+  }
+  return email[0]?.toUpperCase() || "?"
+}
+
 // ============================================
 // Main Component
 // ============================================
@@ -367,6 +402,18 @@ export default function JobDetailPage() {
   const [editDescription, setEditDescription] = useState("")
   const [editStatus, setEditStatus] = useState<Job["status"]>("ACTIVE")
   const [editDueDate, setEditDueDate] = useState("")
+  const [editLabels, setEditLabels] = useState<string[]>([])
+  const [newLabelInput, setNewLabelInput] = useState("")
+
+  // Stakeholder management
+  const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
+  const [stakeholderType, setStakeholderType] = useState<"contact_type" | "group" | "individual">("contact_type")
+  const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
+  const [availableTypes, setAvailableTypes] = useState<ContactType[]>([])
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<Entity[]>([])
+  const [searchingEntities, setSearchingEntities] = useState(false)
 
   // ============================================
   // Data Fetching
@@ -388,6 +435,19 @@ export default function JobDetailPage() {
         setEditDescription(data.job.description || "")
         setEditStatus(data.job.status)
         setEditDueDate(data.job.dueDate ? data.job.dueDate.split("T")[0] : "")
+        // Parse labels from the job
+        const jobLabels = data.job.labels
+        if (Array.isArray(jobLabels)) {
+          setEditLabels(jobLabels)
+        } else if (jobLabels?.tags) {
+          setEditLabels(jobLabels.tags)
+        } else {
+          setEditLabels([])
+        }
+        // Parse stakeholders
+        if (data.job.stakeholders) {
+          setStakeholders(data.job.stakeholders)
+        }
       } else if (response.status === 404) {
         router.push("/dashboard/jobs")
       } else if (response.status === 401) {
@@ -426,9 +486,7 @@ export default function JobDetailPage() {
         const data = await response.json()
         setTimelineEvents(data.events || [])
       } else {
-        // Graceful degradation: show error but don't break the page
         setTimelineError("Unable to load timeline")
-        // Fall back to showing comments only from the comments endpoint
         setTimelineEvents([])
       }
     } catch (error) {
@@ -444,7 +502,6 @@ export default function JobDetailPage() {
     try {
       setTasksLoading(true)
       setTasksError(null)
-      // Fetch tasks for this specific job using the jobId filter
       const response = await fetch(`/api/tasks?jobId=${jobId}`, {
         credentials: "include"
       })
@@ -452,7 +509,6 @@ export default function JobDetailPage() {
         const jobTasks = await response.json()
         setTasks(Array.isArray(jobTasks) ? jobTasks : [])
       } else {
-        // Graceful degradation: show error but don't break the page
         setTasksError("Unable to load tasks")
         setTasks([])
       }
@@ -485,13 +541,64 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
+  const fetchStakeholderOptions = useCallback(async () => {
+    try {
+      // Fetch contact types
+      const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
+      if (typesRes.ok) {
+        const typesData = await typesRes.json()
+        setAvailableTypes(typesData.types || [])
+      }
+      // Fetch groups
+      const groupsRes = await fetch("/api/groups", { credentials: "include" })
+      if (groupsRes.ok) {
+        const groupsData = await groupsRes.json()
+        setAvailableGroups(groupsData.groups || [])
+      }
+    } catch (error) {
+      console.error("Error fetching stakeholder options:", error)
+    }
+  }, [])
+
   useEffect(() => {
     fetchJob()
     fetchComments()
     fetchTasks()
     fetchTimeline()
     fetchRequests()
-  }, [fetchJob, fetchComments, fetchTasks, fetchTimeline, fetchRequests])
+    fetchStakeholderOptions()
+  }, [fetchJob, fetchComments, fetchTasks, fetchTimeline, fetchRequests, fetchStakeholderOptions])
+
+  // Search for individual contacts
+  const searchEntities = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([])
+      return
+    }
+    setSearchingEntities(true)
+    try {
+      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}&limit=10`, {
+        credentials: "include"
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data.entities || [])
+      }
+    } catch (error) {
+      console.error("Error searching entities:", error)
+    } finally {
+      setSearchingEntities(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const debounce = setTimeout(() => {
+      if (stakeholderType === "individual" && searchQuery) {
+        searchEntities(searchQuery)
+      }
+    }, 300)
+    return () => clearTimeout(debounce)
+  }, [searchQuery, stakeholderType, searchEntities])
 
   // ============================================
   // Computed Values
@@ -502,7 +609,6 @@ export default function JobDetailPage() {
   }, [tasks])
 
   const hasNewReplies = useMemo(() => {
-    // Check if any task has replies in the last 24 hours
     const now = new Date()
     return tasks.some(t => {
       if (!t.hasReplies || !t.lastActivityAt) return false
@@ -515,21 +621,6 @@ export default function JobDetailPage() {
     if (!job) return null
     return computeNextAction(job, awaitingTasks, hasNewReplies)
   }, [job, awaitingTasks, hasNewReplies])
-
-  // Timeline events are now fetched from the API
-  // The timelineEvents state is populated by fetchTimeline()
-
-  const progressPercent = job && job.taskCount > 0 
-    ? Math.round((job.respondedCount / job.taskCount) * 100) 
-    : 0
-
-  // Extract period from labels
-  const period = useMemo(() => {
-    if (!job?.labels) return null
-    // Look for period-like labels (YYYY-MM, YYYY-Q#, etc.)
-    const periodLabel = job.labels.find(l => /^\d{4}(-\d{2}|-Q[1-4])?$/.test(l))
-    return periodLabel || null
-  }, [job?.labels])
 
   // ============================================
   // Handlers
@@ -548,7 +639,9 @@ export default function JobDetailPage() {
           name: editName.trim(),
           description: editDescription.trim() || null,
           status: editStatus,
-          dueDate: editDueDate || null
+          dueDate: editDueDate || null,
+          labels: { tags: editLabels },
+          stakeholders: stakeholders
         })
       })
 
@@ -565,7 +658,7 @@ export default function JobDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to archive this job?")) return
+    if (!confirm("Are you sure you want to archive this item?")) return
 
     try {
       const response = await fetch(`/api/jobs/${jobId}`, {
@@ -587,8 +680,43 @@ export default function JobDetailPage() {
       setEditDescription(job.description || "")
       setEditStatus(job.status)
       setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+      const jobLabels = job.labels
+      if (Array.isArray(jobLabels)) {
+        setEditLabels(jobLabels)
+      } else if (jobLabels && typeof jobLabels === 'object' && 'tags' in jobLabels) {
+        setEditLabels((jobLabels as any).tags || [])
+      } else {
+        setEditLabels([])
+      }
+      setStakeholders(job.stakeholders || [])
     }
     setEditing(false)
+  }
+
+  const handleAddLabel = () => {
+    const label = newLabelInput.trim()
+    if (label && !editLabels.includes(label)) {
+      setEditLabels([...editLabels, label])
+      setNewLabelInput("")
+    }
+  }
+
+  const handleRemoveLabel = (label: string) => {
+    setEditLabels(editLabels.filter(l => l !== label))
+  }
+
+  const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
+    const exists = stakeholders.some(s => s.type === type && s.id === id)
+    if (!exists) {
+      setStakeholders([...stakeholders, { type, id, name }])
+    }
+    setIsAddStakeholderOpen(false)
+    setSearchQuery("")
+    setSearchResults([])
+  }
+
+  const handleRemoveStakeholder = (type: string, id: string) => {
+    setStakeholders(stakeholders.filter(s => !(s.type === type && s.id === id)))
   }
 
   const handleAddComment = async () => {
@@ -607,7 +735,6 @@ export default function JobDetailPage() {
         const data = await response.json()
         setComments(prev => [data.comment, ...prev])
         setNewComment("")
-        // Refresh timeline to show new comment
         fetchTimeline()
       }
     } catch (error) {
@@ -692,7 +819,6 @@ export default function JobDetailPage() {
       reminder_sent: "bg-amber-50"
     }
 
-    // Determine if this event should link to a request detail
     const hasRequestLink = event.taskId && event.taskName && event.type !== "comment"
 
     const eventContent = (
@@ -751,7 +877,6 @@ export default function JobDetailPage() {
       </div>
     )
 
-    // Wrap in Link if it's an email/reminder event with a task
     if (hasRequestLink) {
       return (
         <Link 
@@ -785,6 +910,11 @@ export default function JobDetailPage() {
       </div>
     )
   }
+
+  // Parse labels for display
+  const displayLabels = Array.isArray(job.labels) 
+    ? job.labels 
+    : (job.labels as any)?.tags || []
 
   // ============================================
   // Main Render
@@ -829,11 +959,11 @@ export default function JobDetailPage() {
                       className="mt-1"
                     />
                   </div>
-                  <div className="flex gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="editStatus">Status</Label>
                       <Select value={editStatus} onValueChange={(v) => setEditStatus(v as Job["status"])}>
-                        <SelectTrigger className="w-40 mt-1">
+                        <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -845,16 +975,200 @@ export default function JobDetailPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="editDueDate">Due Date</Label>
+                      <Label htmlFor="editDueDate">Deadline</Label>
                       <Input
                         id="editDueDate"
                         type="date"
                         value={editDueDate}
                         onChange={(e) => setEditDueDate(e.target.value)}
-                        className="mt-1 w-40"
+                        className="mt-1"
                       />
                     </div>
                   </div>
+
+                  {/* Labels Editor */}
+                  <div>
+                    <Label>Labels</Label>
+                    <div className="flex flex-wrap gap-2 mt-2 mb-2">
+                      {editLabels.map((label, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
+                        >
+                          {label}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLabel(label)}
+                            className="hover:text-blue-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Add label (e.g., January, Urgent)"
+                        value={newLabelInput}
+                        onChange={(e) => setNewLabelInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleAddLabel()
+                          }
+                        }}
+                        className="flex-1"
+                      />
+                      <Button type="button" variant="outline" onClick={handleAddLabel}>
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Stakeholders Editor */}
+                  <div>
+                    <Label>Stakeholders</Label>
+                    <p className="text-xs text-gray-500 mb-2">Link contact types, groups, or individuals to this item</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {stakeholders.map((s, idx) => (
+                        <span
+                          key={idx}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
+                            s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
+                            s.type === "group" ? "bg-green-100 text-green-800" :
+                            "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
+                          {s.type === "group" && <Users className="w-3 h-3" />}
+                          {s.type === "individual" && <User className="w-3 h-3" />}
+                          {s.name}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStakeholder(s.type, s.id)}
+                            className="hover:opacity-70"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
+                      <DialogTrigger asChild>
+                        <Button type="button" variant="outline" size="sm">
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add Stakeholder
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Stakeholder</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 pt-4">
+                          <div>
+                            <Label>Type</Label>
+                            <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                              <SelectTrigger className="mt-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="contact_type">Contact Type</SelectItem>
+                                <SelectItem value="group">Group</SelectItem>
+                                <SelectItem value="individual">Individual</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {stakeholderType === "contact_type" && (
+                            <div className="space-y-2">
+                              <Label>Select Contact Type</Label>
+                              <div className="max-h-48 overflow-y-auto space-y-1">
+                                {availableTypes.map(type => (
+                                  <button
+                                    key={type.value}
+                                    type="button"
+                                    onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
+                                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                  >
+                                    <span>{type.label}</span>
+                                    <span className="text-xs text-gray-500">{type.count} contacts</span>
+                                  </button>
+                                ))}
+                                {availableTypes.length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center py-4">No contact types found</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {stakeholderType === "group" && (
+                            <div className="space-y-2">
+                              <Label>Select Group</Label>
+                              <div className="max-h-48 overflow-y-auto space-y-1">
+                                {availableGroups.map(group => (
+                                  <button
+                                    key={group.id}
+                                    type="button"
+                                    onClick={() => handleAddStakeholder("group", group.id, group.name)}
+                                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                  >
+                                    <span>{group.name}</span>
+                                    <span className="text-xs text-gray-500">{group.memberCount} members</span>
+                                  </button>
+                                ))}
+                                {availableGroups.length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center py-4">No groups found</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {stakeholderType === "individual" && (
+                            <div className="space-y-2">
+                              <Label>Search Contacts</Label>
+                              <Input
+                                placeholder="Search by name or email..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                              />
+                              <div className="max-h-48 overflow-y-auto space-y-1">
+                                {searchingEntities ? (
+                                  <div className="flex justify-center py-4">
+                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                                  </div>
+                                ) : searchResults.length > 0 ? (
+                                  searchResults.map(entity => (
+                                    <button
+                                      key={entity.id}
+                                      type="button"
+                                      onClick={() => handleAddStakeholder(
+                                        "individual", 
+                                        entity.id, 
+                                        `${entity.firstName} ${entity.lastName || ""}`.trim()
+                                      )}
+                                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100"
+                                    >
+                                      <div className="font-medium text-sm">
+                                        {entity.firstName} {entity.lastName || ""}
+                                      </div>
+                                      {entity.email && (
+                                        <div className="text-xs text-gray-500">{entity.email}</div>
+                                      )}
+                                    </button>
+                                  ))
+                                ) : searchQuery.length >= 2 ? (
+                                  <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>
+                                ) : (
+                                  <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
                   <div className="flex gap-2">
                     <Button onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
                       <Save className="w-4 h-4 mr-2" />
@@ -873,15 +1187,63 @@ export default function JobDetailPage() {
                     <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_CONFIG[job.status]?.color}`}>
                       {STATUS_CONFIG[job.status]?.label}
                     </span>
-                    {period && (
-                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
-                        {period}
-                      </span>
-                    )}
                   </div>
                   {job.description && (
                     <p className="text-gray-500 mb-3">{job.description}</p>
                   )}
+                  
+                  {/* Deadline - prominent display */}
+                  {job.dueDate && (
+                    <div className="flex items-center gap-2 mb-3 text-sm">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span className="font-medium">Deadline:</span>
+                      <span className={`${
+                        differenceInDays(new Date(job.dueDate), new Date()) < 0 
+                          ? "text-red-600 font-medium" 
+                          : differenceInDays(new Date(job.dueDate), new Date()) <= 3
+                          ? "text-amber-600 font-medium"
+                          : "text-gray-700"
+                      }`}>
+                        {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Labels */}
+                  {displayLabels.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {displayLabels.map((label: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Stakeholders */}
+                  {stakeholders.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {stakeholders.map((s, idx) => (
+                        <span
+                          key={idx}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
+                            s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
+                            s.type === "group" ? "bg-green-100 text-green-800" :
+                            "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
+                          {s.type === "group" && <Users className="w-3 h-3" />}
+                          {s.type === "individual" && <User className="w-3 h-3" />}
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
                     <span className="flex items-center gap-1">
                       <User className="w-4 h-4" />
@@ -891,12 +1253,6 @@ export default function JobDetailPage() {
                       <span className="flex items-center gap-1">
                         <Users className="w-4 h-4" />
                         {job.client.firstName} {job.client.lastName || ""}
-                      </span>
-                    )}
-                    {job.dueDate && (
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        Due {format(new Date(job.dueDate), "MMM d, yyyy")}
                       </span>
                     )}
                   </div>
@@ -965,43 +1321,6 @@ export default function JobDetailPage() {
           </div>
         </div>
       )}
-
-      {/* ============================================ */}
-      {/* PROGRESS SUMMARY */}
-      {/* ============================================ */}
-      <Card className="mb-6">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-500 rounded-full transition-all"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <span className="text-lg font-bold text-gray-900">
-              {progressPercent}%
-            </span>
-          </div>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{job.taskCount}</div>
-              <div className="text-sm text-gray-500">Total</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-amber-600">{awaitingTasks.length}</div>
-              <div className="text-sm text-gray-500">Awaiting</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{job.respondedCount}</div>
-              <div className="text-sm text-gray-500">Replied</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{job.completedCount}</div>
-              <div className="text-sm text-gray-500">Complete</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ============================================ */}
@@ -1133,7 +1452,7 @@ export default function JobDetailPage() {
                 </div>
               ) : requests.length === 0 ? (
                 <div className="text-center py-6">
-                  <p className="text-sm text-gray-500 mb-3">No requests in this job yet</p>
+                  <p className="text-sm text-gray-500 mb-3">No requests in this item yet</p>
                   <Link href={`/dashboard/quest/new?jobId=${jobId}`}>
                     <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
                       <Plus className="w-4 h-4 mr-1" />
@@ -1187,10 +1506,7 @@ export default function JobDetailPage() {
                   {(["all", "emails", "comments"] as const).map(filter => (
                     <button
                       key={filter}
-                      onClick={() => {
-                        setTimelineFilter(filter)
-                        // Timeline will refetch due to useEffect dependency
-                      }}
+                      onClick={() => setTimelineFilter(filter)}
                       className={`px-3 py-1 text-xs rounded-full transition-colors ${
                         timelineFilter === filter
                           ? "bg-gray-900 text-white"
@@ -1237,7 +1553,6 @@ export default function JobDetailPage() {
                   >
                     Try again
                   </button>
-                  {/* Fallback: show comments from the comments state */}
                   {comments.length > 0 && (
                     <div className="mt-4 space-y-3 text-left">
                       {comments.slice(0, 10).map(comment => (
@@ -1288,8 +1603,8 @@ export default function JobDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-green-600" />
+                <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
+                  {getInitials(job.owner.name, job.owner.email)}
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -1299,7 +1614,7 @@ export default function JobDetailPage() {
                 </div>
               </div>
               {permissions?.isOwner && (
-                <p className="text-xs text-green-600 mt-2">You own this job</p>
+                <p className="text-xs text-green-600 mt-2">You own this item</p>
               )}
             </CardContent>
           </Card>
@@ -1359,8 +1674,8 @@ export default function JobDetailPage() {
                   {job.collaborators.map((collab) => (
                     <div key={collab.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                          <User className="w-4 h-4 text-gray-500" />
+                        <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                          {getInitials(collab.user.name, collab.user.email)}
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
@@ -1384,55 +1699,10 @@ export default function JobDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Client Card */}
-          {job.client && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-700">Client</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Users className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {job.client.firstName} {job.client.lastName || ""}
-                    </div>
-                    {job.client.email && (
-                      <div className="text-sm text-gray-500">{job.client.email}</div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Labels Card */}
-          {job.labels && job.labels.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-700">Labels</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {job.labels.map((label, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Quick Stats Card */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Quick Stats</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-700">Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm">
@@ -1448,7 +1718,7 @@ export default function JobDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Requests</span>
-                  <span className="text-gray-900">{job.taskCount}</span>
+                  <span className="text-gray-900">{requests.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Comments</span>

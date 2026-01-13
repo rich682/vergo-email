@@ -20,10 +20,17 @@
 import { prisma } from "@/lib/prisma"
 import { JobStatus, TaskStatus, UserRole } from "@prisma/client"
 
+export interface JobStakeholder {
+  type: "contact_type" | "group" | "individual"
+  id: string
+  name: string
+}
+
 export interface JobLabels {
   tags?: string[]
   period?: string
   workType?: string
+  stakeholders?: JobStakeholder[]
 }
 
 export interface CreateJobInput {
