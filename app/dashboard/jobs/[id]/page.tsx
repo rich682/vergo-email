@@ -174,6 +174,15 @@ interface Entity {
   email: string | null
 }
 
+interface StakeholderContact {
+  id: string
+  firstName: string
+  lastName: string | null
+  email: string | null
+  stakeholderType: "contact_type" | "group" | "individual"
+  stakeholderName: string
+}
+
 // ============================================
 // Next Action Logic
 // ============================================
@@ -414,6 +423,10 @@ export default function JobDetailPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Entity[]>([])
   const [searchingEntities, setSearchingEntities] = useState(false)
+  
+  // Stakeholder contacts (resolved from stakeholders)
+  const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
+  const [stakeholderContactsLoading, setStakeholderContactsLoading] = useState(false)
 
   // ============================================
   // Data Fetching
@@ -541,6 +554,85 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
+  // Fetch contacts for all stakeholders
+  const fetchStakeholderContacts = useCallback(async (currentStakeholders: JobStakeholder[]) => {
+    if (currentStakeholders.length === 0) {
+      setStakeholderContacts([])
+      return
+    }
+
+    setStakeholderContactsLoading(true)
+    try {
+      const allContacts: StakeholderContact[] = []
+
+      for (const stakeholder of currentStakeholders) {
+        if (stakeholder.type === "individual") {
+          // For individuals, we already have the info
+          allContacts.push({
+            id: stakeholder.id,
+            firstName: stakeholder.name.split(" ")[0] || stakeholder.name,
+            lastName: stakeholder.name.split(" ").slice(1).join(" ") || null,
+            email: null, // We don't have email stored in stakeholder
+            stakeholderType: "individual",
+            stakeholderName: stakeholder.name
+          })
+        } else if (stakeholder.type === "group") {
+          // Fetch contacts in this group
+          const response = await fetch(`/api/entities?groupId=${stakeholder.id}`, {
+            credentials: "include"
+          })
+          if (response.ok) {
+            const entities = await response.json()
+            const contacts = Array.isArray(entities) ? entities : []
+            contacts.forEach((c: any) => {
+              allContacts.push({
+                id: c.id,
+                firstName: c.firstName,
+                lastName: c.lastName || null,
+                email: c.email,
+                stakeholderType: "group",
+                stakeholderName: stakeholder.name
+              })
+            })
+          }
+        } else if (stakeholder.type === "contact_type") {
+          // Fetch contacts of this type
+          const typeValue = stakeholder.id.startsWith("CUSTOM:") 
+            ? stakeholder.id 
+            : stakeholder.id
+          const response = await fetch(`/api/entities?contactType=${encodeURIComponent(typeValue)}`, {
+            credentials: "include"
+          })
+          if (response.ok) {
+            const entities = await response.json()
+            const contacts = Array.isArray(entities) ? entities : []
+            contacts.forEach((c: any) => {
+              allContacts.push({
+                id: c.id,
+                firstName: c.firstName,
+                lastName: c.lastName || null,
+                email: c.email,
+                stakeholderType: "contact_type",
+                stakeholderName: stakeholder.name
+              })
+            })
+          }
+        }
+      }
+
+      // Deduplicate by id
+      const uniqueContacts = allContacts.filter((contact, index, self) =>
+        index === self.findIndex(c => c.id === contact.id)
+      )
+
+      setStakeholderContacts(uniqueContacts)
+    } catch (error) {
+      console.error("Error fetching stakeholder contacts:", error)
+    } finally {
+      setStakeholderContactsLoading(false)
+    }
+  }, [])
+
   const fetchStakeholderOptions = useCallback(async () => {
     try {
       // Fetch contact types
@@ -601,6 +693,15 @@ export default function JobDetailPage() {
     fetchRequests()
     fetchStakeholderOptions()
   }, [fetchJob, fetchComments, fetchTasks, fetchTimeline, fetchRequests, fetchStakeholderOptions])
+
+  // Fetch stakeholder contacts when stakeholders change
+  useEffect(() => {
+    if (stakeholders.length > 0) {
+      fetchStakeholderContacts(stakeholders)
+    } else {
+      setStakeholderContacts([])
+    }
+  }, [stakeholders, fetchStakeholderContacts])
 
   // Search for individual contacts
   const searchEntities = useCallback(async (query: string) => {
@@ -1653,6 +1754,73 @@ export default function JobDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Stakeholders Card */}
+          {stakeholders.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-700">
+                  Stakeholders
+                  <span className="text-xs font-normal text-gray-500 ml-2">
+                    ({stakeholderContacts.length} contact{stakeholderContacts.length !== 1 ? "s" : ""})
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Stakeholder type badges */}
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {stakeholders.map((s, idx) => (
+                    <span
+                      key={idx}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+                        s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
+                        s.type === "group" ? "bg-green-100 text-green-800" :
+                        "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
+                      {s.type === "group" && <Users className="w-3 h-3" />}
+                      {s.type === "individual" && <User className="w-3 h-3" />}
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Contacts list with scroll */}
+                {stakeholderContactsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                  </div>
+                ) : stakeholderContacts.length === 0 ? (
+                  <p className="text-sm text-gray-500">No contacts found</p>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                    {stakeholderContacts.map((contact) => (
+                      <div 
+                        key={contact.id} 
+                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
+                      >
+                        <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                          {getInitials(
+                            `${contact.firstName} ${contact.lastName || ""}`.trim(),
+                            contact.email || contact.firstName
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {contact.firstName} {contact.lastName || ""}
+                          </div>
+                          {contact.email && (
+                            <div className="text-xs text-gray-500 truncate">{contact.email}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Collaborators Card */}
           <Card>
