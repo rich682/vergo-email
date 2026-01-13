@@ -304,123 +304,120 @@ export function ContactList({
 
       {/* Table */}
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-        <div className={`grid gap-3 px-4 py-3 text-sm font-medium text-gray-600 border-b border-gray-200 ${
-          showSelectionColumn ? "grid-cols-8" : "grid-cols-7"
-        }`}>
-          {showSelectionColumn && (
-            <div className="flex items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedEntityIds.length === entities.length) {
-                    clearEntitySelection()
-                  } else {
-                    selectAllEntities()
-                  }
-                }}
-                className={`w-5 h-5 border rounded flex items-center justify-center ${
-                  selectedEntityIds.length === entities.length && entities.length > 0
-                    ? "bg-blue-600 border-blue-600"
-                    : "border-gray-300 hover:border-gray-400"
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-gray-600 font-medium">
+              {showSelectionColumn && (
+                <th className="px-4 py-3 w-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedEntityIds.length === entities.length) {
+                        clearEntitySelection()
+                      } else {
+                        selectAllEntities()
+                      }
+                    }}
+                    className={`w-5 h-5 border rounded flex items-center justify-center ${
+                      selectedEntityIds.length === entities.length && entities.length > 0
+                        ? "bg-blue-600 border-blue-600"
+                        : "border-gray-300 hover:border-gray-400"
+                    }`}
+                  >
+                    {selectedEntityIds.length === entities.length && entities.length > 0 && (
+                      <Check className="w-3 h-3 text-white" />
+                    )}
+                  </button>
+                </th>
+              )}
+              <th className="px-4 py-3 w-40">Name</th>
+              <th className="px-4 py-3 w-48">Email</th>
+              <th className="px-4 py-3 w-24">Type</th>
+              <th className="px-4 py-3 w-28">Groups</th>
+              <th className="px-4 py-3">Tags</th>
+              <th className="px-4 py-3 w-32 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entities.length === 0 && (
+              <tr>
+                <td colSpan={showSelectionColumn ? 7 : 6} className="px-4 py-4 text-gray-500">
+                  No contacts found.
+                </td>
+              </tr>
+            )}
+            {entities.map((entity) => (
+              <tr
+                key={entity.id}
+                className={`border-b border-gray-100 last:border-0 ${
+                  selectedEntityIds.includes(entity.id) ? "bg-blue-50" : ""
                 }`}
               >
-                {selectedEntityIds.length === entities.length && entities.length > 0 && (
-                  <Check className="w-3 h-3 text-white" />
+                {showSelectionColumn && (
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleEntitySelection(entity.id)}
+                      className={`w-5 h-5 border rounded flex items-center justify-center ${
+                        selectedEntityIds.includes(entity.id)
+                          ? "bg-blue-600 border-blue-600"
+                          : "border-gray-300 hover:border-gray-400"
+                      }`}
+                    >
+                      {selectedEntityIds.includes(entity.id) && (
+                        <Check className="w-3 h-3 text-white" />
+                      )}
+                    </button>
+                  </td>
                 )}
-              </button>
-            </div>
-          )}
-          <div className={showSelectionColumn ? "col-span-1" : "col-span-2"}>Name</div>
-          <div>Email</div>
-          <div>Type</div>
-          <div>Groups</div>
-          <div>Personalization</div>
-          <div className="text-right">Actions</div>
-        </div>
-        {entities.length === 0 && (
-          <div className="p-4 text-sm text-gray-500">No contacts found.</div>
-        )}
-        {entities.map((entity) => (
-          <div
-            key={entity.id}
-            className={`grid gap-3 px-4 py-3 text-sm border-b border-gray-100 last:border-0 ${
-              showSelectionColumn ? "grid-cols-8" : "grid-cols-7"
-            } ${selectedEntityIds.includes(entity.id) ? "bg-blue-50" : ""}`}
-          >
-            {showSelectionColumn && (
-              <div className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => toggleEntitySelection(entity.id)}
-                  className={`w-5 h-5 border rounded flex items-center justify-center ${
-                    selectedEntityIds.includes(entity.id)
-                      ? "bg-blue-600 border-blue-600"
-                      : "border-gray-300 hover:border-gray-400"
-                  }`}
-                >
-                  {selectedEntityIds.includes(entity.id) && (
-                    <Check className="w-3 h-3 text-white" />
-                  )}
-                </button>
-              </div>
-            )}
-            <div className={showSelectionColumn ? "col-span-1" : "col-span-2"}>
-              <div className="font-medium">{entity.firstName}</div>
-              {entity.phone && <div className="text-xs text-gray-500">{entity.phone}</div>}
-            </div>
-            <div className="break-all">{entity.email}</div>
-            <div>
-              <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
-                {entity.contactType === "CUSTOM"
-                  ? entity.contactTypeCustomLabel || "Custom"
-                  : entity.contactType || "Unknown"}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {entity.groups.map((g) => (
-                <span
-                  key={g.id}
-                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
-                >
-                  {g.name}
-                </span>
-              ))}
-              {entity.groups.length === 0 && (
-                <span className="text-xs text-gray-500">None</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {entity.contactStates && entity.contactStates.length > 0 ? (
-                entity.contactStates.slice(0, 3).map((cs, idx) => (
-                  <span
-                    key={`${cs.stateKey}-${idx}`}
-                    className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-                    title={cs.stateKey}
-                  >
-                    {cs.stateKey}
+                <td className="px-4 py-2">
+                  <div className="font-medium">{entity.firstName}</div>
+                  {entity.phone && <div className="text-xs text-gray-500">{entity.phone}</div>}
+                </td>
+                <td className="px-4 py-2 text-gray-600">{entity.email}</td>
+                <td className="px-4 py-2">
+                  <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
+                    {entity.contactType === "CUSTOM"
+                      ? entity.contactTypeCustomLabel || "Custom"
+                      : entity.contactType || "Unknown"}
                   </span>
-                ))
-              ) : (
-                <span className="text-xs text-gray-500">None</span>
-              )}
-              {entity.contactStates && entity.contactStates.length > 3 && (
-                <span className="text-xs text-gray-500">+{entity.contactStates.length - 3} more</span>
-              )}
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button size="sm" variant="outline" onClick={() => onEdit(entity)}>
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => handleDelete(entity.id)}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
-        ))}
+                </td>
+                <td className="px-4 py-2">
+                  {entity.groups.length > 0 ? (
+                    <span className="text-gray-600 text-xs">
+                      {entity.groups.map(g => g.name).join(", ")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">None</span>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {entity.contactStates && entity.contactStates.length > 0 ? (
+                    <span className="text-gray-600 text-xs" title={entity.contactStates.map(cs => cs.stateKey).join(", ")}>
+                      {entity.contactStates.map(cs => cs.stateKey).join(", ")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">None</span>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => onEdit(entity)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleDelete(entity.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
