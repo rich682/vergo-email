@@ -290,7 +290,7 @@ export default function JobsPage() {
               <div>
                 <Label htmlFor="jobTags">Labels (optional)</Label>
                 <div className="mt-1">
-                  {/* Tags display */}
+                  {/* Selected tags display */}
                   {newJobTags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                       {newJobTags.map(tag => (
@@ -310,9 +310,34 @@ export default function JobsPage() {
                       ))}
                     </div>
                   )}
+                  
+                  {/* Existing labels as clickable chips */}
+                  {allTags.filter(t => !newJobTags.includes(t)).length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-xs text-gray-500 mb-1">Click to add existing labels:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {allTags.filter(t => !newJobTags.includes(t)).map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              if (!newJobTags.includes(tag)) {
+                                setNewJobTags(prev => [...prev, tag])
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full hover:bg-blue-100 hover:text-blue-800 transition-colors"
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Input for new labels */}
                   <Input
                     id="jobTags"
-                    placeholder="Type a label and press Enter"
+                    placeholder="Or type a new label and press Enter"
                     value={newTagInput}
                     onChange={(e) => setNewTagInput(e.target.value)}
                     onKeyDown={handleAddNewTag}
