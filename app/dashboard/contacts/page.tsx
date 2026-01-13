@@ -6,7 +6,9 @@ import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
-import { Users, Settings } from "lucide-react"
+import { TypesManager } from "@/components/contacts/types-manager"
+import { TagsManager } from "@/components/contacts/tags-manager"
+import { Users, Settings, Building2, Tag } from "lucide-react"
 
 interface Group {
   id: string
@@ -27,7 +29,7 @@ interface Entity {
   contactStates?: Array<{ stateKey: string; metadata?: any; updatedAt?: string }>
 }
 
-type TabType = "contacts" | "groups"
+type TabType = "contacts" | "groups" | "types" | "tags"
 
 export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
@@ -125,6 +127,13 @@ export default function ContactsPage() {
     fetchAvailableStateKeys() // Refresh available tags after import
   }
 
+  const switchToTab = (tab: TabType) => {
+    setActiveTab(tab)
+    setShowForm(false)
+    setShowImport(false)
+    setEditingEntity(null)
+  }
+
   return (
     <div className="w-full h-full flex flex-col border-l border-r border-gray-200">
       {/* Header */}
@@ -162,7 +171,7 @@ export default function ContactsPage() {
         {/* Tabs */}
         <div className="flex gap-1 mt-4 border-b border-gray-200 -mb-px">
           <button
-            onClick={() => setActiveTab("contacts")}
+            onClick={() => switchToTab("contacts")}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "contacts"
                 ? "border-blue-600 text-blue-600"
@@ -173,12 +182,7 @@ export default function ContactsPage() {
             Contacts
           </button>
           <button
-            onClick={() => {
-              setActiveTab("groups")
-              setShowForm(false)
-              setShowImport(false)
-              setEditingEntity(null)
-            }}
+            onClick={() => switchToTab("groups")}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "groups"
                 ? "border-blue-600 text-blue-600"
@@ -186,7 +190,29 @@ export default function ContactsPage() {
             }`}
           >
             <Settings className="w-4 h-4" />
-            Manage Groups
+            Groups
+          </button>
+          <button
+            onClick={() => switchToTab("types")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "types"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Types
+          </button>
+          <button
+            onClick={() => switchToTab("tags")}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "tags"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            Tags
           </button>
         </div>
       </div>
@@ -247,12 +273,31 @@ export default function ContactsPage() {
               )}
             </div>
           </div>
-        ) : (
+        ) : activeTab === "groups" ? (
           <div className="h-full overflow-auto p-6">
             <div className="max-w-2xl">
               <GroupsManager
                 groups={groups}
                 onGroupsChange={fetchGroups}
+              />
+            </div>
+          </div>
+        ) : activeTab === "types" ? (
+          <div className="h-full overflow-auto p-6">
+            <div className="max-w-2xl">
+              <TypesManager
+                onTypesChange={fetchEntities}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="h-full overflow-auto p-6">
+            <div className="max-w-2xl">
+              <TagsManager
+                onTagsChange={() => {
+                  fetchEntities()
+                  fetchAvailableStateKeys()
+                }}
               />
             </div>
           </div>

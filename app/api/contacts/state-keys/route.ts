@@ -37,10 +37,11 @@ export async function GET() {
     (row) => !EXCLUDED_STATE_KEYS.has(row.stateKey.toLowerCase())
   )
 
-  return NextResponse.json(
-    filtered.map((row) => ({
+  return NextResponse.json({
+    stateKeys: filtered.map((row) => row.stateKey),
+    stateKeysWithCounts: filtered.map((row) => ({
       stateKey: row.stateKey,
       count: row._count.stateKey
     }))
-  )
+  })
 }
