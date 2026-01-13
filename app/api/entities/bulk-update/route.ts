@@ -160,13 +160,10 @@ export async function POST(request: NextRequest) {
             })
 
             if (existing) {
-              // Update existing
-              await prisma.contactState.update({
-                where: { id: existing.id },
-                data: { source: "BULK_UPDATE" }
-              })
+              // Already exists, no need to update
+              updated++
             } else {
-              // Create new
+              // Create new - use MANUAL as the source (closest to bulk UI action)
               await prisma.contactState.create({
                 data: {
                   organizationId,
@@ -174,11 +171,11 @@ export async function POST(request: NextRequest) {
                   tagId,
                   stateKey: tagName,
                   stateValue: "",
-                  source: "BULK_UPDATE"
+                  source: "MANUAL"
                 }
               })
+              updated++
             }
-            updated++
           } catch (err: any) {
             console.error(`[Bulk Update] Error adding tag to entity ${entityId}:`, err)
             errors.push({ entityId, error: err.message })
