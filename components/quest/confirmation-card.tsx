@@ -95,6 +95,16 @@ export function ConfirmationCard({
     interpretation.reminderIntent.stopCondition
   )
   
+  // Scheduled send date
+  const [scheduledDate, setScheduledDate] = useState<string>(
+    interpretation.scheduleIntent.scheduledDate || ""
+  )
+  
+  // Request type (one-off vs recurring) - initialized from LLM interpretation
+  const [requestType, setRequestType] = useState<"one-off" | "recurring">(
+    interpretation.requestType || "one-off"
+  )
+  
   // Standing quest (recurring) options
   const [recurringFrequency, setRecurringFrequency] = useState<"daily" | "weekly" | "monthly">("weekly")
   const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<string>("3") // Wednesday
@@ -127,20 +137,21 @@ export function ConfirmationCard({
     }
 
     const schedule: QuestScheduleIntent = {
-      sendTiming: sendTiming === "recurring" ? "scheduled" : sendTiming,
+      sendTiming: requestType === "recurring" ? "scheduled" : sendTiming,
+      scheduledDate: sendTiming === "scheduled" && scheduledDate ? scheduledDate : undefined,
       deadline: deadline || undefined
     }
 
     const reminders: QuestReminderIntent = {
-      enabled: remindersEnabled,
-      frequency: remindersEnabled ? (reminderFrequency as "daily" | "weekly" | "biweekly") : undefined,
-      dayOfWeek: remindersEnabled && reminderFrequency === "weekly" ? parseInt(reminderDayOfWeek) : undefined,
+      enabled: requestType === "one-off" ? remindersEnabled : false, // Recurring requests don't use reminders
+      frequency: remindersEnabled && requestType === "one-off" ? (reminderFrequency as "daily" | "weekly" | "biweekly") : undefined,
+      dayOfWeek: remindersEnabled && requestType === "one-off" && reminderFrequency === "weekly" ? parseInt(reminderDayOfWeek) : undefined,
       stopCondition: stopCondition as "reply" | "deadline" | "reply_or_deadline"
     }
 
     // Build standing schedule if recurring is selected
     let standingSchedule: StandingQuestSchedule | undefined
-    if (sendTiming === "recurring" && standingQuestsEnabled) {
+    if (requestType === "recurring" && standingQuestsEnabled) {
       standingSchedule = {
         frequency: recurringFrequency,
         dayOfWeek: recurringFrequency === "weekly" ? parseInt(recurringDayOfWeek) : undefined,
@@ -278,6 +289,56 @@ export function ConfirmationCard({
           </div>
         </div>
 
+        {/* Request Type Section */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Request Type</Label>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setRequestType("one-off")}
+              className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
+                requestType === "one-off"
+                  ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                One-off
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Send once with optional reminders</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRequestType("recurring")}
+              disabled={!standingQuestsEnabled}
+              className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
+                requestType === "recurring"
+                  ? "bg-purple-50 border-purple-300 text-purple-700"
+                  : standingQuestsEnabled
+                    ? "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                    : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Recurring
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{standingQuestsEnabled ? "Send on a schedule forever" : "Coming soon"}</p>
+            </button>
+          </div>
+        </div>
+
         {/* Schedule Section */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -287,49 +348,54 @@ export function ConfirmationCard({
             <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Schedule</Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-gray-500 mb-1 block">Send</Label>
-              <Select
-                value={sendTiming}
-                onValueChange={(value) => setSendTiming(value as "immediate" | "scheduled" | "recurring")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="immediate">Immediately</SelectItem>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  {standingQuestsEnabled && (
-                    <SelectItem value="recurring">Recurring</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+          {requestType === "one-off" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-gray-500 mb-1 block">Send</Label>
+                  <Select
+                    value={sendTiming}
+                    onValueChange={(value) => setSendTiming(value as "immediate" | "scheduled")}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="immediate">Immediately</SelectItem>
+                      <SelectItem value="scheduled">Scheduled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {sendTiming !== "recurring" && (
-              <div>
-                <Label className="text-xs text-gray-500 mb-1 block">Deadline</Label>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
+                {sendTiming === "scheduled" && (
+                  <div>
+                    <Label className="text-xs text-gray-500 mb-1 block">Send Date</Label>
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Recurring Schedule Options */}
-          {sendTiming === "recurring" && standingQuestsEnabled && (
+              <div className={sendTiming === "scheduled" ? "" : "grid grid-cols-2 gap-3"}>
+                <div className={sendTiming === "scheduled" ? "mt-3" : ""}>
+                  <Label className="text-xs text-gray-500 mb-1 block">Deadline (optional)</Label>
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    placeholder="No deadline"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Recurring Schedule Options */
             <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
-              <div className="flex items-center gap-2 text-purple-800">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span className="text-sm font-medium">Standing Quest</span>
-              </div>
-              
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-gray-500 mb-1 block">Frequency</Label>
@@ -419,95 +485,98 @@ export function ConfirmationCard({
               </div>
             </div>
           )}
+
         </div>
 
-        {/* Reminders Section */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Reminders</Label>
-            </div>
-            <button
-              type="button"
-              onClick={() => setRemindersEnabled(!remindersEnabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                remindersEnabled ? "bg-indigo-600" : "bg-gray-200"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  remindersEnabled ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
-
-          {remindersEnabled && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs text-gray-500 mb-1 block">Frequency</Label>
-                <Select
-                  value={reminderFrequency}
-                  onValueChange={setReminderFrequency}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REMINDER_FREQUENCIES.map((freq) => (
-                      <SelectItem key={freq.value} value={freq.value}>
-                        {freq.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Reminders Section - Only show for one-off requests */}
+        {requestType === "one-off" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Reminders</Label>
               </div>
+              <button
+                type="button"
+                onClick={() => setRemindersEnabled(!remindersEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  remindersEnabled ? "bg-indigo-600" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    remindersEnabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
 
-              {reminderFrequency === "weekly" && (
+            {remindersEnabled && (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs text-gray-500 mb-1 block">Day</Label>
+                  <Label className="text-xs text-gray-500 mb-1 block">Frequency</Label>
                   <Select
-                    value={reminderDayOfWeek}
-                    onValueChange={setReminderDayOfWeek}
+                    value={reminderFrequency}
+                    onValueChange={setReminderFrequency}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {DAYS_OF_WEEK.map((day) => (
-                        <SelectItem key={day.value} value={day.value}>
-                          {day.label}
+                      {REMINDER_FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq.value} value={freq.value}>
+                          {freq.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              <div className={reminderFrequency === "weekly" ? "col-span-2" : ""}>
-                <Label className="text-xs text-gray-500 mb-1 block">Until</Label>
-                <Select
-                  value={stopCondition}
-                  onValueChange={setStopCondition}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STOP_CONDITIONS.map((cond) => (
-                      <SelectItem key={cond.value} value={cond.value}>
-                        {cond.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {reminderFrequency === "weekly" && (
+                  <div>
+                    <Label className="text-xs text-gray-500 mb-1 block">Day</Label>
+                    <Select
+                      value={reminderDayOfWeek}
+                      onValueChange={setReminderDayOfWeek}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DAYS_OF_WEEK.map((day) => (
+                          <SelectItem key={day.value} value={day.value}>
+                            {day.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className={reminderFrequency === "weekly" ? "col-span-2" : ""}>
+                  <Label className="text-xs text-gray-500 mb-1 block">Until</Label>
+                  <Select
+                    value={stopCondition}
+                    onValueChange={setStopCondition}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STOP_CONDITIONS.map((cond) => (
+                        <SelectItem key={cond.value} value={cond.value}>
+                          {cond.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Summary with expandable recipient list */}
         <div className="pt-3 border-t border-gray-100 space-y-2">

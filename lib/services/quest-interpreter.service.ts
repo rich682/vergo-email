@@ -193,6 +193,16 @@ INTERPRETATION RULES:
    - "until the deadline" → stopCondition = "deadline"
    - "until deadline or reply" → stopCondition = "reply_or_deadline"
 
+6. Determine request type (IMPORTANT):
+   - "recurring" = open-ended, repeating requests with NO specific deadline
+     - Phrases: "every week", "every Wednesday", "weekly", "monthly", "every month", "on an ongoing basis"
+     - Example: "send an email to all employees every Wednesday" → requestType = "recurring"
+   - "one-off" = single request, may have a deadline and reminders
+     - Most requests are one-off unless they explicitly use recurring language
+     - Example: "email employees about timesheets due Friday" → requestType = "one-off"
+     - Example: "send reminders every Wednesday until Friday" → requestType = "one-off" (has a deadline)
+   - Key distinction: "every X" without a deadline = recurring; "every X until Y" = one-off with reminders
+
 CONFIDENCE LEVELS:
 - "high": Exact match to known type/group names
 - "medium": Fuzzy match or reasonable inference
@@ -216,6 +226,7 @@ OUTPUT FORMAT (JSON):
     "dayOfWeek": 3,  // 0=Sunday, 1=Monday, ..., 6=Saturday
     "stopCondition": "reply" | "deadline" | "reply_or_deadline"
   },
+  "requestType": "one-off" | "recurring",  // IMPORTANT: "recurring" only if open-ended with no deadline
   "confidence": "high" | "medium" | "low",
   "interpretationSummary": {
     "audienceDescription": "All employees",
@@ -363,10 +374,15 @@ IMPORTANT:
       confidence = "low"
     }
 
+    // Determine request type from LLM response
+    // Default to one-off unless LLM explicitly says recurring
+    const requestType: "one-off" | "recurring" = parsed.requestType === "recurring" ? "recurring" : "one-off"
+
     return {
       recipientSelection,
       scheduleIntent,
       reminderIntent,
+      requestType,
       confidence,
       interpretationSummary,
       warnings,
@@ -560,6 +576,7 @@ type LLMInterpretationResponse = {
     dayOfWeek?: number
     stopCondition?: "reply" | "deadline" | "reply_or_deadline"
   }
+  requestType?: "one-off" | "recurring"
   confidence?: QuestConfidence
   interpretationSummary?: {
     audienceDescription?: string

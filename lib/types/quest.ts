@@ -105,6 +105,10 @@ export type QuestInterpretationResult = {
   // Reminder configuration
   reminderIntent: QuestReminderIntent
   
+  // Request type (one-off vs recurring)
+  // Inferred from phrases like "every wednesday", "weekly", "monthly"
+  requestType: "one-off" | "recurring"
+  
   // Confidence gating
   confidence: QuestConfidence
   
