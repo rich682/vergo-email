@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, ArrowLeft } from "lucide-react"
+import { UserPlus, Shield, User, Clock, ArrowLeft, Pencil, Trash2 } from "lucide-react"
 
 interface OrgUser {
   id: string
@@ -37,12 +37,25 @@ export default function TeamSettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [teamUsers, setTeamUsers] = useState<OrgUser[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // Invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteName, setInviteName] = useState("")
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER")
   const [inviting, setInviting] = useState(false)
-  const [updatingRole, setUpdatingRole] = useState<string | null>(null)
+  
+  // Edit modal state
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<OrgUser | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editRole, setEditRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">("MEMBER")
+  const [saving, setSaving] = useState(false)
+  
+  // Delete confirmation state
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [deletingUser, setDeletingUser] = useState<OrgUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchTeamUsers()
@@ -103,29 +116,75 @@ export default function TeamSettingsPage() {
     }
   }
 
-  const handleUpdateRole = async (userId: string, newRole: "ADMIN" | "MEMBER" | "VIEWER") => {
-    setUpdatingRole(userId)
+  const openEditModal = (user: OrgUser) => {
+    setEditingUser(user)
+    setEditName(user.name || "")
+    setEditRole(user.role)
+    setIsEditOpen(true)
+  }
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return
+
+    setSaving(true)
     try {
-      const response = await fetch(`/api/org/users/${userId}`, {
+      const response = await fetch(`/api/org/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: newRole })
+        body: JSON.stringify({
+          name: editName.trim(),
+          role: editRole
+        })
       })
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to update role")
+        throw new Error(data.error || "Failed to update user")
       }
 
       const data = await response.json()
-      setTeamUsers(prev => prev.map(u => u.id === userId ? data.user : u))
-      setMessage({ type: "success", text: "Role updated successfully!" })
+      setTeamUsers(prev => prev.map(u => u.id === editingUser.id ? data.user : u))
+      setIsEditOpen(false)
+      setEditingUser(null)
+      setMessage({ type: "success", text: "User updated successfully!" })
       setTimeout(() => setMessage(null), 5000)
     } catch (err: any) {
-      setMessage({ type: "error", text: err?.message || "Failed to update role" })
+      setMessage({ type: "error", text: err?.message || "Failed to update user" })
       setTimeout(() => setMessage(null), 5000)
     } finally {
-      setUpdatingRole(null)
+      setSaving(false)
+    }
+  }
+
+  const openDeleteModal = (user: OrgUser) => {
+    setDeletingUser(user)
+    setIsDeleteOpen(true)
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/org/users/${deletingUser.id}`, {
+        method: "DELETE"
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to remove user")
+      }
+
+      setTeamUsers(prev => prev.filter(u => u.id !== deletingUser.id))
+      setIsDeleteOpen(false)
+      setDeletingUser(null)
+      setMessage({ type: "success", text: "User removed successfully!" })
+      setTimeout(() => setMessage(null), 5000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to remove user" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -196,6 +255,8 @@ export default function TeamSettingsPage() {
               Manage your organization's team members and their roles
             </p>
           </div>
+          
+          {/* Invite User Modal */}
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -275,6 +336,7 @@ export default function TeamSettingsPage() {
                     <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Email</th>
                     <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Role</th>
                     <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Status</th>
+                    <th className="text-right py-3 px-2 text-sm font-medium text-gray-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -286,26 +348,21 @@ export default function TeamSettingsPage() {
                             <User className="w-5 h-5 text-blue-600" />
                           </div>
                           <span className="font-medium text-gray-900">
-                            {user.name || "—"}
+                            {user.name || <span className="text-gray-400 italic">No name set</span>}
                           </span>
                         </div>
                       </td>
                       <td className="py-4 px-2 text-gray-600">{user.email}</td>
                       <td className="py-4 px-2">
-                        <Select
-                          value={user.role}
-                          onValueChange={(v) => handleUpdateRole(user.id, v as "ADMIN" | "MEMBER" | "VIEWER")}
-                          disabled={updatingRole === user.id}
-                        >
-                          <SelectTrigger className="w-32 h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ADMIN">Admin</SelectItem>
-                            <SelectItem value="MEMBER">Employee</SelectItem>
-                            <SelectItem value="VIEWER">Viewer</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
+                          user.role === "ADMIN" 
+                            ? "bg-purple-100 text-purple-800" 
+                            : user.role === "VIEWER"
+                            ? "bg-gray-100 text-gray-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}>
+                          {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
+                        </span>
                       </td>
                       <td className="py-4 px-2">
                         {user.status === "active" ? (
@@ -320,6 +377,28 @@ export default function TeamSettingsPage() {
                           </span>
                         )}
                       </td>
+                      <td className="py-4 px-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditModal(user)}
+                            className="h-8 w-8 p-0"
+                            title="Edit user"
+                          >
+                            <Pencil className="w-4 h-4 text-gray-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openDeleteModal(user)}
+                            className="h-8 w-8 p-0 hover:bg-red-50"
+                            title="Remove user"
+                          >
+                            <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-600" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -328,6 +407,88 @@ export default function TeamSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit User Modal */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Team Member</DialogTitle>
+          </DialogHeader>
+          {editingUser && (
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label className="text-gray-500">Email</Label>
+                <p className="text-sm font-medium mt-1">{editingUser.email}</p>
+              </div>
+              <div>
+                <Label htmlFor="editName">Name</Label>
+                <Input
+                  id="editName"
+                  placeholder="Enter name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="editRole">Role</Label>
+                <Select value={editRole} onValueChange={(v) => setEditRole(v as "ADMIN" | "MEMBER" | "VIEWER")}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="MEMBER">Employee</SelectItem>
+                    <SelectItem value="VIEWER">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Admins can manage team members and settings
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveUser} disabled={saving}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Team Member</DialogTitle>
+          </DialogHeader>
+          {deletingUser && (
+            <div className="space-y-4 pt-4">
+              <p className="text-gray-600">
+                Are you sure you want to remove <strong>{deletingUser.name || deletingUser.email}</strong> from your organization?
+              </p>
+              <p className="text-sm text-gray-500">
+                This action cannot be undone. The user will lose access to all organization data.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeleteUser} 
+                  disabled={deleting}
+                >
+                  {deleting ? "Removing..." : "Remove User"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
