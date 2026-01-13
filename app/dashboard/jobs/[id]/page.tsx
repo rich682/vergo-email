@@ -77,7 +77,7 @@ interface Job {
   name: string
   description: string | null
   ownerId: string
-  status: "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
+  status: string // Allow any status (custom statuses)
   dueDate: string | null
   labels: string[] | null
   stakeholders?: JobStakeholder[]
@@ -329,11 +329,24 @@ function computeNextAction(
 // Status Config
 // ============================================
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   ACTIVE: { label: "Active", color: "bg-blue-100 text-blue-800", icon: RefreshCw },
   WAITING: { label: "Waiting", color: "bg-amber-100 text-amber-800", icon: Clock },
   COMPLETED: { label: "Completed", color: "bg-green-100 text-green-800", icon: CheckCircle },
   ARCHIVED: { label: "Archived", color: "bg-gray-100 text-gray-600", icon: Archive }
+}
+
+// Get status display info, with fallback for custom statuses
+const getStatusConfig = (status: string) => {
+  if (STATUS_CONFIG[status]) {
+    return STATUS_CONFIG[status]
+  }
+  // Custom status - use a default style
+  return {
+    label: status,
+    color: "bg-purple-100 text-purple-800",
+    icon: Clock
+  }
 }
 
 const SEVERITY_STYLES = {
@@ -409,10 +422,14 @@ export default function JobDetailPage() {
   // Edit form state
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editStatus, setEditStatus] = useState<Job["status"]>("ACTIVE")
+  const [editStatus, setEditStatus] = useState<string>("ACTIVE")
   const [editDueDate, setEditDueDate] = useState("")
   const [editLabels, setEditLabels] = useState<string[]>([])
   const [newLabelInput, setNewLabelInput] = useState("")
+  
+  // Custom status input
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [customStatusInput, setCustomStatusInput] = useState("")
 
   // Stakeholder management
   const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
@@ -1096,40 +1113,111 @@ export default function JobDetailPage() {
                 <>
                   <div className="flex items-center gap-3 mb-2">
                     <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
-                    {/* Inline Status Dropdown */}
+                    {/* Inline Status Dropdown with Custom Status Support */}
                     {permissions?.canEdit ? (
-                      <Select 
-                        value={job.status} 
-                        onValueChange={async (v) => {
-                          // Optimistically update UI
-                          setJob(prev => prev ? { ...prev, status: v as Job["status"] } : null)
-                          // Save to server
-                          try {
-                            await fetch(`/api/jobs/${jobId}`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              credentials: "include",
-                              body: JSON.stringify({ status: v })
-                            })
-                          } catch (error) {
-                            console.error("Error updating status:", error)
-                            fetchJob() // Revert on error
-                          }
-                        }}
-                      >
-                        <SelectTrigger className={`w-auto h-7 px-2 text-xs font-medium rounded-full border-0 ${STATUS_CONFIG[job.status]?.color}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ACTIVE">Active</SelectItem>
-                          <SelectItem value="WAITING">Waiting</SelectItem>
-                          <SelectItem value="COMPLETED">Completed</SelectItem>
-                          <SelectItem value="ARCHIVED">Archived</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="relative">
+                        <button
+                          onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                          className={`flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusConfig(job.status).color}`}
+                        >
+                          {getStatusConfig(job.status).label}
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                        
+                        {isStatusDropdownOpen && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-10" 
+                              onClick={() => {
+                                setIsStatusDropdownOpen(false)
+                                setCustomStatusInput("")
+                              }}
+                            />
+                            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
+                              <div className="py-1">
+                                {/* Built-in statuses */}
+                                {["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map(status => {
+                                  const config = getStatusConfig(status)
+                                  return (
+                                    <button
+                                      key={status}
+                                      onClick={async () => {
+                                        setJob(prev => prev ? { ...prev, status } : null)
+                                        setIsStatusDropdownOpen(false)
+                                        try {
+                                          await fetch(`/api/jobs/${jobId}`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            credentials: "include",
+                                            body: JSON.stringify({ status })
+                                          })
+                                        } catch (error) {
+                                          console.error("Error updating status:", error)
+                                          fetchJob()
+                                        }
+                                      }}
+                                      className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                        job.status === status ? "bg-gray-50 font-medium" : ""
+                                      }`}
+                                    >
+                                      <span className={`w-2 h-2 rounded-full ${config.color.split(" ")[0]}`} />
+                                      {config.label}
+                                    </button>
+                                  )
+                                })}
+                                
+                                {/* Show current custom status if it exists */}
+                                {!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) && (
+                                  <button
+                                    onClick={() => setIsStatusDropdownOpen(false)}
+                                    className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm bg-gray-50 font-medium"
+                                  >
+                                    <span className="w-2 h-2 rounded-full bg-purple-100" />
+                                    {job.status}
+                                  </button>
+                                )}
+                                
+                                {/* Custom status input */}
+                                <div className="border-t border-gray-100 mt-1 pt-1 px-2 pb-2">
+                                  <p className="text-xs text-gray-400 mb-1 px-1">Custom status</p>
+                                  <div className="flex gap-1">
+                                    <Input
+                                      placeholder="Type custom status..."
+                                      value={customStatusInput}
+                                      onChange={(e) => setCustomStatusInput(e.target.value)}
+                                      onKeyDown={async (e) => {
+                                        if (e.key === "Enter" && customStatusInput.trim()) {
+                                          e.preventDefault()
+                                          const newStatus = customStatusInput.trim()
+                                          setJob(prev => prev ? { ...prev, status: newStatus } : null)
+                                          setIsStatusDropdownOpen(false)
+                                          setCustomStatusInput("")
+                                          try {
+                                            await fetch(`/api/jobs/${jobId}`, {
+                                              method: "PATCH",
+                                              headers: { "Content-Type": "application/json" },
+                                              credentials: "include",
+                                              body: JSON.stringify({ status: newStatus })
+                                            })
+                                          } catch (error) {
+                                            console.error("Error updating status:", error)
+                                            fetchJob()
+                                          }
+                                        }
+                                      }}
+                                      className="h-7 text-xs flex-1"
+                                    />
+                                  </div>
+                                  <p className="text-xs text-gray-400 mt-1 px-1">Press Enter to apply</p>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     ) : (
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_CONFIG[job.status]?.color}`}>
-                        {STATUS_CONFIG[job.status]?.label}
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusConfig(job.status).color}`}>
+                        {getStatusConfig(job.status).label}
                       </span>
                     )}
                   </div>

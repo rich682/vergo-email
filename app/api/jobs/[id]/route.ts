@@ -57,14 +57,19 @@ export async function GET(
     const canEdit = await JobService.canUserAccessJob(userId, userRole, job, 'edit')
     const canManageCollaborators = await JobService.canUserAccessJob(userId, userRole, job, 'manage_collaborators')
 
-    // Extract stakeholders from labels for convenience
+    // Extract stakeholders and custom status from labels for convenience
     const labels = job.labels as any
     const stakeholders = labels?.stakeholders || []
+    const customStatus = labels?.customStatus || null
+    
+    // Return effective status (custom status takes precedence if set)
+    const effectiveStatus = customStatus || job.status
 
     return NextResponse.json({
       success: true,
       job: {
         ...job,
+        status: effectiveStatus, // Return effective status for UI
         stakeholders
       },
       permissions: {
@@ -123,12 +128,21 @@ export async function PATCH(
 
     const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId } = body
 
-    // Validate status if provided
-    if (status && !Object.values(JobStatus).includes(status)) {
-      return NextResponse.json(
-        { error: "Invalid status", validStatuses: Object.values(JobStatus) },
-        { status: 400 }
-      )
+    // Handle status - support both built-in enum values and custom statuses
+    // Custom statuses are stored in labels.customStatus while the enum field uses ACTIVE
+    let effectiveStatus = status
+    let customStatus: string | null = null
+    
+    if (status) {
+      if (Object.values(JobStatus).includes(status)) {
+        // Built-in status - use directly
+        effectiveStatus = status
+        customStatus = null
+      } else {
+        // Custom status - store in labels, set enum to ACTIVE
+        effectiveStatus = JobStatus.ACTIVE
+        customStatus = status
+      }
     }
 
     // Ownership transfer requires special handling
@@ -142,12 +156,24 @@ export async function PATCH(
       }
     }
 
-    // Merge stakeholders into labels if provided
-    let updatedLabels = labels
+    // Merge stakeholders and customStatus into labels if provided
+    let updatedLabels = labels || existingJob.labels || {}
     if (stakeholders !== undefined) {
       updatedLabels = {
-        ...(labels || existingJob.labels || {}),
+        ...updatedLabels,
         stakeholders
+      }
+    }
+    if (customStatus !== null) {
+      updatedLabels = {
+        ...updatedLabels,
+        customStatus
+      }
+    } else if (status && Object.values(JobStatus).includes(status)) {
+      // Clear custom status when switching to a built-in status
+      updatedLabels = {
+        ...updatedLabels,
+        customStatus: null
       }
     }
 
@@ -156,9 +182,9 @@ export async function PATCH(
       description: description !== undefined ? description?.trim() || null : undefined,
       clientId: clientId !== undefined ? clientId || null : undefined,
       ownerId: ownerId || undefined,
-      status: status || undefined,
+      status: effectiveStatus || undefined,
       dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined,
-      labels: updatedLabels !== undefined ? updatedLabels : undefined
+      labels: updatedLabels
     })
 
     if (!job) {

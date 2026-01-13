@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle, X, Tag, ChevronDown } from "lucide-react"
+import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle, X, Tag, ChevronDown, Filter } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
@@ -45,7 +45,7 @@ interface Job {
   name: string
   description: string | null
   ownerId: string
-  status: "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
+  status: string // Allow any status (custom statuses)
   dueDate: string | null
   labels: JobLabels | null
   createdAt: string
@@ -63,11 +63,25 @@ interface Job {
   completedCount: number
 }
 
-const STATUS_CONFIG = {
+// Default status colors - custom statuses will get a default gray color
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   ACTIVE: { label: "Active", color: "bg-blue-100 text-blue-800", icon: Clock },
   WAITING: { label: "Waiting", color: "bg-amber-100 text-amber-800", icon: Clock },
   COMPLETED: { label: "Completed", color: "bg-green-100 text-green-800", icon: CheckCircle },
   ARCHIVED: { label: "Archived", color: "bg-gray-100 text-gray-600", icon: Archive }
+}
+
+// Get status display info, with fallback for custom statuses
+const getStatusConfig = (status: string) => {
+  if (STATUS_CONFIG[status]) {
+    return STATUS_CONFIG[status]
+  }
+  // Custom status - use a default style
+  return {
+    label: status,
+    color: "bg-purple-100 text-purple-800",
+    icon: Clock
+  }
 }
 
 export default function JobsPage() {
@@ -79,6 +93,7 @@ export default function JobsPage() {
   const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [isLabelDropdownOpen, setIsLabelDropdownOpen] = useState(false)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
@@ -92,6 +107,20 @@ export default function JobsPage() {
       allJobs.flatMap(job => job.labels?.tags || [])
     )
   ).sort()
+
+  // Collect all unique statuses from ALL jobs (includes custom statuses)
+  const allStatuses = Array.from(
+    new Set(allJobs.map(job => job.status))
+  ).sort((a, b) => {
+    // Sort built-in statuses first, then custom
+    const builtIn = ["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"]
+    const aIdx = builtIn.indexOf(a)
+    const bIdx = builtIn.indexOf(b)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return a.localeCompare(b)
+  })
 
   // Fetch all jobs once to get all available labels
   const fetchAllJobs = useCallback(async () => {
@@ -314,8 +343,10 @@ export default function JobsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6">
-        {/* Ownership Filter */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <Filter className="w-4 h-4 text-gray-400" />
+        
+        {/* Ownership Filter Dropdown */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setOwnershipFilter("all")}
@@ -340,27 +371,102 @@ export default function JobsPage() {
           </button>
         </div>
 
-        {/* Status Filter */}
-        <div className="flex gap-2">
-          {["all", "ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                statusFilter === status
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {status === "all" ? "All Status" : STATUS_CONFIG[status as keyof typeof STATUS_CONFIG]?.label || status}
-            </button>
-          ))}
+        {/* Status Filter Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              setIsStatusDropdownOpen(!isStatusDropdownOpen)
+              setIsLabelDropdownOpen(false)
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              statusFilter !== "all"
+                ? "bg-gray-900 border-gray-900 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            {statusFilter === "all" ? (
+              <span>All statuses</span>
+            ) : (
+              <span>{getStatusConfig(statusFilter).label}</span>
+            )}
+            <ChevronDown className={`w-4 h-4 transition-transform ${isStatusDropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {/* Status Dropdown */}
+          {isStatusDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px] max-h-64 overflow-auto">
+              <div className="py-1">
+                <button
+                  onClick={() => {
+                    setStatusFilter("all")
+                    setIsStatusDropdownOpen(false)
+                  }}
+                  className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                    statusFilter === "all" ? "bg-gray-50 font-medium" : ""
+                  }`}
+                >
+                  All statuses
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                {/* Built-in statuses */}
+                {["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map(status => {
+                  const config = getStatusConfig(status)
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setStatusFilter(status)
+                        setIsStatusDropdownOpen(false)
+                      }}
+                      className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                        statusFilter === status ? "bg-gray-50 font-medium" : ""
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${config.color.split(" ")[0]}`} />
+                      {config.label}
+                    </button>
+                  )
+                })}
+                {/* Custom statuses (if any) */}
+                {allStatuses.filter(s => !["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(s)).length > 0 && (
+                  <>
+                    <div className="border-t border-gray-100 my-1" />
+                    <div className="px-3 py-1 text-xs text-gray-400 uppercase tracking-wider">Custom</div>
+                    {allStatuses
+                      .filter(s => !["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(s))
+                      .map(status => {
+                        const config = getStatusConfig(status)
+                        return (
+                          <button
+                            key={status}
+                            onClick={() => {
+                              setStatusFilter(status)
+                              setIsStatusDropdownOpen(false)
+                            }}
+                            className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                              statusFilter === status ? "bg-gray-50 font-medium" : ""
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${config.color.split(" ")[0]}`} />
+                            {config.label}
+                          </button>
+                        )
+                      })}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Label Filter Dropdown */}
         <div className="relative">
           <button
-            onClick={() => setIsLabelDropdownOpen(!isLabelDropdownOpen)}
+            onClick={() => {
+              setIsLabelDropdownOpen(!isLabelDropdownOpen)
+              setIsStatusDropdownOpen(false)
+            }}
             className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
               tagFilter.length > 0
                 ? "bg-blue-50 border-blue-200 text-blue-800"
@@ -369,14 +475,14 @@ export default function JobsPage() {
           >
             <Tag className="w-4 h-4" />
             {tagFilter.length > 0 ? (
-              <span>{tagFilter.length} label{tagFilter.length !== 1 ? "s" : ""} selected</span>
+              <span>{tagFilter.length} label{tagFilter.length !== 1 ? "s" : ""}</span>
             ) : (
-              <span>Filter by label</span>
+              <span>Labels</span>
             )}
             <ChevronDown className={`w-4 h-4 transition-transform ${isLabelDropdownOpen ? "rotate-180" : ""}`} />
           </button>
 
-          {/* Dropdown */}
+          {/* Label Dropdown */}
           {isLabelDropdownOpen && (
             <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[200px] max-h-64 overflow-auto">
               {allTags.length === 0 ? (
@@ -409,9 +515,21 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* Active label filters display */}
-        {tagFilter.length > 0 && (
+        {/* Active filters display */}
+        {(statusFilter !== "all" || tagFilter.length > 0) && (
           <div className="flex items-center gap-1 flex-wrap">
+            {statusFilter !== "all" && (
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getStatusConfig(statusFilter).color}`}>
+                {getStatusConfig(statusFilter).label}
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("all")}
+                  className="hover:opacity-70"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
             {tagFilter.map(tag => (
               <span
                 key={tag}
@@ -436,16 +554,19 @@ export default function JobsPage() {
             onClick={clearAllFilters}
             className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
           >
-            Clear filters
+            Clear all
           </button>
         )}
       </div>
 
-      {/* Click outside to close dropdown */}
-      {isLabelDropdownOpen && (
+      {/* Click outside to close dropdowns */}
+      {(isLabelDropdownOpen || isStatusDropdownOpen) && (
         <div 
           className="fixed inset-0 z-10" 
-          onClick={() => setIsLabelDropdownOpen(false)}
+          onClick={() => {
+            setIsLabelDropdownOpen(false)
+            setIsStatusDropdownOpen(false)
+          }}
         />
       )}
 
@@ -474,7 +595,7 @@ export default function JobsPage() {
       ) : (
         <div className="grid gap-4">
           {jobs.map((job) => {
-            const StatusIcon = STATUS_CONFIG[job.status]?.icon || Clock
+            const statusConfig = getStatusConfig(job.status)
             const jobTags = job.labels?.tags || []
             const dueDate = job.dueDate ? new Date(job.dueDate) : null
             const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
@@ -494,8 +615,8 @@ export default function JobsPage() {
                         <h3 className="font-medium text-gray-900 truncate">
                           {job.name}
                         </h3>
-                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_CONFIG[job.status]?.color}`}>
-                          {STATUS_CONFIG[job.status]?.label}
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusConfig.color}`}>
+                          {statusConfig.label}
                         </span>
                       </div>
                       

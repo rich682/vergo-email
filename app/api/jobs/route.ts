@@ -54,9 +54,19 @@ export async function GET(request: NextRequest) {
       offset: offset ? parseInt(offset, 10) : undefined
     })
 
+    // Map jobs to include effective status (custom status takes precedence)
+    const jobsWithEffectiveStatus = result.jobs.map(job => {
+      const labels = job.labels as any
+      const customStatus = labels?.customStatus || null
+      return {
+        ...job,
+        status: customStatus || job.status
+      }
+    })
+
     return NextResponse.json({
       success: true,
-      jobs: result.jobs,
+      jobs: jobsWithEffectiveStatus,
       total: result.total
     })
 
