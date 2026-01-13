@@ -16,13 +16,14 @@ import type {
 
 type ChatMessage = {
   id: string
-  type: "user" | "assistant" | "thinking" | "confirmation" | "preview"
+  type: "user" | "assistant" | "thinking" | "confirmation" | "preview" | "generating"
   content: string
   interpretation?: QuestInterpretationResult
   quest?: any
 }
 
 type ThinkingStage = "understanding" | "reviewing" | "ready"
+type GeneratingStage = "creating" | "personalizing" | "applying_tags" | "finalizing"
 
 const EXAMPLE_PROMPTS = [
   "Email all employees about timesheets due by Friday",
@@ -44,6 +45,7 @@ export function QuestCreator() {
   const [editedSubject, setEditedSubject] = useState("")
   const [editedBody, setEditedBody] = useState("")
   const [previewRecipientIdx, setPreviewRecipientIdx] = useState(-1)
+  const [generatingStage, setGeneratingStage] = useState<GeneratingStage | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -174,6 +176,17 @@ export function QuestCreator() {
     console.log("handleConfirm: Reminders:", reminders)
     
     setIsProcessing(true)
+    
+    // Show generating animation - replace confirmation with generating message
+    setMessages(prev => [
+      ...prev.filter(m => m.type !== "confirmation"),
+      {
+        id: "generating",
+        type: "generating" as const,
+        content: ""
+      }
+    ])
+    setGeneratingStage("creating")
 
     try {
       // Step 1: Create quest (standing or one-time)
@@ -201,8 +214,21 @@ export function QuestCreator() {
       const quest = createData.quest
       console.log("handleConfirm: Step 1 complete - Quest created:", quest.id, "status:", quest.status)
 
-      // Step 2: Generate email
+      // Step 2: Generate email - update animation stage
+      setGeneratingStage("personalizing")
+      
+      // Brief delay to show the stage transition
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
       console.log("handleConfirm: Step 2 - Generating email for quest:", quest.id)
+      
+      // Show "applying tags" stage if tags are selected
+      const hasTags = selection.stateFilter?.stateKeys && selection.stateFilter.stateKeys.length > 0
+      if (hasTags) {
+        setGeneratingStage("applying_tags")
+        await new Promise(resolve => setTimeout(resolve, 800))
+      }
+      
       const generateRes = await fetch(`/api/quests/${quest.id}/generate`, {
         method: "POST"
       })
@@ -213,6 +239,8 @@ export function QuestCreator() {
         throw new Error(errorData.message || errorData.error || `Failed to generate email (${generateRes.status})`)
       }
 
+      setGeneratingStage("finalizing")
+      
       const generateData = await generateRes.json()
       console.log("handleConfirm: Step 2 complete - Generate response:", {
         questId: generateData.quest?.id,
@@ -228,6 +256,9 @@ export function QuestCreator() {
         throw new Error("Email generation incomplete - missing subject or body")
       }
 
+      // Brief pause before showing preview
+      await new Promise(resolve => setTimeout(resolve, 300))
+
       // Step 3: Update state to show preview
       console.log("handleConfirm: Step 3 - Updating state to show preview")
       setCurrentQuest(generateData.quest)
@@ -238,7 +269,7 @@ export function QuestCreator() {
       // Update messages to show preview
       setMessages(prev => {
         const newMessages = [
-          ...prev.filter(m => m.type !== "confirmation"),
+          ...prev.filter(m => m.type !== "generating"),
           {
             id: Date.now().toString(),
             type: "preview" as const,
@@ -253,7 +284,7 @@ export function QuestCreator() {
     } catch (error: any) {
       console.error("handleConfirm: Error occurred:", error.message, error.stack)
       setMessages(prev => [
-        ...prev,
+        ...prev.filter(m => m.type !== "generating"),
         {
           id: Date.now().toString(),
           type: "assistant",
@@ -262,6 +293,7 @@ export function QuestCreator() {
       ])
     } finally {
       setIsProcessing(false)
+      setGeneratingStage(null)
       console.log("handleConfirm: Finished, isProcessing set to false")
     }
   }
@@ -366,6 +398,118 @@ export function QuestCreator() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderGeneratingAnimation = () => {
+    const stages = [
+      { key: "creating", label: "Creating request", icon: "📝" },
+      { key: "personalizing", label: "Personalizing content", icon: "✨" },
+      { key: "applying_tags", label: "Applying data tags", icon: "🏷️" },
+      { key: "finalizing", label: "Finalizing draft", icon: "✅" }
+    ]
+
+    const currentIdx = stages.findIndex(s => s.key === generatingStage)
+
+    return (
+      <div className="bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 rounded-xl p-6 border border-green-200 shadow-sm">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg">
+              <svg className="w-6 h-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">AI is generating your email</h3>
+            <p className="text-sm text-gray-500">This may take a few moments...</p>
+          </div>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="space-y-3">
+          {stages.map((stage, idx) => {
+            const isActive = stage.key === generatingStage
+            const isComplete = currentIdx > idx
+            const isPending = currentIdx < idx
+
+            return (
+              <div
+                key={stage.key}
+                className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-300 ${
+                  isActive 
+                    ? "bg-white shadow-md border border-green-200" 
+                    : isComplete 
+                    ? "bg-green-100/50" 
+                    : "opacity-50"
+                }`}
+              >
+                {/* Status Icon */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  isComplete 
+                    ? "bg-green-500 text-white" 
+                    : isActive 
+                    ? "bg-green-100 text-green-600" 
+                    : "bg-gray-200 text-gray-400"
+                }`}>
+                  {isComplete ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : isActive ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <span className="text-sm">{idx + 1}</span>
+                  )}
+                </div>
+
+                {/* Label */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{stage.icon}</span>
+                    <span className={`font-medium ${
+                      isActive ? "text-green-700" : isComplete ? "text-green-600" : "text-gray-500"
+                    }`}>
+                      {stage.label}
+                    </span>
+                  </div>
+                  {isActive && (
+                    <div className="mt-1 h-1 bg-green-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full animate-progress" style={{ width: "60%" }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Badge */}
+                {isComplete && (
+                  <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                    Done
+                  </span>
+                )}
+                {isActive && (
+                  <span className="text-xs font-medium text-green-700 bg-green-200 px-2 py-1 rounded-full animate-pulse">
+                    In progress
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Fun fact / tip */}
+        <div className="mt-4 p-3 bg-white/50 rounded-lg border border-green-100">
+          <p className="text-xs text-gray-600 flex items-center gap-2">
+            <span className="text-green-500">💡</span>
+            <span>Each recipient will receive a personalized email with their specific data filled in.</span>
+          </p>
         </div>
       </div>
     )
@@ -597,6 +741,7 @@ export function QuestCreator() {
                   </div>
                 )}
                 {message.type === "thinking" && renderThinkingAnimation()}
+                {message.type === "generating" && renderGeneratingAnimation()}
                 {message.type === "confirmation" && message.interpretation && (
                   <ConfirmationCard
                     interpretation={message.interpretation}
@@ -633,13 +778,13 @@ export function QuestCreator() {
               }}
               placeholder="Describe what you want to send..."
               rows={1}
-              disabled={isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview")}
+              disabled={isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview" || m.type === "generating")}
               className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 resize-none disabled:bg-gray-50 disabled:text-gray-500"
               style={{ minHeight: "48px", maxHeight: "120px" }}
             />
             <button
               type="submit"
-              disabled={!prompt.trim() || isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview")}
+              disabled={!prompt.trim() || isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview" || m.type === "generating")}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -660,6 +805,14 @@ export function QuestCreator() {
         }
         .animate-fadeIn {
           animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes progress {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 100%; }
+        }
+        .animate-progress {
+          animation: progress 2s ease-in-out infinite;
         }
       `}</style>
     </div>

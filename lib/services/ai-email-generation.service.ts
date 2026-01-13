@@ -83,9 +83,9 @@ export class AIEmailGenerationService {
       }))
     }
 
-    // Generate email with GPT-4o-mini (10s timeout for reliable completion)
+    // Generate email with GPT-4o-mini (30s timeout to allow for complex personalized emails)
     const openai = getOpenAIClient()
-    const AI_TIMEOUT_MS = 10000 // 10 seconds timeout for reliable LLM completion
+    const AI_TIMEOUT_MS = 30000 // 30 seconds timeout - increased to ensure AI completes personalized emails
     const correlationId = data.correlationId || "unknown"
     const aiStartTime = Date.now()
     
