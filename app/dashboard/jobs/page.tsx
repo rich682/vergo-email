@@ -13,8 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle, X, Tag } from "lucide-react"
-import { formatDistanceToNow, format } from "date-fns"
+import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle, X, Tag, ChevronDown } from "lucide-react"
+import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
 interface JobOwner {
@@ -73,11 +73,12 @@ const STATUS_CONFIG = {
 export default function JobsPage() {
   const router = useRouter()
   const [jobs, setJobs] = useState<Job[]>([])
+  const [allJobs, setAllJobs] = useState<Job[]>([]) // Store all jobs to extract labels
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")
   const [tagFilter, setTagFilter] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState("")
+  const [isLabelDropdownOpen, setIsLabelDropdownOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
@@ -85,12 +86,27 @@ export default function JobsPage() {
   const [newTagInput, setNewTagInput] = useState("")
   const [creating, setCreating] = useState(false)
 
-  // Collect all unique tags from jobs for autocomplete
+  // Collect all unique tags from ALL jobs (not just filtered)
   const allTags = Array.from(
     new Set(
-      jobs.flatMap(job => job.labels?.tags || [])
+      allJobs.flatMap(job => job.labels?.tags || [])
     )
   ).sort()
+
+  // Fetch all jobs once to get all available labels
+  const fetchAllJobs = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/jobs`, {
+        credentials: "include"
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAllJobs(data.jobs || [])
+      }
+    } catch (error) {
+      console.error("Error fetching all jobs:", error)
+    }
+  }, [])
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -124,6 +140,10 @@ export default function JobsPage() {
   }, [statusFilter, ownershipFilter, tagFilter])
 
   useEffect(() => {
+    fetchAllJobs()
+  }, [fetchAllJobs])
+
+  useEffect(() => {
     fetchJobs()
   }, [fetchJobs])
 
@@ -146,6 +166,7 @@ export default function JobsPage() {
       if (response.ok) {
         const data = await response.json()
         setJobs(prev => [data.job, ...prev])
+        setAllJobs(prev => [data.job, ...prev])
         setNewJobName("")
         setNewJobDescription("")
         setNewJobTags([])
@@ -163,7 +184,7 @@ export default function JobsPage() {
   const handleAddNewTag = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && newTagInput.trim()) {
       e.preventDefault()
-      const tag = newTagInput.trim().toLowerCase()
+      const tag = newTagInput.trim()
       if (!newJobTags.includes(tag)) {
         setNewJobTags(prev => [...prev, tag])
       }
@@ -175,26 +196,16 @@ export default function JobsPage() {
     setNewJobTags(prev => prev.filter(t => t !== tagToRemove))
   }
 
-  const handleAddTagFilter = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && tagInput.trim()) {
-      e.preventDefault()
-      const tag = tagInput.trim().toLowerCase()
-      if (!tagFilter.includes(tag)) {
-        setTagFilter(prev => [...prev, tag])
-      }
-      setTagInput("")
+  const handleToggleLabelFilter = (tag: string) => {
+    if (tagFilter.includes(tag)) {
+      setTagFilter(prev => prev.filter(t => t !== tag))
+    } else {
+      setTagFilter(prev => [...prev, tag])
     }
   }
 
   const handleRemoveTagFilter = (tagToRemove: string) => {
     setTagFilter(prev => prev.filter(t => t !== tagToRemove))
-  }
-
-  const handleSelectExistingTag = (tag: string) => {
-    if (!tagFilter.includes(tag)) {
-      setTagFilter(prev => [...prev, tag])
-    }
-    setTagInput("")
   }
 
   const clearAllFilters = () => {
@@ -204,19 +215,6 @@ export default function JobsPage() {
   }
 
   const hasActiveFilters = statusFilter !== "all" || ownershipFilter !== "all" || tagFilter.length > 0
-
-  const getProgressPercent = (job: Job) => {
-    if (job.taskCount === 0) return 0
-    return Math.round((job.respondedCount / job.taskCount) * 100)
-  }
-
-  // Filter suggestions based on input
-  const tagSuggestions = tagInput.trim()
-    ? allTags.filter(t => 
-        t.toLowerCase().includes(tagInput.toLowerCase()) && 
-        !tagFilter.includes(t)
-      )
-    : []
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -291,7 +289,7 @@ export default function JobsPage() {
                     onKeyDown={handleAddNewTag}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Press Enter to add each label (e.g., january, book-close)
+                    Press Enter to add each label (e.g., January, Client Request)
                   </p>
                 </div>
               </div>
@@ -359,50 +357,78 @@ export default function JobsPage() {
           ))}
         </div>
 
-        {/* Tag Filter */}
-        <div className="flex items-center gap-2">
-          <Tag className="w-4 h-4 text-gray-400" />
-          <div className="relative">
-            <div className="flex items-center gap-1 flex-wrap">
-              {tagFilter.map(tag => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTagFilter(tag)}
-                    className="hover:text-blue-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-              <Input
-                placeholder="Filter by label..."
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleAddTagFilter}
-                className="w-32 h-7 text-sm"
-              />
-            </div>
-            {/* Tag suggestions dropdown */}
-            {tagSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-40 overflow-auto">
-                {tagSuggestions.map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => handleSelectExistingTag(tag)}
-                    className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+        {/* Label Filter Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setIsLabelDropdownOpen(!isLabelDropdownOpen)}
+            className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              tagFilter.length > 0
+                ? "bg-blue-50 border-blue-200 text-blue-800"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            {tagFilter.length > 0 ? (
+              <span>{tagFilter.length} label{tagFilter.length !== 1 ? "s" : ""} selected</span>
+            ) : (
+              <span>Filter by label</span>
             )}
-          </div>
+            <ChevronDown className={`w-4 h-4 transition-transform ${isLabelDropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {/* Dropdown */}
+          {isLabelDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[200px] max-h-64 overflow-auto">
+              {allTags.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                  No labels created yet
+                </div>
+              ) : (
+                <div className="py-1">
+                  {allTags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleToggleLabelFilter(tag)}
+                      className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                        tagFilter.includes(tag)
+                          ? "bg-blue-600 border-blue-600"
+                          : "border-gray-300"
+                      }`}>
+                        {tagFilter.includes(tag) && (
+                          <CheckCircle className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                      <span className="flex-1">{tag}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Active label filters display */}
+        {tagFilter.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            {tagFilter.map(tag => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full"
+              >
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTagFilter(tag)}
+                  className="hover:text-blue-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Clear Filters */}
         {hasActiveFilters && (
@@ -414,6 +440,14 @@ export default function JobsPage() {
           </button>
         )}
       </div>
+
+      {/* Click outside to close dropdown */}
+      {isLabelDropdownOpen && (
+        <div 
+          className="fixed inset-0 z-10" 
+          onClick={() => setIsLabelDropdownOpen(false)}
+        />
+      )}
 
       {/* Items List */}
       {loading ? (
@@ -441,8 +475,11 @@ export default function JobsPage() {
         <div className="grid gap-4">
           {jobs.map((job) => {
             const StatusIcon = STATUS_CONFIG[job.status]?.icon || Clock
-            const progressPercent = getProgressPercent(job)
             const jobTags = job.labels?.tags || []
+            const dueDate = job.dueDate ? new Date(job.dueDate) : null
+            const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
+            const isOverdue = daysUntilDue !== null && daysUntilDue < 0
+            const isDueSoon = daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 3
             
             return (
               <Card
@@ -501,33 +538,25 @@ export default function JobsPage() {
                             {job.client.firstName} {job.client.lastName || ""}
                           </span>
                         )}
-                        {job.dueDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Due {format(new Date(job.dueDate), "MMM d, yyyy")}
-                          </span>
-                        )}
                         <span>
                           Updated {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}
                         </span>
                       </div>
                     </div>
 
-                    {/* Progress indicator */}
-                    <div className="flex flex-col items-end ml-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {job.respondedCount} / {job.taskCount}
-                      </div>
-                      <div className="text-xs text-gray-500 mb-1">responded</div>
-                      {job.taskCount > 0 && (
-                        <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-green-500 rounded-full transition-all"
-                            style={{ width: `${progressPercent}%` }}
-                          />
+                    {/* Deadline display (instead of progress) */}
+                    {dueDate && (
+                      <div className="flex flex-col items-end ml-4">
+                        <div className={`text-sm font-medium ${
+                          isOverdue ? "text-red-600" : isDueSoon ? "text-amber-600" : "text-gray-600"
+                        }`}>
+                          {isOverdue ? "Overdue" : isDueSoon ? `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}` : format(dueDate, "MMM d")}
                         </div>
-                      )}
-                    </div>
+                        <div className="text-xs text-gray-500">
+                          {format(dueDate, "yyyy")}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
