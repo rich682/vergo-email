@@ -348,11 +348,44 @@ export function ConfirmationCard({
 
         {/* Request Type Section */}
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Request Type</Label>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Request Type</Label>
+            </div>
+            {/* Info tooltip for recurring */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="Learn about request types"
+              >
+                <svg className="w-4 h-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              {/* Tooltip */}
+              <div className="absolute right-0 top-8 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <p className="font-medium mb-2">One-off vs Recurring Requests</p>
+                <div className="space-y-2 text-gray-300">
+                  <div>
+                    <span className="font-medium text-indigo-300">One-off:</span> Send an email once, with optional follow-up reminders until the recipient replies or a deadline is reached.
+                  </div>
+                  <div>
+                    <span className="font-medium text-purple-300">Recurring:</span> Automatically send the same email on a schedule (daily, weekly, monthly) indefinitely. Perfect for regular check-ins like weekly timesheet reminders. Replies don&apos;t stop future sends.
+                  </div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-gray-700">
+                  <p className="text-gray-400 text-[10px]">
+                    Example: &quot;Email employees every Wednesday about timesheets&quot; → Recurring
+                  </p>
+                </div>
+                {/* Arrow */}
+                <div className="absolute -top-1 right-3 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -375,14 +408,13 @@ export function ConfirmationCard({
             </button>
             <button
               type="button"
-              onClick={() => setRequestType("recurring")}
-              disabled={!standingQuestsEnabled}
+              onClick={() => standingQuestsEnabled && setRequestType("recurring")}
               className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
                 requestType === "recurring"
                   ? "bg-purple-50 border-purple-300 text-purple-700"
                   : standingQuestsEnabled
                     ? "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                    : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-50 border-gray-200 text-gray-400"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -391,7 +423,14 @@ export function ConfirmationCard({
                 </svg>
                 Recurring
               </div>
-              <p className="text-xs text-gray-500 mt-1">{standingQuestsEnabled ? "Send on a schedule forever" : "Coming soon"}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {standingQuestsEnabled ? "Send on a schedule forever" : "Send on a repeating schedule"}
+              </p>
+              {!standingQuestsEnabled && (
+                <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-medium">
+                  Coming Soon
+                </span>
+              )}
             </button>
           </div>
         </div>
