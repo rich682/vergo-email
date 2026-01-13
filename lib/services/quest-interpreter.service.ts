@@ -148,9 +148,12 @@ INTERPRETATION RULES:
    - "all employees" with no group mentioned → groupNames should be empty []
    - "employees in NY Office" → groupNames: ["NY Office"]
 
-3. Identify data requirements:
-   - "missing W-9" → stateFilter with mode "missing" and stateKey containing "w9"
-   - "with unpaid invoices" → stateFilter with mode "has" and stateKey containing "invoice"
+3. Identify data tags ONLY if explicitly mentioned with keywords like "include", "with", "missing", "who have", "who haven't":
+   - "include invoice number" → This is about PERSONALIZATION, not filtering. Do NOT add to stateFilter.
+   - "missing W-9" or "who haven't submitted W-9" → stateFilter with mode "missing" and stateKey "w9"
+   - "with unpaid invoices" or "who have unpaid invoices" → stateFilter with mode "has" and stateKey "invoice"
+   - Do NOT infer stateFilter unless the user explicitly mentions filtering by a data attribute
+   - If no filtering keywords are used, stateFilter should be omitted entirely
 
 4. Extract schedule information:
    - "by end of week" → deadline = next Friday
@@ -174,10 +177,7 @@ OUTPUT FORMAT (JSON):
   "recipientSelection": {
     "contactTypes": ["EMPLOYEE"],  // Array of contact type names from the list above
     "groupNames": [],              // ONLY include if user explicitly mentions a group name - empty array if no group specified
-    "stateFilter": {               // Optional - only include if user mentions data requirements
-      "stateKeys": ["missing_w9"],
-      "mode": "has" | "missing"
-    }
+    "stateFilter": null            // ONLY include if user explicitly wants to FILTER by data (e.g. "missing W-9", "who haven't submitted"). Set to null if not filtering.
   },
   "scheduleIntent": {
     "sendTiming": "immediate" | "scheduled",

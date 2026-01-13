@@ -182,11 +182,14 @@ export function QuestCreator() {
       })
 
       if (!createRes.ok) {
-        throw new Error("Failed to create quest")
+        const errorData = await createRes.json().catch(() => ({}))
+        console.error("Quest create failed:", createRes.status, errorData)
+        throw new Error(errorData.message || errorData.error || "Failed to create quest")
       }
 
       const createData = await createRes.json()
       const quest = createData.quest
+      console.log("Quest created:", quest.id)
 
       // Generate email
       const generateRes = await fetch(`/api/quests/${quest.id}/generate`, {
@@ -194,7 +197,9 @@ export function QuestCreator() {
       })
 
       if (!generateRes.ok) {
-        throw new Error("Failed to generate email")
+        const errorData = await generateRes.json().catch(() => ({}))
+        console.error("Quest generate failed:", generateRes.status, errorData)
+        throw new Error(errorData.message || errorData.error || "Failed to generate email")
       }
 
       const generateData = await generateRes.json()

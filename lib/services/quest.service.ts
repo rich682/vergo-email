@@ -725,7 +725,7 @@ export class QuestService {
     const recipients = draft.suggestedRecipients as any
     const metadata = recipients[QUEST_METADATA_KEY] || null
     
-    console.log(`getQuestMetadata: Found recipients for ${id}, has metadata: ${!!metadata}`)
+    console.log(`getQuestMetadata: Found recipients for ${id}, has metadata: ${!!metadata}, keys: ${Object.keys(recipients).join(', ')}`)
     
     return metadata
   }
@@ -738,6 +738,8 @@ export class QuestService {
     organizationId: string,
     updates: Partial<QuestMetadata>
   ): Promise<void> {
+    console.log(`updateQuestMetadata: Updating ${id} with keys: ${Object.keys(updates).join(', ')}`)
+    
     const draft = await prisma.emailDraft.findFirst({
       where: { id, organizationId },
       select: { suggestedRecipients: true }
@@ -760,6 +762,8 @@ export class QuestService {
         }
       }
     })
+    
+    console.log(`updateQuestMetadata: Updated ${id}, new status: ${updatedMetadata.status}`)
   }
 
   /**
