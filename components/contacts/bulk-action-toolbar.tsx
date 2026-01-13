@@ -49,9 +49,8 @@ export function BulkActionToolbar({
   const [activeAction, setActiveAction] = useState<ActionType>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState<string>("")
-  const [selectedTagName, setSelectedTagName] = useState<string>("")
+  const [selectedTagNames, setSelectedTagNames] = useState<string[]>([])
   const [newTagName, setNewTagName] = useState<string>("")
-  const [tagValue, setTagValue] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -60,9 +59,8 @@ export function BulkActionToolbar({
     setActiveAction(null)
     setSelectedGroupIds([])
     setSelectedType("")
-    setSelectedTagName("")
+    setSelectedTagNames([])
     setNewTagName("")
-    setTagValue("")
     setError(null)
     setShowDeleteConfirm(false)
   }
@@ -119,15 +117,74 @@ export function BulkActionToolbar({
     executeAction("set_type", { contactType: selectedType })
   }
 
-  const handleAddTag = () => {
-    const tagName = selectedTagName || newTagName
-    if (!tagName) return
-    executeAction("add_tag", { tagName, tagValue: tagValue || undefined })
+  const handleAddTags = async () => {
+    // Combine selected existing tags with new tag if provided
+    const tagsToAdd = [...selectedTagNames]
+    if (newTagName.trim()) {
+      tagsToAdd.push(newTagName.trim().toLowerCase().replace(/\s+/g, "_"))
+    }
+    if (tagsToAdd.length === 0) return
+    
+    // Add each tag
+    setLoading(true)
+    setError(null)
+    
+    try {
+      for (const tagName of tagsToAdd) {
+        await fetch("/api/entities/bulk-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entityIds: selectedEntityIds,
+            action: "add_tag",
+            payload: { tagName }
+          })
+        })
+      }
+      
+      resetState()
+      onActionComplete()
+    } catch (err: any) {
+      setError(err.message || "Failed to add tags")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleRemoveTag = () => {
-    if (!selectedTagName) return
-    executeAction("remove_tag", { tagName: selectedTagName })
+  const handleRemoveTags = async () => {
+    if (selectedTagNames.length === 0) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      for (const tagName of selectedTagNames) {
+        await fetch("/api/entities/bulk-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entityIds: selectedEntityIds,
+            action: "remove_tag",
+            payload: { tagName }
+          })
+        })
+      }
+      
+      resetState()
+      onActionComplete()
+    } catch (err: any) {
+      setError(err.message || "Failed to remove tags")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleTagSelection = (tagName: string) => {
+    setSelectedTagNames(prev => 
+      prev.includes(tagName) 
+        ? prev.filter(t => t !== tagName)
+        : [...prev, tagName]
+    )
   }
 
   const handleDelete = () => {
@@ -339,62 +396,51 @@ export function BulkActionToolbar({
                 className="gap-2"
               >
                 <Tag className="w-4 h-4" />
-                Add Tag
+                Add Tags
                 <ChevronDown className="w-3 h-3" />
               </Button>
               
               {activeAction === "add_tag" && (
                 <div className="absolute bottom-full mb-2 right-0 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Add tag to {selectedCount} contacts:</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">Add tags to {selectedCount} contacts:</div>
                   
                   {tags.length > 0 && (
                     <div className="mb-3">
-                      <label className="text-xs text-gray-500 mb-1 block">Select existing tag:</label>
-                      <select
-                        value={selectedTagName}
-                        onChange={(e) => {
-                          setSelectedTagName(e.target.value)
-                          setNewTagName("")
-                        }}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md"
-                      >
-                        <option value="">Choose a tag...</option>
+                      <label className="text-xs text-gray-500 mb-1 block">Select existing tags:</label>
+                      <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-md">
                         {tags.map(tag => (
-                          <option key={tag.id} value={tag.name}>{tag.displayName}</option>
+                          <button
+                            key={tag.id}
+                            onClick={() => toggleTagSelection(tag.name)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50"
+                          >
+                            <div className={`w-4 h-4 border rounded flex items-center justify-center ${
+                              selectedTagNames.includes(tag.name) 
+                                ? "bg-blue-600 border-blue-600" 
+                                : "border-gray-300"
+                            }`}>
+                              {selectedTagNames.includes(tag.name) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            {tag.displayName}
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
                   )}
                   
                   <div className="mb-3">
                     <label className="text-xs text-gray-500 mb-1 block">
-                      {tags.length > 0 ? "Or create new tag:" : "Tag name:"}
+                      {tags.length > 0 ? "Or create new tag:" : "Create new tag:"}
                     </label>
                     <input
                       type="text"
                       value={newTagName}
-                      onChange={(e) => {
-                        setNewTagName(e.target.value)
-                        setSelectedTagName("")
-                      }}
+                      onChange={(e) => setNewTagName(e.target.value)}
                       placeholder="e.g., invoice_status"
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md"
                     />
-                  </div>
-                  
-                  <div className="mb-3">
-                    <label className="text-xs text-gray-500 mb-1 block">Value (optional):</label>
-                    <input
-                      type="text"
-                      value={tagValue}
-                      onChange={(e) => setTagValue(e.target.value)}
-                      placeholder="e.g., pending"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md"
-                    />
-                  </div>
-                  
-                  <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1.5 rounded mb-3">
-                    ⚠️ This will overwrite existing values for this tag
                   </div>
                   
                   <div className="flex gap-2">
@@ -403,11 +449,11 @@ export function BulkActionToolbar({
                     </Button>
                     <Button 
                       size="sm" 
-                      onClick={handleAddTag} 
-                      disabled={(!selectedTagName && !newTagName) || loading}
+                      onClick={handleAddTags} 
+                      disabled={(selectedTagNames.length === 0 && !newTagName.trim()) || loading}
                       className="flex-1"
                     >
-                      {loading ? "Adding..." : "Add Tag"}
+                      {loading ? "Adding..." : `Add ${selectedTagNames.length + (newTagName.trim() ? 1 : 0)} Tag(s)`}
                     </Button>
                   </div>
                 </div>
@@ -423,33 +469,31 @@ export function BulkActionToolbar({
                 className="gap-2"
               >
                 <TagIcon className="w-4 h-4" />
-                Remove Tag
+                Remove Tags
                 <ChevronDown className="w-3 h-3" />
               </Button>
               
               {activeAction === "remove_tag" && (
                 <div className="absolute bottom-full mb-2 right-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Remove tag from {selectedCount} contacts:</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">Remove tags from {selectedCount} contacts:</div>
                   
                   {tags.length === 0 ? (
                     <div className="text-sm text-gray-500 py-2">No tags available</div>
                   ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-md">
                       {tags.map(tag => (
                         <button
                           key={tag.id}
-                          onClick={() => setSelectedTagName(tag.name)}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded ${
-                            selectedTagName === tag.name ? "bg-red-50 text-red-700" : "hover:bg-gray-50"
-                          }`}
+                          onClick={() => toggleTagSelection(tag.name)}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-gray-50"
                         >
-                          <div className={`w-4 h-4 border rounded-full flex items-center justify-center ${
-                            selectedTagName === tag.name 
-                              ? "border-red-600" 
+                          <div className={`w-4 h-4 border rounded flex items-center justify-center ${
+                            selectedTagNames.includes(tag.name) 
+                              ? "bg-red-600 border-red-600" 
                               : "border-gray-300"
                           }`}>
-                            {selectedTagName === tag.name && (
-                              <div className="w-2 h-2 rounded-full bg-red-600" />
+                            {selectedTagNames.includes(tag.name) && (
+                              <Check className="w-3 h-3 text-white" />
                             )}
                           </div>
                           {tag.displayName}
@@ -465,11 +509,11 @@ export function BulkActionToolbar({
                     <Button 
                       size="sm" 
                       variant="destructive"
-                      onClick={handleRemoveTag} 
-                      disabled={!selectedTagName || loading}
+                      onClick={handleRemoveTags} 
+                      disabled={selectedTagNames.length === 0 || loading}
                       className="flex-1"
                     >
-                      {loading ? "Removing..." : "Remove Tag"}
+                      {loading ? "Removing..." : `Remove ${selectedTagNames.length} Tag(s)`}
                     </Button>
                   </div>
                 </div>
