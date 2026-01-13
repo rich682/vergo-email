@@ -6,6 +6,7 @@ import { getRequestGrouping } from "@/lib/requestGrouping"
 import { formatDistanceToNow } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { getNewRequestRoute } from "@/components/nav-links"
 
 interface Task {
   id: string
@@ -263,7 +264,7 @@ export default function RequestsPage() {
                 </p>
               </div>
               <Button
-                onClick={() => router.push('/dashboard/compose?mode=request')}
+                onClick={() => router.push(getNewRequestRoute())}
                 className="flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
@@ -315,7 +316,7 @@ export default function RequestsPage() {
                             variant="link"
                             size="sm"
                             className="p-0 h-auto text-blue-600"
-                            onClick={() => router.push('/dashboard/compose?mode=request')}
+                            onClick={() => router.push(getNewRequestRoute())}
                           >
                             Create Request →
                           </Button>
@@ -331,7 +332,7 @@ export default function RequestsPage() {
                     </div>
 
                     <Button
-                      onClick={() => router.push('/dashboard/compose?mode=request')}
+                      onClick={() => router.push(getNewRequestRoute())}
                       className="flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />

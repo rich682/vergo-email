@@ -13,8 +13,20 @@ const navLinks: NavLink[] = [
   { href: "/dashboard/contacts", label: "Contacts" },
 ]
 
+// Feature flag check for Quest UI
+function isQuestUIEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
+}
+
+// Get the appropriate "New Request" route based on feature flag
+export function getNewRequestRoute(): string {
+  return isQuestUIEnabled() ? "/dashboard/quest/new" : "/dashboard/compose?mode=request"
+}
+
 export function NavLinks() {
   const pathname = usePathname()
+  const newRequestHref = getNewRequestRoute()
+  const isNewRequestActive = pathname === "/dashboard/quest/new" || pathname === "/dashboard/compose"
 
   return (
     <div className="hidden sm:flex items-center gap-1 text-sm font-medium">
@@ -35,6 +47,16 @@ export function NavLinks() {
           </Link>
         )
       })}
+      <Link
+        href={newRequestHref}
+        className={`px-3 py-2 rounded-md transition-colors ${
+          isNewRequestActive
+            ? "text-blue-600 bg-blue-50"
+            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+        }`}
+      >
+        New Request
+      </Link>
     </div>
   )
 }

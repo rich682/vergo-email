@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense, useRef } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -21,6 +21,11 @@ import { getRequestGrouping } from "@/lib/requestGrouping"
 import { PreviewPanel } from "@/components/compose/preview-panel"
 import { humanizeStateKey } from "@/lib/utils/humanize"
 
+// Feature flag check - redirect to Quest UI when enabled
+function isQuestUIEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
+}
+
 type RemindersConfigState = {
   enabled: boolean
   startDelayDays: number
@@ -38,7 +43,16 @@ type SendConfirmationData = {
 
 function ComposePageContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const isRequestMode = searchParams.get('mode') === 'request'
+  
+  // Redirect to Quest UI when feature flag is enabled
+  useEffect(() => {
+    if (isQuestUIEnabled()) {
+      router.replace("/dashboard/quest/new")
+    }
+  }, [router])
+  
   const [requestName, setRequestName] = useState("")
   const [requestNameError, setRequestNameError] = useState<string | null>(null)
   const [recipientsError, setRecipientsError] = useState<string | null>(null)

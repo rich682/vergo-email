@@ -519,4 +519,88 @@ Use plain language. Be concise.`
       }
     }
   ),
+  // Scheduled function to execute standing (recurring) quests
+  // Feature Flag: QUEST_STANDING
+  inngest.createFunction(
+    {
+      id: "quest/execute-standing",
+      name: "Execute Standing Quests"
+    },
+    {
+      cron: "*/5 * * * *" // Check every 5 minutes
+    },
+    async () => {
+      // Check feature flag
+      if (process.env.QUEST_STANDING !== "true") {
+        return { success: true, skipped: true, reason: "QUEST_STANDING feature flag is disabled" }
+      }
+
+      try {
+        const { QuestService } = await import("@/lib/services/quest.service")
+        
+        // Find all standing quests due for execution
+        const dueQuests = await QuestService.findDueStandingQuests()
+        
+        if (dueQuests.length === 0) {
+          return { success: true, questsProcessed: 0 }
+        }
+
+        console.log(`[Quest Standing] Found ${dueQuests.length} standing quests due for execution`)
+
+        const results: Array<{
+          questId: string
+          success: boolean
+          emailsSent?: number
+          error?: string
+        }> = []
+
+        for (const quest of dueQuests) {
+          try {
+            console.log(`[Quest Standing] Executing standing quest ${quest.id}`)
+            
+            const result = await QuestService.executeStandingOccurrence(
+              quest.id,
+              quest.organizationId
+            )
+
+            results.push({
+              questId: quest.id,
+              success: result.success,
+              emailsSent: result.emailsSent
+            })
+
+            console.log(`[Quest Standing] Quest ${quest.id} executed: ${result.emailsSent} emails sent`)
+          } catch (error: any) {
+            console.error(`[Quest Standing] Error executing quest ${quest.id}:`, error)
+            results.push({
+              questId: quest.id,
+              success: false,
+              error: error.message
+            })
+          }
+        }
+
+        const successful = results.filter(r => r.success).length
+        const failed = results.filter(r => !r.success).length
+        const totalEmailsSent = results.reduce((sum, r) => sum + (r.emailsSent || 0), 0)
+
+        console.log(`[Quest Standing] Completed: ${successful} successful, ${failed} failed, ${totalEmailsSent} total emails sent`)
+
+        return {
+          success: true,
+          questsProcessed: dueQuests.length,
+          successful,
+          failed,
+          totalEmailsSent,
+          results
+        }
+      } catch (error: any) {
+        console.error("[Quest Standing] Error in standing quest cron job:", error)
+        return {
+          success: false,
+          error: error.message
+        }
+      }
+    }
+  ),
 ]

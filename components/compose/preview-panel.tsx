@@ -11,6 +11,12 @@ import { SelectedRecipient } from "./recipient-selector"
 import { TagInput } from "./tag-input"
 import { renderTemplate } from "@/lib/utils/template-renderer"
 import { ReminderTemplateService } from "@/lib/services/reminder-template.service"
+import type { 
+  InclusionReason, 
+  ExclusionReason,
+  ResolvedRecipientWithReasons,
+  ExcludedRecipient 
+} from "@/lib/services/recipient-filter.service"
 
 type RemindersConfig = {
   enabled: boolean
@@ -49,11 +55,161 @@ interface PreviewPanelProps {
   // Reminder props
   remindersConfig?: RemindersConfig
   deadlineDate?: Date | null
+  // Recipient explainability props (Phase 1)
+  recipientsWithReasons?: ResolvedRecipientWithReasons[]
+  excludedRecipients?: ExcludedRecipient[]
 }
 
 interface PreviewRecipient {
   email: string
   data: Record<string, string>
+}
+
+// Helper to format inclusion reasons for display
+function formatInclusionReason(reason: InclusionReason): string {
+  switch (reason.type) {
+    case "contact_type":
+      return `Type: ${reason.value || "Unknown"}`
+    case "group_membership":
+      return `Group: ${reason.value || "Unknown"}`
+    case "direct_selection":
+      return "Directly selected"
+    case "state_filter_match":
+      return `Has data: ${reason.value || "Required fields"}`
+    default:
+      return reason.type
+  }
+}
+
+// Helper to format exclusion reasons for display
+function formatExclusionReason(reason: ExclusionReason): string {
+  switch (reason.type) {
+    case "missing_email":
+      return "Missing email address"
+    case "missing_required_field":
+      return `Missing required field: ${reason.key || "Unknown"}`
+    case "state_filter_mismatch":
+      return `Missing data: ${reason.key || "Required field"}`
+    case "duplicate_email":
+      return "Duplicate email (already included)"
+    default:
+      return reason.type
+  }
+}
+
+// Recipient Explainability Component
+function RecipientExplainabilitySection({
+  recipientsWithReasons,
+  excludedRecipients
+}: {
+  recipientsWithReasons: ResolvedRecipientWithReasons[]
+  excludedRecipients: ExcludedRecipient[]
+}) {
+  const [showExcluded, setShowExcluded] = useState(false)
+  const [hoveredRecipient, setHoveredRecipient] = useState<string | null>(null)
+
+  if (recipientsWithReasons.length === 0 && excludedRecipients.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Included recipients with hover tooltips */}
+      {recipientsWithReasons.length > 0 && (
+        <div>
+          <Label className="text-sm font-medium text-gray-700">
+            Included Recipients ({recipientsWithReasons.length})
+          </Label>
+          <div className="mt-1 flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+            {recipientsWithReasons.slice(0, 20).map((r) => (
+              <div
+                key={r.entityId || r.email}
+                className="relative"
+                onMouseEnter={() => setHoveredRecipient(r.entityId || r.email)}
+                onMouseLeave={() => setHoveredRecipient(null)}
+              >
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-sm text-green-800 cursor-help">
+                  {r.firstName || r.email}
+                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+                {/* Tooltip showing inclusion reasons */}
+                {hoveredRecipient === (r.entityId || r.email) && (
+                  <div className="absolute z-10 bottom-full left-0 mb-2 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                    <div className="font-medium mb-1">Why included:</div>
+                    <ul className="space-y-0.5">
+                      {r.inclusionReasons.map((reason, idx) => (
+                        <li key={idx} className="flex items-center gap-1">
+                          <span className="text-green-400">✓</span>
+                          {formatInclusionReason(reason)}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                  </div>
+                )}
+              </div>
+            ))}
+            {recipientsWithReasons.length > 20 && (
+              <span className="text-xs text-gray-500 self-center">
+                +{recipientsWithReasons.length - 20} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Excluded recipients section */}
+      {excludedRecipients.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowExcluded(!showExcluded)}
+            className="flex items-center gap-2 text-sm font-medium text-yellow-700 hover:text-yellow-800"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showExcluded ? "rotate-90" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="flex items-center gap-1">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              {excludedRecipients.length} Excluded
+            </span>
+          </button>
+          
+          {showExcluded && (
+            <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {excludedRecipients.map((r, idx) => (
+                  <div key={r.entityId || r.email || idx} className="flex items-start gap-2 text-sm">
+                    <span className="text-yellow-600 mt-0.5">✗</span>
+                    <div>
+                      <span className="font-medium text-gray-700">
+                        {r.name || r.email || "Unknown contact"}
+                      </span>
+                      {r.email && r.name && (
+                        <span className="text-gray-500 ml-1">({r.email})</span>
+                      )}
+                      <div className="text-xs text-yellow-700 mt-0.5">
+                        {r.exclusionReasons.map(formatExclusionReason).join(", ")}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function PreviewPanel({
@@ -82,7 +238,9 @@ export function PreviewPanel({
     cadenceDays: 3,
     maxCount: 2
   },
-  deadlineDate = null
+  deadlineDate = null,
+  recipientsWithReasons = [],
+  excludedRecipients = []
 }: PreviewPanelProps) {
   const [previewRecipients, setPreviewRecipients] = useState<PreviewRecipient[]>([])
   const [selectedPreviewRecipient, setSelectedPreviewRecipient] = useState<string | null>(null)
@@ -380,6 +538,14 @@ export function PreviewPanel({
               ))}
             </div>
           </div>
+
+          {/* Recipient Explainability Section */}
+          {(recipientsWithReasons.length > 0 || excludedRecipients.length > 0) && (
+            <RecipientExplainabilitySection
+              recipientsWithReasons={recipientsWithReasons}
+              excludedRecipients={excludedRecipients}
+            />
+          )}
 
           {/* Preview as recipient dropdown */}
           {personalizationMode !== "none" && (

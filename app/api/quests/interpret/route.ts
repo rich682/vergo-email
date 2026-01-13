@@ -1,0 +1,94 @@
+/**
+ * Quest Interpretation Endpoint
+ * 
+ * POST /api/quests/interpret
+ * 
+ * Translates natural language prompts into structured Quest intent.
+ * Returns recipient selection criteria (semantic labels), schedule intent,
+ * reminder configuration, and resolved recipient counts.
+ * 
+ * Feature Flag: QUEST_AI_INTERPRETER
+ */
+
+import { NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { QuestInterpreterService } from "@/lib/services/quest-interpreter.service"
+import type { QuestInterpretRequest } from "@/lib/types/quest"
+
+// Feature flag check
+function isQuestInterpreterEnabled(): boolean {
+  return process.env.QUEST_AI_INTERPRETER === "true"
+}
+
+export async function POST(request: NextRequest) {
+  // Check feature flag
+  if (!isQuestInterpreterEnabled()) {
+    return NextResponse.json(
+      { error: "Quest interpreter is not enabled" },
+      { status: 404 }
+    )
+  }
+
+  try {
+    // Authenticate user
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const organizationId = session.user.organizationId
+
+    // Parse request body
+    const body = await request.json()
+    const { prompt } = body as QuestInterpretRequest
+
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Prompt is required" },
+        { status: 400 }
+      )
+    }
+
+    // Interpret the prompt
+    const result = await QuestInterpreterService.interpret(organizationId, { prompt })
+
+    // Log interpretation for debugging
+    console.log(JSON.stringify({
+      event: "quest_interpretation",
+      organizationId,
+      promptLength: prompt.length,
+      confidence: result.confidence,
+      recipientCount: result.resolvedCounts.matchingRecipients,
+      warningCount: result.warnings.length,
+      timestamp: new Date().toISOString()
+    }))
+
+    return NextResponse.json({
+      success: true,
+      interpretation: result
+    })
+
+  } catch (error: any) {
+    console.error("Quest interpretation error:", error)
+    
+    return NextResponse.json(
+      { 
+        error: "Failed to interpret request",
+        message: error.message 
+      },
+      { status: 500 }
+    )
+  }
+}
+
+// GET endpoint for checking feature flag status
+export async function GET() {
+  return NextResponse.json({
+    enabled: isQuestInterpreterEnabled(),
+    feature: "QUEST_AI_INTERPRETER"
+  })
+}

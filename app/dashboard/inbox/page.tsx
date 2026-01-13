@@ -10,6 +10,7 @@ import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 import { InboxFilters } from "@/components/tasks/inbox-filters"
 import { CampaignType, TaskStatus } from "@prisma/client"
 import { getTaskCompletionState, TaskCompletionState } from "@/lib/taskState"
+import { getNewRequestRoute } from "@/components/nav-links"
 
 export default function InboxPage() {
   const router = useRouter()
@@ -279,11 +280,11 @@ export default function InboxPage() {
               completeCount={stateCounts["Complete"]}
             />
             <Button
-              onClick={() => router.push("/dashboard/compose")}
+              onClick={() => router.push(getNewRequestRoute())}
               className="flex items-center gap-2"
             >
               <Pencil className="w-4 h-4" />
-              Compose
+              New Request
             </Button>
           </div>
 
