@@ -233,7 +233,12 @@ export class QuestService {
         ? new Date(quest.scheduleConfig.deadline) 
         : null
       
-      console.log(`QuestService.generateEmail: Calling AI service for quest ${id}, deadline: ${deadlineDate}, prompt: "${quest.originalPrompt?.substring(0, 50)}"`)
+      // Build available tags list - always include First Name and Email, plus any selected data tags
+      const baseTags = ["First Name", "Email"]
+      const selectedDataTags = quest.confirmedSelection.stateFilter?.stateKeys || []
+      const availableTags = [...baseTags, ...selectedDataTags]
+      
+      console.log(`QuestService.generateEmail: Calling AI service for quest ${id}, deadline: ${deadlineDate}, prompt: "${quest.originalPrompt?.substring(0, 50)}", tags: ${availableTags.join(', ')}`)
       
       let generated
       try {
@@ -250,7 +255,9 @@ export class QuestService {
           senderSignature,
           deadlineDate,
           personalizationMode: "contact",
-          availableTags: ["First Name", "Email"]
+          availableTags,
+          // Pass the selected data tags explicitly so AI knows to use them
+          selectedDataTags: selectedDataTags.length > 0 ? selectedDataTags : undefined
         })
         console.log(`QuestService.generateEmail: AI service returned subject: "${generated.subject?.substring(0, 50)}"`)
       } catch (aiError: any) {
@@ -326,12 +333,57 @@ export class QuestService {
       // Import template renderer for personalization
       const { renderTemplate } = await import("@/lib/utils/template-renderer")
 
+      // Fetch tag values for all recipients if tags are selected
+      const selectedTags = quest.confirmedSelection.stateFilter?.stateKeys || []
+      let recipientTagValues: Map<string, Record<string, string>> = new Map()
+      
+      if (selectedTags.length > 0) {
+        // Fetch contact states for all recipients
+        const entityIds = recipientResult.recipients.map(r => r.id).filter(Boolean) as string[]
+        if (entityIds.length > 0) {
+          const contactStates = await prisma.contactState.findMany({
+            where: {
+              organizationId,
+              entityId: { in: entityIds },
+              stateKey: { in: selectedTags }
+            },
+            include: {
+              tag: true
+            }
+          })
+          
+          // Build a map of entityId -> { tagName: tagValue }
+          for (const state of contactStates) {
+            const tagName = state.tag?.displayName || state.tag?.name || state.stateKey
+            const existing = recipientTagValues.get(state.entityId) || {}
+            existing[tagName] = state.stateValue || ""
+            recipientTagValues.set(state.entityId, existing)
+          }
+        }
+      }
+
       // Render personalized emails for each recipient
       const perRecipientEmails = recipientResult.recipients.map(r => {
         // Build personalization data from recipient
         const data: Record<string, string> = {
           "First Name": r.firstName || r.name?.split(" ")[0] || "",
           "Email": r.email || ""
+        }
+        
+        // Add tag values for this recipient
+        if (r.id && recipientTagValues.has(r.id)) {
+          const tagData = recipientTagValues.get(r.id)!
+          Object.assign(data, tagData)
+        }
+        
+        // Also add tag values using the raw stateKey names (for backwards compatibility)
+        if (r.id && selectedTags.length > 0) {
+          const tagData = recipientTagValues.get(r.id) || {}
+          for (const tagKey of selectedTags) {
+            if (!(tagKey in data)) {
+              data[tagKey] = tagData[tagKey] || ""
+            }
+          }
         }
 
         // Render templates with recipient data
