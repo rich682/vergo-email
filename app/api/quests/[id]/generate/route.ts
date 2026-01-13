@@ -68,7 +68,11 @@ export async function POST(
         status: quest.status,
         subject: quest.subject,
         body: quest.body,
-        htmlBody: quest.htmlBody
+        htmlBody: quest.htmlBody,
+        // Include additional data needed for preview
+        confirmedSelection: quest.confirmedSelection,
+        scheduleConfig: quest.scheduleConfig,
+        remindersConfig: quest.remindersConfig
       }
     })
 

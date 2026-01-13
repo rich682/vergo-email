@@ -166,12 +166,20 @@ export function QuestCreator() {
   ) => {
     // Find the confirmation message to get the interpretation
     const confirmationMsg = messages.find(m => m.type === "confirmation")
-    if (!confirmationMsg?.interpretation) return
+    if (!confirmationMsg?.interpretation) {
+      console.error("handleConfirm: No confirmation message or interpretation found")
+      return
+    }
 
+    console.log("handleConfirm: Starting with selection:", selection)
+    console.log("handleConfirm: Schedule:", schedule)
+    console.log("handleConfirm: Reminders:", reminders)
+    
     setIsProcessing(true)
 
     try {
-      // Create quest (standing or one-time)
+      // Step 1: Create quest (standing or one-time)
+      console.log("handleConfirm: Step 1 - Creating quest...")
       const createRes = await fetch(standingSchedule ? "/api/quests/standing" : "/api/quests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -187,46 +195,65 @@ export function QuestCreator() {
 
       if (!createRes.ok) {
         const errorData = await createRes.json().catch(() => ({}))
-        console.error("Quest create failed:", createRes.status, errorData)
-        throw new Error(errorData.message || errorData.error || "Failed to create quest")
+        console.error("handleConfirm: Quest create failed:", createRes.status, errorData)
+        throw new Error(errorData.message || errorData.error || `Failed to create quest (${createRes.status})`)
       }
 
       const createData = await createRes.json()
       const quest = createData.quest
-      console.log("Quest created:", quest.id)
+      console.log("handleConfirm: Step 1 complete - Quest created:", quest.id, "status:", quest.status)
 
-      // Generate email
+      // Step 2: Generate email
+      console.log("handleConfirm: Step 2 - Generating email for quest:", quest.id)
       const generateRes = await fetch(`/api/quests/${quest.id}/generate`, {
         method: "POST"
       })
 
       if (!generateRes.ok) {
         const errorData = await generateRes.json().catch(() => ({}))
-        console.error("Quest generate failed:", generateRes.status, errorData)
-        throw new Error(errorData.message || errorData.error || "Failed to generate email")
+        console.error("handleConfirm: Quest generate failed:", generateRes.status, errorData)
+        throw new Error(errorData.message || errorData.error || `Failed to generate email (${generateRes.status})`)
       }
 
       const generateData = await generateRes.json()
+      console.log("handleConfirm: Step 2 complete - Generate response:", {
+        questId: generateData.quest?.id,
+        status: generateData.quest?.status,
+        hasSubject: !!generateData.quest?.subject,
+        hasBody: !!generateData.quest?.body,
+        subject: generateData.quest?.subject?.substring(0, 50)
+      })
+
+      // Verify we got complete data
+      if (!generateData.quest?.subject || !generateData.quest?.body) {
+        console.error("handleConfirm: Email generation incomplete - missing subject or body", generateData.quest)
+        throw new Error("Email generation incomplete - missing subject or body")
+      }
+
+      // Step 3: Update state to show preview
+      console.log("handleConfirm: Step 3 - Updating state to show preview")
       setCurrentQuest(generateData.quest)
-      
-      // Initialize editable fields with generated content
       setEditedSubject(generateData.quest.subject || "")
       setEditedBody(generateData.quest.body || "")
       setPreviewRecipientIdx(-1)
 
       // Update messages to show preview
-      setMessages(prev => [
-        ...prev.filter(m => m.type !== "confirmation"),
-        {
-          id: Date.now().toString(),
-          type: "preview",
-          content: "",
-          quest: generateData.quest
-        }
-      ])
+      setMessages(prev => {
+        const newMessages = [
+          ...prev.filter(m => m.type !== "confirmation"),
+          {
+            id: Date.now().toString(),
+            type: "preview" as const,
+            content: "",
+            quest: generateData.quest
+          }
+        ]
+        console.log("handleConfirm: Step 3 complete - Messages updated, preview should now be visible")
+        return newMessages
+      })
 
     } catch (error: any) {
-      console.error("Quest creation error:", error)
+      console.error("handleConfirm: Error occurred:", error.message, error.stack)
       setMessages(prev => [
         ...prev,
         {
@@ -237,6 +264,7 @@ export function QuestCreator() {
       ])
     } finally {
       setIsProcessing(false)
+      console.log("handleConfirm: Finished, isProcessing set to false")
     }
   }
 
