@@ -74,6 +74,7 @@ model Organization {
   entities               Entity[]
   contactStates          ContactState[]
   groups                 Group[]
+  tags                   Tag[]
   connectedEmailAccounts ConnectedEmailAccount[]
   automationRules        AutomationRule[]
   emailDrafts            EmailDraft[]
@@ -101,22 +102,22 @@ model User {
 }
 
 model Entity {
-  id             String   @id @default(cuid())
-  firstName      String
-  email          String?
-  phone          String?
-  contactType    ContactType @default(UNKNOWN)
+  id                     String      @id @default(cuid())
+  firstName              String
+  email                  String?
+  phone                  String?
+  contactType            ContactType @default(UNKNOWN)
   contactTypeCustomLabel String?
-  organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  organizationId         String
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  groups       EntityGroup[]
-  tasks        Task[]
-  messages     Message[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groups         EntityGroup[]
+  tasks          Task[]
+  messages       Message[]
   reminderStates ReminderState[]
-  contactStates ContactState[]
+  contactStates  ContactState[]
 
   @@index([organizationId])
   @@index([email])
@@ -169,62 +170,85 @@ enum ContactStateSource {
   FUTURE_AUTOMATION
 }
 
+// Tag definitions - like Groups, these are first-class entities that can be managed
+model Tag {
+  id             String   @id @default(cuid())
+  name           String // Normalized name (lowercase, underscores)
+  displayName    String? // Human-friendly display name
+  description    String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactStates ContactState[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// ContactState stores the actual tag values for each contact
 model ContactState {
-  id              String              @id @default(cuid())
-  organizationId  String
-  entityId        String
-  stateKey        String
-  metadata        Json?
-  source          ContactStateSource  @default(CSV_UPLOAD)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id             String             @id @default(cuid())
+  organizationId String
+  entityId       String
+  tagId          String // Reference to Tag
+  stateKey       String // Denormalized tag name for backward compatibility
+  stateValue     String? // The actual value for this contact-tag pair
+  metadata       Json?
+  source         ContactStateSource @default(CSV_UPLOAD)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   entity       Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, entityId, stateKey])
+  @@unique([organizationId, entityId, tagId])
   @@index([organizationId, stateKey])
+  @@index([organizationId, tagId])
   @@index([entityId])
+  @@index([tagId])
 }
 
 model Task {
-  id                     String        @id @default(cuid())
-  entityId               String?       // Optional: contact may be deleted but task history preserved
-  campaignName           String?
-  campaignType           CampaignType?
-  status                 TaskStatus    @default(AWAITING_RESPONSE)
-  threadId               String        @unique
-  replyToEmail           String?
-  replyToPhone           String?
-  aiReasoning            Json? // Store AI reasoning as JSON
-  aiSummary              String? // 2-3 sentence task summary
-  aiSummaryConfidence    String? // High, Medium, Low
-  aiSummaryLastMessageId String? // Track which message summary is based on (for idempotency)
-  aiVerified             Boolean?
-  verifiedAt             DateTime?
-  documentUrl            String?
-  documentKey            String?
-  hasAttachments         Boolean       @default(false)
-  completionPercentage   Int? // LLM-determined completion percentage (0-100) based on reply intent
-  readStatus             String? // unread | read | replied
-  riskLevel              String? // high | medium | low | unknown
-  riskReason             String? // Short explanation of risk level
-  manualRiskOverride     String? // high | medium | low | null (if manually set)
-  overrideReason         String? // Reason for manual override
-  lastActivityAt         DateTime? // Last activity timestamp (opened, replied, etc.)
-  deadlineDate           DateTime? // Deadline/due date for the request (set during compose)
+  id                       String        @id @default(cuid())
+  entityId                 String? // Optional: contact may be deleted but task history preserved
+  campaignName             String?
+  campaignType             CampaignType?
+  status                   TaskStatus    @default(AWAITING_RESPONSE)
+  threadId                 String        @unique
+  replyToEmail             String?
+  replyToPhone             String?
+  aiReasoning              Json? // Store AI reasoning as JSON
+  aiSummary                String? // 2-3 sentence task summary
+  aiSummaryConfidence      String? // High, Medium, Low
+  aiSummaryLastMessageId   String? // Track which message summary is based on (for idempotency)
+  aiVerified               Boolean?
+  verifiedAt               DateTime?
+  documentUrl              String?
+  documentKey              String?
+  hasAttachments           Boolean       @default(false)
+  completionPercentage     Int? // LLM-determined completion percentage (0-100) based on reply intent
+  readStatus               String? // unread | read | replied
+  riskLevel                String? // high | medium | low | unknown
+  riskReason               String? // Short explanation of risk level
+  manualRiskOverride       String? // high | medium | low | null (if manually set)
+  overrideReason           String? // Reason for manual override
+  lastActivityAt           DateTime? // Last activity timestamp (opened, replied, etc.)
+  deadlineDate             DateTime? // Deadline/due date for the request (set during compose)
   // Reminder configuration fields (additive, nullable for backward compatibility)
   remindersEnabled         Boolean       @default(false)
-  remindersStartDelayHours Int?         // Hours/days before first reminder (converted to hours)
-  remindersFrequencyHours  Int?         // Hours/days between reminders (converted to hours)
-  remindersMaxCount        Int?         // Maximum reminders (1-5)
-  remindersApproved        Boolean      @default(false) // Whether user approved the sequence
-  organizationId         String
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  remindersStartDelayHours Int? // Hours/days before first reminder (converted to hours)
+  remindersFrequencyHours  Int? // Hours/days between reminders (converted to hours)
+  remindersMaxCount        Int? // Maximum reminders (1-5)
+  remindersApproved        Boolean       @default(false) // Whether user approved the sequence
+  organizationId           String
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
-  entity   Entity?   @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  messages Message[]
+  entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  messages       Message[]
   reminderStates ReminderState[]
 
   @@index([organizationId])
@@ -239,7 +263,7 @@ model Task {
 model Message {
   id               String           @id @default(cuid())
   taskId           String
-  entityId         String?          // Optional: contact may be deleted but message history preserved
+  entityId         String? // Optional: contact may be deleted but message history preserved
   direction        MessageDirection
   channel          MessageChannel   @default(EMAIL)
   subject          String?
@@ -425,18 +449,18 @@ model PersonalizationData {
 }
 
 model ReminderState {
-  id              String   @id @default(cuid())
-  taskId          String   // Link to Task (the request)
-  entityId        String?  // Recipient entity (optional: contact may be deleted)
-  reminderNumber  Int      // Which reminder this is (1, 2, 3, etc.)
-  sentCount       Int      @default(0) // How many reminders sent (incremented when sent)
-  nextSendAt      DateTime? // When next reminder should be sent (null if stopped or max reached)
-  lastSentAt      DateTime? // When last reminder was sent
-  stoppedReason   String?  // "replied" | "max_reached" | "manual_stop" | null
-  scheduledEventId String? @unique // Inngest event ID for idempotency (prevents duplicate sends)
-  organizationId  String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String    @id @default(cuid())
+  taskId           String // Link to Task (the request)
+  entityId         String? // Recipient entity (optional: contact may be deleted)
+  reminderNumber   Int // Which reminder this is (1, 2, 3, etc.)
+  sentCount        Int       @default(0) // How many reminders sent (incremented when sent)
+  nextSendAt       DateTime? // When next reminder should be sent (null if stopped or max reached)
+  lastSentAt       DateTime? // When last reminder was sent
+  stoppedReason    String? // "replied" | "max_reached" | "manual_stop" | null
+  scheduledEventId String?   @unique // Inngest event ID for idempotency (prevents duplicate sends)
+  organizationId   String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)

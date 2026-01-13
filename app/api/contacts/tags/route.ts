@@ -9,31 +9,40 @@ const RESERVED_TAGS = new Set([
   "email", "phone", "type", "groups", "contacttype", "contact_type"
 ])
 
-// System entity name for holding tag placeholders
-const SYSTEM_ENTITY_NAME = "__system_tag_holder__"
+// GET - List all tags for the organization
+export async function GET() {
+  const session = await getServerSession(authOptions)
 
-// Get or create a system entity for the organization to hold tag placeholders
-async function getOrCreateSystemEntity(organizationId: string): Promise<string> {
-  // Check if system entity exists
-  let systemEntity = await prisma.entity.findFirst({
-    where: {
-      organizationId,
-      firstName: SYSTEM_ENTITY_NAME
-    }
-  })
-
-  if (!systemEntity) {
-    // Create system entity
-    systemEntity = await prisma.entity.create({
-      data: {
-        organizationId,
-        firstName: SYSTEM_ENTITY_NAME,
-        contactType: "UNKNOWN"
-      }
-    })
+  if (!session?.user?.organizationId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  return systemEntity.id
+  try {
+    const tags = await prisma.tag.findMany({
+      where: { organizationId: session.user.organizationId },
+      include: {
+        _count: {
+          select: { contactStates: true }
+        }
+      },
+      orderBy: { name: "asc" }
+    })
+
+    return NextResponse.json({
+      success: true,
+      tags: tags.map(t => ({
+        id: t.id,
+        name: t.name,
+        displayName: t.displayName || t.name,
+        description: t.description,
+        contactCount: t._count.contactStates,
+        createdAt: t.createdAt.toISOString()
+      }))
+    })
+  } catch (error: any) {
+    console.error("Error fetching tags:", error)
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })
+  }
 }
 
 // POST - Create a new tag
@@ -46,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { tagName } = body
+    const { tagName, displayName, description } = body
 
     if (!tagName || typeof tagName !== "string" || !tagName.trim()) {
       return NextResponse.json({ error: "Tag name is required" }, { status: 400 })
@@ -61,10 +70,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if tag already exists
-    const existing = await prisma.contactState.findFirst({
+    const existing = await prisma.tag.findUnique({
       where: {
-        organizationId: session.user.organizationId,
-        stateKey: normalizedName
+        organizationId_name: {
+          organizationId: session.user.organizationId,
+          name: normalizedName
+        }
       }
     })
 
@@ -72,22 +83,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This tag already exists" }, { status: 400 })
     }
 
-    // Get or create system entity for this organization
-    const systemEntityId = await getOrCreateSystemEntity(session.user.organizationId)
-
-    // Create a placeholder ContactState entry
-    await prisma.contactState.create({
+    // Create the tag
+    const tag = await prisma.tag.create({
       data: {
         organizationId: session.user.organizationId,
-        entityId: systemEntityId,
-        stateKey: normalizedName,
-        source: "CSV_UPLOAD" // Use existing enum value
+        name: normalizedName,
+        displayName: displayName || tagName.trim(),
+        description: description || null
       }
     })
 
     return NextResponse.json({ 
       success: true, 
-      tagName: normalizedName,
+      tag: {
+        id: tag.id,
+        name: tag.name,
+        displayName: tag.displayName,
+        description: tag.description
+      },
       message: "Tag created successfully"
     })
   } catch (error: any) {
@@ -96,7 +109,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Remove a tag from all contacts
+// DELETE - Remove a tag and all its values from contacts
 export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -106,26 +119,86 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const tagName = searchParams.get("tagName")
+    const tagId = searchParams.get("tagId")
+    const tagName = searchParams.get("tagName") // Support both for backward compatibility
 
-    if (!tagName) {
-      return NextResponse.json({ error: "Tag name is required" }, { status: 400 })
+    if (!tagId && !tagName) {
+      return NextResponse.json({ error: "Tag ID or name is required" }, { status: 400 })
     }
 
-    // Delete all ContactState entries with this stateKey
-    const result = await prisma.contactState.deleteMany({
-      where: {
-        organizationId: session.user.organizationId,
-        stateKey: tagName
+    // Find the tag
+    const tag = tagId 
+      ? await prisma.tag.findFirst({
+          where: { id: tagId, organizationId: session.user.organizationId }
+        })
+      : await prisma.tag.findFirst({
+          where: { name: tagName!, organizationId: session.user.organizationId }
+        })
+
+    if (!tag) {
+      return NextResponse.json({ error: "Tag not found" }, { status: 404 })
+    }
+
+    // Delete the tag (cascades to ContactState entries)
+    await prisma.tag.delete({
+      where: { id: tag.id }
+    })
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Tag deleted successfully"
+    })
+  } catch (error: any) {
+    console.error("Error deleting tag:", error)
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })
+  }
+}
+
+// PATCH - Update a tag
+export async function PATCH(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.organizationId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    const body = await request.json()
+    const { tagId, displayName, description } = body
+
+    if (!tagId) {
+      return NextResponse.json({ error: "Tag ID is required" }, { status: 400 })
+    }
+
+    // Find the tag
+    const tag = await prisma.tag.findFirst({
+      where: { id: tagId, organizationId: session.user.organizationId }
+    })
+
+    if (!tag) {
+      return NextResponse.json({ error: "Tag not found" }, { status: 404 })
+    }
+
+    // Update the tag
+    const updated = await prisma.tag.update({
+      where: { id: tag.id },
+      data: {
+        displayName: displayName !== undefined ? displayName : tag.displayName,
+        description: description !== undefined ? description : tag.description
       }
     })
 
     return NextResponse.json({ 
       success: true, 
-      deletedCount: result.count 
+      tag: {
+        id: updated.id,
+        name: updated.name,
+        displayName: updated.displayName,
+        description: updated.description
+      }
     })
   } catch (error: any) {
-    console.error("Error deleting tag:", error)
+    console.error("Error updating tag:", error)
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 })
   }
 }

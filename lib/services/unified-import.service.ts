@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { GroupService } from "@/lib/services/group.service"
 import { EntityService } from "@/lib/services/entity.service"
+import { ContactStateService } from "@/lib/services/contact-state.service"
 import { ContactType } from "@prisma/client"
 import * as XLSX from "xlsx"
 
@@ -304,7 +305,7 @@ export class UnifiedImportService {
         await EntityService.addToGroup(entity.id, gid)
       }
 
-      // Custom fields -> ContactState upsert
+      // Custom fields -> ContactState upsert (auto-creates Tags)
       // Attach lastName as custom field to avoid dropping it
       const customEntries = { ...row.customFields }
       if (row.lastName) {
@@ -318,24 +319,20 @@ export class UnifiedImportService {
           const rawValue = row.customFieldsRaw?.[stateKey]
           const isBlank = rawValue === null || rawValue === ""
           if (isBlank) {
+            // Get or create tag to find existing state
+            const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
             const existingField = await prisma.contactState.findUnique({
               where: {
-                organizationId_entityId_stateKey: {
+                organizationId_entityId_tagId: {
                   organizationId,
                   entityId: entity.id,
-                  stateKey
+                  tagId
                 }
               }
             })
             if (existingField) {
               await prisma.contactState.delete({
-                where: {
-                  organizationId_entityId_stateKey: {
-                    organizationId,
-                    entityId: entity.id,
-                    stateKey
-                  }
-                }
+                where: { id: existingField.id }
               })
               summary.customFieldsDeleted += 1
             }
@@ -347,26 +344,24 @@ export class UnifiedImportService {
         const stateKey = stateKeyRaw.trim()
         if (!stateKey) continue
 
+        // Get or create tag first (auto-creates tags from CSV columns)
+        const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
+
         const existingField = await prisma.contactState.findUnique({
           where: {
-            organizationId_entityId_stateKey: {
+            organizationId_entityId_tagId: {
               organizationId,
               entityId: entity.id,
-              stateKey
+              tagId
             }
           }
         })
 
         if (existingField) {
           await prisma.contactState.update({
-            where: {
-              organizationId_entityId_stateKey: {
-                organizationId,
-                entityId: entity.id,
-                stateKey
-              }
-            },
+            where: { id: existingField.id },
             data: {
+              stateValue: typeof value === 'string' ? value : JSON.stringify(value),
               metadata: value
             }
           })
@@ -376,7 +371,9 @@ export class UnifiedImportService {
             data: {
               organizationId,
               entityId: entity.id,
-              stateKey,
+              tagId,
+              stateKey: stateKey.toLowerCase().replace(/\s+/g, "_"),
+              stateValue: typeof value === 'string' ? value : JSON.stringify(value),
               metadata: value,
               source: "CSV_UPLOAD"
             }

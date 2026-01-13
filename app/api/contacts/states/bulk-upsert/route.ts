@@ -102,14 +102,23 @@ export async function POST(request: NextRequest) {
     let statesDeleted = 0
     if (replaceForStateKey && (targetStateKey || rows[0]?.stateKey)) {
       const key = targetStateKey || rows[0].stateKey!
-      const deleteResult = await prisma.contactState.deleteMany({
-        where: {
-          organizationId: orgId,
-          stateKey: key,
-          entityId: { notIn: processedEntityIds },
-        },
+      // Find the tag first
+      const tag = await prisma.tag.findFirst({
+        where: { 
+          organizationId: orgId, 
+          name: key.toLowerCase().replace(/\s+/g, "_") 
+        }
       })
-      statesDeleted = deleteResult.count
+      if (tag) {
+        const deleteResult = await prisma.contactState.deleteMany({
+          where: {
+            organizationId: orgId,
+            tagId: tag.id,
+            entityId: { notIn: processedEntityIds },
+          },
+        })
+        statesDeleted = deleteResult.count
+      }
     }
 
     return NextResponse.json({
