@@ -251,11 +251,48 @@ export function ConfirmationCard({
         {/* Data Personalization Section */}
         {availableTags.length > 0 && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-              <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Data Personalization</Label>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Data Personalization</Label>
+              </div>
+              {/* Info tooltip */}
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  aria-label="Learn about data personalization"
+                >
+                  <svg className="w-4 h-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                {/* Tooltip */}
+                <div className="absolute right-0 top-8 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <p className="font-medium mb-2">Personalize emails with contact data</p>
+                  <p className="text-gray-300 mb-2">
+                    Add dynamic placeholders like invoice numbers, amounts, or due dates that automatically populate with each contact&apos;s specific data.
+                  </p>
+                  <p className="text-gray-300 mb-3">
+                    Example: &quot;Your invoice #{"{{invoice_number}}"} for ${"{{invoice_amount}}"} is due on {"{{due_date}}"}&quot;
+                  </p>
+                  <a 
+                    href="https://help.vergo.ai/data-personalization" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-indigo-300 hover:text-indigo-200"
+                  >
+                    Learn how to set up data tags
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                  {/* Arrow */}
+                  <div className="absolute -top-1 right-3 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+                </div>
+              </div>
             </div>
             <p className="text-xs text-gray-500">
               Include contact-specific data in your email (e.g., invoice number, due date, amount)
