@@ -623,63 +623,64 @@ export function QuestCreator() {
                   <option disabled>... and {resolvedRecipients.length - 10} more</option>
                 )}
               </select>
-              {previewRecipientIdx >= 0 && (
+              {previewRecipientIdx === -1 ? (
                 <p className="text-xs text-gray-500 mt-1">
-                  Previewing how email will look for {resolvedRecipients[previewRecipientIdx]?.name || resolvedRecipients[previewRecipientIdx]?.email}. Edits below will apply to all recipients.
+                  Edit mode - make changes to the template below.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">
+                  Previewing how email will look for {resolvedRecipients[previewRecipientIdx]?.name || resolvedRecipients[previewRecipientIdx]?.email}. Switch to "Draft (edit mode)" to make changes.
                 </p>
               )}
             </div>
           )}
 
-          {/* Subject - always editable */}
+          {/* Subject - editable only in draft mode */}
           <div>
             <label className="text-sm font-medium text-gray-700">Subject:</label>
-            <input
-              type="text"
-              value={editedSubject}
-              onChange={(e) => setEditedSubject(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-            {previewRecipientIdx >= 0 && (
-              <p className="text-xs text-blue-600 mt-1 bg-blue-50 px-2 py-1 rounded">
-                Preview: {(() => {
+            {previewRecipientIdx === -1 ? (
+              <input
+                type="text"
+                value={editedSubject}
+                onChange={(e) => setEditedSubject(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            ) : (
+              <div className="mt-1 w-full px-3 py-2 bg-blue-50 border border-blue-100 rounded-md text-sm text-gray-700">
+                {(() => {
                   const recipient = resolvedRecipients[previewRecipientIdx]
                   const data: Record<string, string> = {
                     "First Name": recipient?.name?.split(" ")[0] || "",
                     "Email": recipient?.email || "",
-                    // Include tag values
                     ...(recipient?.tagValues || {})
                   }
                   return renderTemplate(editedSubject, data).rendered
                 })()}
-              </p>
+              </div>
             )}
           </div>
 
-          {/* Body - always editable */}
+          {/* Body - editable only in draft mode */}
           <div>
             <label className="text-sm font-medium text-gray-700">Body:</label>
-            <textarea
-              value={editedBody}
-              onChange={(e) => setEditedBody(e.target.value)}
-              rows={8}
-              className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-            />
-            {previewRecipientIdx >= 0 && (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-md">
-                <p className="text-xs text-blue-700 font-medium mb-1">Preview for {resolvedRecipients[previewRecipientIdx]?.name || resolvedRecipients[previewRecipientIdx]?.email}:</p>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                  {(() => {
-                    const recipient = resolvedRecipients[previewRecipientIdx]
-                    const data: Record<string, string> = {
-                      "First Name": recipient?.name?.split(" ")[0] || "",
-                      "Email": recipient?.email || "",
-                      // Include tag values
-                      ...(recipient?.tagValues || {})
-                    }
-                    return renderTemplate(editedBody, data).rendered
-                  })()}
-                </div>
+            {previewRecipientIdx === -1 ? (
+              <textarea
+                value={editedBody}
+                onChange={(e) => setEditedBody(e.target.value)}
+                rows={8}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              />
+            ) : (
+              <div className="mt-1 w-full px-3 py-2 bg-blue-50 border border-blue-100 rounded-md text-sm text-gray-700 whitespace-pre-wrap min-h-[200px]">
+                {(() => {
+                  const recipient = resolvedRecipients[previewRecipientIdx]
+                  const data: Record<string, string> = {
+                    "First Name": recipient?.name?.split(" ")[0] || "",
+                    "Email": recipient?.email || "",
+                    ...(recipient?.tagValues || {})
+                  }
+                  return renderTemplate(editedBody, data).rendered
+                })()}
               </div>
             )}
           </div>
