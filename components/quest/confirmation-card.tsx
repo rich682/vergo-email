@@ -110,7 +110,6 @@ export function ConfirmationCard({
   const [recurringDayOfWeek, setRecurringDayOfWeek] = useState<string>("3") // Wednesday
   const [recurringDayOfMonth, setRecurringDayOfMonth] = useState<string>("1")
   const [recurringTime, setRecurringTime] = useState<string>("09:00")
-  const [recurringStopOnReply, setRecurringStopOnReply] = useState(true)
 
   // Live recipient count (would be fetched from API in real implementation)
   const [recipientCount, setRecipientCount] = useState(
@@ -158,7 +157,7 @@ export function ConfirmationCard({
         dayOfMonth: recurringFrequency === "monthly" ? parseInt(recurringDayOfMonth) : undefined,
         timeOfDay: recurringTime,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        stopOnReply: recurringStopOnReply
+        stopOnReply: false // Recurring emails continue regardless of replies
       }
     }
 
@@ -247,47 +246,68 @@ export function ConfirmationCard({
             </div>
           </div>
 
-          {/* Tags Filter */}
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div>
-              <Label className="text-xs text-gray-500 mb-1 block">Tag Filter</Label>
-              <Select
-                value={selectedTag}
-                onValueChange={setSelectedTag}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="No tag filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No tag filter</SelectItem>
-                  {availableTags.map((tag) => (
-                    <SelectItem key={tag.stateKey} value={tag.stateKey}>
-                      {tag.stateKey} ({tag.count})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        </div>
 
-            {selectedTag !== "none" && (
+        {/* Data Personalization Section */}
+        {availableTags.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              <Label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Data Personalization</Label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Include contact-specific data in your email (e.g., invoice number, due date, amount)
+            </p>
+            
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-gray-500 mb-1 block">Filter Mode</Label>
+                <Label className="text-xs text-gray-500 mb-1 block">Include Data Tag</Label>
                 <Select
-                  value={tagMode}
-                  onValueChange={(value) => setTagMode(value as "has" | "missing")}
+                  value={selectedTag}
+                  onValueChange={setSelectedTag}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="No personalization" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="has">Has this tag</SelectItem>
-                    <SelectItem value="missing">Missing this tag</SelectItem>
+                    <SelectItem value="none">No personalization</SelectItem>
+                    {availableTags.map((tag) => (
+                      <SelectItem key={tag.stateKey} value={tag.stateKey}>
+                        {tag.stateKey} ({tag.count} contacts)
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedTag !== "none" && (
+                <div>
+                  <Label className="text-xs text-gray-500 mb-1 block">Filter Recipients</Label>
+                  <Select
+                    value={tagMode}
+                    onValueChange={(value) => setTagMode(value as "has" | "missing")}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="has">Only contacts with this data</SelectItem>
+                      <SelectItem value="missing">Only contacts missing this data</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            
+            {selectedTag !== "none" && (
+              <p className="text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded">
+                💡 The email will include {"{{" + selectedTag + "}}"} placeholder that gets replaced with each contact&apos;s actual value
+              </p>
             )}
           </div>
-        </div>
+        )}
 
         {/* Request Type Section */}
         <div className="space-y-3">
@@ -467,22 +487,9 @@ export function ConfirmationCard({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-purple-200">
-                <span className="text-xs text-purple-700">Stop sending to recipients who reply</span>
-                <button
-                  type="button"
-                  onClick={() => setRecurringStopOnReply(!recurringStopOnReply)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    recurringStopOnReply ? "bg-purple-600" : "bg-gray-200"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                      recurringStopOnReply ? "translate-x-5" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-              </div>
+              <p className="text-xs text-purple-600 bg-purple-50 px-3 py-2 rounded mt-2">
+                📧 Emails will be sent on schedule regardless of replies. Use one-off requests with reminders if you want to stop on reply.
+              </p>
             </div>
           )}
 
