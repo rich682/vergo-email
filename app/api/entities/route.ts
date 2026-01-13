@@ -34,9 +34,15 @@ export async function GET(request: NextRequest) {
     }
   )
 
+  // Filter out system contacts (used for tag placeholders)
+  const filteredEntities = entities.filter(entity => 
+    !entity.firstName?.startsWith("__system_") && 
+    !entity.email?.startsWith("__system_")
+  )
+
   // Format response with groups and internal/external status
   // findByOrganization already includes groups, but TypeScript doesn't infer it
-  const formatted = await Promise.all(entities.map(async (entity) => {
+  const formatted = await Promise.all(filteredEntities.map(async (entity) => {
     const isInternal = entity.email 
       ? await DomainDetectionService.isInternalEmail(entity.email, session.user.organizationId)
       : false

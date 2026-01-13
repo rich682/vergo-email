@@ -5,12 +5,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { BulkActionToolbar } from "./bulk-action-toolbar"
 import { X, Check } from "lucide-react"
 
 interface Group {
   id: string
   name: string
   color?: string | null
+}
+
+interface TagInfo {
+  id: string
+  name: string
+  displayName: string
 }
 
 interface Entity {
@@ -33,6 +40,7 @@ interface Entity {
 interface ContactListProps {
   entities: Entity[]
   groups: Group[]
+  tags: TagInfo[]
   availableStateKeys: string[]
   search: string
   selectedGroupId?: string
@@ -48,7 +56,7 @@ interface ContactListProps {
   onDelete: () => void
 }
 
-// Built-in contact types for filtering (excludes CUSTOM which is handled separately)
+// Built-in contact types for filtering and bulk actions
 const CONTACT_TYPES = [
   { id: "CLIENT", label: "Client" },
   { id: "VENDOR", label: "Vendor" },
@@ -60,6 +68,7 @@ const CONTACT_TYPES = [
 export function ContactList({
   entities,
   groups,
+  tags,
   availableStateKeys,
   search,
   selectedGroupId,
@@ -75,6 +84,9 @@ export function ContactList({
   onDelete
 }: ContactListProps) {
   const [stateKeyDropdownOpen, setStateKeyDropdownOpen] = useState(false)
+  
+  // Always show selection column
+  const showSelectionColumn = true
 
   const handleDelete = async (id: string) => {
     try {
@@ -121,8 +133,9 @@ export function ContactList({
     onSelectedEntitiesChange([])
   }
 
-  // Show selection column when filtering by state keys
-  const showSelectionColumn = selectedStateKeys.length > 0
+  const handleBulkActionComplete = () => {
+    onDelete() // This refreshes the entity list
+  }
 
   return (
     <div className="space-y-4">
@@ -277,10 +290,10 @@ export function ContactList({
         </div>
       )}
 
-      {/* Selection bar when filtering by tags */}
-      {showSelectionColumn && entities.length > 0 && (
-        <div className="flex items-center gap-4 px-4 py-2 bg-blue-50 border border-blue-100 rounded-md">
-          <span className="text-sm text-blue-700">
+      {/* Selection bar */}
+      {entities.length > 0 && (
+        <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
+          <span className="text-sm text-gray-700">
             {selectedEntityIds.length} of {entities.length} selected
           </span>
           <button
@@ -419,6 +432,17 @@ export function ContactList({
           </tbody>
         </table>
       </div>
+
+      {/* Bulk Action Toolbar */}
+      <BulkActionToolbar
+        selectedCount={selectedEntityIds.length}
+        selectedEntityIds={selectedEntityIds}
+        groups={groups}
+        tags={tags}
+        contactTypes={CONTACT_TYPES}
+        onClearSelection={clearEntitySelection}
+        onActionComplete={handleBulkActionComplete}
+      />
     </div>
   )
 }

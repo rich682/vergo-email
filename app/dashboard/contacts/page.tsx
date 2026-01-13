@@ -303,6 +303,7 @@ export default function ContactsPage() {
                 <ContactList
                   entities={entities}
                   groups={groups}
+                  tags={tags}
                   availableStateKeys={availableStateKeys}
                   search={search}
                   selectedGroupId={selectedGroupId}
