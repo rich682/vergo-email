@@ -547,13 +547,46 @@ export default function JobDetailPage() {
       const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
       if (typesRes.ok) {
         const typesData = await typesRes.json()
-        setAvailableTypes(typesData.types || [])
+        // Transform the response into the expected format
+        const types: ContactType[] = []
+        
+        // Add built-in types
+        const builtInCounts = typesData.builtInCounts || {}
+        const builtInLabels: Record<string, string> = {
+          EMPLOYEE: "Employee",
+          VENDOR: "Vendor", 
+          CLIENT: "Client",
+          PARTNER: "Partner",
+          OTHER: "Other"
+        }
+        for (const [value, label] of Object.entries(builtInLabels)) {
+          if (builtInCounts[value] !== undefined) {
+            types.push({ value, label, count: builtInCounts[value] })
+          } else {
+            // Include even if count is 0 so users can see all options
+            types.push({ value, label, count: 0 })
+          }
+        }
+        
+        // Add custom types
+        const customTypes = typesData.customTypes || []
+        for (const ct of customTypes) {
+          types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
+        }
+        
+        setAvailableTypes(types)
       }
-      // Fetch groups
+      // Fetch groups - API returns array directly
       const groupsRes = await fetch("/api/groups", { credentials: "include" })
       if (groupsRes.ok) {
         const groupsData = await groupsRes.json()
-        setAvailableGroups(groupsData.groups || [])
+        // API returns array directly, transform to expected format
+        const groups: Group[] = (Array.isArray(groupsData) ? groupsData : []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          memberCount: g.entityCount || g._count?.entities || 0
+        }))
+        setAvailableGroups(groups)
       }
     } catch (error) {
       console.error("Error fetching stakeholder options:", error)
@@ -577,12 +610,14 @@ export default function JobDetailPage() {
     }
     setSearchingEntities(true)
     try {
-      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}&limit=10`, {
+      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}`, {
         credentials: "include"
       })
       if (response.ok) {
         const data = await response.json()
-        setSearchResults(data.entities || [])
+        // API returns array directly
+        const entities = Array.isArray(data) ? data : []
+        setSearchResults(entities.slice(0, 10))
       }
     } catch (error) {
       console.error("Error searching entities:", error)
