@@ -48,13 +48,13 @@ interface ContactListProps {
   onDelete: () => void
 }
 
-// Get unique contact types from entities
+// Built-in contact types for filtering (excludes CUSTOM which is handled separately)
 const CONTACT_TYPES = [
   { id: "CLIENT", label: "Client" },
   { id: "VENDOR", label: "Vendor" },
   { id: "EMPLOYEE", label: "Employee" },
-  { id: "PARTNER", label: "Partner" },
-  { id: "CUSTOM", label: "Custom" },
+  { id: "CONTRACTOR", label: "Contractor" },
+  { id: "MANAGEMENT", label: "Management" },
 ]
 
 export function ContactList({
