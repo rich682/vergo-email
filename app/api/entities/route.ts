@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
   const groupId = searchParams.get("groupId")
   const contactType = searchParams.get("contactType") || undefined
   const stateKey = searchParams.get("stateKey") || undefined
+  const stateKeysParam = searchParams.get("stateKeys")
+  const stateKeys = stateKeysParam ? stateKeysParam.split(",").filter(Boolean) : undefined
 
   const entities = await EntityService.findByOrganization(
     session.user.organizationId,
@@ -27,7 +29,8 @@ export async function GET(request: NextRequest) {
       search: search || undefined,
       groupId: groupId || undefined,
       contactType,
-      stateKey
+      stateKey,
+      stateKeys
     }
   )
 

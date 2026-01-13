@@ -33,9 +33,13 @@ export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
   const [entities, setEntities] = useState<Entity[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [availableStateKeys, setAvailableStateKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
+  const [selectedContactType, setSelectedContactType] = useState<string | undefined>()
+  const [selectedStateKeys, setSelectedStateKeys] = useState<string[]>([])
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
@@ -44,7 +48,8 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchEntities()
     fetchGroups()
-  }, [search, selectedGroupId])
+    fetchAvailableStateKeys()
+  }, [search, selectedGroupId, selectedContactType, selectedStateKeys])
 
   const fetchEntities = async () => {
     try {
@@ -52,11 +57,15 @@ export default function ContactsPage() {
       const params = new URLSearchParams()
       if (search) params.append("search", search)
       if (selectedGroupId) params.append("groupId", selectedGroupId)
+      if (selectedContactType) params.append("contactType", selectedContactType)
+      if (selectedStateKeys.length > 0) params.append("stateKeys", selectedStateKeys.join(","))
 
       const response = await fetch(`/api/entities?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setEntities(data)
+        // Clear selection when filters change
+        setSelectedEntityIds([])
       }
     } catch (error) {
       console.error("Error fetching contacts:", error)
@@ -77,10 +86,23 @@ export default function ContactsPage() {
     }
   }
 
+  const fetchAvailableStateKeys = async () => {
+    try {
+      const response = await fetch("/api/contacts/state-keys")
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableStateKeys(data.stateKeys || [])
+      }
+    } catch (error) {
+      console.error("Error fetching state keys:", error)
+    }
+  }
+
   const handleFormSuccess = () => {
     setShowForm(false)
     setEditingEntity(null)
     fetchEntities()
+    fetchAvailableStateKeys() // Refresh available tags after adding/editing
   }
 
   const handleEdit = (entity: Entity) => {
@@ -95,6 +117,12 @@ export default function ContactsPage() {
 
   const handleDelete = () => {
     fetchEntities()
+    fetchAvailableStateKeys() // Refresh available tags after delete
+  }
+
+  const handleImportSuccess = () => {
+    fetchEntities()
+    fetchAvailableStateKeys() // Refresh available tags after import
   }
 
   return (
@@ -187,7 +215,7 @@ export default function ContactsPage() {
             {showImport && (
               <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
                 <ImportModal
-                  onSuccess={fetchEntities}
+                  onSuccess={handleImportSuccess}
                   onClose={() => setShowImport(false)}
                 />
               </div>
@@ -201,13 +229,20 @@ export default function ContactsPage() {
               ) : (
                 <ContactList
                   entities={entities}
+                  groups={groups}
+                  availableStateKeys={availableStateKeys}
+                  search={search}
+                  selectedGroupId={selectedGroupId}
+                  selectedContactType={selectedContactType}
+                  selectedStateKeys={selectedStateKeys}
+                  selectedEntityIds={selectedEntityIds}
+                  onSearchChange={setSearch}
+                  onGroupFilterChange={setSelectedGroupId}
+                  onContactTypeChange={setSelectedContactType}
+                  onStateKeysChange={setSelectedStateKeys}
+                  onSelectedEntitiesChange={setSelectedEntityIds}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  search={search}
-                  onSearchChange={setSearch}
-                  selectedGroupId={selectedGroupId}
-                  onGroupFilterChange={setSelectedGroupId}
-                  groups={groups}
                 />
               )}
             </div>
