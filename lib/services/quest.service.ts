@@ -341,7 +341,7 @@ export class QuestService {
     console.log(`  - recipientCount: ${recipientResult.recipients.length}`)
 
     if (selectedTags.length > 0) {
-      const entityIds = recipientResult.recipients.map(r => r.id).filter(Boolean) as string[]
+      const entityIds = recipientResult.recipients.map(r => r.entityId).filter(Boolean) as string[]
       console.log(`  - entityIds: [${entityIds.slice(0, 3).join(', ')}${entityIds.length > 3 ? '...' : ''}]`)
       
       if (entityIds.length > 0) {
@@ -403,11 +403,11 @@ export class QuestService {
     }
 
     const result = recipientResult.recipientsWithReasons.map(r => ({
-      id: r.id,
+      id: r.entityId,
       email: r.email,
       name: r.firstName || r.name,
       contactType: r.contactType,
-      tagValues: r.id ? tagValuesByEntity.get(r.id) : undefined
+      tagValues: r.entityId ? tagValuesByEntity.get(r.entityId) : undefined
     }))
 
     console.log(`  - Result sample:`, result.slice(0, 2).map(r => ({ email: r.email, tagValues: r.tagValues })))
@@ -463,7 +463,7 @@ export class QuestService {
       
       if (selectedTags.length > 0) {
         // Fetch contact states for all recipients
-        const entityIds = recipientResult.recipients.map(r => r.id).filter(Boolean) as string[]
+        const entityIds = recipientResult.recipients.map(r => r.entityId).filter(Boolean) as string[]
         if (entityIds.length > 0) {
           const contactStates = await prisma.contactState.findMany({
             where: {
@@ -495,14 +495,14 @@ export class QuestService {
         }
         
         // Add tag values for this recipient
-        if (r.id && recipientTagValues.has(r.id)) {
-          const tagData = recipientTagValues.get(r.id)!
+        if (r.entityId && recipientTagValues.has(r.entityId)) {
+          const tagData = recipientTagValues.get(r.entityId)!
           Object.assign(data, tagData)
         }
         
         // Also add tag values using the raw stateKey names (for backwards compatibility)
-        if (r.id && selectedTags.length > 0) {
-          const tagData = recipientTagValues.get(r.id) || {}
+        if (r.entityId && selectedTags.length > 0) {
+          const tagData = recipientTagValues.get(r.entityId) || {}
           for (const tagKey of selectedTags) {
             if (!(tagKey in data)) {
               data[tagKey] = tagData[tagKey] || ""
