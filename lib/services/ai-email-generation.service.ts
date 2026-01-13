@@ -286,7 +286,12 @@ export class AIEmailGenerationService {
             role: "system",
             content: `You are an AI assistant that helps generate professional, polite email drafts for accounting teams.
             
-            Transform the user's request into a polished, professional email that intelligently incorporates available variables.
+            CRITICAL: Your email MUST directly address what the user asked for. If they mention "timesheets", the email must be about timesheets. If they mention "invoices", it must be about invoices. Do NOT generalize or substitute with generic terms like "documents" or "required items".
+            
+            Transform the user's request into a polished, professional email that:
+            1. DIRECTLY addresses the specific topic mentioned (timesheets, invoices, W-9s, etc.)
+            2. Uses the exact terminology from the user's request
+            3. Intelligently incorporates available variables
             
             The email should:
             - Start with a professional greeting:
@@ -382,7 +387,10 @@ export class AIEmailGenerationService {
             role: "user",
             content: `Context: ${JSON.stringify(context, null, 2)}
 
-User request: "${data.prompt}"
+USER'S ORIGINAL REQUEST (you MUST address this EXACTLY - use the same terminology):
+"${data.prompt}"
+
+IMPORTANT: Your email MUST be about "${data.prompt.split(' ').slice(0, 10).join(' ')}..." - do NOT substitute with generic terms.
 ${formattedDeadline ? `\nREQUEST DEADLINE: ${formattedDeadline} - This is the deadline for the request. Include this deadline in the email body (e.g., "The deadline for this request is ${formattedDeadline}." or "Please respond by ${formattedDeadline}."). Do NOT use this deadline in the subject line unless it's the most relevant piece of information.` : ''}
 ${data.availableTags && data.availableTags.length > 0 ? `
 
