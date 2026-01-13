@@ -454,7 +454,7 @@ export function QuestCreator() {
                 onChange={(e) => setPreviewRecipientIdx(Number(e.target.value))}
                 className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
-                <option value={-1}>Template (with placeholders)</option>
+                <option value={-1}>Draft (edit mode)</option>
                 {resolvedRecipients.slice(0, 10).map((r, idx) => (
                   <option key={idx} value={idx}>
                     {r.name || r.email} {r.contactType ? `(${r.contactType})` : ""}
