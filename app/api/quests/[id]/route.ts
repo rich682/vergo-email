@@ -14,7 +14,7 @@ import { QuestService } from "@/lib/services/quest.service"
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
-  return process.env.QUEST_UI === "true"
+  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
 }
 
 export async function GET(

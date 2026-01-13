@@ -15,7 +15,7 @@ import type { QuestCreateInput, QuestInterpretationResult } from "@/lib/types/qu
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
-  return process.env.QUEST_UI === "true"
+  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
 }
 
 export async function GET(request: NextRequest) {

@@ -14,7 +14,7 @@ import type { QuestCreateInput, QuestInterpretationResult, StandingQuestSchedule
 
 // Feature flag checks
 function isQuestUIEnabled(): boolean {
-  return process.env.QUEST_UI === "true"
+  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
 }
 
 function isStandingQuestsEnabled(): boolean {
