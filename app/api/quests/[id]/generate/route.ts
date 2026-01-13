@@ -60,6 +60,10 @@ export async function POST(
     
     console.log(`Quest generate: Completed for quest ${id}, subject: ${quest.subject?.substring(0, 50)}`)
 
+    // Get recipients with tag values for preview
+    const recipientsWithTags = await QuestService.getRecipientsWithTagValues(id, organizationId)
+    console.log(`Quest generate: Fetched ${recipientsWithTags.length} recipients with tag values`)
+
     return NextResponse.json({
       success: true,
       quest: {
@@ -73,7 +77,8 @@ export async function POST(
         confirmedSelection: quest.confirmedSelection,
         scheduleConfig: quest.scheduleConfig,
         remindersConfig: quest.remindersConfig
-      }
+      },
+      recipients: recipientsWithTags
     })
 
   } catch (error: any) {

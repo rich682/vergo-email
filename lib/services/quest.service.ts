@@ -307,6 +307,68 @@ export class QuestService {
   }
 
   /**
+   * Get resolved recipients with their tag values for preview
+   */
+  static async getRecipientsWithTagValues(
+    id: string, 
+    organizationId: string
+  ): Promise<Array<{
+    id?: string
+    email: string
+    name?: string
+    contactType?: string
+    tagValues?: Record<string, string>
+  }>> {
+    const quest = await this.findById(id, organizationId)
+    if (!quest) {
+      throw new Error("Quest not found")
+    }
+
+    // Resolve recipients
+    const recipientResult = await resolveRecipientsWithReasons(organizationId, {
+      contactTypes: quest.confirmedSelection.contactTypes,
+      groupIds: quest.confirmedSelection.groupIds,
+      stateFilter: quest.confirmedSelection.stateFilter
+    })
+
+    // Get tag values for all recipients if tags are selected
+    const selectedTags = quest.confirmedSelection.stateFilter?.stateKeys || []
+    let tagValuesByEntity: Map<string, Record<string, string>> = new Map()
+
+    if (selectedTags.length > 0) {
+      const entityIds = recipientResult.recipients.map(r => r.id).filter(Boolean) as string[]
+      if (entityIds.length > 0) {
+        const contactStates = await prisma.contactState.findMany({
+          where: {
+            organizationId,
+            entityId: { in: entityIds },
+            stateKey: { in: selectedTags }
+          },
+          include: {
+            tag: true
+          }
+        })
+
+        // Build map of entityId -> { tagName: tagValue }
+        for (const state of contactStates) {
+          const tagName = state.stateKey
+          const existing = tagValuesByEntity.get(state.entityId) || {}
+          existing[tagName] = state.stateValue || ""
+          tagValuesByEntity.set(state.entityId, existing)
+        }
+      }
+    }
+
+    return recipientResult.recipientsWithReasons.map(r => ({
+      id: r.id,
+      email: r.email,
+      name: r.firstName || r.name,
+      contactType: r.contactType,
+      tagValues: r.id ? tagValuesByEntity.get(r.id) : undefined
+    }))
+  }
+
+  /**
    * Execute Quest (send emails)
    */
   static async execute(id: string, organizationId: string): Promise<QuestExecutionResult> {

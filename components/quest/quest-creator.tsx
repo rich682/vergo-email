@@ -253,8 +253,17 @@ export function QuestCreator() {
         status: generateData.quest?.status,
         hasSubject: !!generateData.quest?.subject,
         hasBody: !!generateData.quest?.body,
-        subject: generateData.quest?.subject?.substring(0, 50)
+        subject: generateData.quest?.subject?.substring(0, 50),
+        recipientCount: generateData.recipients?.length
       })
+
+      // Update resolved recipients with tag values from generate response
+      if (generateData.recipients && generateData.recipients.length > 0) {
+        setResolvedRecipients(generateData.recipients)
+        console.log("handleConfirm: Updated resolvedRecipients with tag values:", 
+          generateData.recipients.slice(0, 2).map((r: any) => ({ email: r.email, tagValues: r.tagValues }))
+        )
+      }
 
       // Verify we got complete data
       if (!generateData.quest?.subject || !generateData.quest?.body) {
