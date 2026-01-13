@@ -323,7 +323,37 @@ export class QuestService {
         approved: true
       } : undefined
 
-      // Send emails
+      // Import template renderer for personalization
+      const { renderTemplate } = await import("@/lib/utils/template-renderer")
+
+      // Render personalized emails for each recipient
+      const perRecipientEmails = recipientResult.recipients.map(r => {
+        // Build personalization data from recipient
+        const data: Record<string, string> = {
+          "First Name": r.firstName || r.name?.split(" ")[0] || "",
+          "Email": r.email || ""
+        }
+
+        // Render templates with recipient data
+        const subjectResult = renderTemplate(quest.subject || "", data)
+        const bodyResult = renderTemplate(quest.body || "", data)
+        const htmlBodyResult = quest.htmlBody 
+          ? renderTemplate(quest.htmlBody, data)
+          : { rendered: bodyResult.rendered.replace(/\n/g, '<br>'), missingTags: [], usedTags: [] }
+
+        return {
+          email: r.email,
+          subject: subjectResult.rendered,
+          body: bodyResult.rendered,
+          htmlBody: htmlBodyResult.rendered
+        }
+      })
+
+      // Generate a clean campaign name from the subject (not the prompt)
+      // Use the first recipient's rendered subject as the campaign name
+      const campaignName = perRecipientEmails[0]?.subject || quest.originalPrompt.substring(0, 50)
+
+      // Send emails with personalized content
       const results = await EmailSendingService.sendBulkEmail({
         organizationId,
         recipients: recipientResult.recipients.map(r => ({
@@ -333,7 +363,8 @@ export class QuestService {
         subject: quest.subject || "",
         body: quest.body || "",
         htmlBody: quest.htmlBody,
-        campaignName: `Quest: ${quest.originalPrompt.substring(0, 50)}`,
+        perRecipientEmails,
+        campaignName,
         deadlineDate: quest.scheduleConfig?.deadline || null,
         remindersConfig
       })

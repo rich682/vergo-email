@@ -438,6 +438,7 @@ export default function RequestsPage() {
                           <span className="text-gray-500">Unknown</span>
                         </th>
                       )}
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                     </tr>
                   </thead>
@@ -513,6 +514,9 @@ export default function RequestsPage() {
                               </span>
                             </td>
                           )}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatDistanceToNow(group.createdLatest, { addSuffix: true })}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDistanceToNow(group.lastActivity, { addSuffix: true })}
                           </td>
