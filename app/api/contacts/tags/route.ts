@@ -9,7 +9,34 @@ const RESERVED_TAGS = new Set([
   "email", "phone", "type", "groups", "contacttype", "contact_type"
 ])
 
-// POST - Create a new tag (creates an empty placeholder entry)
+// System entity name for holding tag placeholders
+const SYSTEM_ENTITY_NAME = "__system_tag_holder__"
+
+// Get or create a system entity for the organization to hold tag placeholders
+async function getOrCreateSystemEntity(organizationId: string): Promise<string> {
+  // Check if system entity exists
+  let systemEntity = await prisma.entity.findFirst({
+    where: {
+      organizationId,
+      firstName: SYSTEM_ENTITY_NAME
+    }
+  })
+
+  if (!systemEntity) {
+    // Create system entity
+    systemEntity = await prisma.entity.create({
+      data: {
+        organizationId,
+        firstName: SYSTEM_ENTITY_NAME,
+        contactType: "UNKNOWN"
+      }
+    })
+  }
+
+  return systemEntity.id
+}
+
+// POST - Create a new tag
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -45,15 +72,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This tag already exists" }, { status: 400 })
     }
 
-    // Create a placeholder entry with a special system entity to make the tag visible
-    // This allows users to create tags before assigning values to contacts
-    // We use a special "__tag_placeholder__" entityId to mark these entries
+    // Get or create system entity for this organization
+    const systemEntityId = await getOrCreateSystemEntity(session.user.organizationId)
+
+    // Create a placeholder ContactState entry
     await prisma.contactState.create({
       data: {
         organizationId: session.user.organizationId,
-        entityId: `__tag_placeholder__${normalizedName}`,
+        entityId: systemEntityId,
         stateKey: normalizedName,
-        stateValue: "__placeholder__"
+        source: "CSV_UPLOAD" // Use existing enum value
       }
     })
 

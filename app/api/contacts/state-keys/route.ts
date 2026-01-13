@@ -18,6 +18,9 @@ const EXCLUDED_STATE_KEYS = new Set([
   "contact_type"
 ])
 
+// System entity name used for tag placeholders
+const SYSTEM_ENTITY_NAME = "__system_tag_holder__"
+
 export async function GET() {
   const session = await getServerSession(authOptions)
 
@@ -25,13 +28,19 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Get all state keys with counts, excluding placeholder entries from the count
+  // Find the system entity ID (if exists) to exclude from counts
+  const systemEntity = await prisma.entity.findFirst({
+    where: {
+      organizationId: session.user.organizationId,
+      firstName: SYSTEM_ENTITY_NAME
+    },
+    select: { id: true }
+  })
+
+  // Get all unique state keys
   const results = await prisma.contactState.groupBy({
     by: ["stateKey"],
-    where: { 
-      organizationId: session.user.organizationId,
-      // Include all entries (including placeholders) to get the tag names
-    },
+    where: { organizationId: session.user.organizationId },
     _count: { stateKey: true },
     orderBy: { _count: { stateKey: "desc" } }
   })
@@ -41,19 +50,20 @@ export async function GET() {
     (row) => !EXCLUDED_STATE_KEYS.has(row.stateKey.toLowerCase())
   )
 
-  // For each tag, get the actual count excluding placeholder entries
+  // For each tag, get the count excluding the system entity
   const stateKeysWithCounts = await Promise.all(
     filtered.map(async (row) => {
-      // Count only real entries (not placeholders)
-      const realCount = await prisma.contactState.count({
-        where: {
-          organizationId: session.user.organizationId,
-          stateKey: row.stateKey,
-          NOT: {
-            entityId: { startsWith: "__tag_placeholder__" }
-          }
-        }
-      })
+      // Count only real contacts (exclude system entity)
+      const realCount = systemEntity
+        ? await prisma.contactState.count({
+            where: {
+              organizationId: session.user.organizationId,
+              stateKey: row.stateKey,
+              NOT: { entityId: systemEntity.id }
+            }
+          })
+        : row._count.stateKey
+
       return {
         stateKey: row.stateKey,
         count: realCount
