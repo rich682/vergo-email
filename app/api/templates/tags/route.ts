@@ -12,30 +12,28 @@ export async function GET() {
 
   const organizationId = session.user.organizationId
 
-  // Fetch all contacts with their tag values
-  const entities = await prisma.entity.findMany({
-    where: { organizationId },
-    include: {
-      contactStates: {
-        include: {
-          tag: true
-        }
-      }
-    },
-    orderBy: { firstName: "asc" }
-  })
-
   // Fetch all existing tags for this organization
   const tags = await prisma.tag.findMany({
     where: { organizationId },
     orderBy: { name: "asc" }
   })
 
-  // Build headers: EMAIL, FIRST_NAME, LAST_NAME (for reference), then all tag columns
+  // Fetch all contacts with their tag values
+  const entities = await prisma.entity.findMany({
+    where: { organizationId },
+    include: {
+      contactStates: {
+        where: {
+          tagId: { in: tags.map(t => t.id) }
+        }
+      }
+    },
+    orderBy: { firstName: "asc" }
+  })
+
+  // Build headers: EMAIL + existing tag columns only
   const headers = [
     "EMAIL",
-    "FIRST_NAME",
-    "LAST_NAME",
     ...tags.map(t => t.name.toUpperCase())
   ]
 
@@ -46,9 +44,7 @@ export async function GET() {
     if (!entity.email) continue // Skip contacts without email
     
     const row: (string | number | null)[] = [
-      entity.email,
-      entity.firstName || "",
-      entity.lastName || ""
+      entity.email
     ]
 
     // Add tag values
@@ -103,17 +99,17 @@ export async function GET() {
     ["This template contains all your contacts with their current tag values."],
     [""],
     ["HOW TO USE:"],
-    ["1. Fill in or update values in the tag columns (columns D onwards)"],
-    ["2. Do NOT modify EMAIL, FIRST_NAME, or LAST_NAME columns - they are for reference only"],
+    ["1. Fill in or update values in the tag columns (columns B onwards)"],
+    ["2. Do NOT modify the EMAIL column - it's used to match contacts"],
     ["3. To remove a tag value, leave the cell empty"],
-    ["4. To add a new tag column, simply add a new column header"],
+    ["4. To add a new tag, add a new column with the tag name as the header"],
     ["5. Save the file and upload it in the Tags tab"],
     [""],
     ["IMPORTANT:"],
     ["- Contacts are matched by EMAIL address"],
     ["- Unknown emails will be skipped"],
     ["- Uploading will REPLACE all tag values for contacts in this file"],
-    ["- Tags not included in the file will be removed for those contacts"]
+    ["- Empty cells will remove existing tag values"]
   ]
   const instructionsSheet = XLSX.utils.aoa_to_sheet(instructionsData)
   instructionsSheet["!cols"] = [{ wch: 80 }]
