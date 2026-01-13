@@ -125,13 +125,19 @@ export function BulkActionToolbar({
     }
     if (tagsToAdd.length === 0) return
     
+    console.log("[BulkAction] Adding tags:", tagsToAdd, "to entities:", selectedEntityIds)
+    
     // Add each tag
     setLoading(true)
     setError(null)
     
     try {
+      const errors: string[] = []
+      let successCount = 0
+      
       for (const tagName of tagsToAdd) {
-        await fetch("/api/entities/bulk-update", {
+        console.log(`[BulkAction] Adding tag "${tagName}"...`)
+        const res = await fetch("/api/entities/bulk-update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -140,11 +146,29 @@ export function BulkActionToolbar({
             payload: { tagName }
           })
         })
+        
+        const data = await res.json().catch(() => ({}))
+        console.log(`[BulkAction] Response for "${tagName}":`, data)
+        
+        if (!res.ok) {
+          errors.push(`${tagName}: ${data.error || "Failed"}`)
+        } else {
+          successCount++
+        }
       }
       
-      resetState()
-      onActionComplete()
+      if (errors.length > 0) {
+        setError(errors.join(", "))
+        // Still refresh if some succeeded
+        if (successCount > 0) {
+          onActionComplete()
+        }
+      } else {
+        resetState()
+        onActionComplete()
+      }
     } catch (err: any) {
+      console.error("[BulkAction] Error:", err)
       setError(err.message || "Failed to add tags")
     } finally {
       setLoading(false)

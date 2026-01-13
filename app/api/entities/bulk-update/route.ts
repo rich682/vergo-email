@@ -137,13 +137,16 @@ export async function POST(request: NextRequest) {
         }
 
         const tagName = payload.tagName.toLowerCase().replace(/\s+/g, "_")
-        const tagValue = payload.tagValue || ""
+        console.log(`[Bulk Update] Adding tag "${tagName}" to ${validEntityIds.length} entities`)
 
         // Get or create the tag
         const tagId = await ContactStateService.getOrCreateTag(organizationId, tagName)
         if (!tagId) {
-          return NextResponse.json({ error: "Cannot create reserved tag name" }, { status: 400 })
+          console.log(`[Bulk Update] Tag "${tagName}" is reserved, cannot create`)
+          return NextResponse.json({ error: `Cannot create reserved tag name: ${tagName}` }, { status: 400 })
         }
+        
+        console.log(`[Bulk Update] Tag ID: ${tagId}`)
 
         for (const entityId of validEntityIds) {
           try {
@@ -160,19 +163,21 @@ export async function POST(request: NextRequest) {
                 entityId,
                 tagId,
                 stateKey: tagName,
-                stateValue: tagValue,
+                stateValue: "",
                 source: "BULK_UPDATE"
               },
               update: {
-                stateValue: tagValue,
                 source: "BULK_UPDATE"
               }
             })
             updated++
           } catch (err: any) {
+            console.error(`[Bulk Update] Error adding tag to entity ${entityId}:`, err)
             errors.push({ entityId, error: err.message })
           }
         }
+        
+        console.log(`[Bulk Update] Successfully added tag to ${updated} entities, ${errors.length} errors`)
         break
       }
 
