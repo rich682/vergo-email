@@ -56,6 +56,16 @@ export async function POST(request: NextRequest) {
     // Interpret the prompt
     const result = await QuestInterpreterService.interpret(organizationId, { prompt })
 
+    // Get organization context for recipient resolution
+    const context = await QuestInterpreterService.getOrganizationContext(organizationId)
+
+    // Resolve recipients for preview
+    const recipients = await QuestInterpreterService.resolveRecipientsForPreview(
+      organizationId,
+      result.recipientSelection,
+      context
+    )
+
     // Log interpretation for debugging
     console.log(JSON.stringify({
       event: "quest_interpretation",
@@ -69,7 +79,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      interpretation: result
+      interpretation: result,
+      recipients
     })
 
   } catch (error: any) {

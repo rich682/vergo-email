@@ -203,7 +203,15 @@ OUTPUT FORMAT (JSON):
   ]
 }
 
-Today's date is ${new Date().toISOString().split('T')[0]}. Use this for calculating relative dates like "end of week" or "next Friday".
+TODAY'S DATE: ${new Date().toISOString().split('T')[0]} (${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })})
+
+DATE CALCULATION RULES:
+- "this Friday" or "by Friday" = the upcoming Friday from today's date
+- "next Friday" = the Friday after this week's Friday
+- "end of week" = this Friday
+- "by end of week" = deadline is this Friday
+- Always calculate dates relative to TODAY'S DATE shown above
+- If today is Monday Jan 13, 2026, then "this Friday" = January 16, 2026
 
 IMPORTANT:
 - Only output contact types from the available list
@@ -465,6 +473,38 @@ IMPORTANT:
       matchingRecipients: result.counts.included,
       excludedCount: result.counts.excluded
     }
+  }
+
+  /**
+   * Resolve recipients with details for preview
+   */
+  static async resolveRecipientsForPreview(
+    organizationId: string,
+    selection: QuestRecipientSelection,
+    context: OrganizationContext
+  ): Promise<Array<{ email: string; name?: string; contactType?: string }>> {
+    // Convert semantic selection to database query format
+    const groupIds = selection.groupNames
+      ?.map(name => context.availableGroups.find(g => g.name === name)?.id)
+      .filter((id): id is string => id !== undefined)
+
+    const dbSelection = {
+      contactTypes: selection.contactTypes,
+      groupIds: groupIds?.length ? groupIds : undefined,
+      stateFilter: selection.stateFilter ? {
+        stateKeys: selection.stateFilter.stateKeys,
+        mode: selection.stateFilter.mode
+      } : undefined
+    }
+
+    // Use the recipient filter service to get actual recipients
+    const result = await resolveRecipientsWithReasons(organizationId, dbSelection)
+
+    return result.recipientsWithReasons.map(r => ({
+      email: r.email,
+      name: r.firstName || r.name,
+      contactType: r.contactType
+    }))
   }
 }
 

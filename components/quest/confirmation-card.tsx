@@ -16,6 +16,8 @@ interface ConfirmationCardProps {
   interpretation: QuestInterpretationResult
   availableContactTypes: string[]
   availableGroups: Array<{ id: string; name: string }>
+  availableTags?: Array<{ stateKey: string; count: number }>
+  recipients?: Array<{ email: string; name?: string; contactType?: string }>
   onConfirm: (
     selection: QuestRecipientSelection,
     schedule: QuestScheduleIntent,
@@ -53,6 +55,8 @@ export function ConfirmationCard({
   interpretation,
   availableContactTypes,
   availableGroups,
+  availableTags = [],
+  recipients = [],
   onConfirm,
   onCancel,
   loading = false,
@@ -65,6 +69,13 @@ export function ConfirmationCard({
   const [selectedGroups, setSelectedGroups] = useState<string[]>(
     interpretation.recipientSelection.groupNames || []
   )
+  const [selectedTag, setSelectedTag] = useState<string>(
+    interpretation.recipientSelection.stateFilter?.stateKeys?.[0] || "none"
+  )
+  const [tagMode, setTagMode] = useState<"has" | "missing">(
+    interpretation.recipientSelection.stateFilter?.mode || "has"
+  )
+  const [showRecipients, setShowRecipients] = useState(false)
   const [sendTiming, setSendTiming] = useState<"immediate" | "scheduled" | "recurring">(
     interpretation.scheduleIntent.sendTiming
   )
@@ -109,7 +120,10 @@ export function ConfirmationCard({
     const selection: QuestRecipientSelection = {
       contactTypes: selectedTypes.length > 0 ? selectedTypes : undefined,
       groupNames: selectedGroups.length > 0 ? selectedGroups : undefined,
-      stateFilter: interpretation.recipientSelection.stateFilter
+      stateFilter: selectedTag !== "none" ? {
+        stateKeys: [selectedTag],
+        mode: tagMode
+      } : undefined
     }
 
     const schedule: QuestScheduleIntent = {
@@ -220,6 +234,47 @@ export function ConfirmationCard({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Tags Filter */}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <Label className="text-xs text-gray-500 mb-1 block">Tag Filter</Label>
+              <Select
+                value={selectedTag}
+                onValueChange={setSelectedTag}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="No tag filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No tag filter</SelectItem>
+                  {availableTags.map((tag) => (
+                    <SelectItem key={tag.stateKey} value={tag.stateKey}>
+                      {tag.stateKey} ({tag.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedTag !== "none" && (
+              <div>
+                <Label className="text-xs text-gray-500 mb-1 block">Filter Mode</Label>
+                <Select
+                  value={tagMode}
+                  onValueChange={(value) => setTagMode(value as "has" | "missing")}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="has">Has this tag</SelectItem>
+                    <SelectItem value="missing">Missing this tag</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -454,13 +509,25 @@ export function ConfirmationCard({
           )}
         </div>
 
-        {/* Summary */}
-        <div className="pt-3 border-t border-gray-100">
+        {/* Summary with expandable recipient list */}
+        <div className="pt-3 border-t border-gray-100 space-y-2">
           <div className="flex items-center justify-between text-sm">
+            <button
+              type="button"
+              onClick={() => setShowRecipients(!showRecipients)}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <span className="font-semibold text-gray-900">{recipientCount}</span> recipients
+              <svg 
+                className={`w-4 h-4 transition-transform ${showRecipients ? "rotate-180" : ""}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
             <div className="flex items-center gap-4">
-              <span className="text-gray-600">
-                <span className="font-semibold text-gray-900">{recipientCount}</span> recipients
-              </span>
               {excludedCount > 0 && (
                 <span className="text-yellow-600 flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -469,13 +536,46 @@ export function ConfirmationCard({
                   {excludedCount} excluded
                 </span>
               )}
+              {remindersEnabled && interpretation.resolvedCounts.estimatedReminders && (
+                <span className="text-gray-500">
+                  Up to {interpretation.resolvedCounts.estimatedReminders} reminders per person
+                </span>
+              )}
             </div>
-            {remindersEnabled && interpretation.resolvedCounts.estimatedReminders && (
-              <span className="text-gray-500">
-                Up to {interpretation.resolvedCounts.estimatedReminders} reminders per person
-              </span>
-            )}
           </div>
+
+          {/* Expandable recipient list */}
+          {showRecipients && recipients.length > 0 && (
+            <div className="mt-2 p-3 bg-gray-50 rounded-lg max-h-48 overflow-auto">
+              <div className="space-y-1">
+                {recipients.map((recipient, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-medium text-indigo-600">
+                        {(recipient.name || recipient.email).charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="text-gray-900">{recipient.name || recipient.email}</span>
+                        {recipient.name && (
+                          <span className="text-gray-500 ml-1 text-xs">{recipient.email}</span>
+                        )}
+                      </div>
+                    </div>
+                    {recipient.contactType && (
+                      <span className="text-xs px-2 py-0.5 bg-gray-200 rounded-full text-gray-600">
+                        {recipient.contactType}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {showRecipients && recipients.length === 0 && (
+            <div className="mt-2 p-3 bg-gray-50 rounded-lg text-sm text-gray-500 text-center">
+              Recipient list will be shown after confirmation
+            </div>
+          )}
         </div>
 
         {/* Warnings */}

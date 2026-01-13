@@ -41,8 +41,12 @@ export async function POST(
     const organizationId = session.user.organizationId
     const { id } = await params
 
+    console.log(`Quest generate: Starting for quest ${id}, org ${organizationId}`)
+
     // Generate email for quest
     const quest = await QuestService.generateEmail(id, organizationId)
+    
+    console.log(`Quest generate: Completed for quest ${id}, subject: ${quest.subject?.substring(0, 50)}`)
 
     return NextResponse.json({
       success: true,

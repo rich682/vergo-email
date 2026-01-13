@@ -86,7 +86,15 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
-    const userId = session.user.id
+    const userId = (session.user as any).id
+
+    if (!userId) {
+      console.error("Quest create error: userId is missing from session", { session })
+      return NextResponse.json(
+        { error: "User ID not found in session" },
+        { status: 401 }
+      )
+    }
 
     // Parse request body
     const body = await request.json()

@@ -37,8 +37,10 @@ export function QuestCreator() {
   const [thinkingStage, setThinkingStage] = useState<ThinkingStage | null>(null)
   const [availableContactTypes, setAvailableContactTypes] = useState<string[]>([])
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: string; name: string }>>([])
+  const [availableTags, setAvailableTags] = useState<Array<{ stateKey: string; count: number }>>([])
   const [currentQuest, setCurrentQuest] = useState<any>(null)
   const [standingQuestsEnabled, setStandingQuestsEnabled] = useState(false)
+  const [resolvedRecipients, setResolvedRecipients] = useState<Array<{ email: string; name?: string; contactType?: string }>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -56,6 +58,7 @@ export function QuestCreator() {
           const data = await res.json()
           setAvailableContactTypes(data.contactTypes || [])
           setAvailableGroups(data.groups || [])
+          setAvailableTags(data.stateKeys || [])
           setStandingQuestsEnabled(data.standingQuestsEnabled || false)
         }
       } catch (error) {
@@ -63,6 +66,7 @@ export function QuestCreator() {
         // Use defaults
         setAvailableContactTypes(["EMPLOYEE", "VENDOR", "CLIENT", "CONTRACTOR", "MANAGEMENT"])
         setAvailableGroups([])
+        setAvailableTags([])
         setStandingQuestsEnabled(false)
       }
     }
@@ -114,6 +118,10 @@ export function QuestCreator() {
 
       const data = await res.json()
       const interpretation = data.interpretation as QuestInterpretationResult
+      const recipients = data.recipients || []
+
+      // Store resolved recipients for display
+      setResolvedRecipients(recipients)
 
       setThinkingStage("ready")
       await new Promise(r => setTimeout(r, 400))
@@ -368,7 +376,7 @@ export function QuestCreator() {
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Create a Quest
+            Create a Request
           </h2>
           <p className="text-sm text-gray-600 mt-1">
             Describe what you want to send in natural language
@@ -429,6 +437,8 @@ export function QuestCreator() {
                     interpretation={message.interpretation}
                     availableContactTypes={availableContactTypes}
                     availableGroups={availableGroups}
+                    availableTags={availableTags}
+                    recipients={resolvedRecipients}
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}
                     loading={isProcessing}
