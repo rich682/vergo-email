@@ -51,17 +51,27 @@ export class QuestService {
     } = input
 
     // Merge interpretation with user modifications
+    // User modifications take precedence over interpretation
+    const userStateFilter = userModifications?.stateFilter
+    const interpretedStateFilter = interpretation.recipientSelection.stateFilter
+    
     const confirmedSelection: QuestConfirmedSelection = {
       contactTypes: userModifications?.contactTypes || interpretation.recipientSelection.contactTypes,
       groupIds: await this.resolveGroupIds(
         organizationId,
         userModifications?.groupNames || interpretation.recipientSelection.groupNames
       ),
-      stateFilter: interpretation.recipientSelection.stateFilter ? {
-        stateKeys: interpretation.recipientSelection.stateFilter.stateKeys,
-        mode: interpretation.recipientSelection.stateFilter.mode
+      // Use user's tag selection if provided, otherwise fall back to interpretation
+      stateFilter: userStateFilter ? {
+        stateKeys: userStateFilter.stateKeys,
+        mode: userStateFilter.mode
+      } : interpretedStateFilter ? {
+        stateKeys: interpretedStateFilter.stateKeys,
+        mode: interpretedStateFilter.mode
       } : undefined
     }
+    
+    console.log(`QuestService.createFromInterpretation: User selected tags: ${userStateFilter?.stateKeys?.join(', ') || 'none'}, Final stateFilter:`, confirmedSelection.stateFilter)
 
     // Build schedule config
     const scheduleConfig: QuestScheduleConfig | undefined = confirmedSchedule ? {
@@ -238,7 +248,12 @@ export class QuestService {
       const selectedDataTags = quest.confirmedSelection.stateFilter?.stateKeys || []
       const availableTags = [...baseTags, ...selectedDataTags]
       
-      console.log(`QuestService.generateEmail: Calling AI service for quest ${id}, deadline: ${deadlineDate}, prompt: "${quest.originalPrompt?.substring(0, 50)}", tags: ${availableTags.join(', ')}`)
+      console.log(`QuestService.generateEmail: Quest ${id}`)
+      console.log(`  - confirmedSelection.stateFilter:`, quest.confirmedSelection.stateFilter)
+      console.log(`  - selectedDataTags: [${selectedDataTags.join(', ')}]`)
+      console.log(`  - availableTags for AI: [${availableTags.join(', ')}]`)
+      console.log(`  - deadline: ${deadlineDate}`)
+      console.log(`  - prompt: "${quest.originalPrompt?.substring(0, 50)}"`)
       
       let generated
       try {
