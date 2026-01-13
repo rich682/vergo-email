@@ -2,16 +2,14 @@ import { NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 
 export async function GET() {
+  // Core contact fields only - no custom tags/personalization data
   const headers = [
     "EMAIL",
-    "FIRSTNAME",
-    "LASTNAME",
+    "FIRST_NAME",
+    "LAST_NAME",
     "PHONE",
     "TYPE",
-    "GROUPS",
-    "INVOICE_NUM",
-    "UNPAID_INVOICE_AMOUNT",
-    "DUE_DATE"
+    "GROUPS"
   ]
 
   const exampleRow = [
@@ -20,13 +18,12 @@ export async function GET() {
     "Smith",
     "555-123-4567",
     "CLIENT",
-    "NY Office, Marketing Team",
-    "INV-12345",
-    1250.5,
-    "2026-02-01"
+    "NY Office, Marketing Team"
   ]
 
   const sheet = XLSX.utils.aoa_to_sheet([headers, exampleRow])
+  
+  // Style headers as bold
   headers.forEach((_, idx) => {
     const cellRef = XLSX.utils.encode_cell({ r: 0, c: idx })
     const cell = sheet[cellRef]
@@ -39,12 +36,7 @@ export async function GET() {
     }
   })
 
-  const amountCellRef = XLSX.utils.encode_cell({ r: 1, c: 7 })
-  const amountCell = sheet[amountCellRef]
-  if (amountCell) {
-    amountCell.z = "0.00"
-  }
-
+  // Set column widths
   const columnWidths = headers.map((header, idx) => {
     const valueLength = exampleRow[idx]?.toString().length || 0
     const maxLength = Math.max(header.length, valueLength)
@@ -60,7 +52,7 @@ export async function GET() {
   return new NextResponse(Buffer.from(arrayBuffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="Vergo Email Contact Upload.xlsx"'
+      "Content-Disposition": 'attachment; filename="Vergo Contact Import Template.xlsx"'
     }
   })
 }

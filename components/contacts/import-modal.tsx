@@ -3,17 +3,25 @@
 import { useMemo, useState, useRef } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { humanizeStateKey } from "@/lib/utils/humanize"
+import { AlertTriangle } from "lucide-react"
+
+// Core contact fields that are recognized
+const CORE_FIELDS = new Set([
+  "email",
+  "firstname", "first_name", "first name",
+  "lastname", "last_name", "last name",
+  "phone",
+  "type", "contacttype", "contact_type",
+  "groups", "group"
+])
 
 type ImportSummary = {
   contactsCreated: number
   contactsUpdated: number
   groupsCreated: number
-  customFieldsCreated: number
-  customFieldsUpdated: number
-  customFieldsDeleted: number
+  typesCreated: number
   skipped: number
   skippedMissingEmail: number
   totalRows: number
@@ -22,6 +30,7 @@ type ImportSummary = {
   headers: string[]
   skippedSamples?: Array<{ rowNumber: number; reason: string }>
   sampleMissingEmailRowNumbers?: number[]
+  ignoredColumns?: string[]
 }
 
 type Props = {
@@ -36,12 +45,24 @@ export function ImportModal({ onClose, onSuccess }: Props) {
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [syncCustomFields, setSyncCustomFields] = useState(false)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showPreview, setShowPreview] = useState(false)
 
-  const detectedColumns = useMemo(() => headers.join(", "), [headers])
+  // Detect which columns are core vs unknown
+  const { coreColumns, unknownColumns } = useMemo(() => {
+    const core: string[] = []
+    const unknown: string[] = []
+    headers.forEach(h => {
+      const normalized = h.toLowerCase().replace(/\s+/g, "_")
+      if (CORE_FIELDS.has(normalized) || CORE_FIELDS.has(h.toLowerCase())) {
+        core.push(h)
+      } else {
+        unknown.push(h)
+      }
+    })
+    return { coreColumns: core, unknownColumns: unknown }
+  }, [headers])
 
   // Maximum file size (5MB)
   const MAX_FILE_SIZE_MB = 5
@@ -52,7 +73,6 @@ export function ImportModal({ onClose, onSuccess }: Props) {
     setSummary(null)
     setError(null)
     setHeaders([])
-    setSyncCustomFields(false)
     setSelectedFileName(selected ? selected.name : null)
 
     if (!selected) return
@@ -98,7 +118,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
     try {
       const formData = new FormData()
       formData.append("file", file)
-      formData.append("syncCustomFields", syncCustomFields ? "true" : "false")
+      formData.append("coreFieldsOnly", "true") // Only import core fields
 
       const res = await fetch("/api/entities/import", {
         method: "POST",
@@ -125,18 +145,18 @@ export function ImportModal({ onClose, onSuccess }: Props) {
       <div className="space-y-1">
         <h3 className="text-lg font-semibold">Import Contacts</h3>
         <p className="text-sm text-gray-600">
-          Email is required; all other columns are optional. Unknown columns become custom fields.
-          Existing contacts matched by email will be updated (values may be overwritten).
+          Add or update contacts with their core information.
+          Existing contacts matched by email will be updated.
         </p>
       </div>
 
       <a
-        className="text-sm text-gray-600 underline"
+        className="text-sm text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-1"
         href="/api/templates/contacts"
         target="_blank"
         rel="noreferrer"
       >
-        Download template
+        📥 Download template
       </a>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
@@ -162,25 +182,8 @@ export function ImportModal({ onClose, onSuccess }: Props) {
             </span>
           </div>
           <p className="text-xs text-gray-500">
-            Supported formats: CSV, XLSX, XLS. Columns: email (required), firstName, lastName, phone, type, groups, plus any custom fields.
+            Supported formats: CSV, XLSX, XLS. Columns: email (required), first_name, last_name, phone, type, groups.
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="syncCustomFields"
-            type="checkbox"
-            checked={syncCustomFields}
-            onChange={(e) => setSyncCustomFields(e.target.checked)}
-          />
-          <Label htmlFor="syncCustomFields" className="text-sm font-normal flex items-center gap-1">
-            Sync custom fields from this file (remove values not present)
-            <span 
-              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-xs cursor-help"
-              title="When enabled, blank cells will remove existing values for those fields. Formula errors (#REF!, #VALUE!) are treated as blank."
-            >
-              ?
-            </span>
-          </Label>
         </div>
 
         {/* Preview Section */}
@@ -195,46 +198,70 @@ export function ImportModal({ onClose, onSuccess }: Props) {
             <div className="space-y-1">
               <div className="text-xs font-medium text-gray-600">Detected columns:</div>
               <div className="flex flex-wrap gap-1">
-                {headers.map((h, i) => {
-                  const isCore = ["email", "firstname", "first_name", "lastname", "last_name", "phone", "type", "groups"].includes(h.toLowerCase().replace(/\s+/g, "_"))
-                  return (
-                    <span
-                      key={i}
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                        isCore 
-                          ? "bg-blue-100 text-blue-800" 
-                          : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {humanizeStateKey(h)}
-                      {!isCore && <span className="ml-1 text-gray-400">(custom)</span>}
-                    </span>
-                  )
-                })}
+                {coreColumns.map((h, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800"
+                  >
+                    {humanizeStateKey(h)}
+                  </span>
+                ))}
               </div>
             </div>
+
+            {/* Warning about unknown columns */}
+            {unknownColumns.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800">
+                    <div className="font-medium mb-1">Unknown columns will be ignored:</div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {unknownColumns.map((h, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                          {humanizeStateKey(h)}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-amber-700">
+                      To add personalization data (like invoice numbers or due dates), use the <strong>Tags</strong> tab instead.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             
-            {/* Data preview table */}
+            {/* Data preview table - only show core columns */}
             {previewRows.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs border border-gray-200 rounded">
                   <thead className="bg-gray-50">
                     <tr>
-                      {headers.map((h, i) => (
-                        <th key={i} className="px-2 py-1 text-left font-medium text-gray-600 border-b">
-                          {humanizeStateKey(h)}
-                        </th>
-                      ))}
+                      {headers.map((h, i) => {
+                        const normalized = h.toLowerCase().replace(/\s+/g, "_")
+                        const isCore = CORE_FIELDS.has(normalized) || CORE_FIELDS.has(h.toLowerCase())
+                        if (!isCore) return null
+                        return (
+                          <th key={i} className="px-2 py-1 text-left font-medium text-gray-600 border-b">
+                            {humanizeStateKey(h)}
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
                     {previewRows.map((row, rowIdx) => (
                       <tr key={rowIdx} className={rowIdx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        {headers.map((_, colIdx) => (
-                          <td key={colIdx} className="px-2 py-1 text-gray-700 border-b truncate max-w-[150px]">
-                            {row[colIdx] !== undefined && row[colIdx] !== null ? String(row[colIdx]) : ""}
-                          </td>
-                        ))}
+                        {headers.map((h, colIdx) => {
+                          const normalized = h.toLowerCase().replace(/\s+/g, "_")
+                          const isCore = CORE_FIELDS.has(normalized) || CORE_FIELDS.has(h.toLowerCase())
+                          if (!isCore) return null
+                          return (
+                            <td key={colIdx} className="px-2 py-1 text-gray-700 border-b truncate max-w-[150px]">
+                              {row[colIdx] !== undefined && row[colIdx] !== null ? String(row[colIdx]) : ""}
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -265,32 +292,26 @@ export function ImportModal({ onClose, onSuccess }: Props) {
               </div>
               {summary.groupsCreated > 0 && (
                 <div className="flex justify-between">
-                  <span>New groups:</span>
+                  <span>New groups created:</span>
                   <span className="font-medium">{summary.groupsCreated}</span>
                 </div>
               )}
-              {summary.customFieldsCreated > 0 && (
+              {summary.typesCreated && summary.typesCreated > 0 && (
                 <div className="flex justify-between">
-                  <span>Custom fields added:</span>
-                  <span className="font-medium">{summary.customFieldsCreated}</span>
-                </div>
-              )}
-              {summary.customFieldsUpdated > 0 && (
-                <div className="flex justify-between">
-                  <span>Custom fields updated:</span>
-                  <span className="font-medium">{summary.customFieldsUpdated}</span>
-                </div>
-              )}
-              {summary.customFieldsDeleted > 0 && (
-                <div className="flex justify-between">
-                  <span>Custom fields removed:</span>
-                  <span className="font-medium">{summary.customFieldsDeleted}</span>
+                  <span>New types created:</span>
+                  <span className="font-medium">{summary.typesCreated}</span>
                 </div>
               )}
             </div>
+
+            {summary.ignoredColumns && summary.ignoredColumns.length > 0 && (
+              <div className="text-xs text-amber-700 bg-amber-50 rounded p-2">
+                <span className="font-medium">Ignored columns:</span> {summary.ignoredColumns.join(", ")}
+              </div>
+            )}
             
             {summary.skippedMissingEmail > 0 && (
-              <div className="text-xs text-yellow-700 bg-yellow-50 rounded p-2 mt-2">
+              <div className="text-xs text-yellow-700 bg-yellow-50 rounded p-2">
                 <span className="font-medium">{summary.skippedMissingEmail} row(s) skipped</span> - missing email address
                 {summary.sampleMissingEmailRowNumbers && summary.sampleMissingEmailRowNumbers.length > 0 && (
                   <span className="block mt-1">Rows: {summary.sampleMissingEmailRowNumbers.slice(0, 5).join(", ")}{summary.sampleMissingEmailRowNumbers.length > 5 ? "..." : ""}</span>

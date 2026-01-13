@@ -13,9 +13,16 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const file = formData.get("file")
   const syncCustomFieldsRaw = formData.get("syncCustomFields")
+  const coreFieldsOnlyRaw = formData.get("coreFieldsOnly")
+  
   const syncCustomFields =
     typeof syncCustomFieldsRaw === "string"
       ? ["true", "1", "on", "yes"].includes(syncCustomFieldsRaw.toLowerCase())
+      : false
+  
+  const coreFieldsOnly =
+    typeof coreFieldsOnlyRaw === "string"
+      ? ["true", "1", "on", "yes"].includes(coreFieldsOnlyRaw.toLowerCase())
       : false
 
   if (!file || !(file instanceof File)) {
@@ -26,7 +33,7 @@ export async function POST(request: NextRequest) {
     const summary = await UnifiedImportService.importContacts(
       file,
       session.user.organizationId,
-      { syncCustomFields }
+      { syncCustomFields, coreFieldsOnly }
     )
 
     return NextResponse.json(summary)

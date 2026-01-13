@@ -20,6 +20,7 @@ export type ImportSummary = {
   contactsCreated: number
   contactsUpdated: number
   groupsCreated: number
+  typesCreated: number
   customFieldsCreated: number
   customFieldsUpdated: number
   customFieldsDeleted: number
@@ -31,6 +32,7 @@ export type ImportSummary = {
   headers: string[]
   skippedSamples: Array<{ rowNumber: number; reason: string }>
   sampleMissingEmailRowNumbers: number[]
+  ignoredColumns: string[]
 }
 
 const CORE_FIELDS = [
@@ -187,7 +189,7 @@ export class UnifiedImportService {
   static async importContacts(
     file: File,
     organizationId: string,
-    options?: { syncCustomFields?: boolean }
+    options?: { syncCustomFields?: boolean; coreFieldsOnly?: boolean }
   ): Promise<ImportSummary> {
     // Check file size limit
     if (file.size > UnifiedImportService.MAX_FILE_SIZE_BYTES) {
@@ -198,11 +200,22 @@ export class UnifiedImportService {
     const buffer = await file.arrayBuffer()
     const { rows, headers } = parseWorkbook(buffer)
     const syncCustomFields = options?.syncCustomFields === true
+    const coreFieldsOnly = options?.coreFieldsOnly === true
+
+    // Identify ignored columns (non-core fields when coreFieldsOnly is true)
+    const normalizedHeaders = headers.map(normalizeHeader)
+    const ignoredColumns: string[] = coreFieldsOnly
+      ? headers.filter((h, idx) => {
+          const norm = normalizedHeaders[idx]
+          return norm && !CORE_FIELDS.includes(norm)
+        })
+      : []
 
     const summary: ImportSummary = {
       contactsCreated: 0,
       contactsUpdated: 0,
       groupsCreated: 0,
+      typesCreated: 0,
       customFieldsCreated: 0,
       customFieldsUpdated: 0,
       customFieldsDeleted: 0,
@@ -213,17 +226,18 @@ export class UnifiedImportService {
       distinctEmailsProcessed: 0,
       headers,
       skippedSamples: [],
-      sampleMissingEmailRowNumbers: []
+      sampleMissingEmailRowNumbers: [],
+      ignoredColumns
     }
 
-    const normalizedHeaders = headers.map(normalizeHeader)
     if (!normalizedHeaders.some((h) => h === "email")) {
       throw new Error("Missing required column: email")
     }
 
-    const customFieldColumns = normalizedHeaders.filter(
-      (h) => h && !CORE_FIELDS.includes(h)
-    )
+    // Only process custom fields if not in coreFieldsOnly mode
+    const customFieldColumns = coreFieldsOnly
+      ? []
+      : normalizedHeaders.filter((h) => h && !CORE_FIELDS.includes(h))
 
     const seenEmails = new Set<string>()
 
@@ -308,79 +322,82 @@ export class UnifiedImportService {
       }
 
       // Custom fields -> ContactState upsert (auto-creates Tags)
-      const customEntries = { ...row.customFields }
-      // Note: lastName is now a proper Entity field, not a custom field/tag
+      // Skip this entire section if coreFieldsOnly is true
+      if (!coreFieldsOnly) {
+        const customEntries = { ...row.customFields }
+        // Note: lastName is now a proper Entity field, not a custom field/tag
 
-      // Sync deletions: remove states for columns present in file but blank in this row
-      if (syncCustomFields && customFieldColumns.length > 0) {
-        for (const stateKey of customFieldColumns) {
-          if (!stateKey) continue
-          const rawValue = row.customFieldsRaw?.[stateKey]
-          const isBlank = rawValue === null || rawValue === ""
-          if (isBlank) {
-            // Get or create tag to find existing state (returns null for reserved names)
-            const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
-            if (!tagId) continue // Skip reserved tag names
-            
-            const existingField = await prisma.contactState.findUnique({
-              where: {
-                organizationId_entityId_tagId: {
-                  organizationId,
-                  entityId: entity.id,
-                  tagId
+        // Sync deletions: remove states for columns present in file but blank in this row
+        if (syncCustomFields && customFieldColumns.length > 0) {
+          for (const stateKey of customFieldColumns) {
+            if (!stateKey) continue
+            const rawValue = row.customFieldsRaw?.[stateKey]
+            const isBlank = rawValue === null || rawValue === ""
+            if (isBlank) {
+              // Get or create tag to find existing state (returns null for reserved names)
+              const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
+              if (!tagId) continue // Skip reserved tag names
+              
+              const existingField = await prisma.contactState.findUnique({
+                where: {
+                  organizationId_entityId_tagId: {
+                    organizationId,
+                    entityId: entity.id,
+                    tagId
+                  }
                 }
-              }
-            })
-            if (existingField) {
-              await prisma.contactState.delete({
-                where: { id: existingField.id }
               })
-              summary.customFieldsDeleted += 1
+              if (existingField) {
+                await prisma.contactState.delete({
+                  where: { id: existingField.id }
+                })
+                summary.customFieldsDeleted += 1
+              }
             }
           }
         }
-      }
 
-      for (const [stateKeyRaw, value] of Object.entries(customEntries)) {
-        const stateKey = stateKeyRaw.trim()
-        if (!stateKey) continue
+        for (const [stateKeyRaw, value] of Object.entries(customEntries)) {
+          const stateKey = stateKeyRaw.trim()
+          if (!stateKey) continue
 
-        // Get or create tag first (returns null for reserved names like lastName)
-        const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
-        if (!tagId) continue // Skip reserved tag names - they're stored on Entity directly
+          // Get or create tag first (returns null for reserved names like lastName)
+          const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
+          if (!tagId) continue // Skip reserved tag names - they're stored on Entity directly
 
-        const existingField = await prisma.contactState.findUnique({
-          where: {
-            organizationId_entityId_tagId: {
-              organizationId,
-              entityId: entity.id,
-              tagId
+          const existingField = await prisma.contactState.findUnique({
+            where: {
+              organizationId_entityId_tagId: {
+                organizationId,
+                entityId: entity.id,
+                tagId
+              }
             }
+          })
+
+          if (existingField) {
+            await prisma.contactState.update({
+              where: { id: existingField.id },
+              data: {
+                stateValue: typeof value === 'string' ? value : JSON.stringify(value),
+                metadata: value
+              }
+            })
+            summary.customFieldsUpdated += 1
+          } else {
+            await prisma.contactState.create({
+              data: {
+                organizationId,
+                entityId: entity.id,
+                tagId,
+                stateKey: stateKey.toLowerCase().replace(/\s+/g, "_"),
+                stateValue: typeof value === 'string' ? value : JSON.stringify(value),
+                metadata: value,
+                source: "CSV_UPLOAD"
+              }
+            })
+            summary.customFieldsCreated += 1
           }
-        })
-
-        if (existingField) {
-          await prisma.contactState.update({
-            where: { id: existingField.id },
-            data: {
-              stateValue: typeof value === 'string' ? value : JSON.stringify(value),
-              metadata: value
-            }
-          })
-          summary.customFieldsUpdated += 1
-        } else {
-          await prisma.contactState.create({
-            data: {
-              organizationId,
-              entityId: entity.id,
-              tagId,
-              stateKey: stateKey.toLowerCase().replace(/\s+/g, "_"),
-              stateValue: typeof value === 'string' ? value : JSON.stringify(value),
-              metadata: value,
-              source: "CSV_UPLOAD"
-            }
-          })
-          summary.customFieldsCreated += 1
         }
       }
     }

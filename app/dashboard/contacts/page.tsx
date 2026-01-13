@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
+import { TagImportModal } from "@/components/contacts/tag-import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
 import { TypesManager } from "@/components/contacts/types-manager"
 import { TagsManager } from "@/components/contacts/tags-manager"
@@ -29,12 +30,20 @@ interface Entity {
   contactStates?: Array<{ stateKey: string; metadata?: any; updatedAt?: string }>
 }
 
+interface TagInfo {
+  id: string
+  name: string
+  displayName: string
+  contactCount: number
+}
+
 type TabType = "contacts" | "groups" | "types" | "tags"
 
 export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
   const [entities, setEntities] = useState<Entity[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [tags, setTags] = useState<TagInfo[]>([])
   const [availableStateKeys, setAvailableStateKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -44,6 +53,7 @@ export default function ContactsPage() {
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showTagImport, setShowTagImport] = useState(false)
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -51,6 +61,7 @@ export default function ContactsPage() {
     fetchEntities()
     fetchGroups()
     fetchAvailableStateKeys()
+    fetchTags()
   }, [search, selectedGroupId, selectedContactType, selectedStateKeys])
 
   const fetchEntities = async () => {
@@ -100,6 +111,18 @@ export default function ContactsPage() {
     }
   }
 
+  const fetchTags = async () => {
+    try {
+      const response = await fetch("/api/contacts/tags")
+      if (response.ok) {
+        const data = await response.json()
+        setTags(data.tags || [])
+      }
+    } catch (error) {
+      console.error("Error fetching tags:", error)
+    }
+  }
+
   const handleFormSuccess = () => {
     setShowForm(false)
     setEditingEntity(null)
@@ -124,13 +147,21 @@ export default function ContactsPage() {
 
   const handleImportSuccess = () => {
     fetchEntities()
-    fetchAvailableStateKeys() // Refresh available tags after import
+    fetchAvailableStateKeys()
+    fetchTags()
+  }
+
+  const handleTagImportSuccess = () => {
+    fetchEntities()
+    fetchAvailableStateKeys()
+    fetchTags()
   }
 
   const switchToTab = (tab: TabType) => {
     setActiveTab(tab)
     setShowForm(false)
     setShowImport(false)
+    setShowTagImport(false)
     setEditingEntity(null)
   }
 
@@ -143,6 +174,8 @@ export default function ContactsPage() {
             <h2 className="text-2xl font-bold">Contacts</h2>
             <p className="text-sm text-gray-600">Manage people and organizations</p>
           </div>
+          
+          {/* Contacts Tab CTAs */}
           {activeTab === "contacts" && (
             <div className="flex gap-2">
               <Button
@@ -163,6 +196,20 @@ export default function ContactsPage() {
                 }}
               >
                 {showForm ? "Cancel" : "Add Contact"}
+              </Button>
+            </div>
+          )}
+
+          {/* Tags Tab CTAs */}
+          {activeTab === "tags" && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowTagImport(!showTagImport)
+                }}
+              >
+                {showTagImport ? "Cancel" : "Import Tag Data"}
               </Button>
             </div>
           )}
@@ -292,11 +339,23 @@ export default function ContactsPage() {
           </div>
         ) : (
           <div className="h-full overflow-auto p-6">
-            <div className="max-w-2xl">
+            <div className="max-w-2xl space-y-6">
+              {/* Tag Import Modal */}
+              {showTagImport && (
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                  <TagImportModal
+                    existingTags={tags}
+                    onSuccess={handleTagImportSuccess}
+                    onClose={() => setShowTagImport(false)}
+                  />
+                </div>
+              )}
+
               <TagsManager
                 onTagsChange={() => {
                   fetchEntities()
                   fetchAvailableStateKeys()
+                  fetchTags()
                 }}
               />
             </div>
