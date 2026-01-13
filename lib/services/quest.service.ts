@@ -215,20 +215,34 @@ export class QuestService {
       })
 
       // Generate email using AI service
-      const generated = await AIEmailGenerationService.generateDraft({
-        organizationId,
-        prompt: quest.originalPrompt,
-        selectedRecipients: {
-          entityIds: [],
-          groupIds: quest.confirmedSelection.groupIds || []
-        },
-        senderName: user?.name || undefined,
-        senderEmail: user?.email || undefined,
-        senderCompany: organization?.name || undefined,
-        deadlineDate: quest.scheduleConfig?.deadline || null,
-        personalizationMode: "contact",
-        availableTags: ["First Name", "Email"]
-      })
+      // Convert deadline string to Date if present
+      const deadlineDate = quest.scheduleConfig?.deadline 
+        ? new Date(quest.scheduleConfig.deadline) 
+        : null
+      
+      console.log(`QuestService.generateEmail: Calling AI service for quest ${id}, deadline: ${deadlineDate}, prompt: "${quest.originalPrompt?.substring(0, 50)}"`)
+      
+      let generated
+      try {
+        generated = await AIEmailGenerationService.generateDraft({
+          organizationId,
+          prompt: quest.originalPrompt,
+          selectedRecipients: {
+            entityIds: [],
+            groupIds: quest.confirmedSelection.groupIds || []
+          },
+          senderName: user?.name || undefined,
+          senderEmail: user?.email || undefined,
+          senderCompany: organization?.name || undefined,
+          deadlineDate,
+          personalizationMode: "contact",
+          availableTags: ["First Name", "Email"]
+        })
+        console.log(`QuestService.generateEmail: AI service returned subject: "${generated.subject?.substring(0, 50)}"`)
+      } catch (aiError: any) {
+        console.error(`QuestService.generateEmail: AI service failed:`, aiError.message, aiError.stack)
+        throw new Error(`AI generation failed: ${aiError.message}`)
+      }
 
       // Update EmailDraft with generated content
       await EmailDraftService.update(id, organizationId, {
