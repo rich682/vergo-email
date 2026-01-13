@@ -48,6 +48,7 @@ export default async function DashboardLayout({
             <UserMenu 
               userEmail={session.user.email || ""} 
               userName={session.user.name || undefined}
+              userRole={(session.user as any).role || undefined}
             />
           </div>
         </div>

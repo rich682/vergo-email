@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { signOut, useSession } from "next-auth/react"
+import { signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Users } from "lucide-react"
 
 interface UserMenuProps {
   userEmail: string
   userName?: string
+  userRole?: string
 }
 
 function getInitials(name?: string, email?: string): string {
@@ -24,14 +25,13 @@ function getInitials(name?: string, email?: string): string {
   return "?"
 }
 
-export function UserMenu({ userEmail, userName }: UserMenuProps) {
+export function UserMenu({ userEmail, userName, userRole }: UserMenuProps) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const { data: session } = useSession()
 
   const initials = getInitials(userName, userEmail)
-  const isAdmin = (session?.user as any)?.role === "ADMIN"
+  const isAdmin = userRole === "ADMIN"
 
   // Close dropdown when clicking outside
   useEffect(() => {
