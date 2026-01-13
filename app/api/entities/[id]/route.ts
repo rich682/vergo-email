@@ -37,12 +37,13 @@ export async function GET(
   // Type assertion needed because Prisma includes groups but TypeScript doesn't infer it
     const entityWithGroups = entity as typeof entity & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
-      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
+      contactStates: Array<{ stateKey: string; stateValue?: string; metadata: any; updatedAt: Date; source: string; tag?: { id: string; name: string; displayName?: string } }>
     }
 
   return NextResponse.json({
     id: entity.id,
     firstName: entity.firstName,
+    lastName: entity.lastName,
     email: entity.email,
     phone: entity.phone,
     contactType: entity.contactType,
@@ -55,9 +56,11 @@ export async function GET(
     })),
     contactStates: entityWithGroups.contactStates?.map((cs) => ({
       stateKey: cs.stateKey,
+      stateValue: cs.stateValue,
       metadata: cs.metadata,
       updatedAt: cs.updatedAt,
-      source: cs.source
+      source: cs.source,
+      tag: cs.tag
     })),
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt
@@ -79,14 +82,14 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
+    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel, tagValues } = body
 
-    // Update entity fields
+    // Update entity fields (including lastName which is now a proper Entity field)
     const updateData: any = {}
     if (firstName !== undefined) updateData.firstName = firstName
+    if (lastName !== undefined) updateData.lastName = lastName || null
     if (email !== undefined) updateData.email = email
     if (phone !== undefined) updateData.phone = phone
-
     if (contactType !== undefined) updateData.contactType = contactType
     if (contactTypeCustomLabel !== undefined) updateData.contactTypeCustomLabel = contactTypeCustomLabel
 
@@ -96,22 +99,6 @@ export async function PATCH(
         session.user.organizationId,
         updateData
       )
-    }
-
-    // Update lastName as ContactState if provided
-    if (lastName !== undefined) {
-      if (lastName && lastName.trim()) {
-        await ContactStateService.upsert({
-          entityId: params.id,
-          organizationId: session.user.organizationId,
-          stateKey: "lastName",
-          metadata: { value: lastName.trim() },
-          source: "manual"
-        })
-      } else {
-        // If lastName is empty, delete the ContactState
-        await ContactStateService.delete(params.id, "lastName")
-      }
     }
 
     // Update groups if provided
@@ -138,6 +125,46 @@ export async function PATCH(
       }
     }
 
+    // Update tag values if provided
+    if (tagValues !== undefined && typeof tagValues === 'object') {
+      // Get current contact states to find tags to remove
+      const entity = await EntityService.findById(params.id, session.user.organizationId)
+      if (entity) {
+        const entityWithStates = entity as typeof entity & {
+          contactStates: Array<{ id: string; stateKey: string; tag?: { name: string } }>
+        }
+        
+        // Get current tag names
+        const currentTagNames = new Set(
+          entityWithStates.contactStates?.map(cs => cs.tag?.name || cs.stateKey) || []
+        )
+        
+        // Tags in the new values
+        const newTagNames = new Set(Object.keys(tagValues))
+        
+        // Remove tags that are no longer in the values
+        for (const tagName of currentTagNames) {
+          if (!newTagNames.has(tagName)) {
+            await ContactStateService.delete(params.id, tagName, session.user.organizationId)
+          }
+        }
+        
+        // Upsert tags with values
+        for (const [tagName, value] of Object.entries(tagValues)) {
+          if (value && typeof value === 'string' && value.trim()) {
+            await ContactStateService.upsert({
+              entityId: params.id,
+              organizationId: session.user.organizationId,
+              stateKey: tagName,
+              stateValue: value.trim(),
+              metadata: value.trim(),
+              source: "manual"
+            })
+          }
+        }
+      }
+    }
+
     // Fetch updated entity
     const updated = await EntityService.findById(
       params.id,
@@ -157,12 +184,13 @@ export async function PATCH(
 
     const updatedWithGroups = updated as typeof updated & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
-      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
+      contactStates: Array<{ stateKey: string; stateValue?: string; metadata: any; updatedAt: Date; source: string; tag?: { id: string; name: string; displayName?: string } }>
     }
 
     return NextResponse.json({
       id: updated.id,
       firstName: updated.firstName,
+      lastName: updated.lastName,
       email: updated.email,
       phone: updated.phone,
       contactType: updated.contactType,
@@ -175,9 +203,11 @@ export async function PATCH(
       })),
       contactStates: updatedWithGroups.contactStates?.map((cs) => ({
         stateKey: cs.stateKey,
+        stateValue: cs.stateValue,
         metadata: cs.metadata,
         updatedAt: cs.updatedAt,
-        source: cs.source
+        source: cs.source,
+        tag: cs.tag
       })),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt

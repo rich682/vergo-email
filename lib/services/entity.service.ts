@@ -52,7 +52,11 @@ export class EntityService {
             group: true
           }
         },
-        contactStates: true
+        contactStates: {
+          include: {
+            tag: true
+          }
+        }
       }
     })
   }
@@ -72,7 +76,11 @@ export class EntityService {
             group: true
           }
         },
-        contactStates: true
+        contactStates: {
+          include: {
+            tag: true
+          }
+        }
       }
     })
   }
