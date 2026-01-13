@@ -41,7 +41,13 @@ export function QuestCreator() {
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: string; name: string }>>([])
   const [availableTags, setAvailableTags] = useState<Array<{ stateKey: string; count: number }>>([])
   const [currentQuest, setCurrentQuest] = useState<any>(null)
-  const [resolvedRecipients, setResolvedRecipients] = useState<Array<{ email: string; name?: string; contactType?: string }>>([])
+  const [resolvedRecipients, setResolvedRecipients] = useState<Array<{ 
+    id?: string
+    email: string
+    name?: string
+    contactType?: string
+    tagValues?: Record<string, string>
+  }>>([])
   const [editedSubject, setEditedSubject] = useState("")
   const [editedBody, setEditedBody] = useState("")
   const [previewRecipientIdx, setPreviewRecipientIdx] = useState(-1)
@@ -629,9 +635,11 @@ export function QuestCreator() {
               <p className="text-xs text-blue-600 mt-1 bg-blue-50 px-2 py-1 rounded">
                 Preview: {(() => {
                   const recipient = resolvedRecipients[previewRecipientIdx]
-                  const data = {
+                  const data: Record<string, string> = {
                     "First Name": recipient?.name?.split(" ")[0] || "",
-                    "Email": recipient?.email || ""
+                    "Email": recipient?.email || "",
+                    // Include tag values
+                    ...(recipient?.tagValues || {})
                   }
                   return renderTemplate(editedSubject, data).rendered
                 })()}
@@ -654,9 +662,11 @@ export function QuestCreator() {
                 <div className="text-sm text-gray-700 whitespace-pre-wrap">
                   {(() => {
                     const recipient = resolvedRecipients[previewRecipientIdx]
-                    const data = {
+                    const data: Record<string, string> = {
                       "First Name": recipient?.name?.split(" ")[0] || "",
-                      "Email": recipient?.email || ""
+                      "Email": recipient?.email || "",
+                      // Include tag values
+                      ...(recipient?.tagValues || {})
                     }
                     return renderTemplate(editedBody, data).rendered
                   })()}

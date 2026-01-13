@@ -529,7 +529,13 @@ IMPORTANT:
     organizationId: string,
     selection: QuestRecipientSelection,
     context: OrganizationContext
-  ): Promise<Array<{ email: string; name?: string; contactType?: string }>> {
+  ): Promise<Array<{ 
+    id?: string
+    email: string
+    name?: string
+    contactType?: string
+    tagValues?: Record<string, string>
+  }>> {
     // Convert semantic selection to database query format
     const groupIds = selection.groupNames
       ?.map(name => context.availableGroups.find(g => g.name === name)?.id)
@@ -547,10 +553,41 @@ IMPORTANT:
     // Use the recipient filter service to get actual recipients
     const result = await resolveRecipientsWithReasons(organizationId, dbSelection)
 
+    // Get entity IDs for fetching tag values
+    const entityIds = result.recipientsWithReasons
+      .map(r => r.id)
+      .filter((id): id is string => id !== undefined)
+
+    // Fetch tag values for all recipients if there are selected tags
+    let tagValuesByEntity: Map<string, Record<string, string>> = new Map()
+    
+    if (selection.stateFilter?.stateKeys?.length && entityIds.length > 0) {
+      const contactStates = await prisma.contactState.findMany({
+        where: {
+          organizationId,
+          entityId: { in: entityIds },
+          stateKey: { in: selection.stateFilter.stateKeys }
+        },
+        include: {
+          tag: true
+        }
+      })
+
+      // Build map of entityId -> { tagName: tagValue }
+      for (const state of contactStates) {
+        const tagName = state.stateKey
+        const existing = tagValuesByEntity.get(state.entityId) || {}
+        existing[tagName] = state.stateValue || ""
+        tagValuesByEntity.set(state.entityId, existing)
+      }
+    }
+
     return result.recipientsWithReasons.map(r => ({
+      id: r.id,
       email: r.email,
       name: r.firstName || r.name,
-      contactType: r.contactType
+      contactType: r.contactType,
+      tagValues: r.id ? tagValuesByEntity.get(r.id) : undefined
     }))
   }
 }
