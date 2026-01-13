@@ -143,7 +143,10 @@ INTERPRETATION RULES:
    - "contractors", "freelancers" → CONTRACTOR
    - "management", "managers", "executives" → MANAGEMENT
 
-2. Identify groups by name (case-insensitive match)
+2. Identify groups ONLY if explicitly mentioned by name (case-insensitive match)
+   - Do NOT assume or infer a group if the user doesn't mention one
+   - "all employees" with no group mentioned → groupNames should be empty []
+   - "employees in NY Office" → groupNames: ["NY Office"]
 
 3. Identify data requirements:
    - "missing W-9" → stateFilter with mode "missing" and stateKey containing "w9"
@@ -170,8 +173,8 @@ OUTPUT FORMAT (JSON):
 {
   "recipientSelection": {
     "contactTypes": ["EMPLOYEE"],  // Array of contact type names from the list above
-    "groupNames": ["NY Office"],   // Array of group names (must match available groups)
-    "stateFilter": {               // Optional
+    "groupNames": [],              // ONLY include if user explicitly mentions a group name - empty array if no group specified
+    "stateFilter": {               // Optional - only include if user mentions data requirements
       "stateKeys": ["missing_w9"],
       "mode": "has" | "missing"
     }
@@ -215,9 +218,11 @@ DATE CALCULATION RULES:
 
 IMPORTANT:
 - Only output contact types from the available list
-- Only output group names that exist in the organization
+- Only output group names that exist in the organization AND are explicitly mentioned by the user
+- Do NOT infer or assume groups - if user says "all employees" without mentioning a group, groupNames must be empty []
 - If no clear audience is specified, set confidence to "low" and add a warning
-- Always provide assumptions explaining your interpretation`
+- Always provide assumptions explaining your interpretation
+- When in doubt, leave groupNames empty - the user can add a group in the confirmation step`
   }
 
   /**
