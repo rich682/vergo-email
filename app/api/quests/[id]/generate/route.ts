@@ -43,6 +43,18 @@ export async function POST(
 
     console.log(`Quest generate: Starting for quest ${id}, org ${organizationId}`)
 
+    // First check if quest exists
+    const existingQuest = await QuestService.findById(id, organizationId)
+    if (!existingQuest) {
+      console.error(`Quest generate: Quest not found - id: ${id}, org: ${organizationId}`)
+      return NextResponse.json(
+        { error: "Quest not found", questId: id },
+        { status: 404 }
+      )
+    }
+    
+    console.log(`Quest generate: Found quest, status: ${existingQuest.status}, userId: ${existingQuest.userId}`)
+
     // Generate email for quest
     const quest = await QuestService.generateEmail(id, organizationId)
     

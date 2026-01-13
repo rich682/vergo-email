@@ -130,7 +130,11 @@ export async function POST(request: NextRequest) {
       confirmedReminders
     }
 
+    console.log(`Quest create: Creating quest for org ${organizationId}, user ${userId}`)
+    
     const quest = await QuestService.createFromInterpretation(input)
+
+    console.log(`Quest create: Created quest ${quest.id}, status: ${quest.status}`)
 
     return NextResponse.json({
       success: true,

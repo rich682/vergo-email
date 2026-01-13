@@ -136,14 +136,24 @@ export class QuestService {
    * Get Quest by ID
    */
   static async findById(id: string, organizationId: string): Promise<Quest | null> {
+    console.log(`QuestService.findById: Looking for quest ${id} in org ${organizationId}`)
+    
     const emailDraft = await EmailDraftService.findById(id, organizationId)
-    if (!emailDraft) return null
+    if (!emailDraft) {
+      console.log(`QuestService.findById: EmailDraft not found for ${id}`)
+      return null
+    }
+    
+    console.log(`QuestService.findById: Found EmailDraft ${id}, userId: ${emailDraft.userId}`)
 
     const metadata = await this.getQuestMetadata(id, organizationId)
     if (!metadata) {
       // Not a Quest, just a regular EmailDraft
+      console.log(`QuestService.findById: No quest metadata found for ${id}`)
       return null
     }
+    
+    console.log(`QuestService.findById: Found quest metadata, status: ${metadata.status}`)
 
     return this.emailDraftToQuest(emailDraft, metadata)
   }
@@ -707,10 +717,17 @@ export class QuestService {
       select: { suggestedRecipients: true }
     })
 
-    if (!draft?.suggestedRecipients) return null
+    if (!draft?.suggestedRecipients) {
+      console.log(`getQuestMetadata: No suggestedRecipients for ${id}`)
+      return null
+    }
 
     const recipients = draft.suggestedRecipients as any
-    return recipients[QUEST_METADATA_KEY] || null
+    const metadata = recipients[QUEST_METADATA_KEY] || null
+    
+    console.log(`getQuestMetadata: Found recipients for ${id}, has metadata: ${!!metadata}`)
+    
+    return metadata
   }
 
   /**
