@@ -1,14 +1,28 @@
 import { prisma } from "@/lib/prisma"
 import { ContactStateSource } from "@prisma/client"
 
+// Core contact fields that should NEVER become tags
+const RESERVED_TAG_NAMES = new Set([
+  "firstname", "first_name", "lastname", "last_name",
+  "email", "phone", "type", "groups", "contacttype", "contact_type",
+  "name", "company", "address", "city", "state", "zip", "country"
+])
+
 export class ContactStateService {
   /**
    * Get or create a Tag by name for an organization.
    * This ensures tags are auto-created when importing data.
+   * Returns null for reserved tag names (core contact fields).
    */
-  static async getOrCreateTag(organizationId: string, tagName: string, displayName?: string): Promise<string> {
+  static async getOrCreateTag(organizationId: string, tagName: string, displayName?: string): Promise<string | null> {
     // Normalize tag name
     const normalizedName = tagName.trim().toLowerCase().replace(/\s+/g, "_")
+    
+    // Reject reserved names - these are core contact fields, not tags
+    if (RESERVED_TAG_NAMES.has(normalizedName)) {
+      console.log(`[ContactStateService] Skipping reserved tag name: ${normalizedName}`)
+      return null
+    }
     
     // Try to find existing tag
     let tag = await prisma.tag.findUnique({
@@ -42,8 +56,13 @@ export class ContactStateService {
     metadata?: any
     source?: ContactStateSource
   }) {
-    // Get or create the tag first
+    // Get or create the tag first (returns null for reserved names)
     const tagId = await this.getOrCreateTag(params.organizationId, params.stateKey)
+    
+    // Skip if this is a reserved tag name (core contact field)
+    if (!tagId) {
+      return null
+    }
 
     return prisma.contactState.upsert({
       where: {

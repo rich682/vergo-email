@@ -104,6 +104,7 @@ model User {
 model Entity {
   id                     String      @id @default(cuid())
   firstName              String
+  lastName               String?
   email                  String?
   phone                  String?
   contactType            ContactType @default(UNKNOWN)

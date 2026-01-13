@@ -269,6 +269,7 @@ export class UnifiedImportService {
             : {}
         const created = await EntityService.create({
           firstName: row.firstName || row.lastName || row.email.split("@")[0],
+          lastName: row.lastName || undefined,
           email: row.email,
           phone: row.phone,
           organizationId,
@@ -287,6 +288,7 @@ export class UnifiedImportService {
             : {}
         await EntityService.update(existing.id, organizationId, {
           firstName: row.firstName || existing.firstName,
+          lastName: row.lastName || existing.lastName || undefined,
           phone: row.phone || existing.phone,
           ...contactTypeData
         })
@@ -306,11 +308,8 @@ export class UnifiedImportService {
       }
 
       // Custom fields -> ContactState upsert (auto-creates Tags)
-      // Attach lastName as custom field to avoid dropping it
       const customEntries = { ...row.customFields }
-      if (row.lastName) {
-        customEntries["lastName"] = row.lastName
-      }
+      // Note: lastName is now a proper Entity field, not a custom field/tag
 
       // Sync deletions: remove states for columns present in file but blank in this row
       if (syncCustomFields && customFieldColumns.length > 0) {
@@ -319,8 +318,10 @@ export class UnifiedImportService {
           const rawValue = row.customFieldsRaw?.[stateKey]
           const isBlank = rawValue === null || rawValue === ""
           if (isBlank) {
-            // Get or create tag to find existing state
+            // Get or create tag to find existing state (returns null for reserved names)
             const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
+            if (!tagId) continue // Skip reserved tag names
+            
             const existingField = await prisma.contactState.findUnique({
               where: {
                 organizationId_entityId_tagId: {
@@ -344,8 +345,9 @@ export class UnifiedImportService {
         const stateKey = stateKeyRaw.trim()
         if (!stateKey) continue
 
-        // Get or create tag first (auto-creates tags from CSV columns)
+        // Get or create tag first (returns null for reserved names like lastName)
         const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
+        if (!tagId) continue // Skip reserved tag names - they're stored on Entity directly
 
         const existingField = await prisma.contactState.findUnique({
           where: {

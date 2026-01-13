@@ -5,6 +5,7 @@ import { DomainDetectionService } from "./domain-detection.service"
 export class EntityService {
   static async create(data: {
     firstName: string
+    lastName?: string
     email?: string
     phone?: string
     organizationId: string
@@ -15,6 +16,7 @@ export class EntityService {
     const entity = await prisma.entity.create({
       data: {
         firstName: data.firstName,
+        lastName: data.lastName,
         email: data.email,
         phone: data.phone,
         contactType: data.contactType,
@@ -163,7 +165,7 @@ export class EntityService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<Entity, "firstName" | "email" | "phone" | "contactType" | "contactTypeCustomLabel">>
+    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "contactType" | "contactTypeCustomLabel">>
   ): Promise<Entity> {
     return prisma.entity.update({
       where: {
