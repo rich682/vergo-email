@@ -45,12 +45,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This tag already exists" }, { status: 400 })
     }
 
-    // Tags are created implicitly when values are assigned to contacts
-    // This endpoint just validates the name is available
+    // Create a placeholder entry with a special system entity to make the tag visible
+    // This allows users to create tags before assigning values to contacts
+    // We use a special "__tag_placeholder__" entityId to mark these entries
+    await prisma.contactState.create({
+      data: {
+        organizationId: session.user.organizationId,
+        entityId: `__tag_placeholder__${normalizedName}`,
+        stateKey: normalizedName,
+        stateValue: "__placeholder__"
+      }
+    })
+
     return NextResponse.json({ 
       success: true, 
       tagName: normalizedName,
-      message: "Tag name is available. It will appear in the list when assigned to contacts."
+      message: "Tag created successfully"
     })
   } catch (error: any) {
     console.error("Error creating tag:", error)
