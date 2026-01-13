@@ -348,8 +348,8 @@ export function ConfirmationCard({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="has">Only contacts with ALL selected data</SelectItem>
-                      <SelectItem value="missing">Only contacts missing ANY selected data</SelectItem>
+                      <SelectItem value="has">Only contacts with this data</SelectItem>
+                      <SelectItem value="missing">All contacts (data optional)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -366,7 +366,11 @@ export function ConfirmationCard({
                     </code>
                   ))}
                 </div>
-                <p className="text-blue-500 mt-1">These will be replaced with each contact&apos;s actual values</p>
+                <p className="text-blue-500 mt-1">
+                  {tagMode === "has" 
+                    ? "Only contacts with this data will receive the email"
+                    : "All contacts will receive the email. Missing data will show as blank."}
+                </p>
               </div>
             )}
           </div>
