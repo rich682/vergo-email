@@ -54,8 +54,8 @@ export class AIEmailGenerationService {
     // Personalization fields
     availableTags?: string[] // Array of tag names that can be used in templates
     personalizationMode?: "none" | "contact" | "csv"
-    // Request deadline (for display in email)
-    deadlineDate?: Date | null
+    // Request deadline (for display in email) - accepts Date object or ISO string
+    deadlineDate?: Date | string | null
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -97,9 +97,23 @@ export class AIEmailGenerationService {
     }))
     
     // Format deadline date for display
-    const formatDeadline = (date: Date | null | undefined): string | null => {
+    const formatDeadline = (date: Date | string | null | undefined): string | null => {
       if (!date) return null
-      return date.toLocaleDateString('en-US', { 
+      
+      // Handle both Date objects and date strings
+      let dateObj: Date
+      if (date instanceof Date) {
+        dateObj = date
+      } else if (typeof date === 'string') {
+        dateObj = new Date(date)
+      } else {
+        return null
+      }
+      
+      // Check if date is valid
+      if (isNaN(dateObj.getTime())) return null
+      
+      return dateObj.toLocaleDateString('en-US', { 
         month: 'long', 
         day: 'numeric', 
         year: 'numeric' 
