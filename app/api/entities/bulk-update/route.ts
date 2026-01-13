@@ -150,26 +150,34 @@ export async function POST(request: NextRequest) {
 
         for (const entityId of validEntityIds) {
           try {
-            await prisma.contactState.upsert({
+            // First check if the contact state already exists
+            const existing = await prisma.contactState.findFirst({
               where: {
-                organizationId_entityId_tagId: {
-                  organizationId,
-                  entityId,
-                  tagId
-                }
-              },
-              create: {
                 organizationId,
                 entityId,
-                tagId,
-                stateKey: tagName,
-                stateValue: "",
-                source: "BULK_UPDATE"
-              },
-              update: {
-                source: "BULK_UPDATE"
+                tagId
               }
             })
+
+            if (existing) {
+              // Update existing
+              await prisma.contactState.update({
+                where: { id: existing.id },
+                data: { source: "BULK_UPDATE" }
+              })
+            } else {
+              // Create new
+              await prisma.contactState.create({
+                data: {
+                  organizationId,
+                  entityId,
+                  tagId,
+                  stateKey: tagName,
+                  stateValue: "",
+                  source: "BULK_UPDATE"
+                }
+              })
+            }
             updated++
           } catch (err: any) {
             console.error(`[Bulk Update] Error adding tag to entity ${entityId}:`, err)
