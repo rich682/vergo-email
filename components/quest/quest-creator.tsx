@@ -31,7 +31,13 @@ const EXAMPLE_PROMPTS = [
   "Send invoice reminders to clients every Wednesday"
 ]
 
-export function QuestCreator() {
+interface QuestCreatorProps {
+  jobId?: string | null  // Optional: parent Job for Request-level association
+  jobName?: string       // Optional: Job name for display
+  onComplete?: () => void  // Optional: callback after successful send
+}
+
+export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) {
   const router = useRouter()
   const [prompt, setPrompt] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -196,7 +202,7 @@ export function QuestCreator() {
 
     try {
       // Step 1: Create quest (standing or one-time)
-      console.log("handleConfirm: Step 1 - Creating quest...")
+      console.log("handleConfirm: Step 1 - Creating quest...", jobId ? `with jobId: ${jobId}` : "standalone")
       const createRes = await fetch(standingSchedule ? "/api/quests/standing" : "/api/quests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -206,7 +212,8 @@ export function QuestCreator() {
           userModifications: selection,
           confirmedSchedule: schedule,
           standingSchedule,
-          confirmedReminders: reminders
+          confirmedReminders: reminders,
+          jobId: jobId || null  // Pass jobId to persist at creation time
         })
       })
 
@@ -340,17 +347,24 @@ export function QuestCreator() {
       const data = await res.json()
 
       // Show success and redirect
+      const redirectTarget = jobId ? `/dashboard/jobs/${jobId}` : "/dashboard/requests"
+      const redirectLabel = jobId ? "job" : "requests"
+      
       setMessages(prev => [
         ...prev.filter(m => m.type !== "preview"),
         {
           id: Date.now().toString(),
           type: "assistant",
-          content: `✅ Successfully sent ${data.emailsSent} emails! Redirecting to requests...`
+          content: `✅ Successfully sent ${data.emailsSent} emails! Redirecting to ${redirectLabel}...`
         }
       ])
 
       setTimeout(() => {
-        router.push("/dashboard/requests")
+        if (onComplete) {
+          onComplete()
+        } else {
+          router.push(redirectTarget)
+        }
       }, 2000)
 
     } catch (error: any) {
@@ -701,6 +715,16 @@ export function QuestCreator() {
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-white">
+      {/* Job Context Banner (when creating within a Job) */}
+      {jobId && jobName && (
+        <div className="flex-shrink-0 px-6 py-2 bg-blue-50 border-b border-blue-100">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 text-sm">
+            <span className="text-blue-600">Creating request for:</span>
+            <span className="font-medium text-blue-800">{jobName}</span>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
         <div className="max-w-3xl mx-auto">

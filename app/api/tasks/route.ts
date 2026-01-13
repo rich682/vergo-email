@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")
   const hasReplies = searchParams.get("hasReplies")
   const isOpened = searchParams.get("isOpened")
+  const jobId = searchParams.get("jobId")
 
   const where: any = {
     organizationId: session.user.organizationId
@@ -40,6 +41,28 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     where.status = status
+  }
+
+  // Filter by jobId if provided (optional, additive filter)
+  // This does NOT change existing behavior when jobId is not provided
+  if (jobId) {
+    // Verify the job exists and belongs to the same organization
+    // This prevents cross-org data leakage via jobId parameter
+    const jobExists = await prisma.job.findFirst({
+      where: {
+        id: jobId,
+        organizationId: session.user.organizationId
+      },
+      select: { id: true }
+    })
+    
+    if (!jobExists) {
+      // Job doesn't exist or belongs to different org - return empty results
+      // This is safer than returning a 404 which could leak job existence
+      return NextResponse.json([])
+    }
+    
+    where.jobId = jobId
   }
 
   // Build AND conditions array for complex queries

@@ -5,6 +5,7 @@ export class EmailDraftService {
   static async create(data: {
     organizationId: string
     userId: string
+    jobId?: string | null  // Optional: parent Job for Request-level association
     prompt: string
     generatedSubject?: string
     generatedBody?: string
@@ -27,6 +28,7 @@ export class EmailDraftService {
       data: {
         organizationId: data.organizationId,
         userId: data.userId,
+        jobId: data.jobId || null,  // Persist jobId at creation time
         prompt: data.prompt,
         generatedSubject: data.generatedSubject,
         generatedBody: data.generatedBody,

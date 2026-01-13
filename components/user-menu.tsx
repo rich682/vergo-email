@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { signOut } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { Users } from "lucide-react"
 
 interface UserMenuProps {
   userEmail: string
@@ -27,8 +28,10 @@ export function UserMenu({ userEmail, userName }: UserMenuProps) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const { data: session } = useSession()
 
   const initials = getInitials(userName, userEmail)
+  const isAdmin = (session?.user as any)?.role === "ADMIN"
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -67,6 +70,11 @@ export function UserMenu({ userEmail, userName }: UserMenuProps) {
   const handleSettings = () => {
     setOpen(false)
     router.push("/dashboard/settings")
+  }
+
+  const handleTeam = () => {
+    setOpen(false)
+    router.push("/dashboard/settings/team")
   }
 
   const handleLogout = async () => {
@@ -113,6 +121,16 @@ export function UserMenu({ userEmail, userName }: UserMenuProps) {
               </svg>
               Settings
             </button>
+            {isAdmin && (
+              <button
+                onClick={handleTeam}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                role="menuitem"
+              >
+                <Users className="w-4 h-4 text-gray-400" />
+                Team
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"

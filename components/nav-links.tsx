@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { UI_LABELS } from "@/lib/ui-labels"
 
 interface NavLink {
   href: string
@@ -20,7 +21,7 @@ function isJobsUIEnabled(): boolean {
 }
 
 const navLinks: NavLink[] = [
-  { href: "/dashboard/jobs", label: "Jobs", featureFlag: isJobsUIEnabled },
+  { href: "/dashboard/jobs", label: UI_LABELS.jobsNavLabel, featureFlag: isJobsUIEnabled },
   { href: "/dashboard/requests", label: "Requests" },
   { href: "/dashboard/contacts", label: "Contacts" },
 ]

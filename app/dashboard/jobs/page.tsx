@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,8 +13,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle } from "lucide-react"
+import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle, X, Tag } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
+import { UI_LABELS } from "@/lib/ui-labels"
 
 interface JobOwner {
   id: string
@@ -33,6 +34,12 @@ interface JobCollaborator {
   }
 }
 
+interface JobLabels {
+  tags?: string[]
+  period?: string
+  workType?: string
+}
+
 interface Job {
   id: string
   name: string
@@ -40,7 +47,7 @@ interface Job {
   ownerId: string
   status: "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
   dueDate: string | null
-  labels: string[] | null
+  labels: JobLabels | null
   createdAt: string
   updatedAt: string
   owner: JobOwner
@@ -68,11 +75,22 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")  // "My Jobs" vs "All Jobs"
+  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")
+  const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState("")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
+  const [newJobTags, setNewJobTags] = useState<string[]>([])
+  const [newTagInput, setNewTagInput] = useState("")
   const [creating, setCreating] = useState(false)
+
+  // Collect all unique tags from jobs for autocomplete
+  const allTags = Array.from(
+    new Set(
+      jobs.flatMap(job => job.labels?.tags || [])
+    )
+  ).sort()
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -83,6 +101,9 @@ export default function JobsPage() {
       }
       if (ownershipFilter === "my") {
         params.set("myJobs", "true")
+      }
+      if (tagFilter.length > 0) {
+        params.set("tags", tagFilter.join(","))
       }
       
       const response = await fetch(`/api/jobs?${params.toString()}`, {
@@ -100,7 +121,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, ownershipFilter])
+  }, [statusFilter, ownershipFilter, tagFilter])
 
   useEffect(() => {
     fetchJobs()
@@ -117,7 +138,8 @@ export default function JobsPage() {
         credentials: "include",
         body: JSON.stringify({
           name: newJobName.trim(),
-          description: newJobDescription.trim() || undefined
+          description: newJobDescription.trim() || undefined,
+          tags: newJobTags.length > 0 ? newJobTags : undefined
         })
       })
 
@@ -126,8 +148,9 @@ export default function JobsPage() {
         setJobs(prev => [data.job, ...prev])
         setNewJobName("")
         setNewJobDescription("")
+        setNewJobTags([])
+        setNewTagInput("")
         setIsCreateOpen(false)
-        // Navigate to the new job
         router.push(`/dashboard/jobs/${data.job.id}`)
       }
     } catch (error) {
@@ -137,52 +160,140 @@ export default function JobsPage() {
     }
   }
 
+  const handleAddNewTag = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && newTagInput.trim()) {
+      e.preventDefault()
+      const tag = newTagInput.trim().toLowerCase()
+      if (!newJobTags.includes(tag)) {
+        setNewJobTags(prev => [...prev, tag])
+      }
+      setNewTagInput("")
+    }
+  }
+
+  const handleRemoveNewTag = (tagToRemove: string) => {
+    setNewJobTags(prev => prev.filter(t => t !== tagToRemove))
+  }
+
+  const handleAddTagFilter = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && tagInput.trim()) {
+      e.preventDefault()
+      const tag = tagInput.trim().toLowerCase()
+      if (!tagFilter.includes(tag)) {
+        setTagFilter(prev => [...prev, tag])
+      }
+      setTagInput("")
+    }
+  }
+
+  const handleRemoveTagFilter = (tagToRemove: string) => {
+    setTagFilter(prev => prev.filter(t => t !== tagToRemove))
+  }
+
+  const handleSelectExistingTag = (tag: string) => {
+    if (!tagFilter.includes(tag)) {
+      setTagFilter(prev => [...prev, tag])
+    }
+    setTagInput("")
+  }
+
+  const clearAllFilters = () => {
+    setStatusFilter("all")
+    setOwnershipFilter("all")
+    setTagFilter([])
+  }
+
+  const hasActiveFilters = statusFilter !== "all" || ownershipFilter !== "all" || tagFilter.length > 0
+
   const getProgressPercent = (job: Job) => {
     if (job.taskCount === 0) return 0
     return Math.round((job.respondedCount / job.taskCount) * 100)
   }
+
+  // Filter suggestions based on input
+  const tagSuggestions = tagInput.trim()
+    ? allTags.filter(t => 
+        t.toLowerCase().includes(tagInput.toLowerCase()) && 
+        !tagFilter.includes(t)
+      )
+    : []
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{UI_LABELS.jobsPageTitle}</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage your client work and track progress across requests
+            {UI_LABELS.jobsPageSubtitle}
           </p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button className="bg-green-600 hover:bg-green-700">
               <Plus className="w-4 h-4 mr-2" />
-              New Job
+              {UI_LABELS.newJob}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Job</DialogTitle>
+              <DialogTitle>{UI_LABELS.createJobModalTitle}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div>
-                <Label htmlFor="jobName">Job Name</Label>
+                <Label htmlFor="jobName">{UI_LABELS.jobNameLabel}</Label>
                 <Input
                   id="jobName"
-                  placeholder="e.g., Tax Planning - Year End 2024"
+                  placeholder={UI_LABELS.jobNamePlaceholder}
                   value={newJobName}
                   onChange={(e) => setNewJobName(e.target.value)}
                   className="mt-1"
                 />
               </div>
               <div>
-                <Label htmlFor="jobDescription">Description (optional)</Label>
+                <Label htmlFor="jobDescription">{UI_LABELS.jobDescriptionLabel}</Label>
                 <Input
                   id="jobDescription"
-                  placeholder="Brief description of the work"
+                  placeholder={UI_LABELS.jobDescriptionPlaceholder}
                   value={newJobDescription}
                   onChange={(e) => setNewJobDescription(e.target.value)}
                   className="mt-1"
                 />
+              </div>
+              <div>
+                <Label htmlFor="jobTags">Labels (optional)</Label>
+                <div className="mt-1">
+                  {/* Tags display */}
+                  {newJobTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {newJobTags.map(tag => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveNewTag(tag)}
+                            className="hover:text-blue-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <Input
+                    id="jobTags"
+                    placeholder="Type a label and press Enter"
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={handleAddNewTag}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Press Enter to add each label (e.g., january, book-close)
+                  </p>
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button
@@ -196,7 +307,7 @@ export default function JobsPage() {
                   disabled={!newJobName.trim() || creating}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  {creating ? "Creating..." : "Create Job"}
+                  {creating ? "Creating..." : UI_LABELS.createJob}
                 </Button>
               </div>
             </div>
@@ -206,7 +317,7 @@ export default function JobsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4 mb-6">
-        {/* Ownership Filter - My Jobs vs All Jobs */}
+        {/* Ownership Filter */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setOwnershipFilter("all")}
@@ -216,7 +327,7 @@ export default function JobsPage() {
                 : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            All Jobs
+            {UI_LABELS.allJobs}
           </button>
           <button
             onClick={() => setOwnershipFilter("my")}
@@ -227,7 +338,7 @@ export default function JobsPage() {
             }`}
           >
             <UserCircle className="w-3.5 h-3.5" />
-            My Jobs
+            {UI_LABELS.myJobs}
           </button>
         </div>
 
@@ -247,9 +358,64 @@ export default function JobsPage() {
             </button>
           ))}
         </div>
+
+        {/* Tag Filter */}
+        <div className="flex items-center gap-2">
+          <Tag className="w-4 h-4 text-gray-400" />
+          <div className="relative">
+            <div className="flex items-center gap-1 flex-wrap">
+              {tagFilter.map(tag => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTagFilter(tag)}
+                    className="hover:text-blue-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <Input
+                placeholder="Filter by label..."
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleAddTagFilter}
+                className="w-32 h-7 text-sm"
+              />
+            </div>
+            {/* Tag suggestions dropdown */}
+            {tagSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-40 overflow-auto">
+                {tagSuggestions.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => handleSelectExistingTag(tag)}
+                    className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Clear Filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={clearAllFilters}
+            className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
-      {/* Jobs List */}
+      {/* Items List */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
@@ -258,16 +424,16 @@ export default function JobsPage() {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Briefcase className="w-12 h-12 text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-1">No jobs yet</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No {UI_LABELS.jobPlural.toLowerCase()} yet</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Create your first job to start organizing client work
+              Create your first {UI_LABELS.jobSingular.toLowerCase()} to start organizing client work
             </p>
             <Button
               onClick={() => setIsCreateOpen(true)}
               className="bg-green-600 hover:bg-green-700"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Create Job
+              {UI_LABELS.createJob}
             </Button>
           </CardContent>
         </Card>
@@ -276,6 +442,7 @@ export default function JobsPage() {
           {jobs.map((job) => {
             const StatusIcon = STATUS_CONFIG[job.status]?.icon || Clock
             const progressPercent = getProgressPercent(job)
+            const jobTags = job.labels?.tags || []
             
             return (
               <Card
@@ -299,6 +466,20 @@ export default function JobsPage() {
                         <p className="text-sm text-gray-500 truncate mb-2">
                           {job.description}
                         </p>
+                      )}
+
+                      {/* Tags display */}
+                      {jobTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {jobTags.map(tag => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       )}
 
                       <div className="flex items-center gap-4 text-xs text-gray-500">

@@ -43,6 +43,7 @@ export class QuestService {
     const {
       organizationId,
       userId,
+      jobId,  // Optional: parent Job for Request-level association
       originalPrompt,
       interpretation,
       userModifications,
@@ -106,10 +107,11 @@ export class QuestService {
       timestamp: new Date().toISOString()
     }
 
-    // Create underlying EmailDraft
+    // Create underlying EmailDraft with jobId persisted at creation time
     const emailDraft = await EmailDraftService.create({
       organizationId,
       userId,
+      jobId: jobId || null,  // Persist jobId at creation time for Request-level association
       prompt: originalPrompt,
       suggestedRecipients: {
         entityIds: [],

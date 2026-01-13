@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { getNewRequestRoute } from "@/components/nav-links"
+import { NewRequestModal } from "@/components/requests/new-request-modal"
 
 interface Task {
   id: string
@@ -57,12 +58,18 @@ interface RequestGroup {
   requestType: "recurring" | "one-off"
 }
 
+// Feature flag check for Jobs UI
+function isJobsUIEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_JOBS_UI === "true"
+}
+
 export default function RequestsPage() {
   const router = useRouter()
   const [allTasks, setAllTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<"all" | "complete" | "incomplete">("all")
   const [replyFilter, setReplyFilter] = useState<"all" | "replied" | "unreplied">("all")
+  const [newRequestModalOpen, setNewRequestModalOpen] = useState(false)
   const [sortKey, setSortKey] = useState<
     | "lastActivity"
     | "created"
@@ -287,12 +294,24 @@ export default function RequestsPage() {
                 </p>
               </div>
               <Button
-                onClick={() => router.push(getNewRequestRoute())}
+                onClick={() => {
+                  if (isJobsUIEnabled()) {
+                    setNewRequestModalOpen(true)
+                  } else {
+                    router.push(getNewRequestRoute())
+                  }
+                }}
                 className="flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 New Request
               </Button>
+              
+              {/* New Request Modal (Job chooser) */}
+              <NewRequestModal 
+                open={newRequestModalOpen} 
+                onOpenChange={setNewRequestModalOpen} 
+              />
             </div>
           </div>
 

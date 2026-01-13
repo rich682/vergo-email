@@ -36,8 +36,12 @@ export async function GET(request: NextRequest) {
     const clientId = searchParams.get("clientId")
     const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs
     const ownerId = searchParams.get("ownerId")
+    const tagsParam = searchParams.get("tags")  // Comma-separated tags filter
     const limit = searchParams.get("limit")
     const offset = searchParams.get("offset")
+
+    // Parse tags filter
+    const tags = tagsParam ? tagsParam.split(",").map(t => t.trim()).filter(Boolean) : undefined
 
     const result = await JobService.findByOrganization(organizationId, {
       status: status || undefined,
@@ -45,6 +49,7 @@ export async function GET(request: NextRequest) {
       // "My Jobs" filter: show jobs where user is owner or collaborator
       ownerId: myJobs ? userId : (ownerId || undefined),
       collaboratorId: myJobs ? userId : undefined,
+      tags,  // Filter by tags (ANY match)
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined
     })
@@ -78,11 +83,11 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, clientId, dueDate, labels, ownerId } = body
+    const { name, description, clientId, dueDate, labels, tags, ownerId } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
-        { error: "Job name is required" },
+        { error: "Item name is required" },
         { status: 400 }
       )
     }
@@ -95,7 +100,8 @@ export async function POST(request: NextRequest) {
       description: description?.trim() || undefined,
       clientId: clientId || undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
-      labels: labels || undefined
+      labels: labels || undefined,
+      tags: tags || undefined  // Convenience: will be merged into labels.tags
     })
 
     return NextResponse.json({

@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { QuestService } from "@/lib/services/quest.service"
 import type { QuestCreateInput, QuestInterpretationResult } from "@/lib/types/quest"
 
@@ -103,13 +104,15 @@ export async function POST(request: NextRequest) {
       interpretation,
       userModifications,
       confirmedSchedule,
-      confirmedReminders
+      confirmedReminders,
+      jobId  // Optional: parent Job for Request-level association
     } = body as {
       originalPrompt: string
       interpretation: QuestInterpretationResult
       userModifications?: any
       confirmedSchedule?: any
       confirmedReminders?: any
+      jobId?: string | null
     }
 
     if (!originalPrompt || !interpretation) {
@@ -119,10 +122,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate jobId if provided (must belong to same organization)
+    if (jobId) {
+      const job = await prisma.job.findFirst({
+        where: { id: jobId, organizationId },
+        select: { id: true }
+      })
+      if (!job) {
+        return NextResponse.json(
+          { error: "Job not found or does not belong to this organization" },
+          { status: 400 }
+        )
+      }
+    }
+
     // Create quest
     const input: QuestCreateInput = {
       organizationId,
       userId,
+      jobId: jobId || null,  // Pass jobId to persist at creation time
       originalPrompt,
       interpretation,
       userModifications,

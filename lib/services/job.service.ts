@@ -20,6 +20,12 @@
 import { prisma } from "@/lib/prisma"
 import { JobStatus, TaskStatus, UserRole } from "@prisma/client"
 
+export interface JobLabels {
+  tags?: string[]
+  period?: string
+  workType?: string
+}
+
 export interface CreateJobInput {
   organizationId: string
   ownerId: string  // Required: accountable user
@@ -27,7 +33,8 @@ export interface CreateJobInput {
   description?: string
   clientId?: string
   dueDate?: Date
-  labels?: string[]
+  labels?: JobLabels  // Structured labels with tags, period, workType
+  tags?: string[]     // Convenience: will be merged into labels.tags
 }
 
 export interface UpdateJobInput {
@@ -37,7 +44,8 @@ export interface UpdateJobInput {
   ownerId?: string  // Can transfer ownership
   status?: JobStatus
   dueDate?: Date | null
-  labels?: string[]
+  labels?: JobLabels  // Structured labels with tags, period, workType
+  tags?: string[]     // Convenience: will be merged into labels.tags
 }
 
 export interface JobOwner {
@@ -68,7 +76,7 @@ export interface JobWithStats {
   clientId: string | null
   status: JobStatus
   dueDate: Date | null
-  labels: string[] | null
+  labels: JobLabels | null  // Structured labels with tags, period, workType
   createdAt: Date
   updatedAt: Date
   owner: JobOwner
@@ -132,6 +140,15 @@ export class JobService {
    * Owner defaults to the creating user
    */
   static async create(input: CreateJobInput): Promise<JobWithStats> {
+    // Build labels object, merging tags convenience field
+    let labels: JobLabels | null = null
+    if (input.labels || input.tags) {
+      labels = {
+        ...(input.labels || {}),
+        tags: input.tags || input.labels?.tags || []
+      }
+    }
+
     const job = await prisma.job.create({
       data: {
         organizationId: input.organizationId,
@@ -140,7 +157,7 @@ export class JobService {
         description: input.description,
         clientId: input.clientId,
         dueDate: input.dueDate,
-        labels: input.labels || null,
+        labels: labels,
         status: JobStatus.ACTIVE
       },
       include: {
@@ -164,7 +181,7 @@ export class JobService {
 
     return {
       ...job,
-      labels: job.labels as string[] | null,
+      labels: job.labels as JobLabels | null,
       collaborators: [],
       taskCount: 0,
       respondedCount: 0,
@@ -240,7 +257,7 @@ export class JobService {
       clientId: job.clientId,
       status: job.status,
       dueDate: job.dueDate,
-      labels: job.labels as string[] | null,
+      labels: job.labels as JobLabels | null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       owner: job.owner,
@@ -254,7 +271,7 @@ export class JobService {
 
   /**
    * List Jobs for an organization
-   * Supports filtering by owner ("My Jobs") or showing all
+   * Supports filtering by owner ("My Jobs"), tags, or showing all
    */
   static async findByOrganization(
     organizationId: string,
@@ -263,6 +280,7 @@ export class JobService {
       clientId?: string
       ownerId?: string  // Filter by owner ("My Jobs")
       collaboratorId?: string  // Include jobs where user is collaborator
+      tags?: string[]  // Filter by tags (ANY match)
       limit?: number
       offset?: number
     }
@@ -286,6 +304,21 @@ export class JobService {
       }
     } else if (options?.ownerId) {
       where.ownerId = options.ownerId
+    }
+
+    // Filter by tags (ANY match - job has at least one of the specified tags)
+    if (options?.tags && options.tags.length > 0) {
+      // Use Prisma JSON filtering: labels.tags contains any of the specified tags
+      // For "any" match, we use OR with array_contains for each tag
+      where.OR = [
+        ...(where.OR || []),
+        ...options.tags.map(tag => ({
+          labels: {
+            path: ['tags'],
+            array_contains: tag
+          }
+        }))
+      ]
     }
 
     const [jobs, total] = await Promise.all([
@@ -352,7 +385,7 @@ export class JobService {
         clientId: job.clientId,
         status: job.status,
         dueDate: job.dueDate,
-        labels: job.labels as string[] | null,
+        labels: job.labels as JobLabels | null,
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
         owner: job.owner,

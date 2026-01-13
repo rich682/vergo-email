@@ -276,6 +276,7 @@ export type StandingQuestMetadata = {
 export type QuestCreateInput = {
   organizationId: string
   userId: string
+  jobId?: string | null  // Optional: parent Job for Request-level association
   originalPrompt: string
   interpretation: QuestInterpretationResult
   userModifications?: Partial<QuestRecipientSelection>

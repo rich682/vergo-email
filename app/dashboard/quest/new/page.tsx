@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { QuestCreator } from "@/components/quest/quest-creator"
 
 // Feature flag check
@@ -30,7 +30,30 @@ function useQuestUIEnabled() {
 
 export default function NewQuestPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const enabled = useQuestUIEnabled()
+  
+  // Get jobId from URL params (e.g., /dashboard/quest/new?jobId=xxx)
+  const jobId = searchParams.get("jobId")
+  const [jobName, setJobName] = useState<string | null>(null)
+  
+  // Fetch job name if jobId is provided
+  useEffect(() => {
+    if (jobId) {
+      const fetchJobName = async () => {
+        try {
+          const res = await fetch(`/api/jobs/${jobId}`)
+          if (res.ok) {
+            const data = await res.json()
+            setJobName(data.job?.name || null)
+          }
+        } catch (error) {
+          console.error("Failed to fetch job:", error)
+        }
+      }
+      fetchJobName()
+    }
+  }, [jobId])
 
   // Show loading while checking feature flag
   if (enabled === null) {
@@ -59,7 +82,11 @@ export default function NewQuestPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <QuestCreator />
+      <QuestCreator 
+        jobId={jobId} 
+        jobName={jobName || undefined}
+        onComplete={jobId ? () => router.push(`/dashboard/jobs/${jobId}`) : undefined}
+      />
     </div>
   )
 }
