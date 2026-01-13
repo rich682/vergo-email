@@ -67,8 +67,8 @@ export function ConfirmationCard({
   const [selectedGroups, setSelectedGroups] = useState<string[]>(
     interpretation.recipientSelection.groupNames || []
   )
-  const [selectedTag, setSelectedTag] = useState<string>(
-    interpretation.recipientSelection.stateFilter?.stateKeys?.[0] || "none"
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    interpretation.recipientSelection.stateFilter?.stateKeys || []
   )
   const [tagMode, setTagMode] = useState<"has" | "missing">(
     interpretation.recipientSelection.stateFilter?.mode || "has"
@@ -127,8 +127,8 @@ export function ConfirmationCard({
     const selection: QuestRecipientSelection = {
       contactTypes: selectedTypes.length > 0 ? selectedTypes : undefined,
       groupNames: selectedGroups.length > 0 ? selectedGroups : undefined,
-      stateFilter: selectedTag !== "none" ? {
-        stateKeys: [selectedTag],
+      stateFilter: selectedTags.length > 0 ? {
+        stateKeys: selectedTags,
         mode: tagMode
       } : undefined
     }
@@ -296,28 +296,48 @@ export function ConfirmationCard({
               Include contact-specific data in your email (e.g., invoice number, due date, amount)
             </p>
             
-            <div className="grid grid-cols-2 gap-3">
+            {/* Multi-select tags with checkboxes */}
+            <div className="space-y-3">
               <div>
-                <Label className="text-xs text-gray-500 mb-1 block">Include Data Tag</Label>
-                <Select
-                  value={selectedTag}
-                  onValueChange={setSelectedTag}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="No personalization" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No personalization</SelectItem>
-                    {availableTags.map((tag) => (
-                      <SelectItem key={tag.stateKey} value={tag.stateKey}>
-                        {tag.stateKey} ({tag.count} contacts)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs text-gray-500 mb-2 block">Select Data Tags to Include</Label>
+                <div className="border border-gray-200 rounded-lg p-3 max-h-40 overflow-auto space-y-2">
+                  {availableTags.map((tag) => {
+                    const isSelected = selectedTags.includes(tag.stateKey)
+                    return (
+                      <label
+                        key={tag.stateKey}
+                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                          isSelected ? "bg-indigo-50 border border-indigo-200" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTags([...selectedTags, tag.stateKey])
+                            } else {
+                              setSelectedTags(selectedTags.filter(t => t !== tag.stateKey))
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium text-gray-900">{tag.stateKey}</span>
+                          <span className="text-xs text-gray-500 ml-2">({tag.count} contacts)</span>
+                        </div>
+                        {isSelected && (
+                          <span className="text-xs text-indigo-600 font-mono bg-indigo-100 px-2 py-0.5 rounded">
+                            {`{{${tag.stateKey}}}`}
+                          </span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
 
-              {selectedTag !== "none" && (
+              {selectedTags.length > 0 && (
                 <div>
                   <Label className="text-xs text-gray-500 mb-1 block">Filter Recipients</Label>
                   <Select
@@ -328,18 +348,26 @@ export function ConfirmationCard({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="has">Only contacts with this data</SelectItem>
-                      <SelectItem value="missing">Only contacts missing this data</SelectItem>
+                      <SelectItem value="has">Only contacts with ALL selected data</SelectItem>
+                      <SelectItem value="missing">Only contacts missing ANY selected data</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
             </div>
             
-            {selectedTag !== "none" && (
-              <p className="text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded">
-                💡 The email will include {"{{" + selectedTag + "}}"} placeholder that gets replaced with each contact&apos;s actual value
-              </p>
+            {selectedTags.length > 0 && (
+              <div className="text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded space-y-1">
+                <p className="font-medium">💡 Selected placeholders:</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedTags.map(tag => (
+                    <code key={tag} className="bg-blue-100 px-2 py-0.5 rounded font-mono">
+                      {`{{${tag}}}`}
+                    </code>
+                  ))}
+                </div>
+                <p className="text-blue-500 mt-1">These will be replaced with each contact&apos;s actual values</p>
+              </div>
             )}
           </div>
         )}
