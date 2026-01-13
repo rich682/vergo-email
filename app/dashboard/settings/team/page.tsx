@@ -31,6 +31,36 @@ interface OrgUser {
   createdAt: string
 }
 
+// Helper to get initials from name
+function getInitials(name: string | null, email: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return parts[0]?.[0]?.toUpperCase() || email[0]?.toUpperCase() || "?"
+  }
+  return email[0]?.toUpperCase() || "?"
+}
+
+// Helper to parse name into first/last
+function parseName(fullName: string | null): { firstName: string; lastName: string } {
+  if (!fullName) return { firstName: "", lastName: "" }
+  const parts = fullName.trim().split(/\s+/)
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" }
+  }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" ")
+  }
+}
+
+// Helper to combine first/last into full name
+function combineName(firstName: string, lastName: string): string {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ")
+}
+
 export default function TeamSettingsPage() {
   const router = useRouter()
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -41,14 +71,16 @@ export default function TeamSettingsPage() {
   // Invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
-  const [inviteName, setInviteName] = useState("")
+  const [inviteFirstName, setInviteFirstName] = useState("")
+  const [inviteLastName, setInviteLastName] = useState("")
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER")
   const [inviting, setInviting] = useState(false)
   
   // Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null)
-  const [editName, setEditName] = useState("")
+  const [editFirstName, setEditFirstName] = useState("")
+  const [editLastName, setEditLastName] = useState("")
   const [editRole, setEditRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">("MEMBER")
   const [saving, setSaving] = useState(false)
   
@@ -85,12 +117,13 @@ export default function TeamSettingsPage() {
 
     setInviting(true)
     try {
+      const fullName = combineName(inviteFirstName, inviteLastName)
       const response = await fetch("/api/org/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: inviteEmail.trim(),
-          name: inviteName.trim() || undefined,
+          name: fullName || undefined,
           role: inviteRole
         })
       })
@@ -103,7 +136,8 @@ export default function TeamSettingsPage() {
       const data = await response.json()
       setTeamUsers(prev => [data.user, ...prev])
       setInviteEmail("")
-      setInviteName("")
+      setInviteFirstName("")
+      setInviteLastName("")
       setInviteRole("MEMBER")
       setIsInviteOpen(false)
       setMessage({ type: "success", text: "User invited successfully!" })
@@ -117,8 +151,10 @@ export default function TeamSettingsPage() {
   }
 
   const openEditModal = (user: OrgUser) => {
+    const { firstName, lastName } = parseName(user.name)
     setEditingUser(user)
-    setEditName(user.name || "")
+    setEditFirstName(firstName)
+    setEditLastName(lastName)
     setEditRole(user.role)
     setIsEditOpen(true)
   }
@@ -128,11 +164,12 @@ export default function TeamSettingsPage() {
 
     setSaving(true)
     try {
+      const fullName = combineName(editFirstName, editLastName)
       const response = await fetch(`/api/org/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: editName.trim(),
+          name: fullName,
           role: editRole
         })
       })
@@ -280,15 +317,27 @@ export default function TeamSettingsPage() {
                     className="mt-1"
                   />
                 </div>
-                <div>
-                  <Label htmlFor="inviteName">Name (optional)</Label>
-                  <Input
-                    id="inviteName"
-                    placeholder="John Doe"
-                    value={inviteName}
-                    onChange={(e) => setInviteName(e.target.value)}
-                    className="mt-1"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="inviteFirstName">First Name</Label>
+                    <Input
+                      id="inviteFirstName"
+                      placeholder="John"
+                      value={inviteFirstName}
+                      onChange={(e) => setInviteFirstName(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="inviteLastName">Last Name</Label>
+                    <Input
+                      id="inviteLastName"
+                      placeholder="Doe"
+                      value={inviteLastName}
+                      onChange={(e) => setInviteLastName(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="inviteRole">Role</Label>
@@ -340,67 +389,76 @@ export default function TeamSettingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {teamUsers.map((user) => (
-                    <tr key={user.id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-4 px-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                            <User className="w-5 h-5 text-blue-600" />
+                  {teamUsers.map((user) => {
+                    const initials = getInitials(user.name, user.email)
+                    const { firstName, lastName } = parseName(user.name)
+                    
+                    return (
+                      <tr key={user.id} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="py-4 px-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium text-sm">
+                              {initials}
+                            </div>
+                            <div>
+                              {user.name ? (
+                                <span className="font-medium text-gray-900">{user.name}</span>
+                              ) : (
+                                <span className="text-gray-400 italic">No name set</span>
+                              )}
+                            </div>
                           </div>
-                          <span className="font-medium text-gray-900">
-                            {user.name || <span className="text-gray-400 italic">No name set</span>}
+                        </td>
+                        <td className="py-4 px-2 text-gray-600">{user.email}</td>
+                        <td className="py-4 px-2">
+                          <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
+                            user.role === "ADMIN" 
+                              ? "bg-purple-100 text-purple-800" 
+                              : user.role === "VIEWER"
+                              ? "bg-gray-100 text-gray-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}>
+                            {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
                           </span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-2 text-gray-600">{user.email}</td>
-                      <td className="py-4 px-2">
-                        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
-                          user.role === "ADMIN" 
-                            ? "bg-purple-100 text-purple-800" 
-                            : user.role === "VIEWER"
-                            ? "bg-gray-100 text-gray-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}>
-                          {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
-                        </span>
-                      </td>
-                      <td className="py-4 px-2">
-                        {user.status === "active" ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
-                            <Clock className="w-3 h-3" />
-                            Pending
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(user)}
-                            className="h-8 w-8 p-0"
-                            title="Edit user"
-                          >
-                            <Pencil className="w-4 h-4 text-gray-500" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDeleteModal(user)}
-                            className="h-8 w-8 p-0 hover:bg-red-50"
-                            title="Remove user"
-                          >
-                            <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-600" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-4 px-2">
+                          {user.status === "active" ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                              <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                              <Clock className="w-3 h-3" />
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-4 px-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditModal(user)}
+                              className="h-8 w-8 p-0"
+                              title="Edit user"
+                            >
+                              <Pencil className="w-4 h-4 text-gray-500" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openDeleteModal(user)}
+                              className="h-8 w-8 p-0 hover:bg-red-50"
+                              title="Remove user"
+                            >
+                              <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-600" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -420,15 +478,27 @@ export default function TeamSettingsPage() {
                 <Label className="text-gray-500">Email</Label>
                 <p className="text-sm font-medium mt-1">{editingUser.email}</p>
               </div>
-              <div>
-                <Label htmlFor="editName">Name</Label>
-                <Input
-                  id="editName"
-                  placeholder="Enter name"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="mt-1"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="editFirstName">First Name</Label>
+                  <Input
+                    id="editFirstName"
+                    placeholder="Enter first name"
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="editLastName">Last Name</Label>
+                  <Input
+                    id="editLastName"
+                    placeholder="Enter last name"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
               </div>
               <div>
                 <Label htmlFor="editRole">Role</Label>
