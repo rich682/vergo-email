@@ -13,18 +13,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive } from "lucide-react"
+import { Plus, Briefcase, Calendar, Users, CheckCircle, Clock, Archive, User, UserCircle } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
+
+interface JobOwner {
+  id: string
+  name: string | null
+  email: string
+}
+
+interface JobCollaborator {
+  id: string
+  userId: string
+  role: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+  }
+}
 
 interface Job {
   id: string
   name: string
   description: string | null
+  ownerId: string
   status: "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
   dueDate: string | null
   labels: string[] | null
   createdAt: string
   updatedAt: string
+  owner: JobOwner
+  collaborators?: JobCollaborator[]
   client?: {
     id: string
     firstName: string
@@ -48,6 +68,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")  // "My Jobs" vs "All Jobs"
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
@@ -59,6 +80,9 @@ export default function JobsPage() {
       const params = new URLSearchParams()
       if (statusFilter !== "all") {
         params.set("status", statusFilter)
+      }
+      if (ownershipFilter === "my") {
+        params.set("myJobs", "true")
       }
       
       const response = await fetch(`/api/jobs?${params.toString()}`, {
@@ -76,7 +100,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, ownershipFilter])
 
   useEffect(() => {
     fetchJobs()
@@ -181,20 +205,48 @@ export default function JobsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 mb-6">
-        {["all", "ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map((status) => (
+      <div className="flex flex-wrap gap-4 mb-6">
+        {/* Ownership Filter - My Jobs vs All Jobs */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
           <button
-            key={status}
-            onClick={() => setStatusFilter(status)}
-            className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-              statusFilter === status
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            onClick={() => setOwnershipFilter("all")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              ownershipFilter === "all"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
             }`}
           >
-            {status === "all" ? "All" : STATUS_CONFIG[status as keyof typeof STATUS_CONFIG]?.label || status}
+            All Jobs
           </button>
-        ))}
+          <button
+            onClick={() => setOwnershipFilter("my")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1 ${
+              ownershipFilter === "my"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <UserCircle className="w-3.5 h-3.5" />
+            My Jobs
+          </button>
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex gap-2">
+          {["all", "ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                statusFilter === status
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {status === "all" ? "All Status" : STATUS_CONFIG[status as keyof typeof STATUS_CONFIG]?.label || status}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Jobs List */}
@@ -250,9 +302,21 @@ export default function JobsPage() {
                       )}
 
                       <div className="flex items-center gap-4 text-xs text-gray-500">
+                        {/* Owner */}
+                        <span className="flex items-center gap-1" title={`Owner: ${job.owner.email}`}>
+                          <User className="w-3 h-3" />
+                          {job.owner.name || job.owner.email.split("@")[0]}
+                        </span>
+                        {/* Collaborators count */}
+                        {job.collaborators && job.collaborators.length > 0 && (
+                          <span className="flex items-center gap-1" title={`${job.collaborators.length} collaborator(s)`}>
+                            <Users className="w-3 h-3" />
+                            +{job.collaborators.length}
+                          </span>
+                        )}
                         {job.client && (
                           <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
+                            <Briefcase className="w-3 h-3" />
                             {job.client.firstName} {job.client.lastName || ""}
                           </span>
                         )}

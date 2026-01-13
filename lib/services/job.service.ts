@@ -8,14 +8,21 @@
  * - Status is derived from child Task states
  * 
  * Phase 1: Basic CRUD operations
- * Phase 2+: Status derivation, aggregation, notifications
+ * Phase 2: Ownership & Collaboration
+ * Phase 3+: Status derivation, aggregation, notifications
+ * 
+ * Ownership Model:
+ * - Each Job has a single owner (ownerId) who is accountable
+ * - Collaborators can view and execute but not edit
+ * - All Jobs are visible org-wide by default
  */
 
 import { prisma } from "@/lib/prisma"
-import { JobStatus, TaskStatus } from "@prisma/client"
+import { JobStatus, TaskStatus, UserRole } from "@prisma/client"
 
 export interface CreateJobInput {
   organizationId: string
+  ownerId: string  // Required: accountable user
   name: string
   description?: string
   clientId?: string
@@ -27,14 +34,35 @@ export interface UpdateJobInput {
   name?: string
   description?: string
   clientId?: string | null
+  ownerId?: string  // Can transfer ownership
   status?: JobStatus
   dueDate?: Date | null
   labels?: string[]
 }
 
+export interface JobOwner {
+  id: string
+  name: string | null
+  email: string
+}
+
+export interface JobCollaborator {
+  id: string
+  userId: string
+  role: string
+  addedAt: Date
+  addedBy: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+  }
+}
+
 export interface JobWithStats {
   id: string
   organizationId: string
+  ownerId: string
   name: string
   description: string | null
   clientId: string | null
@@ -43,6 +71,8 @@ export interface JobWithStats {
   labels: string[] | null
   createdAt: Date
   updatedAt: Date
+  owner: JobOwner
+  collaborators?: JobCollaborator[]
   client?: {
     id: string
     firstName: string
@@ -55,14 +85,57 @@ export interface JobWithStats {
   completedCount: number
 }
 
+// Permission actions for Jobs
+export type JobAction = 
+  | 'view' 
+  | 'edit' 
+  | 'add_request' 
+  | 'execute_request' 
+  | 'archive' 
+  | 'manage_collaborators'
+  | 'add_comment'
+
 export class JobService {
   /**
+   * Check if a user can perform an action on a job
+   * Implements the permission model from the plan
+   */
+  static async canUserAccessJob(
+    userId: string,
+    userRole: UserRole,
+    job: { id: string; ownerId: string },
+    action: JobAction
+  ): Promise<boolean> {
+    // Org Admins can do everything
+    if (userRole === UserRole.ADMIN) return true
+    
+    // Owner can do everything on their Jobs
+    if (job.ownerId === userId) return true
+    
+    // Collaborators can view, execute, and comment
+    const isCollaborator = await prisma.jobCollaborator.findUnique({
+      where: { jobId_userId: { jobId: job.id, userId } }
+    })
+    
+    if (isCollaborator) {
+      return ['view', 'execute_request', 'add_comment'].includes(action)
+    }
+    
+    // Default visibility: all org members can view
+    if (action === 'view') return true
+    
+    return false
+  }
+
+  /**
    * Create a new Job
+   * Owner defaults to the creating user
    */
   static async create(input: CreateJobInput): Promise<JobWithStats> {
     const job = await prisma.job.create({
       data: {
         organizationId: input.organizationId,
+        ownerId: input.ownerId,
         name: input.name,
         description: input.description,
         clientId: input.clientId,
@@ -71,6 +144,13 @@ export class JobService {
         status: JobStatus.ACTIVE
       },
       include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
         client: {
           select: {
             id: true,
@@ -85,6 +165,7 @@ export class JobService {
     return {
       ...job,
       labels: job.labels as string[] | null,
+      collaborators: [],
       taskCount: 0,
       respondedCount: 0,
       completedCount: 0
@@ -93,6 +174,7 @@ export class JobService {
 
   /**
    * Find a Job by ID
+   * Includes owner and collaborators
    */
   static async findById(id: string, organizationId: string): Promise<JobWithStats | null> {
     const job = await prisma.job.findFirst({
@@ -101,6 +183,24 @@ export class JobService {
         organizationId
       },
       include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        collaborators: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
+          }
+        },
         client: {
           select: {
             id: true,
@@ -134,6 +234,7 @@ export class JobService {
     return {
       id: job.id,
       organizationId: job.organizationId,
+      ownerId: job.ownerId,
       name: job.name,
       description: job.description,
       clientId: job.clientId,
@@ -142,6 +243,8 @@ export class JobService {
       labels: job.labels as string[] | null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
+      owner: job.owner,
+      collaborators: job.collaborators,
       client: job.client,
       taskCount,
       respondedCount,
@@ -151,26 +254,62 @@ export class JobService {
 
   /**
    * List Jobs for an organization
+   * Supports filtering by owner ("My Jobs") or showing all
    */
   static async findByOrganization(
     organizationId: string,
     options?: {
       status?: JobStatus
       clientId?: string
+      ownerId?: string  // Filter by owner ("My Jobs")
+      collaboratorId?: string  // Include jobs where user is collaborator
       limit?: number
       offset?: number
     }
   ): Promise<{ jobs: JobWithStats[]; total: number }> {
-    const where = {
+    // Build where clause
+    let where: any = {
       organizationId,
       ...(options?.status && { status: options.status }),
       ...(options?.clientId && { clientId: options.clientId })
+    }
+
+    // If filtering by "My Jobs" (owner or collaborator)
+    if (options?.ownerId && options?.collaboratorId && options.ownerId === options.collaboratorId) {
+      // Show jobs where user is owner OR collaborator
+      where = {
+        ...where,
+        OR: [
+          { ownerId: options.ownerId },
+          { collaborators: { some: { userId: options.collaboratorId } } }
+        ]
+      }
+    } else if (options?.ownerId) {
+      where.ownerId = options.ownerId
     }
 
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
         where,
         include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          collaborators: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              }
+            }
+          },
           client: {
             select: {
               id: true,
@@ -207,6 +346,7 @@ export class JobService {
       return {
         id: job.id,
         organizationId: job.organizationId,
+        ownerId: job.ownerId,
         name: job.name,
         description: job.description,
         clientId: job.clientId,
@@ -215,6 +355,8 @@ export class JobService {
         labels: job.labels as string[] | null,
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
+        owner: job.owner,
+        collaborators: job.collaborators,
         client: job.client,
         taskCount,
         respondedCount,
@@ -227,6 +369,7 @@ export class JobService {
 
   /**
    * Update a Job
+   * Supports ownership transfer
    */
   static async update(
     id: string,
@@ -246,11 +389,30 @@ export class JobService {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.clientId !== undefined && { clientId: input.clientId }),
+        ...(input.ownerId !== undefined && { ownerId: input.ownerId }),
         ...(input.status !== undefined && { status: input.status }),
         ...(input.dueDate !== undefined && { dueDate: input.dueDate }),
         ...(input.labels !== undefined && { labels: input.labels })
       },
       include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        collaborators: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
+          }
+        },
         client: {
           select: {
             id: true,
@@ -281,6 +443,7 @@ export class JobService {
     return {
       id: job.id,
       organizationId: job.organizationId,
+      ownerId: job.ownerId,
       name: job.name,
       description: job.description,
       clientId: job.clientId,
@@ -289,6 +452,8 @@ export class JobService {
       labels: job.labels as string[] | null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
+      owner: job.owner,
+      collaborators: job.collaborators,
       client: job.client,
       taskCount,
       respondedCount,
@@ -391,5 +556,292 @@ export class JobService {
     })
 
     return result.count
+  }
+
+  // ============================================
+  // Collaborator Management
+  // ============================================
+
+  /**
+   * Add a collaborator to a job
+   */
+  static async addCollaborator(
+    jobId: string,
+    userId: string,
+    addedBy: string,
+    organizationId: string,
+    role: string = "collaborator"
+  ): Promise<JobCollaborator | null> {
+    // Verify job exists and belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return null
+
+    // Don't add owner as collaborator
+    if (job.ownerId === userId) {
+      throw new Error("Cannot add job owner as collaborator")
+    }
+
+    // Verify user exists and belongs to same organization
+    const user = await prisma.user.findFirst({
+      where: { id: userId, organizationId }
+    })
+
+    if (!user) {
+      throw new Error("User not found in organization")
+    }
+
+    // Create or update collaborator
+    const collaborator = await prisma.jobCollaborator.upsert({
+      where: {
+        jobId_userId: { jobId, userId }
+      },
+      create: {
+        jobId,
+        userId,
+        role,
+        addedBy
+      },
+      update: {
+        role,
+        addedBy,
+        addedAt: new Date()
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    })
+
+    return collaborator
+  }
+
+  /**
+   * Remove a collaborator from a job
+   */
+  static async removeCollaborator(
+    jobId: string,
+    userId: string,
+    organizationId: string
+  ): Promise<boolean> {
+    // Verify job exists and belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return false
+
+    try {
+      await prisma.jobCollaborator.delete({
+        where: {
+          jobId_userId: { jobId, userId }
+        }
+      })
+      return true
+    } catch {
+      // Collaborator doesn't exist
+      return false
+    }
+  }
+
+  /**
+   * Get all collaborators for a job
+   */
+  static async getCollaborators(
+    jobId: string,
+    organizationId: string
+  ): Promise<JobCollaborator[]> {
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return []
+
+    const collaborators = await prisma.jobCollaborator.findMany({
+      where: { jobId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { addedAt: "asc" }
+    })
+
+    return collaborators
+  }
+
+  /**
+   * Transfer job ownership to another user
+   */
+  static async transferOwnership(
+    jobId: string,
+    newOwnerId: string,
+    organizationId: string
+  ): Promise<JobWithStats | null> {
+    // Verify job exists
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return null
+
+    // Verify new owner exists in organization
+    const newOwner = await prisma.user.findFirst({
+      where: { id: newOwnerId, organizationId }
+    })
+
+    if (!newOwner) {
+      throw new Error("New owner not found in organization")
+    }
+
+    // If new owner was a collaborator, remove them from collaborators
+    await prisma.jobCollaborator.deleteMany({
+      where: { jobId, userId: newOwnerId }
+    })
+
+    // Update ownership
+    return this.update(jobId, organizationId, { ownerId: newOwnerId })
+  }
+
+  // ============================================
+  // Comment Management (Phase 2.6)
+  // ============================================
+
+  /**
+   * Add a comment to a job
+   */
+  static async addComment(
+    jobId: string,
+    authorId: string,
+    content: string,
+    organizationId: string,
+    mentions?: string[]
+  ): Promise<{
+    id: string
+    jobId: string
+    authorId: string
+    content: string
+    mentions: string[] | null
+    createdAt: Date
+    author: { id: string; name: string | null; email: string }
+  } | null> {
+    // Verify job exists
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return null
+
+    const comment = await prisma.jobComment.create({
+      data: {
+        jobId,
+        authorId,
+        content,
+        mentions: mentions || null
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    })
+
+    return {
+      ...comment,
+      mentions: comment.mentions as string[] | null
+    }
+  }
+
+  /**
+   * Get comments for a job
+   */
+  static async getComments(
+    jobId: string,
+    organizationId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<Array<{
+    id: string
+    jobId: string
+    authorId: string
+    content: string
+    mentions: string[] | null
+    createdAt: Date
+    author: { id: string; name: string | null; email: string }
+  }>> {
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) return []
+
+    const comments = await prisma.jobComment.findMany({
+      where: { jobId },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: options?.limit || 50,
+      skip: options?.offset || 0
+    })
+
+    return comments.map(c => ({
+      ...c,
+      mentions: c.mentions as string[] | null
+    }))
+  }
+
+  /**
+   * Delete a comment
+   */
+  static async deleteComment(
+    commentId: string,
+    authorId: string,
+    organizationId: string
+  ): Promise<boolean> {
+    // Verify comment exists and belongs to author
+    const comment = await prisma.jobComment.findFirst({
+      where: { id: commentId },
+      include: {
+        job: {
+          select: { organizationId: true }
+        }
+      }
+    })
+
+    if (!comment || comment.job.organizationId !== organizationId) {
+      return false
+    }
+
+    // Only author can delete their own comment
+    if (comment.authorId !== authorId) {
+      return false
+    }
+
+    await prisma.jobComment.delete({
+      where: { id: commentId }
+    })
+
+    return true
   }
 }

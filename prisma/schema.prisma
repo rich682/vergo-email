@@ -95,8 +95,11 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  emailDrafts  EmailDraft[]
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDrafts       EmailDraft[]
+  ownedJobs         Job[]             @relation("JobOwner")
+  jobCollaborations JobCollaborator[]
+  jobComments       JobComment[]
 
   @@index([organizationId])
   @@index([email])
@@ -229,20 +232,61 @@ model Job {
   name           String    // Human-readable job name (e.g., "Tax Planning - Year End 2024")
   description    String?   // Optional detailed description
   clientId       String?   // Optional: primary client (Entity) for this job
+  ownerId        String    // Required: accountable user for this job
   status         JobStatus @default(ACTIVE)
   dueDate        DateTime? // Target completion date
   labels         Json?     // Flexible tagging/categorization
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Entity?      @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
-  tasks        Task[]       // Child tasks (requests) belonging to this job
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client        Entity?           @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
+  owner         User              @relation("JobOwner", fields: [ownerId], references: [id])
+  collaborators JobCollaborator[] // Team members who can collaborate on this job
+  tasks         Task[]            // Child tasks (requests) belonging to this job
+  requests      EmailDraft[]      // Request-level association
+  comments      JobComment[]      // Internal collaboration comments
 
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([clientId])
+  @@index([ownerId])
   @@index([organizationId, createdAt])
+}
+
+// JobCollaborator join table for team collaboration on Jobs
+// This replaces a JSON array for better querying, indexing, and auditing
+model JobCollaborator {
+  id        String   @id @default(cuid())
+  jobId     String
+  userId    String
+  role      String   @default("collaborator") // Future: "viewer"
+  addedAt   DateTime @default(now())
+  addedBy   String   // User.id who added this collaborator
+
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, userId])
+  @@index([userId]) // Fast "My Jobs" query
+  @@index([jobId])
+}
+
+// JobComment for internal team collaboration
+model JobComment {
+  id        String   @id @default(cuid())
+  jobId     String
+  authorId  String
+  content   String
+  mentions  Json?    // Array of mentioned user IDs
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([jobId])
+  @@index([authorId])
 }
 
 model Task {
@@ -430,6 +474,7 @@ model EmailDraft {
   id                    String           @id @default(cuid())
   organizationId        String
   userId                String
+  jobId                 String?          // Optional: parent Job for Request-level association
   prompt                String
   generatedSubject      String?
   generatedBody         String?
@@ -456,10 +501,12 @@ model EmailDraft {
 
   organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job                 Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
   personalizationData PersonalizationData[]
 
   @@index([organizationId])
   @@index([userId])
+  @@index([jobId])
   @@index([status])
   @@index([idempotencyKey])
 }

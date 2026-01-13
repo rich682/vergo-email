@@ -5,6 +5,11 @@
  * POST /api/jobs - Create a new job
  * 
  * Feature Flag: JOBS_UI (for UI visibility, API always available)
+ * 
+ * Ownership Model:
+ * - Jobs are visible org-wide by default
+ * - Owner is set to creating user by default
+ * - Supports "My Jobs" filter via ownerId/myJobs params
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -16,7 +21,7 @@ import { JobStatus } from "@prisma/client"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -24,16 +29,22 @@ export async function GET(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
     const { searchParams } = new URL(request.url)
     
     const status = searchParams.get("status") as JobStatus | null
     const clientId = searchParams.get("clientId")
+    const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs
+    const ownerId = searchParams.get("ownerId")
     const limit = searchParams.get("limit")
     const offset = searchParams.get("offset")
 
     const result = await JobService.findByOrganization(organizationId, {
       status: status || undefined,
       clientId: clientId || undefined,
+      // "My Jobs" filter: show jobs where user is owner or collaborator
+      ownerId: myJobs ? userId : (ownerId || undefined),
+      collaboratorId: myJobs ? userId : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined
     })
@@ -56,7 +67,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -64,9 +75,10 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, clientId, dueDate, labels } = body
+    const { name, description, clientId, dueDate, labels, ownerId } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
@@ -75,8 +87,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Owner defaults to creating user (AI invariant: current user by default)
     const job = await JobService.create({
       organizationId,
+      ownerId: ownerId || userId,  // Default to current user
       name: name.trim(),
       description: description?.trim() || undefined,
       clientId: clientId || undefined,
