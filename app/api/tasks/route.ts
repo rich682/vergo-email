@@ -275,7 +275,10 @@ export async function GET(request: NextRequest) {
         riskLevel,
         riskReason,
         lastActivityAt: lastActivityAt instanceof Date ? lastActivityAt.toISOString() : lastActivityAt,
-        isManualRiskOverride: !!task.manualRiskOverride
+        isManualRiskOverride: !!task.manualRiskOverride,
+        // Deadline and reminder fields (already in task via spread, but explicitly listed for clarity)
+        deadlineDate: task.deadlineDate || null,
+        remindersEnabled: task.remindersEnabled || false
       }
     })
 

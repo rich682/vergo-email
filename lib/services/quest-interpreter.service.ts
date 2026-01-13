@@ -47,6 +47,27 @@ const VALID_CONTACT_TYPES: string[] = [
   "CUSTOM"
 ]
 
+// Core entity fields that should never appear as data tags
+const EXCLUDED_STATE_KEYS = new Set([
+  "firstname",
+  "first_name",
+  "lastname",
+  "last_name",
+  "email",
+  "phone",
+  "type",
+  "groups",
+  "contacttype",
+  "contact_type",
+  "name",
+  "company",
+  "address",
+  "city",
+  "state",
+  "zip",
+  "country"
+])
+
 export class QuestInterpreterService {
   /**
    * Fetch organization context for LLM prompt injection
@@ -66,10 +87,15 @@ export class QuestInterpreterService {
       })
     ])
 
+    // Filter out core entity fields from state keys
+    const filteredStateKeys = stateKeys.filter(
+      s => !EXCLUDED_STATE_KEYS.has(s.stateKey.toLowerCase())
+    )
+
     return {
       availableContactTypes: VALID_CONTACT_TYPES.filter(t => t !== "UNKNOWN" && t !== "CUSTOM"),
       availableGroups: groups.map(g => ({ id: g.id, name: g.name })),
-      availableStateKeys: stateKeys.map(s => ({
+      availableStateKeys: filteredStateKeys.map(s => ({
         stateKey: s.stateKey,
         count: s._count.stateKey
       }))

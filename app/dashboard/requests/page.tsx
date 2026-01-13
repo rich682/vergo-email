@@ -26,6 +26,9 @@ interface Task {
   riskReason?: string | null
   lastActivityAt?: string | null
   isManualRiskOverride?: boolean
+  // Deadline and reminder fields
+  deadlineDate?: string | null
+  remindersEnabled?: boolean
   entity?: {
     firstName: string
     email: string | null
@@ -49,6 +52,9 @@ interface RequestGroup {
   unknownCount: number
   lastActivity: Date
   createdLatest: Date
+  // New fields
+  deadline: Date | null
+  requestType: "recurring" | "one-off"
 }
 
 export default function RequestsPage() {
@@ -68,6 +74,8 @@ export default function RequestsPage() {
     | "medium"
     | "low"
     | "replies"
+    | "deadline"
+    | "type"
   >("created")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
@@ -162,6 +170,14 @@ export default function RequestsPage() {
         const taskDate = task.createdAt ? new Date(task.createdAt) : new Date(0)
         return taskDate > latest ? taskDate : latest
       }, new Date(0))
+      
+      // Get deadline from first task that has one (all tasks in group should have same deadline)
+      const deadlineTask = tasks.find(t => t.deadlineDate)
+      const deadline = deadlineTask?.deadlineDate ? new Date(deadlineTask.deadlineDate) : null
+      
+      // Determine request type: recurring if any task has reminders enabled and no deadline
+      const hasReminders = tasks.some(t => t.remindersEnabled)
+      const requestType: "recurring" | "one-off" = hasReminders && !deadline ? "recurring" : "one-off"
 
       groups.push({
         groupKey: grouping.groupKey,
@@ -178,7 +194,9 @@ export default function RequestsPage() {
         lowCount,
         unknownCount,
         lastActivity,
-        createdLatest
+        createdLatest,
+        deadline,
+        requestType
       })
     }
 
@@ -214,6 +232,11 @@ export default function RequestsPage() {
           return g.repliedCount / Math.max(1, g.totalCount)
         case "created":
           return g.createdLatest.getTime()
+        case "deadline":
+          // Put items without deadline at the end when sorting ascending, at the start when descending
+          return g.deadline ? g.deadline.getTime() : (sortDir === "asc" ? Infinity : -Infinity)
+        case "type":
+          return g.requestType === "recurring" ? 1 : 0
         case "lastActivity":
         default:
           return g.lastActivity.getTime()
@@ -397,7 +420,9 @@ export default function RequestsPage() {
                     >
                       <option value="created">Date Created</option>
                       <option value="lastActivity">Last Updated</option>
+                      <option value="deadline">Deadline</option>
                       <option value="name">Name</option>
+                      <option value="type">Type</option>
                       <option value="recipients">Recipients</option>
                       <option value="done">Done %</option>
                       <option value="status">Status</option>
@@ -424,6 +449,8 @@ export default function RequestsPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Complete</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Replies</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <span className="text-red-700">High</span>
                       </th>
@@ -483,6 +510,21 @@ export default function RequestsPage() {
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${group.isComplete ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
                               {statusBadge}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              group.requestType === "recurring" 
+                                ? "bg-purple-100 text-purple-700" 
+                                : "bg-gray-100 text-gray-600"
+                            }`}>
+                              {group.requestType === "recurring" ? "Recurring" : "One-off"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {group.deadline 
+                              ? group.deadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : "—"
+                            }
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <span className={`text-sm font-semibold ${
