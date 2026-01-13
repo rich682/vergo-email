@@ -774,10 +774,8 @@ export default function JobDetailPage() {
         body: JSON.stringify({
           name: editName.trim(),
           description: editDescription.trim() || null,
-          status: editStatus,
-          dueDate: editDueDate || null,
-          labels: { tags: editLabels },
-          stakeholders: stakeholders
+          dueDate: editDueDate || null
+          // Note: status, labels, and stakeholders are now saved inline
         })
       })
 
@@ -829,31 +827,7 @@ export default function JobDetailPage() {
     setEditing(false)
   }
 
-  const handleAddLabel = () => {
-    const label = newLabelInput.trim()
-    if (label && !editLabels.includes(label)) {
-      setEditLabels([...editLabels, label])
-      setNewLabelInput("")
-    }
-  }
-
-  const handleRemoveLabel = (label: string) => {
-    setEditLabels(editLabels.filter(l => l !== label))
-  }
-
-  const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
-    const exists = stakeholders.some(s => s.type === type && s.id === id)
-    if (!exists) {
-      setStakeholders([...stakeholders, { type, id, name }])
-    }
-    setIsAddStakeholderOpen(false)
-    setSearchQuery("")
-    setSearchResults([])
-  }
-
-  const handleRemoveStakeholder = (type: string, id: string) => {
-    setStakeholders(stakeholders.filter(s => !(s.type === type && s.id === id)))
-  }
+  // Note: Label and stakeholder add/remove are now handled inline with immediate saves
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return
@@ -1075,6 +1049,7 @@ export default function JobDetailPage() {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               {editing ? (
+                /* Edit mode - only name, description, deadline */
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="editName">{UI_LABELS.jobSingular} Name</Label>
@@ -1095,216 +1070,16 @@ export default function JobDetailPage() {
                       className="mt-1"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="editStatus">Status</Label>
-                      <Select value={editStatus} onValueChange={(v) => setEditStatus(v as Job["status"])}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ACTIVE">Active</SelectItem>
-                          <SelectItem value="WAITING">Waiting</SelectItem>
-                          <SelectItem value="COMPLETED">Completed</SelectItem>
-                          <SelectItem value="ARCHIVED">Archived</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="editDueDate">Deadline</Label>
-                      <Input
-                        id="editDueDate"
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Labels Editor */}
                   <div>
-                    <Label>Labels</Label>
-                    <div className="flex flex-wrap gap-2 mt-2 mb-2">
-                      {editLabels.map((label, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
-                        >
-                          {label}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLabel(label)}
-                            className="hover:text-blue-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Add label (e.g., January, Urgent)"
-                        value={newLabelInput}
-                        onChange={(e) => setNewLabelInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            handleAddLabel()
-                          }
-                        }}
-                        className="flex-1"
-                      />
-                      <Button type="button" variant="outline" onClick={handleAddLabel}>
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Label htmlFor="editDueDate">Deadline</Label>
+                    <Input
+                      id="editDueDate"
+                      type="date"
+                      value={editDueDate}
+                      onChange={(e) => setEditDueDate(e.target.value)}
+                      className="mt-1 w-48"
+                    />
                   </div>
-
-                  {/* Stakeholders Editor */}
-                  <div>
-                    <Label>Stakeholders</Label>
-                    <p className="text-xs text-gray-500 mb-2">Link contact types, groups, or individuals to this item</p>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {stakeholders.map((s, idx) => (
-                        <span
-                          key={idx}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                            s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
-                            s.type === "group" ? "bg-green-100 text-green-800" :
-                            "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
-                          {s.type === "group" && <Users className="w-3 h-3" />}
-                          {s.type === "individual" && <User className="w-3 h-3" />}
-                          {s.name}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStakeholder(s.type, s.id)}
-                            className="hover:opacity-70"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                    <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
-                      <DialogTrigger asChild>
-                        <Button type="button" variant="outline" size="sm">
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Stakeholder
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add Stakeholder</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-4">
-                          <div>
-                            <Label>Type</Label>
-                            <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                              <SelectTrigger className="mt-1">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="contact_type">Contact Type</SelectItem>
-                                <SelectItem value="group">Group</SelectItem>
-                                <SelectItem value="individual">Individual</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {stakeholderType === "contact_type" && (
-                            <div className="space-y-2">
-                              <Label>Select Contact Type</Label>
-                              <div className="max-h-48 overflow-y-auto space-y-1">
-                                {availableTypes.map(type => (
-                                  <button
-                                    key={type.value}
-                                    type="button"
-                                    onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
-                                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
-                                  >
-                                    <span>{type.label}</span>
-                                    <span className="text-xs text-gray-500">{type.count} contacts</span>
-                                  </button>
-                                ))}
-                                {availableTypes.length === 0 && (
-                                  <p className="text-sm text-gray-500 text-center py-4">No contact types found</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {stakeholderType === "group" && (
-                            <div className="space-y-2">
-                              <Label>Select Group</Label>
-                              <div className="max-h-48 overflow-y-auto space-y-1">
-                                {availableGroups.map(group => (
-                                  <button
-                                    key={group.id}
-                                    type="button"
-                                    onClick={() => handleAddStakeholder("group", group.id, group.name)}
-                                    className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
-                                  >
-                                    <span>{group.name}</span>
-                                    <span className="text-xs text-gray-500">{group.memberCount} members</span>
-                                  </button>
-                                ))}
-                                {availableGroups.length === 0 && (
-                                  <p className="text-sm text-gray-500 text-center py-4">No groups found</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {stakeholderType === "individual" && (
-                            <div className="space-y-2">
-                              <Label>Search Contacts</Label>
-                              <Input
-                                placeholder="Search by name or email..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                              />
-                              <div className="max-h-48 overflow-y-auto space-y-1">
-                                {searchingEntities ? (
-                                  <div className="flex justify-center py-4">
-                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
-                                  </div>
-                                ) : searchResults.length > 0 ? (
-                                  searchResults.map(entity => (
-                                    <button
-                                      key={entity.id}
-                                      type="button"
-                                      onClick={() => handleAddStakeholder(
-                                        "individual", 
-                                        entity.id, 
-                                        `${entity.firstName} ${entity.lastName || ""}`.trim()
-                                      )}
-                                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100"
-                                    >
-                                      <div className="font-medium text-sm">
-                                        {entity.firstName} {entity.lastName || ""}
-                                      </div>
-                                      {entity.email && (
-                                        <div className="text-xs text-gray-500">{entity.email}</div>
-                                      )}
-                                    </button>
-                                  ))
-                                ) : searchQuery.length >= 2 ? (
-                                  <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>
-                                ) : (
-                                  <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-
                   <div className="flex gap-2">
                     <Button onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
                       <Save className="w-4 h-4 mr-2" />
@@ -1317,12 +1092,46 @@ export default function JobDetailPage() {
                   </div>
                 </div>
               ) : (
+                /* View mode with inline-editable status, labels, stakeholders */
                 <>
                   <div className="flex items-center gap-3 mb-2">
                     <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_CONFIG[job.status]?.color}`}>
-                      {STATUS_CONFIG[job.status]?.label}
-                    </span>
+                    {/* Inline Status Dropdown */}
+                    {permissions?.canEdit ? (
+                      <Select 
+                        value={job.status} 
+                        onValueChange={async (v) => {
+                          // Optimistically update UI
+                          setJob(prev => prev ? { ...prev, status: v as Job["status"] } : null)
+                          // Save to server
+                          try {
+                            await fetch(`/api/jobs/${jobId}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              credentials: "include",
+                              body: JSON.stringify({ status: v })
+                            })
+                          } catch (error) {
+                            console.error("Error updating status:", error)
+                            fetchJob() // Revert on error
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={`w-auto h-7 px-2 text-xs font-medium rounded-full border-0 ${STATUS_CONFIG[job.status]?.color}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ACTIVE">Active</SelectItem>
+                          <SelectItem value="WAITING">Waiting</SelectItem>
+                          <SelectItem value="COMPLETED">Completed</SelectItem>
+                          <SelectItem value="ARCHIVED">Archived</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_CONFIG[job.status]?.color}`}>
+                        {STATUS_CONFIG[job.status]?.label}
+                      </span>
+                    )}
                   </div>
                   {job.description && (
                     <p className="text-gray-500 mb-3">{job.description}</p>
@@ -1345,23 +1154,84 @@ export default function JobDetailPage() {
                     </div>
                   )}
 
-                  {/* Labels */}
-                  {displayLabels.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                  {/* Inline Labels - always visible with add/remove */}
+                  <div className="mb-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tag className="w-4 h-4 text-gray-400" />
                       {displayLabels.map((label: string, idx: number) => (
                         <span
                           key={idx}
-                          className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
                         >
                           {label}
+                          {permissions?.canEdit && (
+                            <button
+                              onClick={async () => {
+                                const newLabels = displayLabels.filter((l: string) => l !== label)
+                                setEditLabels(newLabels)
+                                // Save to server
+                                try {
+                                  await fetch(`/api/jobs/${jobId}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    credentials: "include",
+                                    body: JSON.stringify({ labels: { tags: newLabels } })
+                                  })
+                                  fetchJob()
+                                } catch (error) {
+                                  console.error("Error removing label:", error)
+                                }
+                              }}
+                              className="hover:text-blue-600"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </span>
                       ))}
+                      {permissions?.canEdit && (
+                        <div className="inline-flex items-center">
+                          <Input
+                            placeholder="Add label..."
+                            value={newLabelInput}
+                            onChange={(e) => setNewLabelInput(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter" && newLabelInput.trim()) {
+                                e.preventDefault()
+                                const label = newLabelInput.trim()
+                                if (!displayLabels.includes(label)) {
+                                  const newLabels = [...displayLabels, label]
+                                  setEditLabels(newLabels)
+                                  setNewLabelInput("")
+                                  // Save to server
+                                  try {
+                                    await fetch(`/api/jobs/${jobId}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      credentials: "include",
+                                      body: JSON.stringify({ labels: { tags: newLabels } })
+                                    })
+                                    fetchJob()
+                                  } catch (error) {
+                                    console.error("Error adding label:", error)
+                                  }
+                                }
+                              }
+                            }}
+                            className="w-28 h-7 text-xs"
+                          />
+                        </div>
+                      )}
+                      {displayLabels.length === 0 && !permissions?.canEdit && (
+                        <span className="text-xs text-gray-400">No labels</span>
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Stakeholders */}
-                  {stakeholders.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                  {/* Inline Stakeholders - always visible with add/remove */}
+                  <div className="mb-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Users className="w-4 h-4 text-gray-400" />
                       {stakeholders.map((s, idx) => (
                         <span
                           key={idx}
@@ -1375,10 +1245,208 @@ export default function JobDetailPage() {
                           {s.type === "group" && <Users className="w-3 h-3" />}
                           {s.type === "individual" && <User className="w-3 h-3" />}
                           {s.name}
+                          {permissions?.canEdit && (
+                            <button
+                              onClick={async () => {
+                                const newStakeholders = stakeholders.filter(st => !(st.type === s.type && st.id === s.id))
+                                setStakeholders(newStakeholders)
+                                // Save to server
+                                try {
+                                  await fetch(`/api/jobs/${jobId}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    credentials: "include",
+                                    body: JSON.stringify({ stakeholders: newStakeholders })
+                                  })
+                                  fetchJob()
+                                } catch (error) {
+                                  console.error("Error removing stakeholder:", error)
+                                }
+                              }}
+                              className="hover:opacity-70"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </span>
                       ))}
+                      {permissions?.canEdit && (
+                        <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
+                          <DialogTrigger asChild>
+                            <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full border border-dashed border-gray-300">
+                              <Plus className="w-3 h-3" />
+                              Add
+                            </button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Add Stakeholder</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-4">
+                              <div>
+                                <Label>Type</Label>
+                                <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="contact_type">Contact Type</SelectItem>
+                                    <SelectItem value="group">Group</SelectItem>
+                                    <SelectItem value="individual">Individual</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              {stakeholderType === "contact_type" && (
+                                <div className="space-y-2">
+                                  <Label>Select Contact Type</Label>
+                                  <div className="max-h-48 overflow-y-auto space-y-1">
+                                    {availableTypes.map(type => (
+                                      <button
+                                        key={type.value}
+                                        type="button"
+                                        onClick={async () => {
+                                          const exists = stakeholders.some(s => s.type === "contact_type" && s.id === type.value)
+                                          if (!exists) {
+                                            const newStakeholders = [...stakeholders, { type: "contact_type" as const, id: type.value, name: type.label }]
+                                            setStakeholders(newStakeholders)
+                                            setIsAddStakeholderOpen(false)
+                                            // Save to server
+                                            try {
+                                              await fetch(`/api/jobs/${jobId}`, {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                credentials: "include",
+                                                body: JSON.stringify({ stakeholders: newStakeholders })
+                                              })
+                                              fetchJob()
+                                            } catch (error) {
+                                              console.error("Error adding stakeholder:", error)
+                                            }
+                                          }
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                      >
+                                        <span>{type.label}</span>
+                                        <span className="text-xs text-gray-500">{type.count} contacts</span>
+                                      </button>
+                                    ))}
+                                    {availableTypes.length === 0 && (
+                                      <p className="text-sm text-gray-500 text-center py-4">No contact types found</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {stakeholderType === "group" && (
+                                <div className="space-y-2">
+                                  <Label>Select Group</Label>
+                                  <div className="max-h-48 overflow-y-auto space-y-1">
+                                    {availableGroups.map(group => (
+                                      <button
+                                        key={group.id}
+                                        type="button"
+                                        onClick={async () => {
+                                          const exists = stakeholders.some(s => s.type === "group" && s.id === group.id)
+                                          if (!exists) {
+                                            const newStakeholders = [...stakeholders, { type: "group" as const, id: group.id, name: group.name }]
+                                            setStakeholders(newStakeholders)
+                                            setIsAddStakeholderOpen(false)
+                                            // Save to server
+                                            try {
+                                              await fetch(`/api/jobs/${jobId}`, {
+                                                method: "PATCH",
+                                                headers: { "Content-Type": "application/json" },
+                                                credentials: "include",
+                                                body: JSON.stringify({ stakeholders: newStakeholders })
+                                              })
+                                              fetchJob()
+                                            } catch (error) {
+                                              console.error("Error adding stakeholder:", error)
+                                            }
+                                          }
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                      >
+                                        <span>{group.name}</span>
+                                        <span className="text-xs text-gray-500">{group.memberCount} members</span>
+                                      </button>
+                                    ))}
+                                    {availableGroups.length === 0 && (
+                                      <p className="text-sm text-gray-500 text-center py-4">No groups found</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {stakeholderType === "individual" && (
+                                <div className="space-y-2">
+                                  <Label>Search Contacts</Label>
+                                  <Input
+                                    placeholder="Search by name or email..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                  />
+                                  <div className="max-h-48 overflow-y-auto space-y-1">
+                                    {searchingEntities ? (
+                                      <div className="flex justify-center py-4">
+                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                                      </div>
+                                    ) : searchResults.length > 0 ? (
+                                      searchResults.map(entity => (
+                                        <button
+                                          key={entity.id}
+                                          type="button"
+                                          onClick={async () => {
+                                            const name = `${entity.firstName} ${entity.lastName || ""}`.trim()
+                                            const exists = stakeholders.some(s => s.type === "individual" && s.id === entity.id)
+                                            if (!exists) {
+                                              const newStakeholders = [...stakeholders, { type: "individual" as const, id: entity.id, name }]
+                                              setStakeholders(newStakeholders)
+                                              setIsAddStakeholderOpen(false)
+                                              setSearchQuery("")
+                                              setSearchResults([])
+                                              // Save to server
+                                              try {
+                                                await fetch(`/api/jobs/${jobId}`, {
+                                                  method: "PATCH",
+                                                  headers: { "Content-Type": "application/json" },
+                                                  credentials: "include",
+                                                  body: JSON.stringify({ stakeholders: newStakeholders })
+                                                })
+                                                fetchJob()
+                                              } catch (error) {
+                                                console.error("Error adding stakeholder:", error)
+                                              }
+                                            }
+                                          }}
+                                          className="w-full text-left px-3 py-2 rounded hover:bg-gray-100"
+                                        >
+                                          <div className="font-medium text-sm">
+                                            {entity.firstName} {entity.lastName || ""}
+                                          </div>
+                                          {entity.email && (
+                                            <div className="text-xs text-gray-500">{entity.email}</div>
+                                          )}
+                                        </button>
+                                      ))
+                                    ) : searchQuery.length >= 2 ? (
+                                      <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>
+                                    ) : (
+                                      <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                      {stakeholders.length === 0 && !permissions?.canEdit && (
+                        <span className="text-xs text-gray-400">No stakeholders</span>
+                      )}
                     </div>
-                  )}
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
                     <span className="flex items-center gap-1">
