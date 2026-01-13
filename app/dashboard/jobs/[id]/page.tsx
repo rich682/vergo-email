@@ -657,9 +657,10 @@ export default function JobDetailPage() {
       if (typesRes.ok) {
         const typesData = await typesRes.json()
         // Transform the response into the expected format
+        // Only show types that actually have contacts in the database
         const types: ContactType[] = []
         
-        // Add built-in types
+        // Add built-in types that have contacts
         const builtInCounts = typesData.builtInCounts || {}
         const builtInLabels: Record<string, string> = {
           EMPLOYEE: "Employee",
@@ -669,15 +670,13 @@ export default function JobDetailPage() {
           OTHER: "Other"
         }
         for (const [value, label] of Object.entries(builtInLabels)) {
-          if (builtInCounts[value] !== undefined) {
+          // Only include if there are actually contacts of this type
+          if (builtInCounts[value] && builtInCounts[value] > 0) {
             types.push({ value, label, count: builtInCounts[value] })
-          } else {
-            // Include even if count is 0 so users can see all options
-            types.push({ value, label, count: 0 })
           }
         }
         
-        // Add custom types
+        // Add custom types (these already only appear if they have contacts)
         const customTypes = typesData.customTypes || []
         for (const ct of customTypes) {
           types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
