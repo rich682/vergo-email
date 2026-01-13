@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmationCard } from "./confirmation-card"
+import { renderTemplate } from "@/lib/utils/template-renderer"
 import type { 
   QuestInterpretationResult,
   QuestRecipientSelection,
@@ -41,6 +42,9 @@ export function QuestCreator() {
   const [currentQuest, setCurrentQuest] = useState<any>(null)
   const [standingQuestsEnabled, setStandingQuestsEnabled] = useState(false)
   const [resolvedRecipients, setResolvedRecipients] = useState<Array<{ email: string; name?: string; contactType?: string }>>([])
+  const [editedSubject, setEditedSubject] = useState("")
+  const [editedBody, setEditedBody] = useState("")
+  const [previewRecipientIdx, setPreviewRecipientIdx] = useState(-1)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -204,6 +208,11 @@ export function QuestCreator() {
 
       const generateData = await generateRes.json()
       setCurrentQuest(generateData.quest)
+      
+      // Initialize editable fields with generated content
+      setEditedSubject(generateData.quest.subject || "")
+      setEditedBody(generateData.quest.body || "")
+      setPreviewRecipientIdx(-1)
 
       // Update messages to show preview
       setMessages(prev => [
@@ -243,7 +252,12 @@ export function QuestCreator() {
 
     try {
       const res = await fetch(`/api/quests/${currentQuest.id}/execute`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: editedSubject,
+          body: editedBody
+        })
       })
 
       if (!res.ok) {
@@ -332,6 +346,23 @@ export function QuestCreator() {
   }
 
   const renderPreview = (quest: any) => {
+    // Get audience summary from quest
+    const audienceSummary = []
+    if (quest.confirmedSelection?.contactTypes?.length > 0) {
+      audienceSummary.push(`Type: ${quest.confirmedSelection.contactTypes.join(", ")}`)
+    }
+    if (quest.confirmedSelection?.groupIds?.length > 0) {
+      audienceSummary.push(`Groups: ${quest.confirmedSelection.groupIds.length}`)
+    }
+    if (quest.confirmedSelection?.stateFilter?.stateKeys?.length > 0) {
+      const mode = quest.confirmedSelection.stateFilter.mode === "missing" ? "Missing" : "Has"
+      audienceSummary.push(`${mode}: ${quest.confirmedSelection.stateFilter.stateKeys.join(", ")}`)
+    }
+
+    // Check if reminders are enabled
+    const hasReminders = quest.scheduleConfig?.reminders?.enabled
+    const reminderCount = quest.scheduleConfig?.reminders?.maxCount || 0
+
     return (
       <Card className="border-green-200 bg-green-50/50">
         <CardHeader className="pb-2">
@@ -343,31 +374,133 @@ export function QuestCreator() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Audience Summary */}
+          <div className="p-3 bg-blue-50 rounded-md border border-blue-100">
+            <div className="flex items-center gap-2 text-sm font-medium text-blue-800 mb-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Sending to {resolvedRecipients.length} recipient{resolvedRecipients.length !== 1 ? "s" : ""}
+            </div>
+            {audienceSummary.length > 0 && (
+              <div className="text-xs text-blue-600 space-x-2">
+                {audienceSummary.map((item, idx) => (
+                  <span key={idx} className="inline-block px-2 py-0.5 bg-blue-100 rounded">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Reminder Sequence */}
+          {hasReminders && reminderCount > 0 && (
+            <div className="p-3 bg-amber-50 rounded-md border border-amber-100">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-800 mb-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Reminder Sequence
+              </div>
+              <div className="flex items-center gap-2 text-xs text-amber-700">
+                <span className="px-2 py-1 bg-amber-100 rounded font-medium">Initial</span>
+                {Array.from({ length: reminderCount }).map((_, idx) => (
+                  <span key={idx} className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="px-2 py-1 bg-amber-100 rounded">Reminder {idx + 1}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600 mt-2">
+                Reminders sent only to recipients who haven&apos;t replied
+              </p>
+            </div>
+          )}
+
+          {/* Per-recipient preview selector */}
+          {resolvedRecipients.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">Preview as:</label>
+              <select
+                value={previewRecipientIdx}
+                onChange={(e) => setPreviewRecipientIdx(Number(e.target.value))}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value={-1}>Template (edit mode)</option>
+                {resolvedRecipients.slice(0, 10).map((r, idx) => (
+                  <option key={idx} value={idx}>
+                    {r.name || r.email} {r.contactType ? `(${r.contactType})` : ""}
+                  </option>
+                ))}
+                {resolvedRecipients.length > 10 && (
+                  <option disabled>... and {resolvedRecipients.length - 10} more</option>
+                )}
+              </select>
+              {previewRecipientIdx >= 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Showing preview for {resolvedRecipients[previewRecipientIdx]?.name || resolvedRecipients[previewRecipientIdx]?.email}. Switch to &quot;Template&quot; to edit.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Subject - editable or preview */}
           <div>
             <label className="text-sm font-medium text-gray-700">Subject:</label>
-            <div className="mt-1 p-3 bg-white rounded-md border border-gray-200 text-sm">
-              {quest.subject}
-            </div>
+            {previewRecipientIdx >= 0 ? (
+              <div className="mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm">
+                {(() => {
+                  const recipient = resolvedRecipients[previewRecipientIdx]
+                  const data = {
+                    "First Name": recipient?.name?.split(" ")[0] || "",
+                    "Email": recipient?.email || ""
+                  }
+                  return renderTemplate(editedSubject, data).rendered
+                })()}
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={editedSubject}
+                onChange={(e) => setEditedSubject(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            )}
           </div>
+
+          {/* Body - editable or preview */}
           <div>
             <label className="text-sm font-medium text-gray-700">Body:</label>
-            <div className="mt-1 p-3 bg-white rounded-md border border-gray-200 text-sm whitespace-pre-wrap max-h-48 overflow-auto">
-              {quest.body}
-            </div>
+            {previewRecipientIdx >= 0 ? (
+              <div className="mt-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm whitespace-pre-wrap max-h-64 overflow-auto">
+                {(() => {
+                  const recipient = resolvedRecipients[previewRecipientIdx]
+                  const data = {
+                    "First Name": recipient?.name?.split(" ")[0] || "",
+                    "Email": recipient?.email || ""
+                  }
+                  return renderTemplate(editedBody, data).rendered
+                })()}
+              </div>
+            ) : (
+              <textarea
+                value={editedBody}
+                onChange={(e) => setEditedBody(e.target.value)}
+                rows={8}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              />
+            )}
           </div>
+
           <div className="flex gap-3 pt-2">
             <Button
               onClick={handleSend}
-              disabled={isProcessing}
+              disabled={isProcessing || !editedSubject.trim() || !editedBody.trim()}
               className="flex-1 bg-green-600 hover:bg-green-700"
             >
-              {isProcessing ? "Sending..." : "Send Emails"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/dashboard/quest/${quest.id}`)}
-            >
-              Edit
+              {isProcessing ? "Sending..." : `Send to ${resolvedRecipients.length} recipient${resolvedRecipients.length !== 1 ? "s" : ""}`}
             </Button>
           </div>
         </CardContent>

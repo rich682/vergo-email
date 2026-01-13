@@ -56,6 +56,8 @@ export class AIEmailGenerationService {
     personalizationMode?: "none" | "contact" | "csv"
     // Request deadline (for display in email) - accepts Date object or ISO string
     deadlineDate?: Date | string | null
+    // Pre-built signature to use (takes precedence over building from name/company/email)
+    senderSignature?: string
   }): Promise<GeneratedEmailDraft> {
     // Get organization context
     const organization = await prisma.organization.findUnique({
@@ -127,12 +129,17 @@ export class AIEmailGenerationService {
         ? data.prompt.substring(0, 47) + "..."
         : data.prompt
       
-      // Build signature for fallback
-      const signatureParts: string[] = []
-      if (data.senderName) signatureParts.push(data.senderName)
-      if (data.senderCompany) signatureParts.push(data.senderCompany)
-      if (data.senderEmail) signatureParts.push(data.senderEmail)
-      const signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+      // Use provided signature or build from parts
+      let signature: string
+      if (data.senderSignature) {
+        signature = data.senderSignature
+      } else {
+        const signatureParts: string[] = []
+        if (data.senderName) signatureParts.push(data.senderName)
+        if (data.senderCompany) signatureParts.push(data.senderCompany)
+        if (data.senderEmail) signatureParts.push(data.senderEmail)
+        signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+      }
       
       // For template fallback, create a basic template that includes variables if available
       let bodyText = data.prompt
@@ -180,16 +187,43 @@ export class AIEmailGenerationService {
           bodyText += `.${deadlineText}\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
         } else if (lowerPrompt.includes('document') || lowerPrompt.includes('deadline') || lowerPrompt.includes('submit')) {
           // Document request template
-          bodyText = `${greeting}\n\n${data.prompt}${deadlineText}\n\nPlease submit the required documents at your earliest convenience.\n\nThank you for your prompt attention.\n\nBest regards,`
+          bodyText = `${greeting}\n\nI am writing to request the required documents at your earliest convenience.${deadlineText}\n\nPlease reply to this email with the documents attached, or let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
           subjectText = formattedDeadline ? `Document Request - Due ${formattedDeadline}` : `Document Request`
+        } else if (lowerPrompt.includes('timesheet') || lowerPrompt.includes('time sheet')) {
+          // Timesheet request template
+          bodyText = `${greeting}\n\nThis is a friendly reminder to submit your timesheets.${deadlineText}\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
+          subjectText = formattedDeadline ? `Timesheet Reminder - Due ${formattedDeadline}` : `Timesheet Submission Reminder`
+        } else if (lowerPrompt.includes('employee')) {
+          // Employee communication template
+          const actionMatch = lowerPrompt.match(/about\s+(.+?)(?:\s+due|\s+by|$)/i)
+          const action = actionMatch ? actionMatch[1].trim() : 'the following matter'
+          bodyText = `${greeting}\n\nI am writing to you regarding ${action}.${deadlineText}\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
+          subjectText = formattedDeadline ? `Action Required: ${action} - Due ${formattedDeadline}` : `Action Required: ${action}`
         } else {
-          // Generic professional template
-          bodyText = `${greeting}\n\n${data.prompt}${deadlineText}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = `Request: ${subject}`
+          // Generic professional template - extract the intent from the prompt
+          const intentMatch = lowerPrompt.match(/(?:email|send|request|ask|remind)(?:\s+(?:all|my|the))?\s+(?:\w+\s+)?(?:about|regarding|for|to)?\s*(.+?)(?:\s+due|\s+by|$)/i)
+          const intent = intentMatch ? intentMatch[1].trim() : 'the following matter'
+          bodyText = `${greeting}\n\nI am writing to you regarding ${intent}.${deadlineText}\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = formattedDeadline ? `${intent.charAt(0).toUpperCase() + intent.slice(1)} - Due ${formattedDeadline}` : intent.charAt(0).toUpperCase() + intent.slice(1)
         }
       } else {
         // No tags available - still use personalized greeting
-        bodyText = `Dear {{First Name}},\n\n${data.prompt}${deadlineText}\n\nPlease let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
+        // Extract intent from prompt for better email
+        const lowerPrompt = data.prompt.toLowerCase()
+        if (lowerPrompt.includes('timesheet') || lowerPrompt.includes('time sheet')) {
+          bodyText = `Dear {{First Name}},\n\nThis is a friendly reminder to submit your timesheets.${deadlineText}\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
+          subjectText = formattedDeadline ? `Timesheet Reminder - Due ${formattedDeadline}` : `Timesheet Submission Reminder`
+        } else if (lowerPrompt.includes('employee')) {
+          const actionMatch = lowerPrompt.match(/about\s+(.+?)(?:\s+due|\s+by|$)/i)
+          const action = actionMatch ? actionMatch[1].trim() : 'the following matter'
+          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${action}.${deadlineText}\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
+          subjectText = formattedDeadline ? `Action Required: ${action} - Due ${formattedDeadline}` : `Action Required: ${action}`
+        } else {
+          const intentMatch = lowerPrompt.match(/(?:email|send|request|ask|remind)(?:\s+(?:all|my|the))?\s+(?:\w+\s+)?(?:about|regarding|for|to)?\s*(.+?)(?:\s+due|\s+by|$)/i)
+          const intent = intentMatch ? intentMatch[1].trim() : 'the following matter'
+          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${intent}.${deadlineText}\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = formattedDeadline ? `${intent.charAt(0).toUpperCase() + intent.slice(1)} - Due ${formattedDeadline}` : intent.charAt(0).toUpperCase() + intent.slice(1)
+        }
       }
       
       const bodyWithSignature = signature
@@ -233,12 +267,17 @@ export class AIEmailGenerationService {
         abortController.abort()
       }, AI_TIMEOUT_MS)
       
-      // Build sender signature
-      const signatureParts: string[] = []
-      if (data.senderName) signatureParts.push(data.senderName)
-      if (data.senderCompany) signatureParts.push(data.senderCompany)
-      if (data.senderEmail) signatureParts.push(data.senderEmail)
-      const signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+      // Use provided signature or build from parts
+      let signature: string
+      if (data.senderSignature) {
+        signature = data.senderSignature
+      } else {
+        const signatureParts: string[] = []
+        if (data.senderName) signatureParts.push(data.senderName)
+        if (data.senderCompany) signatureParts.push(data.senderCompany)
+        if (data.senderEmail) signatureParts.push(data.senderEmail)
+        signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
+      }
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",

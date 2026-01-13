@@ -214,6 +214,19 @@ export class QuestService {
         select: { name: true }
       })
 
+      // Build signature - use user's custom signature if available, otherwise build from user/org data
+      let senderSignature: string | undefined
+      if (user?.signature && user.signature.trim() !== '') {
+        senderSignature = user.signature
+      } else {
+        // Build signature from user/org data as fallback
+        const signatureParts: string[] = []
+        if (user?.name) signatureParts.push(user.name)
+        if (organization?.name) signatureParts.push(organization.name)
+        if (user?.email) signatureParts.push(user.email)
+        senderSignature = signatureParts.length > 0 ? signatureParts.join('\n') : undefined
+      }
+
       // Generate email using AI service
       // Convert deadline string to Date if present
       const deadlineDate = quest.scheduleConfig?.deadline 
@@ -234,6 +247,7 @@ export class QuestService {
           senderName: user?.name || undefined,
           senderEmail: user?.email || undefined,
           senderCompany: organization?.name || undefined,
+          senderSignature,
           deadlineDate,
           personalizationMode: "contact",
           availableTags: ["First Name", "Email"]
