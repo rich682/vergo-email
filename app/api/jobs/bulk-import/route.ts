@@ -6,11 +6,13 @@
  * Takes raw spreadsheet rows and uses GPT to extract:
  * - Item name
  * - Due date (if present)
+ * - Owner (matched to team members)
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
 function getOpenAIClient() {
@@ -24,6 +26,14 @@ function getOpenAIClient() {
 interface ParsedItem {
   name: string
   dueDate?: string
+  ownerId?: string
+  ownerName?: string
+}
+
+interface TeamMember {
+  id: string
+  name: string | null
+  email: string
 }
 
 export async function POST(request: NextRequest) {
@@ -37,6 +47,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const organizationId = session.user.organizationId
     const body = await request.json()
     const { rows } = body as { rows: (string | number | null)[][] }
 
@@ -46,6 +57,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Fetch team members for owner matching
+    const teamMembers = await prisma.user.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        email: true
+      }
+    })
+
+    // Build team member list for AI prompt
+    const teamMembersList = teamMembers.map(m => ({
+      id: m.id,
+      name: m.name || m.email.split('@')[0],
+      email: m.email
+    }))
 
     // Limit to first 100 rows to avoid token limits
     const limitedRows = rows.slice(0, 100)
@@ -59,11 +87,16 @@ export async function POST(request: NextRequest) {
     // Call OpenAI to interpret the data
     const openai = getOpenAIClient()
 
+    const teamMembersPrompt = teamMembersList.length > 0
+      ? `\n\nTeam members available for owner assignment:\n${teamMembersList.map(m => `- "${m.name}" (ID: ${m.id})`).join('\n')}`
+      : ''
+
     const systemPrompt = `You are a data extraction assistant. Your job is to interpret spreadsheet data and extract checklist items.
 
 For each row, extract:
 1. The item name (the main task or item description)
 2. A due date if one is present (in ISO format YYYY-MM-DD)
+3. An owner if one is mentioned (match to team member ID)${teamMembersPrompt}
 
 Rules:
 - Skip header rows (rows that look like column titles)
@@ -71,15 +104,16 @@ Rules:
 - The item name should be a clear, concise description
 - Only include a dueDate if there's a clear date in the row
 - If a date is relative (e.g., "next Friday"), convert it to an absolute date based on today being ${new Date().toISOString().split('T')[0]}
+- For owner matching: look for names in the spreadsheet that match team members. Use fuzzy matching (e.g., "Rich Kane" matches "Richard Kane", "Tracy B" matches "Tracy Baldwin"). Only include ownerId if you find a confident match.
 
-Return a JSON array of objects with "name" and optionally "dueDate" fields.`
+Return a JSON array of objects with "name", optionally "dueDate", and optionally "ownerId" (the matched team member ID) and "ownerName" (the matched name for display).`
 
     const userPrompt = `Extract checklist items from this spreadsheet data:
 
 ${formattedRows}
 
 Return ONLY a valid JSON array, no other text. Example format:
-[{"name": "Task description", "dueDate": "2024-02-15"}, {"name": "Another task"}]`
+[{"name": "Task description", "dueDate": "2024-02-15", "ownerId": "abc123", "ownerName": "John Smith"}, {"name": "Another task"}]`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -110,16 +144,21 @@ Return ONLY a valid JSON array, no other text. Example format:
     }
 
     // Validate and clean items
+    const teamMemberIds = new Set(teamMembers.map(m => m.id))
     const validItems = items
       .filter(item => item.name && typeof item.name === "string" && item.name.trim().length > 0)
       .map(item => ({
         name: item.name.trim(),
-        dueDate: item.dueDate && isValidDate(item.dueDate) ? item.dueDate : undefined
+        dueDate: item.dueDate && isValidDate(item.dueDate) ? item.dueDate : undefined,
+        // Only include ownerId if it's a valid team member
+        ownerId: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerId : undefined,
+        ownerName: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerName : undefined
       }))
 
     return NextResponse.json({
       success: true,
       items: validItems,
+      teamMembers: teamMembersList,
       totalRows: rows.length,
       processedRows: limitedRows.length
     })

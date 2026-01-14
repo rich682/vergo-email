@@ -15,7 +15,9 @@ import { Upload, FileSpreadsheet, X, Check, AlertCircle, Loader2 } from "lucide-
 interface ParsedItem {
   name: string
   dueDate?: string
-  originalRow: string[]
+  ownerId?: string
+  ownerName?: string
+  originalRow?: string[]
 }
 
 interface AIBulkUploadModalProps {
@@ -145,7 +147,8 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete }: AIBu
           credentials: "include",
           body: JSON.stringify({
             name: item.name,
-            dueDate: item.dueDate || undefined
+            dueDate: item.dueDate || undefined,
+            ownerId: item.ownerId || undefined
           })
         })
         imported++
@@ -261,11 +264,19 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete }: AIBu
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {item.name}
                       </p>
-                      {item.dueDate && (
-                        <p className="text-xs text-gray-500">
-                          Due: {item.dueDate}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        {item.dueDate && (
+                          <span>Due: {item.dueDate}</span>
+                        )}
+                        {item.ownerName && (
+                          <span className="flex items-center gap-1">
+                            <span className="w-4 h-4 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-[10px] font-medium">
+                              {item.ownerName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </span>
+                            {item.ownerName}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </label>
                 ))}
