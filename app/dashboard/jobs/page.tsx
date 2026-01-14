@@ -30,10 +30,17 @@ interface JobOwner {
   email: string
 }
 
+interface JobStakeholder {
+  type: "contact_type" | "group" | "individual"
+  id: string
+  name: string
+}
+
 interface JobLabels {
   tags?: string[]
   period?: string
   workType?: string
+  stakeholders?: JobStakeholder[]
 }
 
 interface Job {
@@ -75,6 +82,59 @@ const STATUS_OPTIONS = [
   { value: "COMPLETED", label: "Completed" },
   { value: "ARCHIVED", label: "Archived" },
 ]
+
+// RAG rating calculation based on item context
+type RAGRating = "green" | "amber" | "red" | "gray"
+
+function calculateRAGRating(job: Job): RAGRating {
+  const dueDate = job.dueDate ? new Date(job.dueDate) : null
+  const now = new Date()
+  
+  // Completed items are always green
+  if (job.status === "COMPLETED") return "green"
+  
+  // Archived items are gray
+  if (job.status === "ARCHIVED") return "gray"
+  
+  // No due date = gray (can't assess risk)
+  if (!dueDate) return "gray"
+  
+  const daysUntilDue = differenceInDays(dueDate, now)
+  
+  // Overdue = red
+  if (daysUntilDue < 0) return "red"
+  
+  // Has outstanding requests with no responses and due soon
+  const hasOutstandingRequests = job.taskCount > 0 && job.respondedCount === 0
+  
+  // Due within 3 days with outstanding requests = red
+  if (daysUntilDue <= 3 && hasOutstandingRequests) return "red"
+  
+  // Due within 7 days with outstanding requests = amber
+  if (daysUntilDue <= 7 && hasOutstandingRequests) return "amber"
+  
+  // Due within 3 days = amber
+  if (daysUntilDue <= 3) return "amber"
+  
+  // All responses received = green
+  if (job.taskCount > 0 && job.respondedCount === job.taskCount) return "green"
+  
+  // Default = green (on track)
+  return "green"
+}
+
+function RAGBadge({ rating }: { rating: RAGRating }) {
+  const colors = {
+    green: "bg-green-500",
+    amber: "bg-amber-500",
+    red: "bg-red-500",
+    gray: "bg-gray-300"
+  }
+  
+  return (
+    <div className={`w-3 h-3 rounded-full ${colors[rating]}`} title={rating.charAt(0).toUpperCase() + rating.slice(1)} />
+  )
+}
 
 // ============================================
 // Main Component
@@ -535,30 +595,36 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-              <div className="col-span-5">Name</div>
-              <div className="col-span-2">Status</div>
-              <div className="col-span-2">Owner</div>
-              <div className="col-span-2">Due Date</div>
-              <div className="col-span-1">Updated</div>
+            <div className="grid grid-cols-[1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <div>Name</div>
+              <div>Status</div>
+              <div className="text-center">RAG</div>
+              <div className="text-center">Stakeholders</div>
+              <div>Owner</div>
+              <div>Collaborators</div>
+              <div>Due Date</div>
+              <div>Updated</div>
             </div>
             
             {/* Table Body */}
             <div className="divide-y divide-gray-100">
               {filteredJobs.map((job) => {
                 const jobTags = job.labels?.tags || []
+                const stakeholders = job.labels?.stakeholders || []
+                const collaborators = job.collaborators || []
                 const dueDate = job.dueDate ? new Date(job.dueDate) : null
                 const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
                 const isOverdue = daysUntilDue !== null && daysUntilDue < 0
+                const ragRating = calculateRAGRating(job)
                 
                 return (
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center"
+                    className="grid grid-cols-[1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center"
                   >
                     {/* Name + Labels */}
-                    <div className="col-span-5">
+                    <div>
                       <div className="font-medium text-gray-900 mb-0.5">
                         {job.name}
                       </div>
@@ -577,7 +643,7 @@ export default function JobsPage() {
                     </div>
                     
                     {/* Status */}
-                    <div className="col-span-2">
+                    <div>
                       <span className={`
                         inline-flex px-2.5 py-1 rounded-full text-xs font-medium border
                         ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
@@ -590,9 +656,23 @@ export default function JobsPage() {
                       </span>
                     </div>
                     
+                    {/* RAG Rating */}
+                    <div className="flex justify-center">
+                      <RAGBadge rating={ragRating} />
+                    </div>
+                    
+                    {/* Stakeholders Count */}
+                    <div className="text-center">
+                      {stakeholders.length > 0 ? (
+                        <span className="text-sm text-gray-600">{stakeholders.length}</span>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </div>
+                    
                     {/* Owner */}
-                    <div className="col-span-2 flex items-center gap-2">
-                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
                         {getInitials(job.owner.name, job.owner.email)}
                       </div>
                       <span className="text-sm text-gray-600 truncate">
@@ -600,8 +680,32 @@ export default function JobsPage() {
                       </span>
                     </div>
                     
+                    {/* Collaborators */}
+                    <div className="flex items-center">
+                      {collaborators.length > 0 ? (
+                        <div className="flex -space-x-2">
+                          {collaborators.slice(0, 3).map((collab) => (
+                            <div
+                              key={collab.id}
+                              className="w-7 h-7 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
+                              title={collab.user.name || collab.user.email}
+                            >
+                              {getInitials(collab.user.name, collab.user.email)}
+                            </div>
+                          ))}
+                          {collaborators.length > 3 && (
+                            <div className="w-7 h-7 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
+                              +{collaborators.length - 3}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </div>
+                    
                     {/* Due Date */}
-                    <div className="col-span-2">
+                    <div>
                       {dueDate ? (
                         <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
                           {format(dueDate, "d MMM")}
@@ -612,7 +716,7 @@ export default function JobsPage() {
                     </div>
                     
                     {/* Updated */}
-                    <div className="col-span-1 text-sm text-gray-500">
+                    <div className="text-sm text-gray-500">
                       {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
                     </div>
                   </div>
