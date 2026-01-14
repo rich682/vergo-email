@@ -106,24 +106,23 @@ export function Sidebar({ className = "" }: SidebarProps) {
         h-20 flex items-center
         ${expanded ? "px-5" : "justify-center"}
       `}>
-        <Link href="/dashboard/jobs" className="flex items-center gap-3">
-          {/* Vergo Logo Icon - matching the reference */}
-          <svg 
-            width="32" 
-            height="32" 
-            viewBox="0 0 32 32" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg"
-            className="flex-shrink-0"
-          >
-            <path d="M8 4L16 12L8 20L0 12L8 4Z" fill="currentColor"/>
-            <path d="M16 4L24 12L16 20L8 12L16 4Z" fill="currentColor" fillOpacity="0.6"/>
-            <path d="M16 12L24 20L16 28L8 20L16 12Z" fill="currentColor" fillOpacity="0.3"/>
-          </svg>
-          {expanded && (
-            <span className="text-xl font-semibold text-gray-900 tracking-tight">
-              vergo
-            </span>
+        <Link href="/dashboard/jobs" className="flex items-center">
+          {expanded ? (
+            /* Full logo with text when expanded */
+            <img 
+              src="/logo.svg" 
+              alt="Vergo" 
+              className="h-8 w-auto"
+            />
+          ) : (
+            /* Icon only when collapsed */
+            <img 
+              src="/icon.png" 
+              alt="Vergo" 
+              width={32} 
+              height={32}
+              className="flex-shrink-0"
+            />
           )}
         </Link>
       </div>

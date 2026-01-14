@@ -23,7 +23,7 @@ interface AISummary {
 
 export function AISummaryPanel() {
   const router = useRouter()
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [summary, setSummary] = useState<AISummary | null>(null)
   const [error, setError] = useState<string | null>(null)

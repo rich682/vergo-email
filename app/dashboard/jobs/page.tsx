@@ -20,6 +20,7 @@ import { UI_LABELS } from "@/lib/ui-labels"
 import { Chip } from "@/components/ui/chip"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
+import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 
 // ============================================
 // Types
@@ -191,6 +192,9 @@ export default function JobsPage() {
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
   const [isSaveViewOpen, setIsSaveViewOpen] = useState(false)
   const [newViewName, setNewViewName] = useState("")
+  
+  // Bulk upload state
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
 
   // Load saved views from localStorage
   useEffect(() => {
@@ -469,13 +473,19 @@ export default function JobsPage() {
     
     setBulkActionLoading(true)
     try {
-      // Delete each selected job
-      await Promise.all(selectedJobIds.map(async (jobId) => {
-        await fetch(`/api/jobs/${jobId}`, {
+      // Delete each selected job (hard delete)
+      const results = await Promise.all(selectedJobIds.map(async (jobId) => {
+        const response = await fetch(`/api/jobs/${jobId}?hard=true`, {
           method: "DELETE",
           credentials: "include"
         })
+        return { jobId, ok: response.ok }
       }))
+      
+      const failed = results.filter(r => !r.ok)
+      if (failed.length > 0) {
+        console.error(`Failed to delete ${failed.length} items`)
+      }
       
       // Refresh data
       await fetchJobs()
@@ -537,7 +547,7 @@ export default function JobsPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="px-8 py-4">
-        {/* Saved Views Row */}
+        {/* Saved Views + Action Row */}
         <div className="flex items-center gap-2 mb-4 mt-4">
           {/* Saved view pills */}
           {savedViews.map((view) => (
@@ -621,14 +631,11 @@ export default function JobsPage() {
               </DialogContent>
             </Dialog>
           )}
-        </div>
-
-        {/* AI Summary Panel */}
-        <AISummaryPanel />
-
-        {/* Action Row */}
-        <div className="flex items-center justify-end gap-2 mb-4">
-          {/* AI Bulk Add Button (placeholder for future feature) */}
+          
+          {/* Spacer */}
+          <div className="flex-1" />
+          
+          {/* AI Bulk Add Button */}
           <button
             className="
               flex items-center gap-2 px-4 py-2 
@@ -637,10 +644,7 @@ export default function JobsPage() {
               hover:border-purple-500 hover:text-purple-500
               transition-colors
             "
-            onClick={() => {
-              // TODO: Open AI Bulk Add modal
-              alert("AI Bulk Add coming soon! Upload your existing checklist and AI will automatically create items for you.")
-            }}
+            onClick={() => setIsBulkUploadOpen(true)}
           >
             <Sparkles className="w-4 h-4 text-purple-500" />
             AI Bulk Add
@@ -750,6 +754,9 @@ export default function JobsPage() {
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* AI Summary Panel */}
+        <AISummaryPanel />
 
         {/* Search and Filter Row */}
         <div className="flex items-center gap-3 mb-4 mt-4">
@@ -1015,6 +1022,16 @@ export default function JobsPage() {
           </DialogContent>
         </Dialog>
 
+        {/* AI Bulk Upload Modal */}
+        <AIBulkUploadModal
+          open={isBulkUploadOpen}
+          onOpenChange={setIsBulkUploadOpen}
+          onImportComplete={() => {
+            fetchJobs()
+            fetchAllJobs()
+          }}
+        />
+
         {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -1041,7 +1058,7 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[36px_2fr_1fr_80px_40px_70px_100px_80px_70px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
+            <div className="grid grid-cols-[36px_minmax(180px,2fr)_minmax(80px,150px)_85px_40px_60px_90px_70px_65px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
               {/* Select All Checkbox */}
               <div className="flex items-center justify-center">
                 <input
@@ -1082,7 +1099,7 @@ export default function JobsPage() {
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className={`grid grid-cols-[36px_2fr_1fr_80px_40px_70px_100px_80px_70px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
+                    className={`grid grid-cols-[36px_minmax(180px,2fr)_minmax(80px,150px)_85px_40px_60px_90px_70px_65px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
                   >
                     {/* Checkbox */}
                     <div className="flex items-center justify-center">
@@ -1096,23 +1113,23 @@ export default function JobsPage() {
                     </div>
                     
                     {/* Name */}
-                    <div className="truncate">
+                    <div className="truncate min-w-0">
                       <span className="font-medium text-gray-900">
                         {job.name}
                       </span>
                     </div>
                     
                     {/* Labels */}
-                    <div className="flex flex-wrap gap-1 overflow-hidden">
+                    <div className="flex flex-wrap gap-1 overflow-hidden min-w-0">
                       {jobTags.length > 0 ? (
                         <>
                           {jobTags.slice(0, 2).map(tag => (
-                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[80px]">
+                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[70px]">
                               {tag}
                             </span>
                           ))}
                           {jobTags.length > 2 && (
-                            <span className="text-xs text-gray-400">+{jobTags.length - 2}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 2}</span>
                           )}
                         </>
                       ) : (
