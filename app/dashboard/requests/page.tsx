@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation"
 import { getRequestGrouping } from "@/lib/requestGrouping"
 import { formatDistanceToNow, format } from "date-fns"
 import { Plus, Filter, Check, X, Search } from "lucide-react"
-import { getNewRequestRoute } from "@/components/nav-links"
 import { NewRequestModal } from "@/components/requests/new-request-modal"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
+
+// Route for creating new requests - always use Jobs flow now
+function getNewRequestRoute(): string {
+  return "/dashboard/jobs"
+}
 
 interface Task {
   id: string
