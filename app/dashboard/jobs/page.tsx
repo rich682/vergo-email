@@ -173,7 +173,14 @@ export default function JobsPage() {
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobTags, setNewJobTags] = useState<string[]>([])
   const [newTagInput, setNewTagInput] = useState("")
+  const [newJobDueDate, setNewJobDueDate] = useState("")
+  const [newJobOwnerId, setNewJobOwnerId] = useState("")
+  const [newJobCollaboratorIds, setNewJobCollaboratorIds] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
+  
+  // Team members for owner/collaborator selection
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string | null; email: string; isCurrentUser: boolean }[]>([])
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   
   // Selection state
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
@@ -297,6 +304,34 @@ export default function JobsPage() {
   useEffect(() => { fetchAllJobs() }, [fetchAllJobs])
   useEffect(() => { fetchJobs() }, [fetchJobs])
 
+  // Fetch team members when create modal opens
+  const fetchTeamMembers = useCallback(async () => {
+    if (teamMembers.length > 0) return // Already fetched
+    setTeamMembersLoading(true)
+    try {
+      const response = await fetch("/api/org/team", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setTeamMembers(data.teamMembers || [])
+        // Set current user as default owner
+        const currentUser = data.teamMembers?.find((m: any) => m.isCurrentUser)
+        if (currentUser && !newJobOwnerId) {
+          setNewJobOwnerId(currentUser.id)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching team members:", error)
+    } finally {
+      setTeamMembersLoading(false)
+    }
+  }, [teamMembers.length, newJobOwnerId])
+
+  useEffect(() => {
+    if (isCreateOpen) {
+      fetchTeamMembers()
+    }
+  }, [isCreateOpen, fetchTeamMembers])
+
   // ============================================
   // Handlers
   // ============================================
@@ -331,7 +366,7 @@ export default function JobsPage() {
   }
 
   const handleCreateJob = async () => {
-    if (!newJobName.trim()) return
+    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate) return
     setCreating(true)
     try {
       const response = await fetch("/api/jobs", {
@@ -341,17 +376,35 @@ export default function JobsPage() {
         body: JSON.stringify({
           name: newJobName.trim(),
           description: newJobDescription.trim() || undefined,
-          tags: newJobTags.length > 0 ? newJobTags : undefined
+          tags: newJobTags.length > 0 ? newJobTags : undefined,
+          dueDate: newJobDueDate,
+          ownerId: newJobOwnerId
         })
       })
       if (response.ok) {
         const data = await response.json()
+        
+        // Add collaborators if any selected
+        if (newJobCollaboratorIds.length > 0) {
+          for (const collaboratorId of newJobCollaboratorIds) {
+            await fetch(`/api/jobs/${data.job.id}/collaborators`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ userId: collaboratorId })
+            })
+          }
+        }
+        
         setJobs(prev => [data.job, ...prev])
         setAllJobs(prev => [data.job, ...prev])
         setNewJobName("")
         setNewJobDescription("")
         setNewJobTags([])
         setNewTagInput("")
+        setNewJobDueDate("")
+        setNewJobOwnerId("")
+        setNewJobCollaboratorIds([])
         setIsCreateOpen(false)
         router.push(`/dashboard/jobs/${data.job.id}`)
       }
@@ -664,13 +717,16 @@ export default function JobsPage() {
                 {UI_LABELS.newJob}
               </button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>{UI_LABELS.createJobModalTitle}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                {/* MANDATORY FIELDS */}
+                
+                {/* Item Name */}
                 <div>
-                  <Label htmlFor="jobName">{UI_LABELS.jobNameLabel}</Label>
+                  <Label htmlFor="jobName">{UI_LABELS.jobNameLabel} <span className="text-red-500">*</span></Label>
                   <Input
                     id="jobName"
                     placeholder={UI_LABELS.jobNamePlaceholder}
@@ -679,6 +735,51 @@ export default function JobsPage() {
                     className="mt-1"
                   />
                 </div>
+                
+                {/* Owner */}
+                <div>
+                  <Label htmlFor="jobOwner">Owner <span className="text-red-500">*</span></Label>
+                  <select
+                    id="jobOwner"
+                    value={newJobOwnerId}
+                    onChange={(e) => setNewJobOwnerId(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    disabled={teamMembersLoading}
+                  >
+                    {teamMembersLoading ? (
+                      <option value="">Loading team members...</option>
+                    ) : (
+                      <>
+                        <option value="">Select owner</option>
+                        {teamMembers.map(member => (
+                          <option key={member.id} value={member.id}>
+                            {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
+                
+                {/* Deadline */}
+                <div>
+                  <Label htmlFor="jobDueDate">Deadline <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="jobDueDate"
+                    type="date"
+                    value={newJobDueDate}
+                    onChange={(e) => setNewJobDueDate(e.target.value)}
+                    className="mt-1"
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                
+                {/* Divider */}
+                <div className="border-t border-gray-200 pt-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Optional</p>
+                </div>
+                
+                {/* Description (optional) */}
                 <div>
                   <Label htmlFor="jobDescription">{UI_LABELS.jobDescriptionLabel}</Label>
                   <Input
@@ -689,8 +790,55 @@ export default function JobsPage() {
                     className="mt-1"
                   />
                 </div>
+                
+                {/* Collaborators (optional) */}
                 <div>
-                  <Label>Labels (optional)</Label>
+                  <Label>Collaborators</Label>
+                  <div className="mt-2 space-y-2">
+                    {/* Selected collaborators */}
+                    {newJobCollaboratorIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {newJobCollaboratorIds.map(id => {
+                          const member = teamMembers.find(m => m.id === id)
+                          if (!member) return null
+                          return (
+                            <Chip
+                              key={id}
+                              label={member.name || member.email}
+                              color="gray"
+                              removable
+                              onRemove={() => setNewJobCollaboratorIds(prev => prev.filter(cId => cId !== id))}
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* Available team members to add */}
+                    {teamMembers.filter(m => 
+                      m.id !== newJobOwnerId && !newJobCollaboratorIds.includes(m.id)
+                    ).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {teamMembers
+                          .filter(m => m.id !== newJobOwnerId && !newJobCollaboratorIds.includes(m.id))
+                          .map(member => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              onClick={() => setNewJobCollaboratorIds(prev => [...prev, member.id])}
+                              className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                              + {member.name || member.email}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Labels (optional) */}
+                <div>
+                  <Label>Labels</Label>
                   <div className="mt-2">
                     {newJobTags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-2">
@@ -732,13 +880,15 @@ export default function JobsPage() {
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
+                
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                     Cancel
                   </Button>
                   <button
                     onClick={handleCreateJob}
-                    disabled={!newJobName.trim() || creating}
+                    disabled={!newJobName.trim() || !newJobOwnerId || !newJobDueDate || creating}
                     className="
                       px-4 py-2 rounded-md text-sm font-medium
                       bg-gray-900 text-white
