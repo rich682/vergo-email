@@ -12,17 +12,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, Calendar, Users, User, UserCircle, X, Clock, Tag } from "lucide-react"
+import { Plus, Briefcase, UserCircle, X, Clock, Tag, Filter } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
-// New design system components
-import { PageHeader } from "@/components/ui/page-header"
-import { FilterPills } from "@/components/ui/filter-pills"
+// Design system components
 import { Chip } from "@/components/ui/chip"
-import { StatusBadge } from "@/components/ui/status-badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { DropdownFilter } from "@/components/ui/dropdown-filter"
 
 // ============================================
 // Types
@@ -72,6 +68,14 @@ function getInitials(name: string | null, email: string): string {
   return email[0]?.toUpperCase() || "?"
 }
 
+// Status config matching Bills UI style
+const STATUS_CONFIG: Record<string, { label: string; count?: number }> = {
+  ACTIVE: { label: "Active" },
+  WAITING: { label: "Waiting" },
+  COMPLETED: { label: "Completed" },
+  ARCHIVED: { label: "Archived" },
+}
+
 // ============================================
 // Main Component
 // ============================================
@@ -85,9 +89,9 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   
   // Filter state
-  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "my">("all")
-  const [statusFilter, setStatusFilter] = useState<string>("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -106,31 +110,11 @@ export default function JobsPage() {
     new Set(allJobs.flatMap(job => job.labels?.tags || []))
   ).sort()
 
-  // Collect all unique statuses
-  const allStatuses = Array.from(
-    new Set(allJobs.map(job => job.status))
-  ).sort((a, b) => {
-    const builtIn = ["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"]
-    const aIdx = builtIn.indexOf(a)
-    const bIdx = builtIn.indexOf(b)
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-    if (aIdx !== -1) return -1
-    if (bIdx !== -1) return 1
-    return a.localeCompare(b)
-  })
-
-  // Status options for dropdown
-  const statusOptions = [
-    { value: "ACTIVE", label: "Active" },
-    { value: "WAITING", label: "Waiting" },
-    { value: "COMPLETED", label: "Completed" },
-    { value: "ARCHIVED", label: "Archived" },
-    ...allStatuses
-      .filter(s => !["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(s))
-      .map(s => ({ value: s, label: s }))
-  ]
-
-  const hasActiveFilters = statusFilter !== "" || ownershipFilter !== "all" || tagFilter.length > 0
+  // Count jobs by status
+  const statusCounts = allJobs.reduce((acc, job) => {
+    acc[job.status] = (acc[job.status] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
 
   // ============================================
   // Data fetching
@@ -152,8 +136,7 @@ export default function JobsPage() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (statusFilter) params.set("status", statusFilter)
-      if (ownershipFilter === "my") params.set("myJobs", "true")
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter)
       if (tagFilter.length > 0) params.set("tags", tagFilter.join(","))
       
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
@@ -168,7 +151,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, ownershipFilter, tagFilter])
+  }, [statusFilter, tagFilter])
 
   useEffect(() => { fetchAllJobs() }, [fetchAllJobs])
   useEffect(() => { fetchJobs() }, [fetchJobs])
@@ -220,29 +203,127 @@ export default function JobsPage() {
     }
   }
 
-  const clearAllFilters = () => {
-    setStatusFilter("")
-    setOwnershipFilter("all")
-    setTagFilter([])
-  }
-
   // ============================================
   // Render
   // ============================================
 
   return (
-    <div className="p-6">
-      {/* Page Header */}
-      <PageHeader
-        title={UI_LABELS.jobsPageTitle}
-        subtitle={UI_LABELS.jobsPageSubtitle}
-        action={
+    <div className="min-h-screen bg-white">
+      <div className="px-8 py-6">
+        {/* Page Header - matching Bills style */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+            {UI_LABELS.jobsPageTitle}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {UI_LABELS.jobsPageSubtitle}
+          </p>
+        </div>
+
+        {/* Status Pills - matching Bills UI exactly */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            {/* Status pills like Bills */}
+            <button
+              onClick={() => setStatusFilter("ACTIVE")}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                ${statusFilter === "ACTIVE" 
+                  ? "bg-gray-900 text-white" 
+                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                }
+              `}
+            >
+              Active
+              {statusCounts.ACTIVE > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
+                  statusFilter === "ACTIVE" ? "bg-white/20" : "bg-gray-100"
+                }`}>
+                  {statusCounts.ACTIVE}
+                </span>
+              )}
+            </button>
+            
+            <button
+              onClick={() => setStatusFilter("WAITING")}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                ${statusFilter === "WAITING" 
+                  ? "bg-gray-900 text-white" 
+                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                }
+              `}
+            >
+              Waiting
+              {statusCounts.WAITING > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
+                  statusFilter === "WAITING" ? "bg-white/20" : "bg-gray-100"
+                }`}>
+                  {statusCounts.WAITING}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("COMPLETED")}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                ${statusFilter === "COMPLETED" 
+                  ? "bg-gray-900 text-white" 
+                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                }
+              `}
+            >
+              Completed
+              {statusCounts.COMPLETED > 0 && (
+                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
+                  statusFilter === "COMPLETED" ? "bg-white/20" : "bg-gray-100"
+                }`}>
+                  {statusCounts.COMPLETED}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("ARCHIVED")}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                ${statusFilter === "ARCHIVED" 
+                  ? "bg-gray-900 text-white" 
+                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                }
+              `}
+            >
+              Archived
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("all")}
+              className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                ${statusFilter === "all" 
+                  ? "bg-gray-900 text-white" 
+                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                }
+              `}
+            >
+              All
+            </button>
+          </div>
+
+          {/* New Item CTA - matching Bills "New Bill" button style */}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-green-600 hover:bg-green-700">
-                <Plus className="w-4 h-4 mr-2" />
+              <button className="
+                flex items-center gap-2 px-4 py-2 
+                border border-gray-200 rounded-full
+                text-sm font-medium text-gray-700
+                hover:border-orange-500 hover:text-orange-500
+                transition-colors
+              ">
+                <Plus className="w-4 h-4 text-orange-500" />
                 {UI_LABELS.newJob}
-              </Button>
+              </button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -272,14 +353,13 @@ export default function JobsPage() {
                 <div>
                   <Label>Labels (optional)</Label>
                   <div className="mt-2">
-                    {/* Selected tags */}
                     {newJobTags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-2">
                         {newJobTags.map(tag => (
                           <Chip
                             key={tag}
                             label={tag}
-                            color="blue"
+                            color="gray"
                             removable
                             onRemove={() => setNewJobTags(prev => prev.filter(t => t !== tag))}
                           />
@@ -287,7 +367,6 @@ export default function JobsPage() {
                       </div>
                     )}
                     
-                    {/* Existing labels as suggestions */}
                     {allTags.filter(t => !newJobTags.includes(t)).length > 0 && (
                       <div className="mb-2">
                         <p className="text-xs text-gray-500 mb-1">Click to add:</p>
@@ -318,180 +397,159 @@ export default function JobsPage() {
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                     Cancel
                   </Button>
-                  <Button
+                  <button
                     onClick={handleCreateJob}
                     disabled={!newJobName.trim() || creating}
-                    className="bg-green-600 hover:bg-green-700"
+                    className="
+                      px-4 py-2 rounded-md text-sm font-medium
+                      bg-gray-900 text-white
+                      hover:bg-gray-800
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                      transition-colors
+                    "
                   >
                     {creating ? "Creating..." : UI_LABELS.createJob}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
-        }
-      />
+        </div>
 
-      {/* Filters Row */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        {/* Ownership Toggle */}
-        <FilterPills
-          options={[
-            { value: "all", label: UI_LABELS.allJobs },
-            { value: "my", label: UI_LABELS.myJobs, icon: <UserCircle className="w-3.5 h-3.5" /> }
-          ]}
-          value={ownershipFilter}
-          onChange={(v) => setOwnershipFilter(v as "all" | "my")}
-        />
+        {/* Search and Filter Row - matching Bills */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="relative flex-1 max-w-md">
+            <Input
+              placeholder="Search"
+              className="pl-10 bg-white border-gray-200"
+            />
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          
+          <button 
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className="
+              flex items-center gap-2 px-4 py-2
+              border border-gray-200 rounded-lg
+              text-sm font-medium text-gray-700
+              hover:bg-gray-50 transition-colors
+            "
+          >
+            <Filter className="w-4 h-4" />
+            Filter
+          </button>
+        </div>
 
-        {/* Status Filter */}
-        <DropdownFilter
-          label="Status"
-          icon={<Clock className="w-4 h-4" />}
-          options={statusOptions}
-          selected={statusFilter}
-          onChange={(v) => setStatusFilter(v as string)}
-        />
-
-        {/* Labels Filter */}
-        <DropdownFilter
-          label="Labels"
-          icon={<Tag className="w-4 h-4" />}
-          options={allTags.map(t => ({ value: t, label: t }))}
-          selected={tagFilter}
-          onChange={(v) => setTagFilter(v as string[])}
-          multiple
-          placeholder="Labels"
-        />
-
-        {/* Active Filters */}
-        {hasActiveFilters && (
-          <>
-            <div className="h-6 w-px bg-gray-200" />
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {statusFilter && (
-                <Chip
-                  label={statusOptions.find(s => s.value === statusFilter)?.label || statusFilter}
-                  color="blue"
-                  removable
-                  onRemove={() => setStatusFilter("")}
-                  size="sm"
-                />
-              )}
-              {tagFilter.map(tag => (
-                <Chip
-                  key={tag}
-                  label={tag}
-                  color="purple"
-                  removable
-                  onRemove={() => setTagFilter(prev => prev.filter(t => t !== tag))}
-                  size="sm"
-                />
-              ))}
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="border border-dashed border-gray-200 rounded-lg">
+            <EmptyState
+              icon={<Briefcase className="w-6 h-6" />}
+              title={`No ${UI_LABELS.jobPlural.toLowerCase()} yet`}
+              description={`Create your first ${UI_LABELS.jobSingular.toLowerCase()} to start organizing work`}
+              action={{
+                label: UI_LABELS.createJob,
+                onClick: () => setIsCreateOpen(true)
+              }}
+            />
+          </div>
+        ) : (
+          /* Table-style list matching Bills */
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <div className="col-span-5">Name</div>
+              <div className="col-span-2">Status</div>
+              <div className="col-span-2">Owner</div>
+              <div className="col-span-2">Due Date</div>
+              <div className="col-span-1">Updated</div>
             </div>
-            <button
-              onClick={clearAllFilters}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Clear all
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" />
-        </div>
-      ) : jobs.length === 0 ? (
-        <div className="border border-dashed border-gray-200 rounded-lg">
-          <EmptyState
-            icon={<Briefcase className="w-6 h-6" />}
-            title={`No ${UI_LABELS.jobPlural.toLowerCase()} yet`}
-            description={`Create your first ${UI_LABELS.jobSingular.toLowerCase()} to start organizing work`}
-            action={{
-              label: UI_LABELS.createJob,
-              onClick: () => setIsCreateOpen(true)
-            }}
-          />
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {jobs.map((job) => {
-            const jobTags = job.labels?.tags || []
-            const dueDate = job.dueDate ? new Date(job.dueDate) : null
-            const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
-            const isOverdue = daysUntilDue !== null && daysUntilDue < 0
-            const isDueSoon = daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 3
             
-            return (
-              <div
-                key={job.id}
-                onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                className="
-                  bg-white border border-gray-200 rounded-lg p-4
-                  hover:border-gray-300 hover:shadow-sm
-                  cursor-pointer transition-all duration-150
-                "
-              >
-                <div className="flex items-start justify-between gap-4">
-                  {/* Left: Main content */}
-                  <div className="flex-1 min-w-0">
-                    {/* Title + Status */}
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-gray-900 truncate">
+            {/* Table Body */}
+            <div className="divide-y divide-gray-100">
+              {jobs.map((job) => {
+                const jobTags = job.labels?.tags || []
+                const dueDate = job.dueDate ? new Date(job.dueDate) : null
+                const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
+                const isOverdue = daysUntilDue !== null && daysUntilDue < 0
+                
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+                    className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center"
+                  >
+                    {/* Name + Labels */}
+                    <div className="col-span-5">
+                      <div className="font-medium text-gray-900 mb-0.5">
                         {job.name}
-                      </h3>
-                      <StatusBadge status={job.status} size="sm" />
+                      </div>
+                      {jobTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {jobTags.slice(0, 3).map(tag => (
+                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                          {jobTags.length > 3 && (
+                            <span className="text-xs text-gray-400">+{jobTags.length - 3}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     
-                    {/* Labels */}
-                    {jobTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {jobTags.map(tag => (
-                          <Chip key={tag} label={tag} color="gray" size="sm" />
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Meta row */}
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <div className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-[10px] font-medium text-gray-600">
-                          {getInitials(job.owner.name, job.owner.email)}
-                        </div>
-                        {job.owner.name || job.owner.email.split("@")[0]}
+                    {/* Status - pill style like Bills */}
+                    <div className="col-span-2">
+                      <span className={`
+                        inline-flex px-2.5 py-1 rounded-full text-xs font-medium border
+                        ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
+                        ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
+                        ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
+                        ${job.status === "ARCHIVED" ? "border-gray-200 text-gray-500" : ""}
+                        ${!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) ? "border-purple-200 text-purple-700 bg-purple-50" : ""}
+                      `}>
+                        {STATUS_CONFIG[job.status]?.label || job.status}
                       </span>
-                      <span>·</span>
-                      <span>Updated {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}</span>
+                    </div>
+                    
+                    {/* Owner */}
+                    <div className="col-span-2 flex items-center gap-2">
+                      <div className="w-7 h-7 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                        {getInitials(job.owner.name, job.owner.email)}
+                      </div>
+                      <span className="text-sm text-gray-600 truncate">
+                        {job.owner.name?.split(" ")[0] || job.owner.email.split("@")[0]}
+                      </span>
+                    </div>
+                    
+                    {/* Due Date */}
+                    <div className="col-span-2">
+                      {dueDate ? (
+                        <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                          {format(dueDate, "d MMM")}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </div>
+                    
+                    {/* Updated */}
+                    <div className="col-span-1 text-sm text-gray-500">
+                      {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
                     </div>
                   </div>
-
-                  {/* Right: Due date */}
-                  {dueDate && (
-                    <div className="flex-shrink-0 text-right">
-                      <div className={`text-sm font-medium ${
-                        isOverdue ? "text-red-600" : isDueSoon ? "text-amber-600" : "text-gray-600"
-                      }`}>
-                        {isOverdue 
-                          ? "Overdue" 
-                          : isDueSoon 
-                          ? `${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""} left`
-                          : format(dueDate, "MMM d")
-                        }
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {format(dueDate, "yyyy")}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

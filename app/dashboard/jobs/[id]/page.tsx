@@ -658,7 +658,7 @@ export default function JobDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
       </div>
     )
   }
@@ -677,10 +677,10 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-6 py-3 flex items-center justify-between">
+        <div className="px-8 py-3 flex items-center justify-between">
           <Link href="/dashboard/jobs" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">Back to {UI_LABELS.jobsPageTitle}</span>
@@ -689,22 +689,35 @@ export default function JobDetailPage() {
             <div className="flex items-center gap-2">
               {editing ? (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                  <button 
+                    onClick={() => setEditing(false)}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                  >
                     Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
+                  </button>
+                  <button 
+                    onClick={handleSave} 
+                    disabled={saving}
+                    className="px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                  >
                     {saving ? "Saving..." : "Save"}
-                  </Button>
+                  </button>
                 </>
               ) : (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-                    <Edit2 className="w-4 h-4 mr-1" />
+                  <button 
+                    onClick={() => setEditing(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:border-gray-300 transition-colors"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
                     Edit
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleDelete} className="text-red-600 hover:text-red-700">
+                  </button>
+                  <button 
+                    onClick={handleDelete}
+                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                  >
                     <Trash2 className="w-4 h-4" />
-                  </Button>
+                  </button>
                 </>
               )}
             </div>
@@ -712,13 +725,12 @@ export default function JobDetailPage() {
         </div>
       </div>
 
-      <div className="p-6">
-        <div className="grid grid-cols-12 gap-6">
+      <div className="px-8 py-6">
+        <div className="grid grid-cols-12 gap-8">
           {/* Main Content - 8 columns */}
           <div className="col-span-12 lg:col-span-8 space-y-6">
-            {/* Header Card */}
-            <Card>
-              <CardContent className="p-6">
+            {/* Header Section */}
+            <div className="pb-6 border-b border-gray-100">
                 {editing ? (
                   <div className="space-y-4">
                     <div>
@@ -965,39 +977,36 @@ export default function JobDetailPage() {
                     </div>
                   </>
                 )}
-              </CardContent>
-            </Card>
+            </div>
 
             {/* Conditional Primary Section based on Mode */}
             {itemMode === "setup" && (
-              <Card>
-                <CardContent className="p-8">
-                  <div className="text-center mb-6">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <FileText className="w-6 h-6 text-gray-400" />
+              <div className="border border-gray-200 rounded-lg p-8">
+                <div className="text-center mb-6">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FileText className="w-6 h-6 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">How would you like to track this item?</h3>
+                  <p className="text-sm text-gray-500">Choose how you want to work on this item</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
+                    <div className="border border-gray-200 rounded-lg p-6 hover:border-orange-300 hover:bg-orange-50/50 transition-all cursor-pointer text-center">
+                      <Mail className="w-8 h-8 text-orange-500 mx-auto mb-3" />
+                      <h4 className="font-medium text-gray-900 mb-1">Send Requests</h4>
+                      <p className="text-xs text-gray-500">Email stakeholders and track responses</p>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">How would you like to track this item?</h3>
-                    <p className="text-sm text-gray-500">Choose how you want to work on this item</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
-                      <div className="border border-gray-200 rounded-lg p-6 hover:border-green-300 hover:bg-green-50/50 transition-all cursor-pointer text-center">
-                        <Mail className="w-8 h-8 text-green-600 mx-auto mb-3" />
-                        <h4 className="font-medium text-gray-900 mb-1">Send Requests</h4>
-                        <p className="text-xs text-gray-500">Email stakeholders and track responses</p>
-                      </div>
-                    </Link>
-                    <button
-                      onClick={() => document.getElementById("comment-input")?.focus()}
-                      className="border border-gray-200 rounded-lg p-6 hover:border-blue-300 hover:bg-blue-50/50 transition-all cursor-pointer text-center"
-                    >
-                      <MessageSquare className="w-8 h-8 text-blue-600 mx-auto mb-3" />
-                      <h4 className="font-medium text-gray-900 mb-1">Track Internally</h4>
-                      <p className="text-xs text-gray-500">Use for internal work without emails</p>
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
+                  </Link>
+                  <button
+                    onClick={() => document.getElementById("comment-input")?.focus()}
+                    className="border border-gray-200 rounded-lg p-6 hover:border-gray-300 hover:bg-gray-50 transition-all cursor-pointer text-center"
+                  >
+                    <MessageSquare className="w-8 h-8 text-gray-500 mx-auto mb-3" />
+                    <h4 className="font-medium text-gray-900 mb-1">Track Internally</h4>
+                    <p className="text-xs text-gray-500">Use for internal work without emails</p>
+                  </button>
+                </div>
+              </div>
             )}
 
             {itemMode === "waiting" && awaitingTasks.length > 0 && (
@@ -1115,15 +1124,14 @@ export default function JobDetailPage() {
                           className="min-h-[80px] resize-none"
                         />
                         <div className="flex justify-end mt-2">
-                          <Button
-                            size="sm"
+                          <button
                             onClick={handleAddComment}
                             disabled={!newComment.trim() || submittingComment}
-                            className="bg-green-600 hover:bg-green-700"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
                           >
-                            <Send className="w-3 h-3 mr-1" />
+                            <Send className="w-3 h-3" />
                             {submittingComment ? "Posting..." : "Post"}
-                          </Button>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1175,7 +1183,7 @@ export default function JobDetailPage() {
                   </div>
                 </div>
                 {permissions?.isOwner && (
-                  <p className="text-xs text-green-600 mt-2">You own this item</p>
+                  <p className="text-xs text-orange-500 mt-2">You own this item</p>
                 )}
               </CardContent>
             </Card>

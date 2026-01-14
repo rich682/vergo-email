@@ -60,13 +60,21 @@ export function EmptyState({
       {(action || secondaryAction) && (
         <div className="flex items-center gap-3">
           {action && (
-            <Button
+            <button
               onClick={action.onClick}
-              variant={action.variant === 'secondary' ? 'outline' : 'default'}
-              className={action.variant !== 'secondary' ? 'bg-green-600 hover:bg-green-700' : ''}
+              className={`
+                px-4 py-2 rounded-full text-sm font-medium transition-colors
+                ${action.variant === 'secondary' 
+                  ? 'border border-gray-200 text-gray-700 hover:border-orange-500 hover:text-orange-500'
+                  : 'border border-gray-200 text-gray-700 hover:border-orange-500 hover:text-orange-500'
+                }
+              `}
             >
-              {action.label}
-            </Button>
+              <span className="flex items-center gap-2">
+                <span className="text-orange-500">+</span>
+                {action.label}
+              </span>
+            </button>
           )}
           {secondaryAction && (
             <Button
