@@ -60,6 +60,11 @@ export async function GET(
         id: true,
         prompt: true,
         generatedSubject: true,
+        generatedBody: true,
+        generatedHtmlBody: true,
+        subjectTemplate: true,
+        bodyTemplate: true,
+        htmlBodyTemplate: true,
         suggestedCampaignName: true,
         status: true,
         sentAt: true,
@@ -82,26 +87,83 @@ export async function GET(
       .map(r => r.suggestedCampaignName)
       .filter((name): name is string => !!name)
 
-    const taskCounts = await prisma.task.groupBy({
-      by: ['campaignName'],
+    // Get tasks with their details for each campaign
+    const tasks = await prisma.task.findMany({
       where: {
         organizationId,
         campaignName: { in: campaignNames }
       },
-      _count: { id: true }
+      select: {
+        id: true,
+        campaignName: true,
+        status: true,
+        remindersEnabled: true,
+        remindersFrequencyHours: true,
+        remindersMaxCount: true,
+        entity: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        },
+        messages: {
+          where: { direction: "OUTBOUND" },
+          orderBy: { sentAt: "asc" },
+          take: 1,
+          select: {
+            id: true,
+            subject: true,
+            body: true,
+            sentAt: true
+          }
+        }
+      }
     })
 
-    const taskCountMap = new Map(
-      taskCounts.map(tc => [tc.campaignName, tc._count.id])
-    )
+    // Group tasks by campaign name
+    const tasksByCampaign = new Map<string, typeof tasks>()
+    for (const task of tasks) {
+      if (task.campaignName) {
+        const existing = tasksByCampaign.get(task.campaignName) || []
+        existing.push(task)
+        tasksByCampaign.set(task.campaignName, existing)
+      }
+    }
 
-    // Enrich requests with task counts
-    const enrichedRequests = requests.map(request => ({
-      ...request,
-      taskCount: request.suggestedCampaignName 
-        ? taskCountMap.get(request.suggestedCampaignName) || 0 
-        : 0
-    }))
+    // Enrich requests with task details and reminder info
+    const enrichedRequests = requests.map(request => {
+      const requestTasks = request.suggestedCampaignName 
+        ? tasksByCampaign.get(request.suggestedCampaignName) || []
+        : []
+      
+      // Get reminder config from first task (all tasks in a request share the same config)
+      const firstTask = requestTasks[0]
+      const reminderConfig = firstTask ? {
+        enabled: firstTask.remindersEnabled,
+        frequencyHours: firstTask.remindersFrequencyHours,
+        maxCount: firstTask.remindersMaxCount
+      } : null
+
+      return {
+        ...request,
+        taskCount: requestTasks.length,
+        reminderConfig,
+        recipients: requestTasks.map(task => ({
+          id: task.id,
+          entityId: task.entity?.id,
+          name: task.entity ? `${task.entity.firstName}${task.entity.lastName ? ` ${task.entity.lastName}` : ''}` : 'Unknown',
+          email: task.entity?.email || 'Unknown',
+          status: task.status,
+          sentMessage: task.messages[0] ? {
+            subject: task.messages[0].subject,
+            body: task.messages[0].body,
+            sentAt: task.messages[0].sentAt
+          } : null
+        }))
+      }
+    })
 
     return NextResponse.json({
       success: true,

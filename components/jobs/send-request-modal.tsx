@@ -601,158 +601,172 @@ export function SendRequestModal({
               </div>
             )}
 
-            {/* Recipients */}
+            {/* Recipients - Collapsible Dropdown */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-500" />
-                  Recipients ({includedCount} of {totalCount})
-                </Label>
-                
-                {/* Label Filter */}
-                {availableLabels.length > 0 && (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowLabelFilter(!showLabelFilter)}
-                      className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
-                        selectedLabelFilter !== null
-                          ? "bg-orange-100 text-orange-700"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Filter className="w-3.5 h-3.5" />
-                      {selectedLabelFilter === null 
-                        ? "Filter by label" 
-                        : selectedLabelFilter === "none"
-                        ? "No label"
-                        : availableLabels.find(l => l.id === selectedLabelFilter)?.name || "Filter"
-                      }
-                    </button>
-                    
-                    {showLabelFilter && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-10" 
-                          onClick={() => setShowLabelFilter(false)} 
-                        />
-                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px] py-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              applyLabelFilter(null)
-                              setShowLabelFilter(false)
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              selectedLabelFilter === null ? "bg-gray-50 font-medium" : ""
-                            }`}
-                          >
-                            All recipients
-                            <span className="text-xs text-gray-400 ml-2">({totalCount})</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              applyLabelFilter("none")
-                              setShowLabelFilter(false)
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              selectedLabelFilter === "none" ? "bg-gray-50 font-medium" : ""
-                            }`}
-                          >
-                            No label
-                            <span className="text-xs text-gray-400 ml-2">({labelCounts.noLabelCount})</span>
-                          </button>
-                          <div className="border-t border-gray-100 my-1" />
-                          {availableLabels.map(label => (
-                            <button
-                              key={label.id}
-                              type="button"
-                              onClick={() => {
-                                applyLabelFilter(label.id)
-                                setShowLabelFilter(false)
-                              }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                                selectedLabelFilter === label.id ? "bg-gray-50 font-medium" : ""
-                              }`}
-                            >
-                              <div 
-                                className="w-2.5 h-2.5 rounded-full" 
-                                style={{ backgroundColor: label.color || "#6b7280" }}
-                              />
-                              <span className="capitalize">{label.name}</span>
-                              <span className="text-xs text-gray-400 ml-auto">
-                                ({labelCounts.labelCounts.get(label.id) || 0})
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                {recipients.length === 0 ? (
-                  <p className="p-3 text-sm text-gray-500 text-center">No recipients with email addresses</p>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {recipients.map(recipient => (
-                      <label
-                        key={recipient.id}
-                        className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 ${
-                          !recipient.included ? "opacity-50" : ""
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={recipient.included}
-                          onChange={() => toggleRecipient(recipient.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {recipient.firstName} {recipient.lastName || ""}
-                          </div>
-                          <div className="text-xs text-gray-500 truncate">
-                            {recipient.email}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {/* Show labels */}
-                          {recipient.labels && recipient.labels.length > 0 && (
-                            <div className="flex gap-1">
-                              {recipient.labels.slice(0, 2).map(label => (
-                                <span
-                                  key={label.labelId}
-                                  className="text-xs px-1.5 py-0.5 rounded capitalize"
-                                  style={{
-                                    backgroundColor: `${label.labelColor || "#6b7280"}20`,
-                                    color: label.labelColor || "#6b7280",
+              <details className="group">
+                <summary className="flex items-center justify-between cursor-pointer list-none">
+                  <Label className="flex items-center gap-2 cursor-pointer">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    Recipients ({includedCount} of {totalCount})
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    {/* Label Filter */}
+                    {availableLabels.length > 0 && (
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setShowLabelFilter(!showLabelFilter)
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
+                            selectedLabelFilter !== null
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                        >
+                          <Filter className="w-3.5 h-3.5" />
+                          {selectedLabelFilter === null 
+                            ? "Filter" 
+                            : selectedLabelFilter === "none"
+                            ? "No label"
+                            : availableLabels.find(l => l.id === selectedLabelFilter)?.name || "Filter"
+                          }
+                        </button>
+                        
+                        {showLabelFilter && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-10" 
+                              onClick={() => setShowLabelFilter(false)} 
+                            />
+                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px] py-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  applyLabelFilter(null)
+                                  setShowLabelFilter(false)
+                                }}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                  selectedLabelFilter === null ? "bg-gray-50 font-medium" : ""
+                                }`}
+                              >
+                                All recipients
+                                <span className="text-xs text-gray-400 ml-2">({totalCount})</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  applyLabelFilter("none")
+                                  setShowLabelFilter(false)
+                                }}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                  selectedLabelFilter === "none" ? "bg-gray-50 font-medium" : ""
+                                }`}
+                              >
+                                No label
+                                <span className="text-xs text-gray-400 ml-2">({labelCounts.noLabelCount})</span>
+                              </button>
+                              <div className="border-t border-gray-100 my-1" />
+                              {availableLabels.map(label => (
+                                <button
+                                  key={label.id}
+                                  type="button"
+                                  onClick={() => {
+                                    applyLabelFilter(label.id)
+                                    setShowLabelFilter(false)
                                   }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                    selectedLabelFilter === label.id ? "bg-gray-50 font-medium" : ""
+                                  }`}
                                 >
-                                  {label.labelName}
-                                </span>
+                                  <div 
+                                    className="w-2.5 h-2.5 rounded-full" 
+                                    style={{ backgroundColor: label.color || "#6b7280" }}
+                                  />
+                                  <span className="capitalize">{label.name}</span>
+                                  <span className="text-xs text-gray-400 ml-auto">
+                                    ({labelCounts.labelCounts.get(label.id) || 0})
+                                  </span>
+                                </button>
                               ))}
-                              {recipient.labels.length > 2 && (
-                                <span className="text-xs text-gray-400">
-                                  +{recipient.labels.length - 2}
-                                </span>
-                              )}
                             </div>
-                          )}
-                          {recipient.contactType && (
-                            <span className="text-xs text-gray-400 px-2 py-0.5 bg-gray-100 rounded">
-                              {recipient.contactType}
-                            </span>
-                          )}
-                        </div>
-                      </label>
-                    ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <svg 
+                      className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                )}
-              </div>
+                </summary>
+                
+                <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+                  {recipients.length === 0 ? (
+                    <p className="p-3 text-sm text-gray-500 text-center">No recipients with email addresses</p>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {recipients.map(recipient => (
+                        <label
+                          key={recipient.id}
+                          className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 ${
+                            !recipient.included ? "opacity-50" : ""
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={recipient.included}
+                            onChange={() => toggleRecipient(recipient.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {recipient.firstName} {recipient.lastName || ""}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {recipient.email}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {/* Show labels */}
+                            {recipient.labels && recipient.labels.length > 0 && (
+                              <div className="flex gap-1">
+                                {recipient.labels.slice(0, 2).map(label => (
+                                  <span
+                                    key={label.labelId}
+                                    className="text-xs px-1.5 py-0.5 rounded capitalize"
+                                    style={{
+                                      backgroundColor: `${label.labelColor || "#6b7280"}20`,
+                                      color: label.labelColor || "#6b7280",
+                                    }}
+                                  >
+                                    {label.labelName}
+                                  </span>
+                                ))}
+                                {recipient.labels.length > 2 && (
+                                  <span className="text-xs text-gray-400">
+                                    +{recipient.labels.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {recipient.contactType && (
+                              <span className="text-xs text-gray-400 px-2 py-0.5 bg-gray-100 rounded">
+                                {recipient.contactType}
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
             </div>
 
             {/* Subject */}

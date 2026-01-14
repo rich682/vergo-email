@@ -40,6 +40,9 @@ import { SectionHeader } from "@/components/ui/section-header"
 // Send Request Modal
 import { SendRequestModal } from "@/components/jobs/send-request-modal"
 
+// Request Detail Modal
+import { RequestDetailModal } from "@/components/jobs/request-detail-modal"
+
 // Labels components
 import { LabelsManager } from "@/components/jobs/labels-manager"
 import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
@@ -132,10 +135,34 @@ interface TimelineEvent {
   recipientEmail?: string
 }
 
+interface RequestRecipient {
+  id: string
+  entityId?: string
+  name: string
+  email: string
+  status: string
+  sentMessage: {
+    subject: string
+    body: string
+    sentAt: string
+  } | null
+}
+
+interface ReminderConfig {
+  enabled: boolean
+  frequencyHours: number | null
+  maxCount: number | null
+}
+
 interface JobRequest {
   id: string
   prompt: string
   generatedSubject: string | null
+  generatedBody: string | null
+  generatedHtmlBody: string | null
+  subjectTemplate: string | null
+  bodyTemplate: string | null
+  htmlBodyTemplate: string | null
   suggestedCampaignName: string | null
   status: string
   sentAt: string | null
@@ -143,6 +170,8 @@ interface JobRequest {
   updatedAt: string
   deadlineDate: string | null
   taskCount: number
+  reminderConfig: ReminderConfig | null
+  recipients: RequestRecipient[]
   user: { id: string; name: string | null; email: string }
 }
 
@@ -218,6 +247,7 @@ export default function JobDetailPage() {
   const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
   const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
   const [noStakeholdersNeeded, setNoStakeholdersNeeded] = useState(false)
+  const [selectedRequest, setSelectedRequest] = useState<JobRequest | null>(null)
 
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -1263,14 +1293,40 @@ export default function JobDetailPage() {
                   {requestsExpanded && (
                     <div className="space-y-2 mt-3">
                       {requests.map(request => (
-                        <div key={request.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
-                          <div>
-                            <div className="font-medium text-sm text-gray-900">
-                              {request.suggestedCampaignName || request.generatedSubject || "Request"}
+                        <div 
+                          key={request.id} 
+                          className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                          onClick={() => setSelectedRequest(request)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-gray-900 truncate">
+                              {request.subjectTemplate || request.generatedSubject || request.suggestedCampaignName || "Request"}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {request.taskCount} recipient{request.taskCount !== 1 ? "s" : ""} · 
-                              {request.sentAt ? ` Sent ${formatDistanceToNow(new Date(request.sentAt), { addSuffix: true })}` : " Draft"}
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {request.taskCount} recipient{request.taskCount !== 1 ? "s" : ""}
+                              </span>
+                              <span>·</span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {request.sentAt 
+                                  ? format(new Date(request.sentAt), "MMM d, yyyy 'at' h:mm a")
+                                  : format(new Date(request.createdAt), "MMM d, yyyy 'at' h:mm a")
+                                }
+                              </span>
+                              {request.reminderConfig?.enabled && (
+                                <>
+                                  <span>·</span>
+                                  <span className="flex items-center gap-1 text-blue-600">
+                                    <Bell className="w-3 h-3" />
+                                    {request.reminderConfig.frequencyHours && request.reminderConfig.frequencyHours >= 24
+                                      ? `Every ${Math.round(request.reminderConfig.frequencyHours / 24)}d`
+                                      : `Every ${request.reminderConfig.frequencyHours}h`
+                                    }
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                           <StatusBadge status={request.status} size="sm" />
@@ -1621,6 +1677,14 @@ export default function JobDetailPage() {
           fetchTimeline()
         }}
       />
+
+      {/* Request Detail Modal */}
+      {selectedRequest && (
+        <RequestDetailModal
+          request={selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+        />
+      )}
     </div>
   )
 }
