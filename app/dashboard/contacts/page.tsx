@@ -9,7 +9,7 @@ import { TagImportModal } from "@/components/contacts/tag-import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
 import { TypesManager } from "@/components/contacts/types-manager"
 import { TagsManager } from "@/components/contacts/tags-manager"
-import { Users, Settings, Building2, Tag } from "lucide-react"
+import { Users, FolderOpen, Building2, Tag, Plus, Upload } from "lucide-react"
 
 interface Group {
   id: string
@@ -77,7 +77,6 @@ export default function ContactsPage() {
       if (response.ok) {
         const data = await response.json()
         setEntities(data)
-        // Clear selection when filters change
         setSelectedEntityIds([])
       }
     } catch (error) {
@@ -127,14 +126,13 @@ export default function ContactsPage() {
     setShowForm(false)
     setEditingEntity(null)
     fetchEntities()
-    fetchAvailableStateKeys() // Refresh available tags after adding/editing
+    fetchAvailableStateKeys()
   }
 
   const handleEdit = (entity: Entity) => {
     setEditingEntity(entity)
     setShowForm(true)
     setShowImport(false)
-    // Scroll to form after state update
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
     }, 100)
@@ -142,7 +140,7 @@ export default function ContactsPage() {
 
   const handleDelete = () => {
     fetchEntities()
-    fetchAvailableStateKeys() // Refresh available tags after delete
+    fetchAvailableStateKeys()
   }
 
   const handleImportSuccess = () => {
@@ -165,112 +163,110 @@ export default function ContactsPage() {
     setEditingEntity(null)
   }
 
+  const tabs = [
+    { id: "contacts" as TabType, label: "Contacts", icon: Users },
+    { id: "groups" as TabType, label: "Groups", icon: FolderOpen },
+    { id: "types" as TabType, label: "Types", icon: Building2 },
+    { id: "tags" as TabType, label: "Tags", icon: Tag },
+  ]
+
   return (
-    <div className="w-full h-full flex flex-col border-l border-r border-gray-200">
-      {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-        <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-white">
+      <div className="px-8 py-6">
+        {/* Page Header */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold">Contacts</h2>
-            <p className="text-sm text-gray-600">Manage people and organizations</p>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Contacts</h1>
+            <p className="text-sm text-gray-500">Manage people and organizations</p>
           </div>
           
           {/* Contacts Tab CTAs */}
           {activeTab === "contacts" && (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
+              <button
                 onClick={() => {
                   setShowImport(!showImport)
                   setShowForm(false)
                   setEditingEntity(null)
                 }}
+                className="
+                  flex items-center gap-2 px-4 py-2 
+                  border border-gray-200 rounded-full
+                  text-sm font-medium text-gray-700
+                  hover:border-gray-400 hover:bg-gray-50
+                  transition-colors
+                "
               >
-                {showImport ? "Cancel" : "Import Contacts"}
-              </Button>
-              <Button
+                <Upload className="w-4 h-4" />
+                {showImport ? "Cancel" : "Import"}
+              </button>
+              <button
                 onClick={() => {
                   setShowForm(!showForm)
                   setShowImport(false)
                   setEditingEntity(null)
                 }}
+                className="
+                  flex items-center gap-2 px-4 py-2 
+                  border border-gray-200 rounded-full
+                  text-sm font-medium text-gray-700
+                  hover:border-orange-500 hover:text-orange-500
+                  transition-colors
+                "
               >
+                <Plus className="w-4 h-4 text-orange-500" />
                 {showForm ? "Cancel" : "Add Contact"}
-              </Button>
+              </button>
             </div>
           )}
 
           {/* Tags Tab CTAs */}
           {activeTab === "tags" && (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowTagImport(!showTagImport)
-                }}
-              >
-                {showTagImport ? "Cancel" : "Import Tag Data"}
-              </Button>
-            </div>
+            <button
+              onClick={() => setShowTagImport(!showTagImport)}
+              className="
+                flex items-center gap-2 px-4 py-2 
+                border border-gray-200 rounded-full
+                text-sm font-medium text-gray-700
+                hover:border-gray-400 hover:bg-gray-50
+                transition-colors
+              "
+            >
+              <Upload className="w-4 h-4" />
+              {showTagImport ? "Cancel" : "Import Tag Data"}
+            </button>
           )}
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mt-4 border-b border-gray-200 -mb-px">
-          <button
-            onClick={() => switchToTab("contacts")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "contacts"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Contacts
-          </button>
-          <button
-            onClick={() => switchToTab("groups")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "groups"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Groups
-          </button>
-          <button
-            onClick={() => switchToTab("types")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "types"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            Types
-          </button>
-          <button
-            onClick={() => switchToTab("tags")}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "tags"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Tag className="w-4 h-4" />
-            Tags
-          </button>
+        <div className="flex gap-1 mb-6">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => switchToTab(tab.id)}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors
+                  ${activeTab === tab.id
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600 hover:bg-gray-100"
+                  }
+                `}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden bg-gray-50 border-t border-gray-200">
+        {/* Main Content */}
         {activeTab === "contacts" ? (
-          <div className="h-full flex flex-col">
+          <div className="space-y-6">
             {showForm && (
-              <div ref={formRef} className="flex-shrink-0 p-6 bg-white border-b border-gray-200 shadow-sm">
-                <h3 className="text-lg font-semibold mb-4">
+              <div ref={formRef} className="border border-gray-200 rounded-lg p-6 bg-white">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
                   {editingEntity ? `Edit Contact: ${editingEntity.firstName}` : "Add New Contact"}
                 </h3>
                 <ContactForm
@@ -286,7 +282,7 @@ export default function ContactsPage() {
             )}
 
             {showImport && (
-              <div className="flex-shrink-0 p-6 bg-white border-b border-gray-200">
+              <div className="border border-gray-200 rounded-lg p-6 bg-white">
                 <ImportModal
                   onSuccess={handleImportSuccess}
                   onClose={() => setShowImport(false)}
@@ -294,72 +290,64 @@ export default function ContactsPage() {
               </div>
             )}
 
-            <div className="flex-1 overflow-auto p-6">
-              {loading ? (
-                <div className="border border-gray-200 rounded-lg bg-white py-8 text-center text-gray-500">
-                  Loading contacts...
-                </div>
-              ) : (
-                <ContactList
-                  entities={entities}
-                  groups={groups}
-                  tags={tags}
-                  availableStateKeys={availableStateKeys}
-                  search={search}
-                  selectedGroupId={selectedGroupId}
-                  selectedContactType={selectedContactType}
-                  selectedStateKeys={selectedStateKeys}
-                  selectedEntityIds={selectedEntityIds}
-                  onSearchChange={setSearch}
-                  onGroupFilterChange={setSelectedGroupId}
-                  onContactTypeChange={setSelectedContactType}
-                  onStateKeysChange={setSelectedStateKeys}
-                  onSelectedEntitiesChange={setSelectedEntityIds}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              )}
-            </div>
+            {loading ? (
+              <div className="border border-gray-200 rounded-lg py-12 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto"></div>
+                <p className="text-sm text-gray-500 mt-4">Loading contacts...</p>
+              </div>
+            ) : (
+              <ContactList
+                entities={entities}
+                groups={groups}
+                tags={tags}
+                availableStateKeys={availableStateKeys}
+                search={search}
+                selectedGroupId={selectedGroupId}
+                selectedContactType={selectedContactType}
+                selectedStateKeys={selectedStateKeys}
+                selectedEntityIds={selectedEntityIds}
+                onSearchChange={setSearch}
+                onGroupFilterChange={setSelectedGroupId}
+                onContactTypeChange={setSelectedContactType}
+                onStateKeysChange={setSelectedStateKeys}
+                onSelectedEntitiesChange={setSelectedEntityIds}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            )}
           </div>
         ) : activeTab === "groups" ? (
-          <div className="h-full overflow-auto p-6">
-            <div className="max-w-2xl">
-              <GroupsManager
-                groups={groups}
-                onGroupsChange={fetchGroups}
-              />
-            </div>
+          <div className="max-w-2xl">
+            <GroupsManager
+              groups={groups}
+              onGroupsChange={fetchGroups}
+            />
           </div>
         ) : activeTab === "types" ? (
-          <div className="h-full overflow-auto p-6">
-            <div className="max-w-2xl">
-              <TypesManager
-                onTypesChange={fetchEntities}
-              />
-            </div>
+          <div className="max-w-2xl">
+            <TypesManager
+              onTypesChange={fetchEntities}
+            />
           </div>
         ) : (
-          <div className="h-full overflow-auto p-6">
-            <div className="max-w-2xl space-y-6">
-              {/* Tag Import Modal */}
-              {showTagImport && (
-                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-                  <TagImportModal
-                    existingTags={tags}
-                    onSuccess={handleTagImportSuccess}
-                    onClose={() => setShowTagImport(false)}
-                  />
-                </div>
-              )}
+          <div className="max-w-2xl space-y-6">
+            {showTagImport && (
+              <div className="border border-gray-200 rounded-lg p-6 bg-white">
+                <TagImportModal
+                  existingTags={tags}
+                  onSuccess={handleTagImportSuccess}
+                  onClose={() => setShowTagImport(false)}
+                />
+              </div>
+            )}
 
-              <TagsManager
-                onTagsChange={() => {
-                  fetchEntities()
-                  fetchAvailableStateKeys()
-                  fetchTags()
-                }}
-              />
-            </div>
+            <TagsManager
+              onTagsChange={() => {
+                fetchEntities()
+                fetchAvailableStateKeys()
+                fetchTags()
+              }}
+            />
           </div>
         )}
       </div>

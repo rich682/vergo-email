@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, ArrowLeft, Pencil, Trash2 } from "lucide-react"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 
 interface OrgUser {
   id: string
@@ -31,7 +31,6 @@ interface OrgUser {
   createdAt: string
 }
 
-// Helper to get initials from name
 function getInitials(name: string | null, email: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/)
@@ -43,7 +42,6 @@ function getInitials(name: string | null, email: string): string {
   return email[0]?.toUpperCase() || "?"
 }
 
-// Helper to parse name into first/last
 function parseName(fullName: string | null): { firstName: string; lastName: string } {
   if (!fullName) return { firstName: "", lastName: "" }
   const parts = fullName.trim().split(/\s+/)
@@ -56,7 +54,6 @@ function parseName(fullName: string | null): { firstName: string; lastName: stri
   }
 }
 
-// Helper to combine first/last into full name
 function combineName(firstName: string, lastName: string): string {
   return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ")
 }
@@ -227,9 +224,11 @@ export default function TeamSettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-white">
+        <div className="px-8 py-6">
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
+          </div>
         </div>
       </div>
     )
@@ -237,69 +236,49 @@ export default function TeamSettingsPage() {
 
   if (!isAdmin) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <button
-          onClick={() => router.push("/dashboard/settings")}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </button>
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Shield className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-500">You don't have access to team settings.</p>
-            <p className="text-sm text-gray-400 mt-1">Contact an administrator for access.</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-white">
+        <div className="px-8 py-6">
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Team</h1>
+            <p className="text-sm text-gray-500">Manage your organization's team members</p>
+          </div>
+          <div className="border border-dashed border-gray-200 rounded-lg">
+            <EmptyState
+              icon={<Shield className="w-6 h-6" />}
+              title="Access Denied"
+              description="You don't have permission to manage team settings. Contact an administrator for access."
+            />
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* Back button */}
-      <button
-        onClick={() => router.push("/dashboard/settings")}
-        className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Settings
-      </button>
-
-      {/* Success/Error Messages */}
-      {message && (
-        <div
-          className={`mb-6 p-4 rounded-md ${
-            message.type === "success"
-              ? "bg-green-50 text-green-800 border border-green-200"
-              : "bg-red-50 text-red-800 border border-red-200"
-          }`}
-        >
-          <p className="font-medium">{message.text}</p>
-        </div>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="min-h-screen bg-white">
+      <div className="px-8 py-6">
+        {/* Page Header */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5" />
-              Team Management
-            </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Team</h1>
+            <p className="text-sm text-gray-500">
               Manage your organization's team members and their roles
             </p>
           </div>
           
-          {/* Invite User Modal */}
+          {/* Invite User Button */}
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="w-4 h-4 mr-2" />
+              <button className="
+                flex items-center gap-2 px-4 py-2 
+                border border-gray-200 rounded-full
+                text-sm font-medium text-gray-700
+                hover:border-orange-500 hover:text-orange-500
+                transition-colors
+              ">
+                <Plus className="w-4 h-4 text-orange-500" />
                 Invite User
-              </Button>
+              </button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -358,113 +337,136 @@ export default function TeamSettingsPage() {
                   <Button variant="outline" onClick={() => setIsInviteOpen(false)}>
                     Cancel
                   </Button>
-                  <Button
+                  <button
                     onClick={handleInviteUser}
                     disabled={!inviteEmail.trim() || inviting}
+                    className="
+                      px-4 py-2 rounded-md text-sm font-medium
+                      bg-gray-900 text-white
+                      hover:bg-gray-800
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                      transition-colors
+                    "
                   >
                     {inviting ? "Inviting..." : "Send Invite"}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
-        </CardHeader>
-        <CardContent>
-          {teamUsers.length === 0 ? (
-            <div className="py-8 text-center text-gray-500">
-              <User className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>No team members yet.</p>
-              <p className="text-sm mt-1">Invite your first team member to get started.</p>
+        </div>
+
+        {/* Success/Error Messages */}
+        {message && (
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              message.type === "success"
+                ? "bg-green-50 text-green-800 border border-green-200"
+                : "bg-red-50 text-red-800 border border-red-200"
+            }`}
+          >
+            <p className="text-sm font-medium">{message.text}</p>
+          </div>
+        )}
+
+        {/* Team List */}
+        {teamUsers.length === 0 ? (
+          <div className="border border-dashed border-gray-200 rounded-lg">
+            <EmptyState
+              icon={<User className="w-6 h-6" />}
+              title="No team members yet"
+              description="Invite your first team member to get started"
+              action={{
+                label: "Invite User",
+                onClick: () => setIsInviteOpen(true)
+              }}
+            />
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <div className="col-span-4">Name</div>
+              <div className="col-span-3">Email</div>
+              <div className="col-span-2">Role</div>
+              <div className="col-span-2">Status</div>
+              <div className="col-span-1 text-right">Actions</div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Name</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Email</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Role</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-600">Status</th>
-                    <th className="text-right py-3 px-2 text-sm font-medium text-gray-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamUsers.map((user) => {
-                    const initials = getInitials(user.name, user.email)
-                    const { firstName, lastName } = parseName(user.name)
+            
+            {/* Table Body */}
+            <div className="divide-y divide-gray-100">
+              {teamUsers.map((user) => {
+                const initials = getInitials(user.name, user.email)
+                
+                return (
+                  <div key={user.id} className="grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50">
+                    {/* Name */}
+                    <div className="col-span-4 flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-sm font-medium">
+                        {initials}
+                      </div>
+                      <span className="font-medium text-gray-900">
+                        {user.name || <span className="text-gray-400 italic">No name set</span>}
+                      </span>
+                    </div>
                     
-                    return (
-                      <tr key={user.id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="py-4 px-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium text-sm">
-                              {initials}
-                            </div>
-                            <div>
-                              {user.name ? (
-                                <span className="font-medium text-gray-900">{user.name}</span>
-                              ) : (
-                                <span className="text-gray-400 italic">No name set</span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-2 text-gray-600">{user.email}</td>
-                        <td className="py-4 px-2">
-                          <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
-                            user.role === "ADMIN" 
-                              ? "bg-purple-100 text-purple-800" 
-                              : user.role === "VIEWER"
-                              ? "bg-gray-100 text-gray-800"
-                              : "bg-blue-100 text-blue-800"
-                          }`}>
-                            {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
-                          </span>
-                        </td>
-                        <td className="py-4 px-2">
-                          {user.status === "active" ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                              <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
-                              <Clock className="w-3 h-3" />
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-4 px-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditModal(user)}
-                              className="h-8 w-8 p-0"
-                              title="Edit user"
-                            >
-                              <Pencil className="w-4 h-4 text-gray-500" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openDeleteModal(user)}
-                              className="h-8 w-8 p-0 hover:bg-red-50"
-                              title="Remove user"
-                            >
-                              <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-600" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    {/* Email */}
+                    <div className="col-span-3 text-sm text-gray-600 truncate">
+                      {user.email}
+                    </div>
+                    
+                    {/* Role */}
+                    <div className="col-span-2">
+                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${
+                        user.role === "ADMIN" 
+                          ? "border-purple-200 text-purple-700 bg-purple-50" 
+                          : user.role === "VIEWER"
+                          ? "border-gray-200 text-gray-600"
+                          : "border-gray-300 text-gray-700"
+                      }`}>
+                        {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
+                      </span>
+                    </div>
+                    
+                    {/* Status */}
+                    <div className="col-span-2">
+                      {user.status === "active" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-green-200 text-green-700 bg-green-50 text-xs font-medium rounded-full">
+                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-amber-200 text-amber-700 bg-amber-50 text-xs font-medium rounded-full">
+                          <Clock className="w-3 h-3" />
+                          Pending
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="col-span-1 flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => openEditModal(user)}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                        title="Edit user"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(user)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Remove user"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
 
       {/* Edit User Modal */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
@@ -512,17 +514,24 @@ export default function TeamSettingsPage() {
                     <SelectItem value="VIEWER">Viewer</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Admins can manage team members and settings
-                </p>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setIsEditOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveUser} disabled={saving}>
+                <button
+                  onClick={handleSaveUser}
+                  disabled={saving}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-medium
+                    bg-gray-900 text-white
+                    hover:bg-gray-800
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors
+                  "
+                >
                   {saving ? "Saving..." : "Save Changes"}
-                </Button>
+                </button>
               </div>
             </div>
           )}
@@ -547,13 +556,19 @@ export default function TeamSettingsPage() {
                 <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  variant="destructive" 
-                  onClick={handleDeleteUser} 
+                <button
+                  onClick={handleDeleteUser}
                   disabled={deleting}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-medium
+                    bg-red-600 text-white
+                    hover:bg-red-700
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors
+                  "
                 >
                   {deleting ? "Removing..." : "Remove User"}
-                </Button>
+                </button>
               </div>
             </div>
           )}

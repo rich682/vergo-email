@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PreviewPanel } from "@/components/compose/preview-panel"
+import { ArrowLeft, Check, AlertCircle } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 
 type Quest = {
   id: string
@@ -92,9 +91,7 @@ export default function QuestDetailPage() {
       if (!res.ok) {
         throw new Error("Failed to execute quest")
       }
-      const data = await res.json()
       setQuest(prev => prev ? { ...prev, status: "completed", executedAt: new Date().toISOString() } : null)
-      // Redirect to requests page
       router.push("/dashboard/requests")
     } catch (err: any) {
       setError(err.message)
@@ -103,199 +100,214 @@ export default function QuestDetailPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { color: string; label: string }> = {
-      interpreting: { color: "bg-blue-100 text-blue-800", label: "Interpreting" },
-      pending_confirmation: { color: "bg-yellow-100 text-yellow-800", label: "Pending Confirmation" },
-      generating: { color: "bg-blue-100 text-blue-800", label: "Generating Email" },
-      ready: { color: "bg-green-100 text-green-800", label: "Ready to Send" },
-      executing: { color: "bg-purple-100 text-purple-800", label: "Sending" },
-      completed: { color: "bg-gray-100 text-gray-800", label: "Completed" },
-      failed: { color: "bg-red-100 text-red-800", label: "Failed" }
+  const getStatusConfig = (status: string) => {
+    const configs: Record<string, { color: string; label: string }> = {
+      interpreting: { color: "border-blue-200 text-blue-700 bg-blue-50", label: "Interpreting" },
+      pending_confirmation: { color: "border-amber-200 text-amber-700 bg-amber-50", label: "Pending" },
+      generating: { color: "border-blue-200 text-blue-700 bg-blue-50", label: "Generating" },
+      ready: { color: "border-green-200 text-green-700 bg-green-50", label: "Ready" },
+      executing: { color: "border-purple-200 text-purple-700 bg-purple-50", label: "Sending" },
+      completed: { color: "border-gray-200 text-gray-600", label: "Completed" },
+      failed: { color: "border-red-200 text-red-700 bg-red-50", label: "Failed" }
     }
-    const config = statusConfig[status] || { color: "bg-gray-100 text-gray-800", label: status }
-    return (
-      <span className={`px-3 py-1 rounded-full text-sm font-medium ${config.color}`}>
-        {config.label}
-      </span>
-    )
+    return configs[status] || { color: "border-gray-200 text-gray-600", label: status }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">Loading quest...</div>
+      <div className="min-h-screen bg-white">
+        <div className="flex items-center justify-center py-24">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
+        </div>
       </div>
     )
   }
 
   if (error || !quest) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Error</h1>
-        <p className="text-gray-600">{error || "Quest not found"}</p>
-        <Button onClick={() => router.push("/dashboard/requests")}>
-          Back to Requests
-        </Button>
+      <div className="min-h-screen bg-white">
+        <div className="px-8 py-6">
+          <div className="max-w-lg mx-auto mt-12">
+            <div className="border border-dashed border-gray-200 rounded-lg">
+              <EmptyState
+                icon={<AlertCircle className="w-6 h-6" />}
+                title="Error"
+                description={error || "Quest not found"}
+                action={{
+                  label: "Back to Requests",
+                  onClick: () => router.push("/dashboard/requests")
+                }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className="h-full flex flex-col">
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push("/dashboard/requests")}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <h2 className="text-2xl font-bold">Quest Details</h2>
-            </div>
-            <p className="text-sm text-gray-600 mt-1 ml-8">{quest.originalPrompt}</p>
-          </div>
-          {getStatusBadge(quest.status)}
-        </div>
-      </div>
+  const statusConfig = getStatusConfig(quest.status)
 
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="px-8 py-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push("/dashboard/requests")}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Request Details</h1>
+              <p className="text-sm text-gray-500 mt-0.5">{quest.originalPrompt}</p>
+            </div>
+          </div>
+          <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusConfig.color}`}>
+            {statusConfig.label}
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Quest Details */}
+          {/* Left Column - Details */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Audience</CardTitle>
-              </CardHeader>
-              <CardContent>
+            {/* Audience */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h2 className="text-sm font-medium text-gray-900">Audience</h2>
+              </div>
+              <div className="p-4">
                 {quest.confirmedSelection?.contactTypes?.length ? (
                   <div className="flex flex-wrap gap-2">
                     {quest.confirmedSelection.contactTypes.map((type) => (
                       <span
                         key={type}
-                        className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                        className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
                       >
                         {type}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500">No audience specified</p>
+                  <p className="text-sm text-gray-500">No audience specified</p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Schedule</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Send:</span>
-                    <span className="font-medium">
-                      {quest.scheduleConfig?.type === "immediate" ? "Immediately" : "Scheduled"}
+            {/* Schedule */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h2 className="text-sm font-medium text-gray-900">Schedule</h2>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Send:</span>
+                  <span className="font-medium text-gray-900">
+                    {quest.scheduleConfig?.type === "immediate" ? "Immediately" : "Scheduled"}
+                  </span>
+                </div>
+                {quest.scheduleConfig?.deadline && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Deadline:</span>
+                    <span className="font-medium text-gray-900">
+                      {new Date(quest.scheduleConfig.deadline).toLocaleDateString()}
                     </span>
                   </div>
-                  {quest.scheduleConfig?.deadline && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Deadline:</span>
-                      <span className="font-medium">
-                        {new Date(quest.scheduleConfig.deadline).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                )}
+              </div>
+            </div>
 
+            {/* Reminders */}
             {quest.remindersConfig?.enabled && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Reminders</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Frequency:</span>
-                      <span className="font-medium">
-                        Every {quest.remindersConfig.frequencyHours / 24} days
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Max reminders:</span>
-                      <span className="font-medium">{quest.remindersConfig.maxCount}</span>
-                    </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                  <h2 className="text-sm font-medium text-gray-900">Reminders</h2>
+                </div>
+                <div className="p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Frequency:</span>
+                    <span className="font-medium text-gray-900">
+                      Every {quest.remindersConfig.frequencyHours / 24} days
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Max reminders:</span>
+                    <span className="font-medium text-gray-900">{quest.remindersConfig.maxCount}</span>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Actions */}
-            <Card>
-              <CardContent className="pt-6">
-                {quest.status === "pending_confirmation" && (
-                  <Button
-                    onClick={handleGenerateEmail}
-                    disabled={generating}
-                    className="w-full"
-                  >
-                    {generating ? "Generating..." : "Generate Email"}
-                  </Button>
-                )}
-                {quest.status === "ready" && (
-                  <Button
-                    onClick={handleExecute}
-                    disabled={executing}
-                    className="w-full"
-                  >
-                    {executing ? "Sending..." : "Send Emails"}
-                  </Button>
-                )}
-                {quest.status === "completed" && (
-                  <div className="text-center text-green-600">
-                    <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <p className="font-medium">Quest completed</p>
-                    {quest.executedAt && (
-                      <p className="text-sm text-gray-500">
-                        Sent on {new Date(quest.executedAt).toLocaleDateString()}
-                      </p>
-                    )}
+            <div className="border border-gray-200 rounded-lg p-4">
+              {quest.status === "pending_confirmation" && (
+                <button
+                  onClick={handleGenerateEmail}
+                  disabled={generating}
+                  className="
+                    w-full px-4 py-2 rounded-lg text-sm font-medium
+                    bg-gray-900 text-white
+                    hover:bg-gray-800
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors
+                  "
+                >
+                  {generating ? "Generating..." : "Generate Email"}
+                </button>
+              )}
+              {quest.status === "ready" && (
+                <button
+                  onClick={handleExecute}
+                  disabled={executing}
+                  className="
+                    w-full px-4 py-2 rounded-lg text-sm font-medium
+                    bg-gray-900 text-white
+                    hover:bg-gray-800
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors
+                  "
+                >
+                  {executing ? "Sending..." : "Send Emails"}
+                </button>
+              )}
+              {quest.status === "completed" && (
+                <div className="text-center py-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Check className="w-6 h-6 text-green-600" />
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <p className="font-medium text-gray-900">Request completed</p>
+                  {quest.executedAt && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Sent on {new Date(quest.executedAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Email Preview */}
+          {/* Right Column - Email Preview */}
           {quest.subject && quest.body && (
-            <Card className="h-fit">
-              <CardHeader>
-                <CardTitle>Email Preview</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Subject:</label>
-                    <div className="mt-1 p-3 bg-gray-50 rounded-md text-sm">
-                      {quest.subject}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Body:</label>
-                    <div className="mt-1 p-3 bg-gray-50 rounded-md text-sm whitespace-pre-wrap max-h-96 overflow-auto">
-                      {quest.body}
-                    </div>
+            <div className="border border-gray-200 rounded-lg overflow-hidden h-fit">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h2 className="text-sm font-medium text-gray-900">Email Preview</h2>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</label>
+                  <div className="mt-1 p-3 bg-gray-50 rounded-lg text-sm text-gray-900">
+                    {quest.subject}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Body</label>
+                  <div className="mt-1 p-3 bg-gray-50 rounded-lg text-sm text-gray-900 whitespace-pre-wrap max-h-96 overflow-auto">
+                    {quest.body}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
