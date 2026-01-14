@@ -243,7 +243,15 @@ Generate an email that uses EVERY merge field listed above.`
       })
 
       subject = generated.subjectTemplate || generated.subject
-      body = generated.bodyTemplate || generated.body
+      // Use bodyTemplate for the template, but we need to append signature
+      // since bodyTemplate doesn't include it (by design for per-recipient rendering)
+      const baseBody = generated.bodyTemplate || generated.body
+      // Append signature if not already present
+      if (senderSignature && !baseBody.includes(senderSignature)) {
+        body = `${baseBody}\n\n${senderSignature}`
+      } else {
+        body = baseBody
+      }
 
       // Analyze which columns are used in the generated content
       for (const col of columns) {
