@@ -93,13 +93,26 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, clientId, dueDate, labels, tags, ownerId } = body
+    const { name, description, clientId, dueDate, labels, tags, ownerId, stakeholders } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
         { error: "Item name is required" },
         { status: 400 }
       )
+    }
+
+    // Build labels object, merging stakeholders if provided
+    let finalLabels = labels || {}
+    if (stakeholders && Array.isArray(stakeholders)) {
+      // Filter out "No Stakeholders" placeholder
+      const validStakeholders = stakeholders.filter(
+        (s: any) => !(s.type === "contact_type" && s.id === "NONE")
+      )
+      finalLabels = {
+        ...finalLabels,
+        stakeholders: validStakeholders
+      }
     }
 
     // Owner defaults to creating user (AI invariant: current user by default)
@@ -110,7 +123,7 @@ export async function POST(request: NextRequest) {
       description: description?.trim() || undefined,
       clientId: clientId || undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
-      labels: labels || undefined,
+      labels: Object.keys(finalLabels).length > 0 ? finalLabels : undefined,
       tags: tags || undefined  // Convenience: will be merged into labels.tags
     })
 

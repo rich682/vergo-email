@@ -182,6 +182,15 @@ export default function JobsPage() {
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string | null; email: string; isCurrentUser: boolean }[]>([])
   const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   
+  // Stakeholder options for create modal
+  const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
+  const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
+  const [newJobStakeholders, setNewJobStakeholders] = useState<JobStakeholder[]>([])
+  const [stakeholderOptionsLoading, setStakeholderOptionsLoading] = useState(false)
+  const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
+  const [stakeholderSearchResults, setStakeholderSearchResults] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null }[]>([])
+  const [stakeholderSearchLoading, setStakeholderSearchLoading] = useState(false)
+  
   // Selection state
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
   
@@ -329,8 +338,85 @@ export default function JobsPage() {
   useEffect(() => {
     if (isCreateOpen) {
       fetchTeamMembers()
+      fetchStakeholderOptions()
     }
   }, [isCreateOpen, fetchTeamMembers])
+
+  // Fetch stakeholder options (contact types and groups)
+  const fetchStakeholderOptions = useCallback(async () => {
+    if (availableContactTypes.length > 0 && availableGroups.length > 0) return // Already fetched
+    setStakeholderOptionsLoading(true)
+    try {
+      // Fetch contact types with counts
+      const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
+      if (typesRes.ok) {
+        const typesData = await typesRes.json()
+        const types: { value: string; label: string; count: number }[] = []
+        const builtInCounts = typesData.builtInCounts || {}
+        const builtInLabels: Record<string, string> = {
+          EMPLOYEE: "Employees", VENDOR: "Vendors", CLIENT: "Clients", PARTNER: "Partners", OTHER: "Other"
+        }
+        for (const [value, label] of Object.entries(builtInLabels)) {
+          if (builtInCounts[value] && builtInCounts[value] > 0) {
+            types.push({ value, label, count: builtInCounts[value] })
+          }
+        }
+        const customTypes = typesData.customTypes || []
+        for (const ct of customTypes) {
+          types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
+        }
+        setAvailableContactTypes(types)
+      }
+      
+      // Fetch groups
+      const groupsRes = await fetch("/api/groups", { credentials: "include" })
+      if (groupsRes.ok) {
+        const groupsData = await groupsRes.json()
+        const groups = (Array.isArray(groupsData) ? groupsData : []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          memberCount: g.entityCount || g._count?.entities || 0
+        }))
+        setAvailableGroups(groups)
+      }
+    } catch (error) {
+      console.error("Error fetching stakeholder options:", error)
+    } finally {
+      setStakeholderOptionsLoading(false)
+    }
+  }, [availableContactTypes.length, availableGroups.length])
+
+  // Search for individual contacts
+  const searchContacts = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setStakeholderSearchResults([])
+      return
+    }
+    setStakeholderSearchLoading(true)
+    try {
+      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}&limit=10`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setStakeholderSearchResults(data.entities || [])
+      }
+    } catch (error) {
+      console.error("Error searching contacts:", error)
+    } finally {
+      setStakeholderSearchLoading(false)
+    }
+  }, [])
+
+  // Debounced search for individual contacts
+  useEffect(() => {
+    const debounce = setTimeout(() => {
+      if (stakeholderSearchQuery) {
+        searchContacts(stakeholderSearchQuery)
+      } else {
+        setStakeholderSearchResults([])
+      }
+    }, 300)
+    return () => clearTimeout(debounce)
+  }, [stakeholderSearchQuery, searchContacts])
 
   // ============================================
   // Handlers
@@ -366,7 +452,7 @@ export default function JobsPage() {
   }
 
   const handleCreateJob = async () => {
-    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate) return
+    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
     try {
       const response = await fetch("/api/jobs", {
@@ -378,7 +464,8 @@ export default function JobsPage() {
           description: newJobDescription.trim() || undefined,
           tags: newJobTags.length > 0 ? newJobTags : undefined,
           dueDate: newJobDueDate,
-          ownerId: newJobOwnerId
+          ownerId: newJobOwnerId,
+          stakeholders: newJobStakeholders.length > 0 ? newJobStakeholders : undefined
         })
       })
       if (response.ok) {
@@ -398,13 +485,7 @@ export default function JobsPage() {
         
         setJobs(prev => [data.job, ...prev])
         setAllJobs(prev => [data.job, ...prev])
-        setNewJobName("")
-        setNewJobDescription("")
-        setNewJobTags([])
-        setNewTagInput("")
-        setNewJobDueDate("")
-        setNewJobOwnerId("")
-        setNewJobCollaboratorIds([])
+        resetCreateForm()
         setIsCreateOpen(false)
         router.push(`/dashboard/jobs/${data.job.id}`)
       }
@@ -413,6 +494,31 @@ export default function JobsPage() {
     } finally {
       setCreating(false)
     }
+  }
+
+  const resetCreateForm = () => {
+    setNewJobName("")
+    setNewJobDescription("")
+    setNewJobTags([])
+    setNewTagInput("")
+    setNewJobDueDate("")
+    setNewJobOwnerId("")
+    setNewJobCollaboratorIds([])
+    setNewJobStakeholders([])
+    setStakeholderSearchQuery("")
+    setStakeholderSearchResults([])
+  }
+
+  const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
+    const exists = newJobStakeholders.some(s => s.type === type && s.id === id)
+    if (exists) return
+    setNewJobStakeholders(prev => [...prev, { type, id, name }])
+    setStakeholderSearchQuery("")
+    setStakeholderSearchResults([])
+  }
+
+  const handleRemoveStakeholder = (type: string, id: string) => {
+    setNewJobStakeholders(prev => prev.filter(s => !(s.type === type && s.id === id)))
   }
 
   const handleAddNewTag = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -774,6 +880,121 @@ export default function JobsPage() {
                   />
                 </div>
                 
+                {/* Stakeholders */}
+                <div>
+                  <Label>Stakeholders <span className="text-red-500">*</span></Label>
+                  <p className="text-xs text-gray-500 mt-0.5 mb-2">Who will you be requesting information from?</p>
+                  
+                  {/* Selected stakeholders */}
+                  {newJobStakeholders.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {newJobStakeholders.map(s => (
+                        <Chip
+                          key={`${s.type}-${s.id}`}
+                          label={s.name}
+                          color={s.type === "contact_type" ? "blue" : s.type === "group" ? "purple" : "gray"}
+                          removable
+                          onRemove={() => handleRemoveStakeholder(s.type, s.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {stakeholderOptionsLoading ? (
+                    <p className="text-sm text-gray-500">Loading options...</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Contact Types */}
+                      {availableContactTypes.length > 0 && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">By Organization:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {availableContactTypes
+                              .filter(t => !newJobStakeholders.some(s => s.type === "contact_type" && s.id === t.value))
+                              .map(type => (
+                                <button
+                                  key={type.value}
+                                  type="button"
+                                  onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
+                                  className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full hover:bg-blue-100 transition-colors"
+                                >
+                                  + {type.label} ({type.count})
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Groups */}
+                      {availableGroups.length > 0 && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">By Group:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {availableGroups
+                              .filter(g => !newJobStakeholders.some(s => s.type === "group" && s.id === g.id))
+                              .map(group => (
+                                <button
+                                  key={group.id}
+                                  type="button"
+                                  onClick={() => handleAddStakeholder("group", group.id, group.name)}
+                                  className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full hover:bg-purple-100 transition-colors"
+                                >
+                                  + {group.name} ({group.memberCount})
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Individual search */}
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Or search for individuals:</p>
+                        <Input
+                          placeholder="Search contacts by name or email..."
+                          value={stakeholderSearchQuery}
+                          onChange={(e) => setStakeholderSearchQuery(e.target.value)}
+                          className="text-sm"
+                        />
+                        {stakeholderSearchLoading && (
+                          <p className="text-xs text-gray-500 mt-1">Searching...</p>
+                        )}
+                        {stakeholderSearchResults.length > 0 && (
+                          <div className="mt-1 border border-gray-200 rounded-md max-h-32 overflow-y-auto">
+                            {stakeholderSearchResults
+                              .filter(c => !newJobStakeholders.some(s => s.type === "individual" && s.id === c.id))
+                              .map(contact => (
+                                <button
+                                  key={contact.id}
+                                  type="button"
+                                  onClick={() => handleAddStakeholder(
+                                    "individual",
+                                    contact.id,
+                                    `${contact.firstName}${contact.lastName ? ` ${contact.lastName}` : ""}`
+                                  )}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
+                                >
+                                  <span>{contact.firstName} {contact.lastName}</span>
+                                  <span className="text-xs text-gray-400">{contact.email}</span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* No stakeholders option */}
+                      {newJobStakeholders.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddStakeholder("contact_type", "NONE", "No Stakeholders")}
+                          className="text-xs text-gray-500 hover:text-gray-700 underline"
+                        >
+                          This item has no external stakeholders
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
                 {/* Divider */}
                 <div className="border-t border-gray-200 pt-4">
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Optional</p>
@@ -888,7 +1109,7 @@ export default function JobsPage() {
                   </Button>
                   <button
                     onClick={handleCreateJob}
-                    disabled={!newJobName.trim() || !newJobOwnerId || !newJobDueDate || creating}
+                    disabled={!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0 || creating}
                     className="
                       px-4 py-2 rounded-md text-sm font-medium
                       bg-gray-900 text-white
