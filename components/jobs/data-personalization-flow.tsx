@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { UploadStep } from "./data-personalization/upload-step"
-import { DraftStep } from "./data-personalization/draft-step"
-import { PreviewSendStep } from "./data-personalization/preview-send-step"
+import { ComposeSendStep } from "./data-personalization/compose-send-step"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
 interface DataPersonalizationFlowProps {
@@ -13,7 +12,7 @@ interface DataPersonalizationFlowProps {
   onCancel: () => void
 }
 
-type FlowStep = "upload" | "draft" | "preview"
+type FlowStep = "upload" | "compose"
 
 interface FlowState {
   draftId: string | null
@@ -21,8 +20,6 @@ interface FlowState {
   rows: DatasetRow[]
   emailColumn: string
   validation: DatasetValidation | null
-  subject: string
-  body: string
 }
 
 export function DataPersonalizationFlow({
@@ -38,8 +35,6 @@ export function DataPersonalizationFlow({
     rows: [],
     emailColumn: "",
     validation: null,
-    subject: "",
-    body: "",
   })
 
   // Handle upload complete
@@ -58,39 +53,23 @@ export function DataPersonalizationFlow({
       emailColumn: data.emailColumn,
       validation: data.validation,
     }))
-    setStep("draft")
+    setStep("compose")
   }
 
-  // Handle columns change (from draft step)
+  // Handle columns change (from compose step)
   const handleColumnsChange = (columns: DatasetColumn[]) => {
     setState(prev => ({ ...prev, columns }))
   }
 
-  // Handle draft continue
-  const handleDraftContinue = (data: { subject: string; body: string }) => {
-    setState(prev => ({
-      ...prev,
-      subject: data.subject,
-      body: data.body,
-    }))
-    setStep("preview")
-  }
-
-  // Handle back from draft
-  const handleBackFromDraft = () => {
+  // Handle back from compose
+  const handleBackFromCompose = () => {
     setStep("upload")
-  }
-
-  // Handle back from preview
-  const handleBackFromPreview = () => {
-    setStep("draft")
   }
 
   // Step indicator
   const steps = [
     { key: "upload", label: "Upload Data" },
-    { key: "draft", label: "Compose Email" },
-    { key: "preview", label: "Preview & Send" },
+    { key: "compose", label: "Compose & Send" },
   ]
 
   const currentStepIndex = steps.findIndex(s => s.key === step)
@@ -125,7 +104,7 @@ export function DataPersonalizationFlow({
             {index < steps.length - 1 && (
               <div
                 className={`
-                  w-12 h-0.5 mx-3
+                  w-16 h-0.5 mx-4
                   ${index < currentStepIndex ? "bg-orange-500" : "bg-gray-200"}
                 `}
               />
@@ -143,29 +122,15 @@ export function DataPersonalizationFlow({
         />
       )}
 
-      {step === "draft" && state.draftId && state.validation && (
-        <DraftStep
+      {step === "compose" && state.draftId && state.validation && (
+        <ComposeSendStep
           jobId={jobId}
           draftId={state.draftId}
           columns={state.columns}
           rows={state.rows}
           validation={state.validation}
           onColumnsChange={handleColumnsChange}
-          onContinue={handleDraftContinue}
-          onBack={handleBackFromDraft}
-        />
-      )}
-
-      {step === "preview" && state.draftId && state.validation && (
-        <PreviewSendStep
-          jobId={jobId}
-          draftId={state.draftId}
-          subject={state.subject}
-          body={state.body}
-          columns={state.columns}
-          rows={state.rows}
-          validation={state.validation}
-          onBack={handleBackFromPreview}
+          onBack={handleBackFromCompose}
           onSuccess={onSuccess}
         />
       )}
