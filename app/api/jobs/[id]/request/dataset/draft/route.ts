@@ -148,7 +148,12 @@ export async function POST(
     const labels = job.labels as any
     const jobLabels = labels?.tags || []
 
-    let prompt = `Generate a professional email for a business request.
+    // Identify name-like columns for greeting
+    const nameColumn = columns.find(c => 
+      c.key.includes('first_name') || c.key.includes('firstname') || c.key.includes('name')
+    )
+
+    let prompt = `Generate a professional email for a business request. You MUST use the merge fields provided.
 
 ITEM CONTEXT:
 - Item Name: ${job.name}
@@ -156,25 +161,34 @@ ITEM CONTEXT:
 - Due Date: ${job.dueDate ? job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Not set"}
 - Labels: ${jobLabels.length > 0 ? jobLabels.join(', ') : "None"}
 
-DATASET COLUMNS AVAILABLE FOR PERSONALIZATION:
+AVAILABLE MERGE FIELDS (YOU MUST USE THESE):
 ${columns.map(col => {
   const samples = columnSamples[col.key]
-  return `- {{${col.key}}} (${col.type}): ${samples.length > 0 ? `Sample values: ${samples.join(', ')}` : 'No sample values'}`
+  return `- {{${col.key}}} (${col.type})${samples.length > 0 ? ` - Example values: ${samples.slice(0, 2).join(', ')}` : ''}`
 }).join('\n')}
-
-RECIPIENT COUNT: ${sampleData.length > 0 ? 'Multiple recipients' : 'Unknown'}
 
 ${userGoal ? `USER'S SPECIFIC GOAL: ${userGoal}` : ''}
 
-INSTRUCTIONS:
-1. Create a professional email with subject and body
-2. Use {{column_key}} syntax for merge fields (e.g., {{first_name}}, {{invoice_number}})
-3. Start with a personalized greeting using available name fields
-4. Reference the item context appropriately
-5. Be concise and actionable
-6. Include a clear call-to-action
+CRITICAL REQUIREMENTS:
+1. You MUST include ALL available merge fields in the email body
+2. Use {{column_key}} syntax exactly as shown above
+3. ${nameColumn ? `Start with "Dear {{${nameColumn.key}}}," for personalization` : 'Start with "Dear Recipient," if no name field available'}
+4. For each data field, write a sentence that naturally incorporates it. For example:
+   - If there's an invoice_amount field: "The outstanding amount is {{invoice_amount}}."
+   - If there's an invoice_due_date field: "Payment is due by {{invoice_due_date}}."
+   - If there's an invoice_number field: "This is regarding invoice #{{invoice_number}}."
+5. If you cannot naturally incorporate a field into a sentence, list it in a "Details" section:
+   
+   Details:
+   - Invoice Number: {{invoice_number}}
+   - Amount: {{invoice_amount}}
+   - Due Date: {{invoice_due_date}}
 
-The email should be ready to send to multiple recipients with personalized merge fields.`
+6. Reference the item name "${job.name}" in the subject line
+7. Be professional and actionable
+8. Include a clear call-to-action
+
+Generate an email that uses EVERY merge field listed above.`
 
     // Generate draft using AI
     let subject: string
