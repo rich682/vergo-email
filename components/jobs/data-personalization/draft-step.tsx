@@ -26,6 +26,9 @@ import {
   CheckCircle,
   Plus,
   ChevronRight,
+  Eye,
+  ChevronLeft,
+  User,
 } from "lucide-react"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
@@ -76,6 +79,48 @@ export function DraftStep({
   const subjectRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const [activeField, setActiveField] = useState<"subject" | "body">("body")
+  
+  // Preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState(0)
+  
+  // Filter out name columns from insertable fields (they're used automatically for greeting)
+  const insertableColumns = columns.filter(col => 
+    !col.key.includes('first_name') && 
+    !col.key.includes('firstname') && 
+    !col.key.includes('last_name') &&
+    !col.key.includes('lastname') &&
+    !(col.key === 'name') &&
+    !(col.key === 'first') &&
+    !(col.key === 'last')
+  )
+  
+  // Get valid rows for preview
+  const validRows = rows.filter(r => r.valid)
+  const currentPreviewRow = validRows[previewIndex]
+  
+  // Render preview with merge fields replaced
+  const getPreviewBody = () => {
+    if (!currentPreviewRow) return body
+    let rendered = body
+    for (const col of columns) {
+      const regex = new RegExp(`\\{\\{\\s*${col.key}\\s*\\}\\}`, 'gi')
+      const value = currentPreviewRow.values[col.key] || `[MISSING: ${col.label}]`
+      rendered = rendered.replace(regex, value)
+    }
+    return rendered
+  }
+  
+  const getPreviewSubject = () => {
+    if (!currentPreviewRow) return subject
+    let rendered = subject
+    for (const col of columns) {
+      const regex = new RegExp(`\\{\\{\\s*${col.key}\\s*\\}\\}`, 'gi')
+      const value = currentPreviewRow.values[col.key] || `[MISSING: ${col.label}]`
+      rendered = rendered.replace(regex, value)
+    }
+    return rendered
+  }
 
   // Generate draft
   const generateDraft = useCallback(async () => {
@@ -350,16 +395,88 @@ export function DraftStep({
             </div>
             
             <div>
-              <Label className="mb-2 block">Body</Label>
-              <Textarea
-                ref={bodyRef}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                onFocus={() => setActiveField("body")}
-                placeholder="Email body..."
-                className="min-h-[300px] font-mono text-sm"
-                style={{ fontFamily: "Arial, sans-serif" }}
-              />
+              <div className="flex items-center justify-between mb-2">
+                <Label>Body</Label>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(!showPreview)}
+                  className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
+                    showPreview 
+                      ? "bg-orange-100 text-orange-700" 
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  {showPreview ? "Hide Preview" : "Preview"}
+                </button>
+              </div>
+              
+              {!showPreview ? (
+                <Textarea
+                  ref={bodyRef}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  onFocus={() => setActiveField("body")}
+                  placeholder="Email body..."
+                  className="min-h-[300px] text-sm"
+                  style={{ fontFamily: "Arial, sans-serif" }}
+                />
+              ) : (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Preview Header */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">
+                        {currentPreviewRow?.values.first_name || currentPreviewRow?.values.firstname || currentPreviewRow?.values.name || currentPreviewRow?.email || "Recipient"}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        ({currentPreviewRow?.email})
+                      </span>
+                    </div>
+                    {validRows.length > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewIndex(prev => (prev - 1 + validRows.length) % validRows.length)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          <ChevronLeft className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <span className="text-xs text-gray-500 min-w-[60px] text-center">
+                          {previewIndex + 1} of {validRows.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewIndex(prev => (prev + 1) % validRows.length)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          <ChevronRight className="w-4 h-4 text-gray-600" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Preview Content */}
+                  <div className="p-4 bg-white">
+                    <div className="text-sm text-gray-500 mb-3">
+                      <strong>Subject:</strong> {getPreviewSubject()}
+                    </div>
+                    <div 
+                      className="text-sm text-gray-900 whitespace-pre-wrap"
+                      style={{ fontFamily: "Arial, sans-serif", lineHeight: "1.6" }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: getPreviewBody()
+                          .replace(/\n/g, '<br>')
+                          .replace(
+                            /\[MISSING: ([^\]]+)\]/g, 
+                            '<span style="background-color: #fef3c7; padding: 2px 4px; border-radius: 2px; color: #92400e;">[$1]</span>'
+                          )
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Refinement Section */}
@@ -404,8 +521,11 @@ export function DraftStep({
             {/* Insert Field */}
             <div className="border rounded-lg p-4">
               <Label className="mb-3 block font-medium">Insert Field</Label>
+              <p className="text-xs text-gray-500 mb-3">
+                Name fields are used automatically in the greeting
+              </p>
               <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                {columns.map((col) => (
+                {insertableColumns.map((col) => (
                   <button
                     key={col.key}
                     onClick={() => insertField(col.key)}
@@ -448,8 +568,8 @@ export function DraftStep({
                   <span className="font-medium text-green-600">{usedColumns.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Available</span>
-                  <span className="font-medium text-gray-600">{columns.length}</span>
+                  <span className="text-gray-600">Data fields</span>
+                  <span className="font-medium text-gray-600">{insertableColumns.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Recipients</span>
