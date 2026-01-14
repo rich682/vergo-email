@@ -36,6 +36,9 @@ import {
   Users,
   Clock,
   X,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 
 // Types
@@ -143,11 +146,16 @@ export function SendRequestModal({
   const [body, setBody] = useState("")
   const [refinementInstruction, setRefinementInstruction] = useState("")
   const [remindersEnabled, setRemindersEnabled] = useState(false)
+  const [reminderDays, setReminderDays] = useState(7) // Default to weekly
   const [usedFallback, setUsedFallback] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Recipients with exclusion toggles
   const [recipients, setRecipients] = useState<Array<StakeholderContact & { included: boolean }>>([])
+  
+  // Preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState(0)
 
   // Fetch draft when modal opens
   const fetchDraft = useCallback(async () => {
@@ -212,9 +220,12 @@ export function SendRequestModal({
       setBody("")
       setRefinementInstruction("")
       setRemindersEnabled(false)
+      setReminderDays(7)
       setUsedFallback(false)
       setError(null)
       setRecipients([])
+      setShowPreview(false)
+      setPreviewIndex(0)
     }
   }, [open])
 
@@ -297,7 +308,8 @@ export function SendRequestModal({
         },
         reminderIntent: {
           enabled: remindersEnabled,
-          frequency: remindersEnabled ? ("weekly" as const) : undefined,
+          frequency: remindersEnabled ? "custom" : undefined,
+          customDays: remindersEnabled ? reminderDays : undefined,
           stopCondition: "reply_or_deadline" as const,
         },
         requestType: "one-off" as const,
@@ -327,7 +339,8 @@ export function SendRequestModal({
           confirmedReminders: remindersEnabled
             ? {
                 enabled: true,
-                frequency: "weekly",
+                frequency: "custom",
+                customDays: reminderDays,
                 stopCondition: "reply_or_deadline",
               }
             : { enabled: false },
@@ -381,10 +394,30 @@ export function SendRequestModal({
   // Computed values
   const includedCount = recipients.filter(r => r.included).length
   const totalCount = recipients.length
+  const includedRecipients = recipients.filter(r => r.included)
+  
+  // Preview helpers
+  const currentPreviewRecipient = includedRecipients[previewIndex]
+  
+  const getPersonalizedBody = (recipient: StakeholderContact | undefined) => {
+    if (!recipient) return body
+    return body
+      .replace(/\{\{First Name\}\}/gi, recipient.firstName || "")
+      .replace(/\{\{Last Name\}\}/gi, recipient.lastName || "")
+      .replace(/\{\{Email\}\}/gi, recipient.email || "")
+  }
+  
+  const nextPreview = () => {
+    setPreviewIndex(prev => (prev + 1) % includedRecipients.length)
+  }
+  
+  const prevPreview = () => {
+    setPreviewIndex(prev => (prev - 1 + includedRecipients.length) % includedRecipients.length)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-orange-500" />
@@ -511,20 +544,88 @@ export function SendRequestModal({
               />
             </div>
 
-            {/* Body */}
+            {/* Body with Preview Toggle */}
             <div>
-              <Label htmlFor="body">Message</Label>
-              <Textarea
-                id="body"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Email body..."
-                rows={8}
-                className="mt-1 resize-none font-mono text-sm"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Use {"{{First Name}}"} to personalize for each recipient
-              </p>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="body">Message</Label>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(!showPreview)}
+                  className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
+                    showPreview 
+                      ? "bg-orange-100 text-orange-700" 
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  {showPreview ? "Hide Preview" : "Preview"}
+                </button>
+              </div>
+              
+              {!showPreview ? (
+                <>
+                  <Textarea
+                    id="body"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="Email body..."
+                    rows={10}
+                    className="mt-1 resize-none"
+                    style={{ fontFamily: "Arial, sans-serif", fontSize: "14px" }}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use {"{{First Name}}"} to personalize for each recipient
+                  </p>
+                </>
+              ) : (
+                <div className="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Preview Header */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        Preview for: {currentPreviewRecipient?.firstName} {currentPreviewRecipient?.lastName || ""}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        ({currentPreviewRecipient?.email})
+                      </span>
+                    </div>
+                    {includedRecipients.length > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={prevPreview}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          <ChevronLeft className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <span className="text-xs text-gray-500 min-w-[60px] text-center">
+                          {previewIndex + 1} of {includedRecipients.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={nextPreview}
+                          className="p-1 hover:bg-gray-200 rounded"
+                        >
+                          <ChevronRight className="w-4 h-4 text-gray-600" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Preview Content */}
+                  <div className="p-4 bg-white min-h-[200px]" style={{ fontFamily: "Arial, sans-serif" }}>
+                    <div className="text-sm text-gray-500 mb-2">
+                      <strong>Subject:</strong> {subject}
+                    </div>
+                    <div 
+                      className="text-sm text-gray-900 whitespace-pre-wrap"
+                      style={{ fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6" }}
+                    >
+                      {getPersonalizedBody(currentPreviewRecipient)}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Refinement */}
@@ -561,37 +662,62 @@ export function SendRequestModal({
               </div>
             </div>
 
-            {/* Reminders Toggle */}
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <div>
-                  <Label htmlFor="reminders" className="cursor-pointer">
-                    Send reminders
-                  </Label>
-                  <p className="text-xs text-gray-500">
-                    Weekly reminders until reply or deadline
-                  </p>
+            {/* Reminders Section */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-500" />
+                  <div>
+                    <Label htmlFor="reminders" className="cursor-pointer">
+                      Send reminders
+                    </Label>
+                    <p className="text-xs text-gray-500">
+                      Automatic follow-ups until reply or deadline
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <button
-                id="reminders"
-                type="button"
-                role="switch"
-                aria-checked={remindersEnabled}
-                onClick={() => setRemindersEnabled(!remindersEnabled)}
-                className={`
-                  relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                  ${remindersEnabled ? "bg-orange-500" : "bg-gray-200"}
-                `}
-              >
-                <span
+                <button
+                  id="reminders"
+                  type="button"
+                  role="switch"
+                  aria-checked={remindersEnabled}
+                  onClick={() => setRemindersEnabled(!remindersEnabled)}
                   className={`
-                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                    ${remindersEnabled ? "translate-x-6" : "translate-x-1"}
+                    relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                    ${remindersEnabled ? "bg-orange-500" : "bg-gray-200"}
                   `}
-                />
-              </button>
+                >
+                  <span
+                    className={`
+                      inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                      ${remindersEnabled ? "translate-x-6" : "translate-x-1"}
+                    `}
+                  />
+                </button>
+              </div>
+              
+              {/* Reminder Frequency Options */}
+              {remindersEnabled && (
+                <div className="mt-3 ml-6 p-3 bg-gray-50 rounded-lg">
+                  <Label className="text-xs text-gray-600 mb-2 block">Remind every:</Label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={reminderDays}
+                      onChange={(e) => setReminderDays(Number(e.target.value))}
+                      className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    >
+                      <option value={1}>1 day</option>
+                      <option value={2}>2 days</option>
+                      <option value={3}>3 days</option>
+                      <option value={5}>5 days</option>
+                      <option value={7}>7 days (weekly)</option>
+                      <option value={14}>14 days (bi-weekly)</option>
+                      <option value={30}>30 days (monthly)</option>
+                    </select>
+                    <span className="text-xs text-gray-500">until they reply or deadline passes</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
