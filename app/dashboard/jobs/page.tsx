@@ -507,6 +507,92 @@ export default function JobsPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="px-8 py-4">
+        {/* Saved Views Row */}
+        <div className="flex items-center gap-2 mb-4 mt-4">
+          {/* Saved view pills */}
+          {savedViews.map((view) => (
+            <button
+              key={view.id}
+              onClick={() => handleApplyView(view)}
+              className={`
+                group flex items-center gap-2 px-4 py-2 
+                border rounded-full
+                text-sm font-medium
+                transition-colors
+                ${activeViewId === view.id
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 text-gray-600 hover:border-gray-400"
+                }
+              `}
+            >
+              {view.name}
+              <span
+                onClick={(e) => handleDeleteView(view.id, e)}
+                className={`
+                  opacity-0 group-hover:opacity-100 transition-opacity
+                  hover:text-red-400
+                  ${activeViewId === view.id ? "text-gray-400" : "text-gray-400"}
+                `}
+              >
+                <X className="w-3.5 h-3.5" />
+              </span>
+            </button>
+          ))}
+          
+          {/* Save New View button - only show when filters are active */}
+          {hasActiveFilters && (
+            <Dialog open={isSaveViewOpen} onOpenChange={setIsSaveViewOpen}>
+              <DialogTrigger asChild>
+                <button
+                  className="
+                    flex items-center gap-2 px-4 py-2 
+                    border border-dashed border-gray-300 rounded-full
+                    text-sm font-medium text-gray-500
+                    hover:border-gray-400 hover:text-gray-600
+                    transition-colors
+                  "
+                >
+                  <Plus className="w-4 h-4" />
+                  Save New View
+                </button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Save New View</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <p className="text-sm text-gray-600">
+                    Enter a name for this view
+                  </p>
+                  <Input
+                    placeholder="View Name"
+                    value={newViewName}
+                    onChange={(e) => setNewViewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newViewName.trim()) {
+                        handleSaveView()
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsSaveViewOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveView}
+                      disabled={!newViewName.trim()}
+                      className="bg-gray-900 text-white hover:bg-gray-800"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+
         {/* Action Row */}
         <div className="flex items-center justify-end gap-2 mb-4">
           {/* AI Bulk Add Button (placeholder for future feature) */}
