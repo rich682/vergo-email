@@ -149,25 +149,23 @@ export default function QuestDetailPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push("/dashboard/requests")}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Request Details</h1>
-              <p className="text-sm text-gray-500 mt-0.5">{quest.originalPrompt}</p>
-            </div>
-          </div>
+      <div className="px-8 py-4">
+        {/* Back button and status */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => router.push("/dashboard/requests")}
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">Back</span>
+          </button>
           <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusConfig.color}`}>
             {statusConfig.label}
           </span>
         </div>
+        
+        {/* Prompt summary */}
+        <p className="text-sm text-gray-600 mb-4 bg-gray-50 px-4 py-2 rounded-lg">{quest.originalPrompt}</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column - Details */}

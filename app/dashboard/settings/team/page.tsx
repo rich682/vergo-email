@@ -237,11 +237,7 @@ export default function TeamSettingsPage() {
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-white">
-        <div className="px-8 py-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Team</h1>
-            <p className="text-sm text-gray-500">Manage your organization's team members</p>
-          </div>
+        <div className="px-8 py-4">
           <div className="border border-dashed border-gray-200 rounded-lg">
             <EmptyState
               icon={<Shield className="w-6 h-6" />}
@@ -256,16 +252,9 @@ export default function TeamSettingsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Page Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Team</h1>
-            <p className="text-sm text-gray-500">
-              Manage your organization's team members and their roles
-            </p>
-          </div>
-          
+      <div className="px-8 py-4">
+        {/* Action Row */}
+        <div className="flex items-center justify-end mb-4">
           {/* Invite User Button */}
           <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
             <DialogTrigger asChild>

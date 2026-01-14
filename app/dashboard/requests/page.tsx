@@ -292,16 +292,9 @@ export default function RequestsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Page Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Requests</h1>
-            <p className="text-sm text-gray-500">
-              {requestGroups.filter(g => g.isComplete).length}/{requestGroups.length} complete • {allTasks.length} total tasks
-            </p>
-          </div>
-          
+      <div className="px-8 py-4">
+        {/* Action Row */}
+        <div className="flex items-center justify-end mb-4">
           <button
             onClick={() => {
               if (isJobsUIEnabled()) {

@@ -271,18 +271,9 @@ export default function JobsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Page Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">
-              {UI_LABELS.jobsPageTitle}
-            </h1>
-            <p className="text-sm text-gray-500">
-              {UI_LABELS.jobsPageSubtitle}
-            </p>
-          </div>
-          
+      <div className="px-8 py-4">
+        {/* Action Row */}
+        <div className="flex items-center justify-end mb-4">
           {/* New Item CTA */}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
@@ -389,7 +380,7 @@ export default function JobsPage() {
         </div>
 
         {/* Search and Filter Row */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 mt-4">
           {/* Search */}
           <div className="relative flex-1 max-w-lg">
             <Input

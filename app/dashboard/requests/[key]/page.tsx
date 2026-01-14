@@ -292,17 +292,15 @@ export default function RequestDetailPage() {
               : undefined
           }
         >
-          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <button
-                  onClick={() => router.push('/dashboard/requests')}
-                  className="text-sm text-gray-500 hover:text-gray-700 mb-1"
-                >
-                  ← Back to Requests
-                </button>
-                <h2 className="text-2xl font-bold">{requestDisplayName}</h2>
-              </div>
+          <div className="flex-shrink-0 px-6 py-3 border-b border-gray-200 bg-white">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/dashboard/requests')}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                ← Back
+              </button>
+              <h2 className="text-lg font-medium text-gray-900">{requestDisplayName}</h2>
             </div>
           </div>
 

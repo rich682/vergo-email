@@ -136,13 +136,7 @@ function SettingsContent() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Page Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">Settings</h1>
-          <p className="text-sm text-gray-500">Manage your email connections and preferences</p>
-        </div>
-
+      <div className="px-8 py-4">
         {/* Success/Error Messages */}
         {message && (
           <div

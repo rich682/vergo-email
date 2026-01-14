@@ -172,14 +172,9 @@ export default function ContactsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-6">
-        {/* Page Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Contacts</h1>
-            <p className="text-sm text-gray-500">Manage people and organizations</p>
-          </div>
-          
+      <div className="px-8 py-4">
+        {/* Action Row */}
+        <div className="flex items-center justify-end mb-4">
           {/* Contacts Tab CTAs */}
           {activeTab === "contacts" && (
             <div className="flex gap-2">
