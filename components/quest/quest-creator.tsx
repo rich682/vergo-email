@@ -32,9 +32,9 @@ const EXAMPLE_PROMPTS = [
 ]
 
 interface QuestCreatorProps {
-  jobId?: string | null  // Optional: parent Job for Request-level association
-  jobName?: string       // Optional: Job name for display
-  onComplete?: () => void  // Optional: callback after successful send
+  jobId?: string | null
+  jobName?: string
+  onComplete?: () => void
 }
 
 export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) {
@@ -61,12 +61,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Fetch organization context on mount
   useEffect(() => {
     const fetchContext = async () => {
       try {
@@ -79,11 +77,9 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
         }
       } catch (error) {
         console.error("Failed to fetch context:", error)
-        // Use defaults
         setAvailableContactTypes(["EMPLOYEE", "VENDOR", "CLIENT", "CONTRACTOR", "MANAGEMENT"])
         setAvailableGroups([])
         setAvailableTags([])
-        setStandingQuestsEnabled(false)
       }
     }
     fetchContext()
@@ -103,7 +99,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     setPrompt("")
     setIsProcessing(true)
 
-    // Add thinking message
     const thinkingId = (Date.now() + 1).toString()
     setMessages(prev => [...prev, {
       id: thinkingId,
@@ -111,7 +106,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
       content: "Understanding your request..."
     }])
 
-    // Animate through thinking stages
     setThinkingStage("understanding")
     await new Promise(r => setTimeout(r, 800))
     
@@ -121,7 +115,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     ))
     
     try {
-      // Call interpret API
       const res = await fetch("/api/quests/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -136,13 +129,11 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
       const interpretation = data.interpretation as QuestInterpretationResult
       const recipients = data.recipients || []
 
-      // Store resolved recipients for display
       setResolvedRecipients(recipients)
 
       setThinkingStage("ready")
       await new Promise(r => setTimeout(r, 400))
 
-      // Remove thinking message and add confirmation card
       setMessages(prev => [
         ...prev.filter(m => m.id !== thinkingId),
         {
@@ -155,7 +146,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
 
     } catch (error: any) {
       console.error("Interpretation error:", error)
-      // Remove thinking and add error message
       setMessages(prev => [
         ...prev.filter(m => m.id !== thinkingId),
         {
@@ -176,20 +166,14 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     reminders: QuestReminderIntent,
     standingSchedule?: StandingQuestSchedule
   ) => {
-    // Find the confirmation message to get the interpretation
     const confirmationMsg = messages.find(m => m.type === "confirmation")
     if (!confirmationMsg?.interpretation) {
       console.error("handleConfirm: No confirmation message or interpretation found")
       return
     }
 
-    console.log("handleConfirm: Starting with selection:", selection)
-    console.log("handleConfirm: Schedule:", schedule)
-    console.log("handleConfirm: Reminders:", reminders)
-    
     setIsProcessing(true)
     
-    // Show generating animation - replace confirmation with generating message
     setMessages(prev => [
       ...prev.filter(m => m.type !== "confirmation"),
       {
@@ -201,8 +185,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     setGeneratingStage("creating")
 
     try {
-      // Step 1: Create quest (standing or one-time)
-      console.log("handleConfirm: Step 1 - Creating quest...", jobId ? `with jobId: ${jobId}` : "standalone")
       const createRes = await fetch(standingSchedule ? "/api/quests/standing" : "/api/quests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,29 +195,21 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
           confirmedSchedule: schedule,
           standingSchedule,
           confirmedReminders: reminders,
-          jobId: jobId || null  // Pass jobId to persist at creation time
+          jobId: jobId || null
         })
       })
 
       if (!createRes.ok) {
         const errorData = await createRes.json().catch(() => ({}))
-        console.error("handleConfirm: Quest create failed:", createRes.status, errorData)
         throw new Error(errorData.message || errorData.error || `Failed to create quest (${createRes.status})`)
       }
 
       const createData = await createRes.json()
       const quest = createData.quest
-      console.log("handleConfirm: Step 1 complete - Quest created:", quest.id, "status:", quest.status)
 
-      // Step 2: Generate email - update animation stage
       setGeneratingStage("personalizing")
-      
-      // Brief delay to show the stage transition
       await new Promise(resolve => setTimeout(resolve, 500))
       
-      console.log("handleConfirm: Step 2 - Generating email for quest:", quest.id)
-      
-      // Show "applying tags" stage if tags are selected
       const hasTags = selection.stateFilter?.stateKeys && selection.stateFilter.stateKeys.length > 0
       if (hasTags) {
         setGeneratingStage("applying_tags")
@@ -248,49 +222,30 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
 
       if (!generateRes.ok) {
         const errorData = await generateRes.json().catch(() => ({}))
-        console.error("handleConfirm: Quest generate failed:", generateRes.status, errorData)
         throw new Error(errorData.message || errorData.error || `Failed to generate email (${generateRes.status})`)
       }
 
       setGeneratingStage("finalizing")
       
       const generateData = await generateRes.json()
-      console.log("handleConfirm: Step 2 complete - Generate response:", {
-        questId: generateData.quest?.id,
-        status: generateData.quest?.status,
-        hasSubject: !!generateData.quest?.subject,
-        hasBody: !!generateData.quest?.body,
-        subject: generateData.quest?.subject?.substring(0, 50),
-        recipientCount: generateData.recipients?.length
-      })
 
-      // Update resolved recipients with tag values from generate response
       if (generateData.recipients && generateData.recipients.length > 0) {
         setResolvedRecipients(generateData.recipients)
-        console.log("handleConfirm: Updated resolvedRecipients with tag values:", 
-          generateData.recipients.slice(0, 2).map((r: any) => ({ email: r.email, tagValues: r.tagValues }))
-        )
       }
 
-      // Verify we got complete data
       if (!generateData.quest?.subject || !generateData.quest?.body) {
-        console.error("handleConfirm: Email generation incomplete - missing subject or body", generateData.quest)
         throw new Error("Email generation incomplete - missing subject or body")
       }
 
-      // Brief pause before showing preview
       await new Promise(resolve => setTimeout(resolve, 300))
 
-      // Step 3: Update state to show preview
-      console.log("handleConfirm: Step 3 - Updating state to show preview")
       setCurrentQuest(generateData.quest)
       setEditedSubject(generateData.quest.subject || "")
       setEditedBody(generateData.quest.body || "")
       setPreviewRecipientIdx(-1)
 
-      // Update messages to show preview
       setMessages(prev => {
-        const newMessages = [
+        return [
           ...prev.filter(m => m.type !== "generating"),
           {
             id: Date.now().toString(),
@@ -299,12 +254,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
             quest: generateData.quest
           }
         ]
-        console.log("handleConfirm: Step 3 complete - Messages updated, preview should now be visible")
-        return newMessages
       })
 
     } catch (error: any) {
-      console.error("handleConfirm: Error occurred:", error.message, error.stack)
+      console.error("handleConfirm: Error occurred:", error.message)
       setMessages(prev => [
         ...prev.filter(m => m.type !== "generating"),
         {
@@ -316,12 +269,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     } finally {
       setIsProcessing(false)
       setGeneratingStage(null)
-      console.log("handleConfirm: Finished, isProcessing set to false")
     }
   }
 
   const handleCancel = () => {
-    // Remove confirmation card and allow new prompt
     setMessages(prev => prev.filter(m => m.type !== "confirmation"))
   }
 
@@ -346,7 +297,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
 
       const data = await res.json()
 
-      // Show success and redirect
       const redirectTarget = jobId ? `/dashboard/jobs/${jobId}` : "/dashboard/requests"
       const redirectLabel = jobId ? "job" : "requests"
       
@@ -395,10 +345,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     ]
 
     return (
-      <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl">
+      <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <div className="flex-shrink-0">
-          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+            <svg className="w-5 h-5 text-gray-600 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
@@ -411,7 +361,7 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
                 key={stage.key}
                 className={`flex items-center gap-1 text-sm ${
                   thinkingStage === stage.key
-                    ? "text-indigo-700 font-medium"
+                    ? "text-gray-900 font-medium"
                     : stages.findIndex(s => s.key === thinkingStage) > idx
                     ? "text-green-600"
                     : "text-gray-400"
@@ -443,19 +393,19 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
     const currentIdx = stages.findIndex(s => s.key === generatingStage)
 
     return (
-      <div className="bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 rounded-xl p-6 border border-green-200 shadow-sm">
+      <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="relative">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg">
+            <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center shadow-lg">
               <svg className="w-6 h-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping" />
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-orange-500 rounded-full animate-ping" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">AI is generating your email</h3>
+            <h3 className="font-medium text-gray-900">AI is generating your email</h3>
             <p className="text-sm text-gray-500">This may take a few moments...</p>
           </div>
         </div>
@@ -472,19 +422,18 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
                 key={stage.key}
                 className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-300 ${
                   isActive 
-                    ? "bg-white shadow-md border border-green-200" 
+                    ? "bg-gray-50 border border-gray-200" 
                     : isComplete 
-                    ? "bg-green-100/50" 
+                    ? "bg-gray-50/50" 
                     : "opacity-50"
                 }`}
               >
-                {/* Status Icon */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                   isComplete 
-                    ? "bg-green-500 text-white" 
+                    ? "bg-gray-900 text-white" 
                     : isActive 
-                    ? "bg-green-100 text-green-600" 
-                    : "bg-gray-200 text-gray-400"
+                    ? "bg-gray-200 text-gray-600" 
+                    : "bg-gray-100 text-gray-400"
                 }`}>
                   {isComplete ? (
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -500,31 +449,29 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
                   )}
                 </div>
 
-                {/* Label */}
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{stage.icon}</span>
                     <span className={`font-medium ${
-                      isActive ? "text-green-700" : isComplete ? "text-green-600" : "text-gray-500"
+                      isActive ? "text-gray-900" : isComplete ? "text-gray-700" : "text-gray-500"
                     }`}>
                       {stage.label}
                     </span>
                   </div>
                   {isActive && (
-                    <div className="mt-1 h-1 bg-green-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full animate-progress" style={{ width: "60%" }} />
+                    <div className="mt-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-orange-500 rounded-full animate-progress" style={{ width: "60%" }} />
                     </div>
                   )}
                 </div>
 
-                {/* Status Badge */}
                 {isComplete && (
-                  <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                  <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
                     Done
                   </span>
                 )}
                 {isActive && (
-                  <span className="text-xs font-medium text-green-700 bg-green-200 px-2 py-1 rounded-full animate-pulse">
+                  <span className="text-xs font-medium text-orange-700 bg-orange-100 px-2 py-1 rounded-full animate-pulse">
                     In progress
                   </span>
                 )}
@@ -533,10 +480,9 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
           })}
         </div>
 
-        {/* Fun fact / tip */}
-        <div className="mt-4 p-3 bg-white/50 rounded-lg border border-green-100">
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
           <p className="text-xs text-gray-600 flex items-center gap-2">
-            <span className="text-green-500">💡</span>
+            <span className="text-orange-500">💡</span>
             <span>Each recipient will receive a personalized email with their specific data filled in.</span>
           </p>
         </div>
@@ -545,7 +491,6 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
   }
 
   const renderPreview = (quest: any) => {
-    // Get audience summary from quest
     const audienceSummary = []
     if (quest.confirmedSelection?.contactTypes?.length > 0) {
       audienceSummary.push(`Type: ${quest.confirmedSelection.contactTypes.join(", ")}`)
@@ -558,15 +503,14 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
       audienceSummary.push(`${mode}: ${quest.confirmedSelection.stateFilter.stateKeys.join(", ")}`)
     }
 
-    // Check if reminders are enabled
     const hasReminders = quest.scheduleConfig?.reminders?.enabled
     const reminderCount = quest.scheduleConfig?.reminders?.maxCount || 0
 
     return (
-      <Card className="border-green-200 bg-green-50/50">
+      <Card className="border-gray-200 bg-white">
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2 text-green-800">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <CardTitle className="text-lg flex items-center gap-2 text-gray-900">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Email Ready to Send
@@ -574,17 +518,17 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Audience Summary */}
-          <div className="p-3 bg-blue-50 rounded-md border border-blue-100">
-            <div className="flex items-center gap-2 text-sm font-medium text-blue-800 mb-2">
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               Sending to {resolvedRecipients.length} recipient{resolvedRecipients.length !== 1 ? "s" : ""}
             </div>
             {audienceSummary.length > 0 && (
-              <div className="text-xs text-blue-600 space-x-2">
+              <div className="text-xs text-gray-600 space-x-2">
                 {audienceSummary.map((item, idx) => (
-                  <span key={idx} className="inline-block px-2 py-0.5 bg-blue-100 rounded">
+                  <span key={idx} className="inline-block px-2 py-0.5 bg-gray-100 rounded">
                     {item}
                   </span>
                 ))}
@@ -594,7 +538,7 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
 
           {/* Reminder Sequence */}
           {hasReminders && reminderCount > 0 && (
-            <div className="p-3 bg-amber-50 rounded-md border border-amber-100">
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex items-center gap-2 text-sm font-medium text-amber-800 mb-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -625,7 +569,7 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
               <select
                 value={previewRecipientIdx}
                 onChange={(e) => setPreviewRecipientIdx(Number(e.target.value))}
-                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-400"
               >
                 <option value={-1}>Draft (edit mode)</option>
                 {resolvedRecipients.slice(0, 10).map((r, idx) => (
@@ -649,7 +593,7 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
             </div>
           )}
 
-          {/* Subject - editable only in draft mode */}
+          {/* Subject */}
           <div>
             <label className="text-sm font-medium text-gray-700">Subject:</label>
             {previewRecipientIdx === -1 ? (
@@ -657,10 +601,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
                 type="text"
                 value={editedSubject}
                 onChange={(e) => setEditedSubject(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-400"
               />
             ) : (
-              <div className="mt-1 w-full px-3 py-2 bg-blue-50 border border-blue-100 rounded-md text-sm text-gray-700">
+              <div className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
                 {(() => {
                   const recipient = resolvedRecipients[previewRecipientIdx]
                   const data: Record<string, string> = {
@@ -674,7 +618,7 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
             )}
           </div>
 
-          {/* Body - editable only in draft mode */}
+          {/* Body */}
           <div>
             <label className="text-sm font-medium text-gray-700">Body:</label>
             {previewRecipientIdx === -1 ? (
@@ -682,10 +626,10 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
                 value={editedBody}
                 onChange={(e) => setEditedBody(e.target.value)}
                 rows={8}
-                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-400 resize-none"
               />
             ) : (
-              <div className="mt-1 w-full px-3 py-2 bg-blue-50 border border-blue-100 rounded-md text-sm text-gray-700 whitespace-pre-wrap min-h-[200px]">
+              <div className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 whitespace-pre-wrap min-h-[200px]">
                 {(() => {
                   const recipient = resolvedRecipients[previewRecipientIdx]
                   const data: Record<string, string> = {
@@ -700,13 +644,13 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button
+            <button
               onClick={handleSend}
               disabled={isProcessing || !editedSubject.trim() || !editedBody.trim()}
-              className="flex-1 bg-green-600 hover:bg-green-700"
+              className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isProcessing ? "Sending..." : `Send to ${resolvedRecipients.length} recipient${resolvedRecipients.length !== 1 ? "s" : ""}`}
-            </Button>
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -714,37 +658,24 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
   }
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-white">
-      {/* Job Context Banner (when creating within a Job) */}
+    <div className="h-full flex flex-col bg-white">
+      {/* Job Context Banner */}
       {jobId && jobName && (
-        <div className="flex-shrink-0 px-6 py-2 bg-blue-50 border-b border-blue-100">
+        <div className="flex-shrink-0 px-6 py-2 bg-gray-50 border-b border-gray-200">
           <div className="max-w-3xl mx-auto flex items-center gap-2 text-sm">
-            <span className="text-blue-600">Creating request for:</span>
-            <span className="font-medium text-blue-800">{jobName}</span>
+            <span className="text-gray-600">Creating request for:</span>
+            <span className="font-medium text-gray-900">{jobName}</span>
           </div>
         </div>
       )}
-      
-      {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Create a Request
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Describe what you want to send in natural language
-          </p>
-        </div>
-      </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-auto px-6 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 0 ? (
-            // Empty state with example prompts
             <div className="text-center py-12">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
@@ -767,19 +698,18 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
               </div>
             </div>
           ) : (
-            // Chat messages
             messages.map((message) => (
               <div key={message.id} className="animate-fadeIn">
                 {message.type === "user" && (
                   <div className="flex justify-end">
-                    <div className="max-w-[80%] px-4 py-3 bg-indigo-600 text-white rounded-2xl rounded-br-md">
+                    <div className="max-w-[80%] px-4 py-3 bg-gray-900 text-white rounded-2xl rounded-br-md">
                       {message.content}
                     </div>
                   </div>
                 )}
                 {message.type === "assistant" && (
                   <div className="flex justify-start">
-                    <div className="max-w-[80%] px-4 py-3 bg-white border border-gray-200 rounded-2xl rounded-bl-md shadow-sm">
+                    <div className="max-w-[80%] px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl rounded-bl-md">
                       {message.content}
                     </div>
                   </div>
@@ -823,13 +753,13 @@ export function QuestCreator({ jobId, jobName, onComplete }: QuestCreatorProps) 
               placeholder="Describe what you want to send..."
               rows={1}
               disabled={isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview" || m.type === "generating")}
-              className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 resize-none disabled:bg-gray-50 disabled:text-gray-500"
+              className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-gray-100 resize-none disabled:bg-gray-50 disabled:text-gray-500"
               style={{ minHeight: "48px", maxHeight: "120px" }}
             />
             <button
               type="submit"
               disabled={!prompt.trim() || isProcessing || messages.some(m => m.type === "confirmation" || m.type === "preview" || m.type === "generating")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />

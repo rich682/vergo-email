@@ -181,10 +181,10 @@ export function ConfirmationCard({
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-200">
+      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span className="font-medium text-gray-900">I understood your request as:</span>
@@ -282,7 +282,7 @@ export function ConfirmationCard({
                     href="https://help.vergo.ai/data-personalization" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-indigo-300 hover:text-indigo-200"
+                    className="inline-flex items-center gap-1 text-orange-300 hover:text-orange-200"
                   >
                     Learn how to set up data tags
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -309,7 +309,7 @@ export function ConfirmationCard({
                       <label
                         key={tag.stateKey}
                         className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                          isSelected ? "bg-indigo-50 border border-indigo-200" : "hover:bg-gray-50"
+                          isSelected ? "bg-gray-100 border border-gray-300" : "hover:bg-gray-50"
                         }`}
                       >
                         <input
@@ -322,14 +322,14 @@ export function ConfirmationCard({
                               setSelectedTags(selectedTags.filter(t => t !== tag.stateKey))
                             }
                           }}
-                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
                         />
                         <div className="flex-1">
                           <span className="text-sm font-medium text-gray-900">{tag.stateKey}</span>
                           <span className="text-xs text-gray-500 ml-2">({tag.count} contacts)</span>
                         </div>
                         {isSelected && (
-                          <span className="text-xs text-indigo-600 font-mono bg-indigo-100 px-2 py-0.5 rounded">
+                          <span className="text-xs text-gray-600 font-mono bg-gray-200 px-2 py-0.5 rounded">
                             {`{{${tag.stateKey}}}`}
                           </span>
                         )}
@@ -359,16 +359,16 @@ export function ConfirmationCard({
             </div>
             
             {selectedTags.length > 0 && (
-              <div className="text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded space-y-1">
+              <div className="text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded border border-gray-200 space-y-1">
                 <p className="font-medium">💡 Selected placeholders:</p>
                 <div className="flex flex-wrap gap-2">
                   {selectedTags.map(tag => (
-                    <code key={tag} className="bg-blue-100 px-2 py-0.5 rounded font-mono">
+                    <code key={tag} className="bg-gray-200 px-2 py-0.5 rounded font-mono">
                       {`{{${tag}}}`}
                     </code>
                   ))}
                 </div>
-                <p className="text-blue-500 mt-1">
+                <p className="text-gray-500 mt-1">
                   {tagMode === "has" 
                     ? "Only contacts with this data will receive the email"
                     : "All contacts will receive the email. Missing data will show as blank."}
@@ -403,10 +403,10 @@ export function ConfirmationCard({
                 <p className="font-medium mb-2">One-off vs Recurring Requests</p>
                 <div className="space-y-2 text-gray-300">
                   <div>
-                    <span className="font-medium text-indigo-300">One-off:</span> Send an email once, with optional follow-up reminders until the recipient replies or a deadline is reached.
+                    <span className="font-medium text-gray-100">One-off:</span> Send an email once, with optional follow-up reminders until the recipient replies or a deadline is reached.
                   </div>
                   <div>
-                    <span className="font-medium text-purple-300">Recurring:</span> Automatically send the same email on a schedule (daily, weekly, monthly) indefinitely. Perfect for regular check-ins like weekly timesheet reminders. Replies don&apos;t stop future sends.
+                    <span className="font-medium text-gray-100">Recurring:</span> Automatically send the same email on a schedule (daily, weekly, monthly) indefinitely. Perfect for regular check-ins like weekly timesheet reminders. Replies don&apos;t stop future sends.
                   </div>
                 </div>
                 <div className="mt-3 pt-2 border-t border-gray-700">
@@ -426,7 +426,7 @@ export function ConfirmationCard({
               onClick={() => setRequestType("one-off")}
               className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
                 requestType === "one-off"
-                  ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                  ? "bg-gray-900 border-gray-900 text-white"
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
@@ -436,14 +436,14 @@ export function ConfirmationCard({
                 </svg>
                 One-off
               </div>
-              <p className="text-xs text-gray-500 mt-1">Send once with optional reminders</p>
+              <p className={`text-xs mt-1 ${requestType === "one-off" ? "text-gray-300" : "text-gray-500"}`}>Send once with optional reminders</p>
             </button>
             <button
               type="button"
               onClick={() => setRequestType("recurring")}
               className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
                 requestType === "recurring"
-                  ? "bg-purple-50 border-purple-300 text-purple-700"
+                  ? "bg-gray-900 border-gray-900 text-white"
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
@@ -453,7 +453,7 @@ export function ConfirmationCard({
                 </svg>
                 Recurring
               </div>
-              <p className="text-xs text-gray-500 mt-1">Send on a schedule forever</p>
+              <p className={`text-xs mt-1 ${requestType === "recurring" ? "text-gray-300" : "text-gray-500"}`}>Send on a schedule forever</p>
             </button>
           </div>
         </div>
@@ -493,7 +493,7 @@ export function ConfirmationCard({
                       type="date"
                       value={scheduledDate}
                       onChange={(e) => setScheduledDate(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                     />
                   </div>
                 )}
@@ -506,7 +506,7 @@ export function ConfirmationCard({
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                     placeholder="No deadline"
                   />
                 </div>
@@ -514,7 +514,7 @@ export function ConfirmationCard({
             </>
           ) : (
             /* Recurring Schedule Options */
-            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-gray-500 mb-1 block">Frequency</Label>
@@ -581,12 +581,12 @@ export function ConfirmationCard({
                     type="time"
                     value={recurringTime}
                     onChange={(e) => setRecurringTime(e.target.value)}
-                    className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full h-10 px-3 rounded-md border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                   />
                 </div>
               </div>
 
-              <p className="text-xs text-purple-600 bg-purple-50 px-3 py-2 rounded mt-2">
+              <p className="text-xs text-gray-600 bg-gray-100 px-3 py-2 rounded mt-2">
                 📧 Emails will be sent on schedule regardless of replies. Use one-off requests with reminders if you want to stop on reply.
               </p>
             </div>
@@ -608,7 +608,7 @@ export function ConfirmationCard({
                 type="button"
                 onClick={() => setRemindersEnabled(!remindersEnabled)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  remindersEnabled ? "bg-indigo-600" : "bg-gray-200"
+                  remindersEnabled ? "bg-gray-900" : "bg-gray-200"
                 }`}
               >
                 <span
@@ -738,7 +738,7 @@ export function ConfirmationCard({
                 {recipients.map((recipient, idx) => (
                   <div key={idx} className="flex items-center justify-between text-sm py-1 border-b border-gray-100 last:border-0">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-medium text-indigo-600">
+                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600">
                         {(recipient.name || recipient.email).charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -801,7 +801,7 @@ export function ConfirmationCard({
         <Button
           onClick={handleConfirm}
           disabled={loading || recipientCount === 0}
-          className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+          className="flex-1 bg-gray-900 hover:bg-gray-800"
         >
           {loading ? (
             <span className="flex items-center gap-2">
