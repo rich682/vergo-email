@@ -1112,7 +1112,7 @@ export default function JobDetailPage() {
                   <div className="mt-3">
                     {/* Comment Input */}
                     <div className="flex gap-3 mb-4">
-                      <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
                         {getInitials(job.owner.name, job.owner.email)}
                       </div>
                       <div className="flex-1">
@@ -1174,7 +1174,7 @@ export default function JobDetailPage() {
               <CardContent className="p-4">
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
+                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-medium">
                     {getInitials(job.owner.name, job.owner.email)}
                   </div>
                   <div>

@@ -520,7 +520,7 @@ export default function JobsPage() {
                     
                     {/* Owner */}
                     <div className="col-span-2 flex items-center gap-2">
-                      <div className="w-7 h-7 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
                         {getInitials(job.owner.name, job.owner.email)}
                       </div>
                       <span className="text-sm text-gray-600 truncate">

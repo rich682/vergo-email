@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import Link from "next/link"
 import React from "react"
 import { UserMenu } from "@/components/user-menu"
-import { NavLinks } from "@/components/nav-links"
+import { Sidebar } from "@/components/sidebar"
 
 export const dynamic = "force-dynamic"
 
@@ -17,14 +16,12 @@ export default async function DashboardLayout({
   try {
     session = await getServerSession(authOptions)
   } catch (error: any) {
-    // Log full error for debugging
     console.error('[DashboardLayout] getServerSession error:', {
       name: error?.name,
       message: error?.message,
       code: error?.code,
       stack: error?.stack,
     })
-    // Don't throw - redirect to signin instead
     redirect("/auth/signin")
   }
 
@@ -32,30 +29,42 @@ export default async function DashboardLayout({
     redirect("/auth/signin")
   }
 
+  // Get org name from session if available
+  const orgName = (session.user as any)?.organizationName || undefined
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="bg-white border-b border-gray-200 flex-shrink-0 px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-14">
-          <div className="flex items-center gap-6">
-            <Link href="/dashboard/requests" className="flex-shrink-0">
-              <h1 className="text-xl font-bold cursor-pointer hover:text-gray-700 transition-colors">
-                Vergo
-              </h1>
-            </Link>
-            <NavLinks />
-          </div>
-          <div className="flex items-center">
+    <div className="min-h-screen bg-white">
+      {/* Sidebar */}
+      <Sidebar />
+      
+      {/* Main content area - offset by sidebar width */}
+      <div className="pl-16">
+        {/* Top header bar */}
+        <header className="h-16 border-b border-gray-100 flex items-center justify-end px-6">
+          {/* Notification bell could go here */}
+          <div className="flex items-center gap-4">
+            {/* Notification icon placeholder */}
+            <button className="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+            
+            {/* User menu */}
             <UserMenu 
               userEmail={session.user.email || ""} 
               userName={session.user.name || undefined}
               userRole={(session.user as any).role || undefined}
+              orgName={orgName}
             />
           </div>
-        </div>
-      </nav>
-      <main className="flex-1 bg-gray-50">
-        {children}
-      </main>
+        </header>
+        
+        {/* Page content */}
+        <main className="min-h-[calc(100vh-4rem)]">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
