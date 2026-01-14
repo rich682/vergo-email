@@ -41,7 +41,12 @@ import {
   ChevronRight,
   Tag,
   Filter,
+  FileSpreadsheet,
+  UserCheck,
 } from "lucide-react"
+
+// Data Personalization Flow
+import { DataPersonalizationFlow } from "./data-personalization-flow"
 
 // Types
 interface JobLabel {
@@ -83,12 +88,15 @@ interface SendRequestModalProps {
 
 type ModalState = 
   | "idle"
+  | "mode_selection"
   | "drafting"
   | "ready"
   | "refining"
   | "sending"
   | "success"
   | "error"
+
+type RequestMode = "standard" | "data_personalization"
 
 interface DraftResponse {
   success: boolean
@@ -156,7 +164,8 @@ export function SendRequestModal({
   onSuccess,
 }: SendRequestModalProps) {
   // State
-  const [state, setState] = useState<ModalState>("idle")
+  const [state, setState] = useState<ModalState>("mode_selection")
+  const [mode, setMode] = useState<RequestMode | null>(null)
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [refinementInstruction, setRefinementInstruction] = useState("")
@@ -277,18 +286,28 @@ export function SendRequestModal({
     }
   }, [job.id, job.name, stakeholderContacts, fetchContactLabels])
 
-  // Fetch draft and labels when modal opens
+  // Fetch draft and labels when standard mode is selected
   useEffect(() => {
-    if (open && state === "idle") {
+    if (open && mode === "standard" && state === "idle") {
       fetchDraft()
       fetchLabels()
     }
-  }, [open, state, fetchDraft, fetchLabels])
+  }, [open, mode, state, fetchDraft, fetchLabels])
+
+  // Handle mode selection
+  const handleModeSelect = (selectedMode: RequestMode) => {
+    setMode(selectedMode)
+    if (selectedMode === "standard") {
+      setState("idle") // This will trigger fetchDraft
+    }
+    // For data_personalization, the flow component handles everything
+  }
 
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
-      setState("idle")
+      setState("mode_selection")
+      setMode(null)
       setSubject("")
       setBody("")
       setRefinementInstruction("")
@@ -541,8 +560,71 @@ export function SendRequestModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Mode Selection */}
+        {state === "mode_selection" && (
+          <div className="space-y-6 py-4">
+            <p className="text-sm text-gray-600 text-center">
+              Choose how you want to send this request
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Standard Mode */}
+              <button
+                onClick={() => handleModeSelect("standard")}
+                className="flex flex-col items-center p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-4 group-hover:bg-blue-200 transition-colors">
+                  <UserCheck className="w-7 h-7 text-blue-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Standard Request</h3>
+                <p className="text-sm text-gray-500 text-center">
+                  Send to stakeholders already assigned to this item. AI will draft the email using item context.
+                </p>
+                {stakeholderContacts.length > 0 && (
+                  <span className="mt-3 text-xs text-blue-600 font-medium">
+                    {stakeholderContacts.length} stakeholder{stakeholderContacts.length !== 1 ? "s" : ""} available
+                  </span>
+                )}
+              </button>
+
+              {/* Data Personalization Mode */}
+              <button
+                onClick={() => handleModeSelect("data_personalization")}
+                className="flex flex-col items-center p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4 group-hover:bg-purple-200 transition-colors">
+                  <FileSpreadsheet className="w-7 h-7 text-purple-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Data Personalization</h3>
+                <p className="text-sm text-gray-500 text-center">
+                  Upload a CSV/Excel file with recipient data. Create personalized emails with merge fields.
+                </p>
+                <span className="mt-3 text-xs text-purple-600 font-medium">
+                  Upload your own recipient list
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Data Personalization Flow */}
+        {mode === "data_personalization" && state !== "mode_selection" && (
+          <DataPersonalizationFlow
+            jobId={job.id}
+            jobName={job.name}
+            onSuccess={() => {
+              onOpenChange(false)
+              onSuccess()
+            }}
+            onCancel={() => {
+              setMode(null)
+              setState("mode_selection")
+            }}
+          />
+        )}
+
         {/* Drafting State */}
-        {state === "drafting" && (
+        {mode === "standard" && state === "drafting" && (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="relative">
               <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
@@ -556,7 +638,7 @@ export function SendRequestModal({
         )}
 
         {/* Success State */}
-        {state === "success" && (
+        {mode === "standard" && state === "success" && (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle className="w-8 h-8 text-green-500" />
@@ -569,7 +651,7 @@ export function SendRequestModal({
         )}
 
         {/* Ready/Refining/Error States - Show Form */}
-        {(state === "ready" || state === "refining" || state === "error") && (
+        {mode === "standard" && (state === "ready" || state === "refining" || state === "error") && (
           <div className="space-y-4">
             {/* Error Alert */}
             {error && (
@@ -994,7 +1076,7 @@ export function SendRequestModal({
         )}
 
         {/* Sending State */}
-        {state === "sending" && (
+        {mode === "standard" && state === "sending" && (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-gray-600 animate-spin" />
