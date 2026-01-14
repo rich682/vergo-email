@@ -12,13 +12,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown } from "lucide-react"
+import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown, Trash2 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
 // Design system components
 import { Chip } from "@/components/ui/chip"
 import { EmptyState } from "@/components/ui/empty-state"
+import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 
 // ============================================
 // Types
@@ -59,6 +60,7 @@ interface Job {
   taskCount: number
   respondedCount: number
   completedCount: number
+  stakeholderCount?: number  // Actual count of resolved contacts
 }
 
 interface SavedView {
@@ -180,6 +182,9 @@ export default function JobsPage() {
   const [bulkLabelInput, setBulkLabelInput] = useState("")
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const bulkLabelRef = useRef<HTMLDivElement>(null)
+  
+  // Delete confirmation state
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   
   // Saved views state
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
@@ -459,6 +464,31 @@ export default function JobsPage() {
     }
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedJobIds.length === 0) return
+    
+    setBulkActionLoading(true)
+    try {
+      // Delete each selected job
+      await Promise.all(selectedJobIds.map(async (jobId) => {
+        await fetch(`/api/jobs/${jobId}`, {
+          method: "DELETE",
+          credentials: "include"
+        })
+      }))
+      
+      // Refresh data
+      await fetchJobs()
+      await fetchAllJobs()
+      setSelectedJobIds([])
+      setIsDeleteConfirmOpen(false)
+    } catch (error) {
+      console.error("Error deleting items:", error)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
   // Saved view handlers
   const handleSaveView = () => {
     if (!newViewName.trim()) return
@@ -592,6 +622,9 @@ export default function JobsPage() {
             </Dialog>
           )}
         </div>
+
+        {/* AI Summary Panel */}
+        <AISummaryPanel />
 
         {/* Action Row */}
         <div className="flex items-center justify-end gap-2 mb-4">
@@ -927,6 +960,16 @@ export default function JobsPage() {
               Duplicate
             </button>
             
+            {/* Delete */}
+            <button
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+              disabled={bulkActionLoading}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </button>
+            
             <div className="flex-1" />
             
             {/* Clear Selection */}
@@ -938,6 +981,39 @@ export default function JobsPage() {
             </button>
           </div>
         )}
+        
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete {selectedJobIds.length} item{selectedJobIds.length !== 1 ? "s" : ""}?</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-gray-600">
+                Are you sure you want to delete {selectedJobIds.length === 1 ? "this item" : `these ${selectedJobIds.length} items`}? 
+                This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>
+                  Cancel
+                </Button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkActionLoading}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-medium
+                    bg-red-600 text-white
+                    hover:bg-red-700
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-colors
+                  "
+                >
+                  {bulkActionLoading ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Content */}
         {loading ? (
@@ -965,7 +1041,7 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[40px_minmax(200px,1fr)_90px_50px_90px_120px_100px_80px_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
+            <div className="grid grid-cols-[36px_2fr_1fr_80px_40px_70px_100px_80px_70px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
               {/* Select All Checkbox */}
               <div className="flex items-center justify-center">
                 <input
@@ -979,12 +1055,13 @@ export default function JobsPage() {
                 />
               </div>
               <div>Name</div>
+              <div>Labels</div>
               <div>Status</div>
               <div className="text-center">RAG</div>
-              <div className="text-center">Stakeholders</div>
+              <div className="text-center">Contacts</div>
               <div>Owner</div>
               <div>Collaborators</div>
-              <div>Due Date</div>
+              <div>Due</div>
               <div>Updated</div>
             </div>
             
@@ -992,19 +1069,20 @@ export default function JobsPage() {
             <div className="divide-y divide-gray-100">
               {filteredJobs.map((job) => {
                 const jobTags = job.labels?.tags || []
-                const stakeholders = job.labels?.stakeholders || []
                 const collaborators = job.collaborators || []
                 const dueDate = job.dueDate ? new Date(job.dueDate) : null
                 const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
                 const isOverdue = daysUntilDue !== null && daysUntilDue < 0
                 const ragRating = calculateRAGRating(job)
                 const isSelected = selectedJobIds.includes(job.id)
+                // Use stakeholderCount from API if available, otherwise fall back to labels count
+                const contactCount = job.stakeholderCount ?? 0
                 
                 return (
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className={`grid grid-cols-[40px_minmax(200px,1fr)_90px_50px_90px_120px_100px_80px_80px] gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
+                    className={`grid grid-cols-[36px_2fr_1fr_80px_40px_70px_100px_80px_70px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
                   >
                     {/* Checkbox */}
                     <div className="flex items-center justify-center">
@@ -1017,29 +1095,35 @@ export default function JobsPage() {
                       />
                     </div>
                     
-                    {/* Name + Labels */}
-                    <div>
-                      <div className="font-medium text-gray-900 mb-0.5">
+                    {/* Name */}
+                    <div className="truncate">
+                      <span className="font-medium text-gray-900">
                         {job.name}
-                      </div>
-                      {jobTags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {jobTags.slice(0, 3).map(tag => (
-                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                      </span>
+                    </div>
+                    
+                    {/* Labels */}
+                    <div className="flex flex-wrap gap-1 overflow-hidden">
+                      {jobTags.length > 0 ? (
+                        <>
+                          {jobTags.slice(0, 2).map(tag => (
+                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[80px]">
                               {tag}
                             </span>
                           ))}
-                          {jobTags.length > 3 && (
-                            <span className="text-xs text-gray-400">+{jobTags.length - 3}</span>
+                          {jobTags.length > 2 && (
+                            <span className="text-xs text-gray-400">+{jobTags.length - 2}</span>
                           )}
-                        </div>
+                        </>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
                       )}
                     </div>
                     
                     {/* Status */}
                     <div>
                       <span className={`
-                        inline-flex px-2.5 py-1 rounded-full text-xs font-medium border
+                        inline-flex px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap
                         ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
                         ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
                         ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
@@ -1055,18 +1139,18 @@ export default function JobsPage() {
                       <RAGBadge rating={ragRating} />
                     </div>
                     
-                    {/* Stakeholders Count */}
+                    {/* Contacts Count */}
                     <div className="text-center">
-                      {stakeholders.length > 0 ? (
-                        <span className="text-sm text-gray-600">{stakeholders.length}</span>
+                      {contactCount > 0 ? (
+                        <span className="text-sm text-gray-600">{contactCount}</span>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </div>
                     
                     {/* Owner */}
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
                         {getInitials(job.owner.name, job.owner.email)}
                       </div>
                       <span className="text-sm text-gray-600 truncate">
@@ -1077,19 +1161,19 @@ export default function JobsPage() {
                     {/* Collaborators */}
                     <div className="flex items-center">
                       {collaborators.length > 0 ? (
-                        <div className="flex -space-x-2">
-                          {collaborators.slice(0, 3).map((collab) => (
+                        <div className="flex -space-x-1.5">
+                          {collaborators.slice(0, 2).map((collab) => (
                             <div
                               key={collab.id}
-                              className="w-7 h-7 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
+                              className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
                               title={collab.user.name || collab.user.email}
                             >
                               {getInitials(collab.user.name, collab.user.email)}
                             </div>
                           ))}
-                          {collaborators.length > 3 && (
-                            <div className="w-7 h-7 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                              +{collaborators.length - 3}
+                          {collaborators.length > 2 && (
+                            <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
+                              +{collaborators.length - 2}
                             </div>
                           )}
                         </div>
@@ -1110,7 +1194,7 @@ export default function JobsPage() {
                     </div>
                     
                     {/* Updated */}
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-gray-500 truncate">
                       {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
                     </div>
                   </div>

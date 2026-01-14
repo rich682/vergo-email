@@ -98,6 +98,7 @@ export interface JobWithStats {
   taskCount: number
   respondedCount: number
   completedCount: number
+  stakeholderCount?: number  // Resolved count of actual contacts
 }
 
 // Permission actions for Jobs
@@ -140,6 +141,51 @@ export class JobService {
     if (action === 'view') return true
     
     return false
+  }
+
+  /**
+   * Resolve stakeholder count from stakeholder definitions
+   * Counts actual contacts based on stakeholder type:
+   * - individual: counts as 1
+   * - group: counts all entities in the group
+   * - contact_type: counts all entities with that contact type
+   */
+  static async resolveStakeholderCount(
+    stakeholders: JobStakeholder[],
+    organizationId: string
+  ): Promise<number> {
+    if (stakeholders.length === 0) return 0
+
+    const contactIds = new Set<string>()
+
+    for (const stakeholder of stakeholders) {
+      if (stakeholder.type === "individual") {
+        // Individual stakeholder - just add the ID
+        contactIds.add(stakeholder.id)
+      } else if (stakeholder.type === "group") {
+        // Get all entities in this group
+        const groupEntities = await prisma.entity.findMany({
+          where: {
+            organizationId,
+            groups: { some: { id: stakeholder.id } }
+          },
+          select: { id: true }
+        })
+        groupEntities.forEach(e => contactIds.add(e.id))
+      } else if (stakeholder.type === "contact_type") {
+        // Get all entities with this contact type
+        const typeEntities = await prisma.entity.findMany({
+          where: {
+            organizationId,
+            contactType: stakeholder.id
+          },
+          select: { id: true }
+        })
+        typeEntities.forEach(e => contactIds.add(e.id))
+      }
+    }
+
+    return contactIds.size
   }
 
   /**
@@ -372,37 +418,46 @@ export class JobService {
       prisma.job.count({ where })
     ])
 
-    const jobsWithStats: JobWithStats[] = jobs.map(job => {
-      const taskCount = job.tasks.length
-      const respondedCount = job.tasks.filter(t => 
-        t.status === TaskStatus.REPLIED || 
-        t.status === TaskStatus.FULFILLED ||
-        t.status === TaskStatus.HAS_ATTACHMENTS
-      ).length
-      const completedCount = job.tasks.filter(t => 
-        t.status === TaskStatus.FULFILLED
-      ).length
+    // Process jobs with stakeholder counts
+    const jobsWithStats: JobWithStats[] = await Promise.all(
+      jobs.map(async (job) => {
+        const taskCount = job.tasks.length
+        const respondedCount = job.tasks.filter(t => 
+          t.status === TaskStatus.REPLIED || 
+          t.status === TaskStatus.FULFILLED ||
+          t.status === TaskStatus.HAS_ATTACHMENTS
+        ).length
+        const completedCount = job.tasks.filter(t => 
+          t.status === TaskStatus.FULFILLED
+        ).length
 
-      return {
-        id: job.id,
-        organizationId: job.organizationId,
-        ownerId: job.ownerId,
-        name: job.name,
-        description: job.description,
-        clientId: job.clientId,
-        status: job.status,
-        dueDate: job.dueDate,
-        labels: job.labels as JobLabels | null,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt,
-        owner: job.owner,
-        collaborators: job.collaborators,
-        client: job.client,
-        taskCount,
-        respondedCount,
-        completedCount
-      }
-    })
+        // Resolve stakeholder count from labels
+        const labels = job.labels as JobLabels | null
+        const stakeholders = labels?.stakeholders || []
+        const stakeholderCount = await this.resolveStakeholderCount(stakeholders, organizationId)
+
+        return {
+          id: job.id,
+          organizationId: job.organizationId,
+          ownerId: job.ownerId,
+          name: job.name,
+          description: job.description,
+          clientId: job.clientId,
+          status: job.status,
+          dueDate: job.dueDate,
+          labels: labels,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+          owner: job.owner,
+          collaborators: job.collaborators,
+          client: job.client,
+          taskCount,
+          respondedCount,
+          completedCount,
+          stakeholderCount
+        }
+      })
+    )
 
     return { jobs: jobsWithStats, total }
   }
