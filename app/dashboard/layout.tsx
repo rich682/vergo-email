@@ -37,8 +37,8 @@ export default async function DashboardLayout({
       {/* Sidebar */}
       <Sidebar />
       
-      {/* Main content area - offset by sidebar width */}
-      <div className="pl-16">
+      {/* Main content area - offset by sidebar width (w-20 = 5rem = 80px) */}
+      <div className="pl-20">
         {/* Top header bar */}
         <header className="h-16 border-b border-gray-100 flex items-center justify-end px-6">
           {/* Notification bell could go here */}
