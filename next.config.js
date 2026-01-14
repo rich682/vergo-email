@@ -63,6 +63,37 @@ const nextConfig = {
       },
     ]
   },
+
+  // Redirects for legacy routes to new Jobs/Checklist flow
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/compose',
+        destination: '/dashboard/jobs',
+        permanent: false, // Use 307 to allow rollback if needed
+      },
+      {
+        source: '/dashboard/inbox',
+        destination: '/dashboard/jobs',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/inbox/:id',
+        destination: '/dashboard/jobs',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/tasks',
+        destination: '/dashboard/jobs',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/tasks/:id',
+        destination: '/dashboard/jobs',
+        permanent: false,
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig
