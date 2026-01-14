@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,10 +25,17 @@ import {
 import { 
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
-  Plus, ChevronDown, ChevronUp, ExternalLink, Bell, RefreshCw, Eye, Tag, Building2
+  Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
+  FileText, Inbox
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
+
+// Design system components
+import { Chip } from "@/components/ui/chip"
+import { StatusBadge } from "@/components/ui/status-badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { SectionHeader } from "@/components/ui/section-header"
 
 // ============================================
 // Types
@@ -45,11 +52,7 @@ interface JobCollaborator {
   userId: string
   role: string
   addedAt: string
-  user: {
-    id: string
-    name: string | null
-    email: string
-  }
+  user: { id: string; name: string | null; email: string }
 }
 
 interface JobComment {
@@ -59,11 +62,7 @@ interface JobComment {
   content: string
   mentions: string[] | null
   createdAt: string
-  author: {
-    id: string
-    name: string | null
-    email: string
-  }
+  author: { id: string; name: string | null; email: string }
 }
 
 interface JobStakeholder {
@@ -77,7 +76,7 @@ interface Job {
   name: string
   description: string | null
   ownerId: string
-  status: string // Allow any status (custom statuses)
+  status: string
   dueDate: string | null
   labels: string[] | null
   stakeholders?: JobStakeholder[]
@@ -85,12 +84,7 @@ interface Job {
   updatedAt: string
   owner: JobOwner
   collaborators?: JobCollaborator[]
-  client?: {
-    id: string
-    firstName: string
-    lastName: string | null
-    email: string | null
-  } | null
+  client?: { id: string; firstName: string; lastName: string | null; email: string | null } | null
   taskCount: number
   respondedCount: number
   completedCount: number
@@ -103,17 +97,10 @@ interface Permissions {
   isAdmin: boolean
 }
 
-interface TaskEntity {
-  id: string
-  firstName: string
-  lastName: string | null
-  email: string | null
-}
-
 interface JobTask {
   id: string
   entityId: string | null
-  entity: TaskEntity | null
+  entity: { id: string; firstName: string; lastName: string | null; email: string | null } | null
   campaignName: string | null
   status: string
   createdAt: string
@@ -148,31 +135,12 @@ interface JobRequest {
   updatedAt: string
   deadlineDate: string | null
   taskCount: number
-  user: {
-    id: string
-    name: string | null
-    email: string
-  }
+  user: { id: string; name: string | null; email: string }
 }
 
-interface ContactType {
-  value: string
-  label: string
-  count: number
-}
-
-interface Group {
-  id: string
-  name: string
-  memberCount: number
-}
-
-interface Entity {
-  id: string
-  firstName: string
-  lastName: string | null
-  email: string | null
-}
+interface ContactType { value: string; label: string; count: number }
+interface Group { id: string; name: string; memberCount: number }
+interface Entity { id: string; firstName: string; lastName: string | null; email: string | null }
 
 interface StakeholderContact {
   id: string
@@ -184,179 +152,29 @@ interface StakeholderContact {
 }
 
 // ============================================
-// Next Action Logic
+// Item Mode Detection
 // ============================================
 
-type NextActionPriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
-type NextActionSeverity = "high" | "medium" | "low" | "success"
+type ItemMode = "setup" | "waiting" | "internal" | "complete"
 
-interface NextAction {
-  priority: NextActionPriority
-  severity: NextActionSeverity
-  message: string
-  subMessage?: string
-  primaryAction?: { label: string; href?: string; onClick?: () => void }
-  secondaryAction?: { label: string; href?: string; onClick?: () => void }
-  dismissible: boolean
-}
-
-function computeNextAction(
-  job: Job,
-  awaitingTasks: JobTask[],
-  hasNewReplies: boolean
-): NextAction | null {
-  const now = new Date()
-  const dueDate = job.dueDate ? new Date(job.dueDate) : null
-  const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : null
-
-  // Priority 1: No requests yet
-  if (job.taskCount === 0) {
-    return {
-      priority: 1,
-      severity: "medium",
-      message: "No requests yet",
-      subMessage: "Add your first request to start tracking progress",
-      primaryAction: { label: "Add First Request", href: `/dashboard/quest/new?jobId=${job.id}` },
-      dismissible: false
-    }
+function getItemMode(job: Job, tasks: JobTask[], requests: JobRequest[]): ItemMode {
+  if (job.status === "COMPLETED" || job.status === "ARCHIVED") {
+    return "complete"
   }
-
-  // Priority 2: Due date passed
-  if (dueDate && daysUntilDue !== null && daysUntilDue < 0) {
-    return {
-      priority: 2,
-      severity: "high",
-      message: `Deadline passed!`,
-      subMessage: `This item was due ${format(dueDate, "MMM d, yyyy")}`,
-      primaryAction: { label: "Mark Complete" },
-      secondaryAction: { label: "Extend Deadline" },
-      dismissible: false
-    }
+  if (requests.length === 0) {
+    return "setup"
   }
-
-  // Priority 3: Due soon and behind
-  if (dueDate && daysUntilDue !== null && daysUntilDue <= 2 && job.respondedCount < job.taskCount) {
-    return {
-      priority: 3,
-      severity: "high",
-      message: `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""}`,
-      subMessage: `${awaitingTasks.length} recipient${awaitingTasks.length !== 1 ? "s" : ""} still awaiting response`,
-      primaryAction: { label: "Send Bulk Reminder" },
-      dismissible: false
-    }
+  const awaitingCount = tasks.filter(t => t.status === "AWAITING_RESPONSE").length
+  if (awaitingCount > 0) {
+    return "waiting"
   }
-
-  // Priority 4: Tasks awaiting 7+ days
-  const tasksAwaiting7Days = awaitingTasks.filter(t => {
-    const created = new Date(t.createdAt)
-    return differenceInDays(now, created) >= 7
-  })
-  if (tasksAwaiting7Days.length > 0) {
-    const names = tasksAwaiting7Days.slice(0, 3).map(t => 
-      t.entity?.email || "Unknown"
-    ).join(", ")
-    return {
-      priority: 4,
-      severity: "high",
-      message: `${tasksAwaiting7Days.length} client${tasksAwaiting7Days.length !== 1 ? "s" : ""} awaiting response for 7+ days`,
-      subMessage: names + (tasksAwaiting7Days.length > 3 ? ` and ${tasksAwaiting7Days.length - 3} more` : ""),
-      primaryAction: { label: "Send Reminder" },
-      secondaryAction: { label: "View Details" },
-      dismissible: true
-    }
-  }
-
-  // Priority 5: Tasks awaiting 3+ days
-  const tasksAwaiting3Days = awaitingTasks.filter(t => {
-    const created = new Date(t.createdAt)
-    return differenceInDays(now, created) >= 3
-  })
-  if (tasksAwaiting3Days.length > 0) {
-    const names = tasksAwaiting3Days.slice(0, 3).map(t => 
-      t.entity?.email || "Unknown"
-    ).join(", ")
-    return {
-      priority: 5,
-      severity: "medium",
-      message: `${tasksAwaiting3Days.length} client${tasksAwaiting3Days.length !== 1 ? "s" : ""} awaiting response for 3+ days`,
-      subMessage: names + (tasksAwaiting3Days.length > 3 ? ` and ${tasksAwaiting3Days.length - 3} more` : ""),
-      primaryAction: { label: "Send Reminder" },
-      secondaryAction: { label: "View Details" },
-      dismissible: true
-    }
-  }
-
-  // Priority 6: New replies to review
-  if (hasNewReplies) {
-    return {
-      priority: 6,
-      severity: "medium",
-      message: "New replies to review",
-      primaryAction: { label: "View Replies" },
-      dismissible: true
-    }
-  }
-
-  // Priority 7: All responded
-  if (job.respondedCount === job.taskCount && job.taskCount > 0 && job.completedCount < job.taskCount) {
-    return {
-      priority: 7,
-      severity: "success",
-      message: "All clients responded!",
-      subMessage: "Review responses and mark complete",
-      primaryAction: { label: "Review & Complete" },
-      dismissible: true
-    }
-  }
-
-  // Priority 8: All complete
-  if (job.completedCount === job.taskCount && job.taskCount > 0) {
-    return {
-      priority: 8,
-      severity: "success",
-      message: `${UI_LABELS.jobSingular} complete`,
-      subMessage: "All requests have been fulfilled",
-      primaryAction: { label: `Archive ${UI_LABELS.jobSingular}` },
-      dismissible: true
-    }
-  }
-
-  // Priority 9: No action needed
-  return null
+  return "internal"
 }
 
 // ============================================
-// Status Config
+// Helpers
 // ============================================
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  ACTIVE: { label: "Active", color: "bg-blue-100 text-blue-800", icon: RefreshCw },
-  WAITING: { label: "Waiting", color: "bg-amber-100 text-amber-800", icon: Clock },
-  COMPLETED: { label: "Completed", color: "bg-green-100 text-green-800", icon: CheckCircle },
-  ARCHIVED: { label: "Archived", color: "bg-gray-100 text-gray-600", icon: Archive }
-}
-
-// Get status display info, with fallback for custom statuses
-const getStatusConfig = (status: string) => {
-  if (STATUS_CONFIG[status]) {
-    return STATUS_CONFIG[status]
-  }
-  // Custom status - use a default style
-  return {
-    label: status,
-    color: "bg-purple-100 text-purple-800",
-    icon: Clock
-  }
-}
-
-const SEVERITY_STYLES = {
-  high: "bg-red-50 border-red-200 text-red-800",
-  medium: "bg-amber-50 border-amber-200 text-amber-800",
-  low: "bg-blue-50 border-blue-200 text-blue-800",
-  success: "bg-green-50 border-green-200 text-green-800"
-}
-
-// Helper to get initials
 function getInitials(name: string | null, email: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/)
@@ -384,66 +202,62 @@ export default function JobDetailPage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Tasks state (for awaiting response section + timeline)
+  // Data state
   const [tasks, setTasks] = useState<JobTask[]>([])
-  const [tasksLoading, setTasksLoading] = useState(true)
-
-  // Requests state (EmailDrafts associated with this job)
   const [requests, setRequests] = useState<JobRequest[]>([])
-  const [requestsLoading, setRequestsLoading] = useState(true)
-
-  // Comments state
   const [comments, setComments] = useState<JobComment[]>([])
-  const [newComment, setNewComment] = useState("")
-  const [submittingComment, setSubmittingComment] = useState(false)
-
-  // Timeline state
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
-  const [timelineLoading, setTimelineLoading] = useState(true)
-  const [timelineError, setTimelineError] = useState<string | null>(null)
+  const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
+  const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
 
-  // Tasks error state
-  const [tasksError, setTasksError] = useState<string | null>(null)
-
-  // Timeline filter
-  const [timelineFilter, setTimelineFilter] = useState<"all" | "emails" | "comments">("all")
-
-  // Collaborator management
-  const [isAddCollaboratorOpen, setIsAddCollaboratorOpen] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState("")
-  const [addingCollaborator, setAddingCollaborator] = useState(false)
-
-  // Next action banner
-  const [bannerDismissed, setBannerDismissed] = useState(false)
-
-  // Awaiting response expanded
-  const [awaitingExpanded, setAwaitingExpanded] = useState(true)
+  // Loading states
+  const [tasksLoading, setTasksLoading] = useState(true)
+  const [requestsLoading, setRequestsLoading] = useState(true)
 
   // Edit form state
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editStatus, setEditStatus] = useState<string>("ACTIVE")
   const [editDueDate, setEditDueDate] = useState("")
   const [editLabels, setEditLabels] = useState<string[]>([])
   const [newLabelInput, setNewLabelInput] = useState("")
-  
-  // Custom status input
-  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
-  const [customStatusInput, setCustomStatusInput] = useState("")
 
-  // Stakeholder management
+  // Comment state
+  const [newComment, setNewComment] = useState("")
+  const [submittingComment, setSubmittingComment] = useState(false)
+
+  // UI state
+  const [awaitingExpanded, setAwaitingExpanded] = useState(true)
+  const [requestsExpanded, setRequestsExpanded] = useState(false)
+  const [timelineExpanded, setTimelineExpanded] = useState(true)
+
+  // Stakeholder dialog
   const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
   const [stakeholderType, setStakeholderType] = useState<"contact_type" | "group" | "individual">("contact_type")
-  const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
   const [availableTypes, setAvailableTypes] = useState<ContactType[]>([])
   const [availableGroups, setAvailableGroups] = useState<Group[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Entity[]>([])
   const [searchingEntities, setSearchingEntities] = useState(false)
-  
-  // Stakeholder contacts (resolved from stakeholders)
-  const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
   const [stakeholderContactsLoading, setStakeholderContactsLoading] = useState(false)
+
+  // Status dropdown
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [customStatusInput, setCustomStatusInput] = useState("")
+
+  // ============================================
+  // Computed values
+  // ============================================
+
+  const awaitingTasks = useMemo(() => tasks.filter(t => t.status === "AWAITING_RESPONSE"), [tasks])
+  const itemMode = useMemo(() => job ? getItemMode(job, tasks, requests) : "setup", [job, tasks, requests])
+  
+  const displayLabels = useMemo(() => {
+    if (!job) return []
+    const labels = job.labels
+    if (Array.isArray(labels)) return labels
+    if (labels && typeof labels === 'object' && 'tags' in labels) return (labels as any).tags || []
+    return []
+  }, [job])
 
   // ============================================
   // Data Fetching
@@ -452,20 +266,14 @@ export default function JobDetailPage() {
   const fetchJob = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/jobs/${jobId}`, {
-        credentials: "include"
-      })
-
+      const response = await fetch(`/api/jobs/${jobId}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setJob(data.job)
         setPermissions(data.permissions)
-        // Initialize edit form
         setEditName(data.job.name)
         setEditDescription(data.job.description || "")
-        setEditStatus(data.job.status)
         setEditDueDate(data.job.dueDate ? data.job.dueDate.split("T")[0] : "")
-        // Parse labels from the job
         const jobLabels = data.job.labels
         if (Array.isArray(jobLabels)) {
           setEditLabels(jobLabels)
@@ -474,10 +282,7 @@ export default function JobDetailPage() {
         } else {
           setEditLabels([])
         }
-        // Parse stakeholders
-        if (data.job.stakeholders) {
-          setStakeholders(data.job.stakeholders)
-        }
+        setStakeholders(data.job.stakeholders || [])
       } else if (response.status === 404) {
         router.push("/dashboard/jobs")
       } else if (response.status === 401) {
@@ -490,11 +295,39 @@ export default function JobDetailPage() {
     }
   }, [jobId, router])
 
+  const fetchTasks = useCallback(async () => {
+    try {
+      setTasksLoading(true)
+      const response = await fetch(`/api/tasks?jobId=${jobId}`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setTasks(data.tasks || [])
+      }
+    } catch (error) {
+      console.error("Error fetching tasks:", error)
+    } finally {
+      setTasksLoading(false)
+    }
+  }, [jobId])
+
+  const fetchRequests = useCallback(async () => {
+    try {
+      setRequestsLoading(true)
+      const response = await fetch(`/api/jobs/${jobId}/requests`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setRequests(data.requests || [])
+      }
+    } catch (error) {
+      console.error("Error fetching requests:", error)
+    } finally {
+      setRequestsLoading(false)
+    }
+  }, [jobId])
+
   const fetchComments = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/comments`, {
-        credentials: "include"
-      })
+      const response = await fetch(`/api/jobs/${jobId}/comments`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setComments(data.comments || [])
@@ -506,98 +339,36 @@ export default function JobDetailPage() {
 
   const fetchTimeline = useCallback(async () => {
     try {
-      setTimelineLoading(true)
-      setTimelineError(null)
-      const filterParam = timelineFilter !== "all" ? `&filter=${timelineFilter}` : ""
-      const response = await fetch(`/api/jobs/${jobId}/timeline?limit=50${filterParam}`, {
-        credentials: "include"
-      })
+      const response = await fetch(`/api/jobs/${jobId}/timeline`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setTimelineEvents(data.events || [])
-      } else {
-        setTimelineError("Unable to load timeline")
-        setTimelineEvents([])
       }
     } catch (error) {
       console.error("Error fetching timeline:", error)
-      setTimelineError("Unable to load timeline")
-      setTimelineEvents([])
-    } finally {
-      setTimelineLoading(false)
-    }
-  }, [jobId, timelineFilter])
-
-  const fetchTasks = useCallback(async () => {
-    try {
-      setTasksLoading(true)
-      setTasksError(null)
-      const response = await fetch(`/api/tasks?jobId=${jobId}`, {
-        credentials: "include"
-      })
-      if (response.ok) {
-        const jobTasks = await response.json()
-        setTasks(Array.isArray(jobTasks) ? jobTasks : [])
-      } else {
-        setTasksError("Unable to load tasks")
-        setTasks([])
-      }
-    } catch (error) {
-      console.error("Error fetching tasks:", error)
-      setTasksError("Unable to load tasks")
-      setTasks([])
-    } finally {
-      setTasksLoading(false)
     }
   }, [jobId])
 
-  const fetchRequests = useCallback(async () => {
-    try {
-      setRequestsLoading(true)
-      const response = await fetch(`/api/jobs/${jobId}/requests`, {
-        credentials: "include"
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setRequests(data.requests || [])
-      } else {
-        setRequests([])
-      }
-    } catch (error) {
-      console.error("Error fetching requests:", error)
-      setRequests([])
-    } finally {
-      setRequestsLoading(false)
-    }
-  }, [jobId])
-
-  // Fetch contacts for all stakeholders
   const fetchStakeholderContacts = useCallback(async (currentStakeholders: JobStakeholder[]) => {
     if (currentStakeholders.length === 0) {
       setStakeholderContacts([])
       return
     }
-
     setStakeholderContactsLoading(true)
     try {
       const allContacts: StakeholderContact[] = []
-
       for (const stakeholder of currentStakeholders) {
         if (stakeholder.type === "individual") {
-          // For individuals, we already have the info
           allContacts.push({
             id: stakeholder.id,
             firstName: stakeholder.name.split(" ")[0] || stakeholder.name,
             lastName: stakeholder.name.split(" ").slice(1).join(" ") || null,
-            email: null, // We don't have email stored in stakeholder
+            email: null,
             stakeholderType: "individual",
             stakeholderName: stakeholder.name
           })
         } else if (stakeholder.type === "group") {
-          // Fetch contacts in this group
-          const response = await fetch(`/api/entities?groupId=${stakeholder.id}`, {
-            credentials: "include"
-          })
+          const response = await fetch(`/api/entities?groupId=${stakeholder.id}`, { credentials: "include" })
           if (response.ok) {
             const entities = await response.json()
             const contacts = Array.isArray(entities) ? entities : []
@@ -613,13 +384,7 @@ export default function JobDetailPage() {
             })
           }
         } else if (stakeholder.type === "contact_type") {
-          // Fetch contacts of this type
-          const typeValue = stakeholder.id.startsWith("CUSTOM:") 
-            ? stakeholder.id 
-            : stakeholder.id
-          const response = await fetch(`/api/entities?contactType=${encodeURIComponent(typeValue)}`, {
-            credentials: "include"
-          })
+          const response = await fetch(`/api/entities?contactType=${encodeURIComponent(stakeholder.id)}`, { credentials: "include" })
           if (response.ok) {
             const entities = await response.json()
             const contacts = Array.isArray(entities) ? entities : []
@@ -636,12 +401,9 @@ export default function JobDetailPage() {
           }
         }
       }
-
-      // Deduplicate by id
       const uniqueContacts = allContacts.filter((contact, index, self) =>
         index === self.findIndex(c => c.id === contact.id)
       )
-
       setStakeholderContacts(uniqueContacts)
     } catch (error) {
       console.error("Error fetching stakeholder contacts:", error)
@@ -652,43 +414,28 @@ export default function JobDetailPage() {
 
   const fetchStakeholderOptions = useCallback(async () => {
     try {
-      // Fetch contact types
       const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
       if (typesRes.ok) {
         const typesData = await typesRes.json()
-        // Transform the response into the expected format
-        // Only show types that actually have contacts in the database
         const types: ContactType[] = []
-        
-        // Add built-in types that have contacts
         const builtInCounts = typesData.builtInCounts || {}
         const builtInLabels: Record<string, string> = {
-          EMPLOYEE: "Employee",
-          VENDOR: "Vendor", 
-          CLIENT: "Client",
-          PARTNER: "Partner",
-          OTHER: "Other"
+          EMPLOYEE: "Employee", VENDOR: "Vendor", CLIENT: "Client", PARTNER: "Partner", OTHER: "Other"
         }
         for (const [value, label] of Object.entries(builtInLabels)) {
-          // Only include if there are actually contacts of this type
           if (builtInCounts[value] && builtInCounts[value] > 0) {
             types.push({ value, label, count: builtInCounts[value] })
           }
         }
-        
-        // Add custom types (these already only appear if they have contacts)
         const customTypes = typesData.customTypes || []
         for (const ct of customTypes) {
           types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
         }
-        
         setAvailableTypes(types)
       }
-      // Fetch groups - API returns array directly
       const groupsRes = await fetch("/api/groups", { credentials: "include" })
       if (groupsRes.ok) {
         const groupsData = await groupsRes.json()
-        // API returns array directly, transform to expected format
         const groups: Group[] = (Array.isArray(groupsData) ? groupsData : []).map((g: any) => ({
           id: g.id,
           name: g.name,
@@ -701,25 +448,7 @@ export default function JobDetailPage() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchJob()
-    fetchComments()
-    fetchTasks()
-    fetchTimeline()
-    fetchRequests()
-    fetchStakeholderOptions()
-  }, [fetchJob, fetchComments, fetchTasks, fetchTimeline, fetchRequests, fetchStakeholderOptions])
-
-  // Fetch stakeholder contacts when stakeholders change
-  useEffect(() => {
-    if (stakeholders.length > 0) {
-      fetchStakeholderContacts(stakeholders)
-    } else {
-      setStakeholderContacts([])
-    }
-  }, [stakeholders, fetchStakeholderContacts])
-
-  // Search for individual contacts
+  // Search entities
   const searchEntities = useCallback(async (query: string) => {
     if (query.length < 2) {
       setSearchResults([])
@@ -727,12 +456,9 @@ export default function JobDetailPage() {
     }
     setSearchingEntities(true)
     try {
-      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}`, {
-        credentials: "include"
-      })
+      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        // API returns array directly
         const entities = Array.isArray(data) ? data : []
         setSearchResults(entities.slice(0, 10))
       }
@@ -752,27 +478,22 @@ export default function JobDetailPage() {
     return () => clearTimeout(debounce)
   }, [searchQuery, stakeholderType, searchEntities])
 
-  // ============================================
-  // Computed Values
-  // ============================================
+  useEffect(() => {
+    fetchJob()
+    fetchTasks()
+    fetchRequests()
+    fetchComments()
+    fetchTimeline()
+    fetchStakeholderOptions()
+  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions])
 
-  const awaitingTasks = useMemo(() => {
-    return tasks.filter(t => t.status === "AWAITING_RESPONSE")
-  }, [tasks])
-
-  const hasNewReplies = useMemo(() => {
-    const now = new Date()
-    return tasks.some(t => {
-      if (!t.hasReplies || !t.lastActivityAt) return false
-      const lastActivity = new Date(t.lastActivityAt)
-      return differenceInHours(now, lastActivity) <= 24
-    })
-  }, [tasks])
-
-  const nextAction = useMemo(() => {
-    if (!job) return null
-    return computeNextAction(job, awaitingTasks, hasNewReplies)
-  }, [job, awaitingTasks, hasNewReplies])
+  useEffect(() => {
+    if (stakeholders.length > 0) {
+      fetchStakeholderContacts(stakeholders)
+    } else {
+      setStakeholderContacts([])
+    }
+  }, [stakeholders, fetchStakeholderContacts])
 
   // ============================================
   // Handlers
@@ -780,7 +501,6 @@ export default function JobDetailPage() {
 
   const handleSave = async () => {
     if (!editName.trim()) return
-
     setSaving(true)
     try {
       const response = await fetch(`/api/jobs/${jobId}`, {
@@ -791,10 +511,8 @@ export default function JobDetailPage() {
           name: editName.trim(),
           description: editDescription.trim() || null,
           dueDate: editDueDate || null
-          // Note: status, labels, and stakeholders are now saved inline
         })
       })
-
       if (response.ok) {
         const data = await response.json()
         setJob(data.job)
@@ -807,47 +525,96 @@ export default function JobDetailPage() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to archive this item?")) return
-
+  const handleStatusChange = async (newStatus: string) => {
+    setJob(prev => prev ? { ...prev, status: newStatus } : null)
+    setIsStatusDropdownOpen(false)
+    setCustomStatusInput("")
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
-        method: "DELETE",
-        credentials: "include"
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: newStatus })
       })
-
-      if (response.ok) {
-        router.push("/dashboard/jobs")
-      }
     } catch (error) {
-      console.error("Error deleting job:", error)
+      console.error("Error updating status:", error)
+      fetchJob()
     }
   }
 
-  const cancelEdit = () => {
-    if (job) {
-      setEditName(job.name)
-      setEditDescription(job.description || "")
-      setEditStatus(job.status)
-      setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-      const jobLabels = job.labels
-      if (Array.isArray(jobLabels)) {
-        setEditLabels(jobLabels)
-      } else if (jobLabels && typeof jobLabels === 'object' && 'tags' in jobLabels) {
-        setEditLabels((jobLabels as any).tags || [])
-      } else {
-        setEditLabels([])
-      }
-      setStakeholders(job.stakeholders || [])
+  const handleAddLabel = async (label: string) => {
+    if (!label.trim() || displayLabels.includes(label)) return
+    const newLabels = [...displayLabels, label.trim()]
+    setEditLabels(newLabels)
+    setNewLabelInput("")
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ labels: { tags: newLabels } })
+      })
+      fetchJob()
+    } catch (error) {
+      console.error("Error adding label:", error)
     }
-    setEditing(false)
   }
 
-  // Note: Label and stakeholder add/remove are now handled inline with immediate saves
+  const handleRemoveLabel = async (label: string) => {
+    const newLabels = displayLabels.filter((l: string) => l !== label)
+    setEditLabels(newLabels)
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ labels: { tags: newLabels } })
+      })
+      fetchJob()
+    } catch (error) {
+      console.error("Error removing label:", error)
+    }
+  }
+
+  const handleAddStakeholder = async (type: "contact_type" | "group" | "individual", id: string, name: string) => {
+    const exists = stakeholders.some(s => s.type === type && s.id === id)
+    if (exists) return
+    const newStakeholders = [...stakeholders, { type, id, name }]
+    setStakeholders(newStakeholders)
+    setIsAddStakeholderOpen(false)
+    setSearchQuery("")
+    setSearchResults([])
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stakeholders: newStakeholders })
+      })
+      fetchJob()
+    } catch (error) {
+      console.error("Error adding stakeholder:", error)
+    }
+  }
+
+  const handleRemoveStakeholder = async (type: string, id: string) => {
+    const newStakeholders = stakeholders.filter(s => !(s.type === type && s.id === id))
+    setStakeholders(newStakeholders)
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stakeholders: newStakeholders })
+      })
+      fetchJob()
+    } catch (error) {
+      console.error("Error removing stakeholder:", error)
+    }
+  }
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return
-
     setSubmittingComment(true)
     try {
       const response = await fetch(`/api/jobs/${jobId}/comments`, {
@@ -856,7 +623,6 @@ export default function JobDetailPage() {
         credentials: "include",
         body: JSON.stringify({ content: newComment.trim() })
       })
-
       if (response.ok) {
         const data = await response.json()
         setComments(prev => [data.comment, ...prev])
@@ -870,492 +636,236 @@ export default function JobDetailPage() {
     }
   }
 
-  const handleDeleteComment = async (commentId: string) => {
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to archive this item?")) return
     try {
-      const response = await fetch(`/api/jobs/${jobId}/comments?commentId=${commentId}`, {
+      const response = await fetch(`/api/jobs/${jobId}`, {
         method: "DELETE",
         credentials: "include"
       })
-
       if (response.ok) {
-        setComments(prev => prev.filter(c => c.id !== commentId))
+        router.push("/dashboard/jobs")
       }
     } catch (error) {
-      console.error("Error deleting comment:", error)
-    }
-  }
-
-  const handleAddCollaborator = async () => {
-    if (!selectedUserId) return
-
-    setAddingCollaborator(true)
-    try {
-      const response = await fetch(`/api/jobs/${jobId}/collaborators`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ userId: selectedUserId })
-      })
-
-      if (response.ok) {
-        await fetchJob()
-        setIsAddCollaboratorOpen(false)
-        setSelectedUserId("")
-      }
-    } catch (error) {
-      console.error("Error adding collaborator:", error)
-    } finally {
-      setAddingCollaborator(false)
-    }
-  }
-
-  const handleRemoveCollaborator = async (userId: string) => {
-    if (!confirm("Remove this collaborator?")) return
-
-    try {
-      const response = await fetch(`/api/jobs/${jobId}/collaborators?userId=${userId}`, {
-        method: "DELETE",
-        credentials: "include"
-      })
-
-      if (response.ok) {
-        await fetchJob()
-      }
-    } catch (error) {
-      console.error("Error removing collaborator:", error)
+      console.error("Error deleting job:", error)
     }
   }
 
   // ============================================
-  // Render Helpers
-  // ============================================
-
-  const renderTimelineEvent = (event: TimelineEvent) => {
-    const iconMap = {
-      comment: <MessageSquare className="w-4 h-4 text-blue-500" />,
-      email_sent: <Mail className="w-4 h-4 text-gray-500" />,
-      email_reply: <Mail className="w-4 h-4 text-green-500" />,
-      reminder_sent: <Bell className="w-4 h-4 text-amber-500" />
-    }
-
-    const bgMap = {
-      comment: "bg-blue-50",
-      email_sent: "bg-gray-50",
-      email_reply: "bg-green-50",
-      reminder_sent: "bg-amber-50"
-    }
-
-    const hasRequestLink = event.taskId && event.taskName && event.type !== "comment"
-
-    const eventContent = (
-      <div className={`flex gap-3 p-3 rounded-lg ${bgMap[event.type]} ${hasRequestLink ? "cursor-pointer hover:ring-2 hover:ring-gray-200 transition-all" : ""}`}>
-        <div className="flex-shrink-0 mt-0.5">
-          {iconMap[event.type]}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {event.type === "comment" && event.author && (
-              <span className="font-medium text-sm text-gray-900">
-                {event.author.name || event.author.email.split("@")[0]}
-              </span>
-            )}
-            {(event.type === "email_sent" || event.type === "email_reply") && (
-              <span className="font-medium text-sm text-gray-900">
-                {event.type === "email_reply" ? "Reply from " : "Email to "}
-                {event.recipientName || event.recipientEmail || "Unknown"}
-              </span>
-            )}
-            {event.type === "reminder_sent" && (
-              <span className="font-medium text-sm text-gray-900">
-                Reminder sent to {event.recipientName || event.recipientEmail}
-              </span>
-            )}
-            <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
-            </span>
-          </div>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-2">{event.content}</p>
-          {event.taskName && (
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                {event.taskName}
-              </span>
-              {hasRequestLink && (
-                <span className="text-xs text-blue-600 flex items-center gap-1">
-                  View thread <ExternalLink className="w-3 h-3" />
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        {event.type === "comment" && (permissions?.isOwner || permissions?.isAdmin) && (
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              handleDeleteComment(event.id.replace("comment-", ""))
-            }}
-            className="text-gray-400 hover:text-red-500 self-start"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    )
-
-    if (hasRequestLink) {
-      return (
-        <Link 
-          key={event.id}
-          href={`/dashboard/requests?campaignName=${encodeURIComponent(event.taskName!)}`}
-        >
-          {eventContent}
-        </Link>
-      )
-    }
-
-    return <div key={event.id}>{eventContent}</div>
-  }
-
-  // ============================================
-  // Loading State
+  // Render
   // ============================================
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" />
       </div>
     )
   }
 
   if (!job) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <p className="text-gray-500">{UI_LABELS.jobSingular} not found</p>
+      <div className="p-6">
+        <EmptyState
+          icon={<AlertCircle className="w-6 h-6" />}
+          title="Item not found"
+          description="This item may have been deleted or you don't have access."
+          action={{ label: "Back to Checklist", onClick: () => router.push("/dashboard/jobs") }}
+        />
       </div>
     )
   }
 
-  // Parse labels for display
-  const displayLabels = Array.isArray(job.labels) 
-    ? job.labels 
-    : (job.labels as any)?.tags || []
-
-  // ============================================
-  // Main Render
-  // ============================================
-
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Back button */}
-      <button
-        onClick={() => router.push("/dashboard/jobs")}
-        className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to {UI_LABELS.jobsNavLabel}
-      </button>
-
-      {/* ============================================ */}
-      {/* HEADER SECTION */}
-      {/* ============================================ */}
-      <Card className="mb-6">
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Bar */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="px-6 py-3 flex items-center justify-between">
+          <Link href="/dashboard/jobs" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">Back to {UI_LABELS.jobsPageTitle}</span>
+          </Link>
+          {permissions?.canEdit && (
+            <div className="flex items-center gap-2">
               {editing ? (
-                /* Edit mode - only name, description, deadline */
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="editName">{UI_LABELS.jobSingular} Name</Label>
-                    <Input
-                      id="editName"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="editDescription">Description</Label>
-                    <Input
-                      id="editDescription"
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      placeholder="Optional description"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="editDueDate">Deadline</Label>
-                    <Input
-                      id="editDueDate"
-                      type="date"
-                      value={editDueDate}
-                      onChange={(e) => setEditDueDate(e.target.value)}
-                      className="mt-1 w-48"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
-                      <Save className="w-4 h-4 mr-2" />
-                      {saving ? "Saving..." : "Save"}
-                    </Button>
-                    <Button variant="outline" onClick={cancelEdit}>
-                      <X className="w-4 h-4 mr-2" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                /* View mode with inline-editable status, labels, stakeholders */
                 <>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h1 className="text-2xl font-bold text-gray-900">{job.name}</h1>
-                    {/* Inline Status Dropdown with Custom Status Support */}
-                    {permissions?.canEdit ? (
-                      <div className="relative">
-                        <button
-                          onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                          className={`flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getStatusConfig(job.status).color}`}
-                        >
-                          {getStatusConfig(job.status).label}
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                        
-                        {isStatusDropdownOpen && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-10" 
-                              onClick={() => {
-                                setIsStatusDropdownOpen(false)
-                                setCustomStatusInput("")
-                              }}
-                            />
-                            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
-                              <div className="py-1">
-                                {/* Built-in statuses */}
-                                {["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map(status => {
-                                  const config = getStatusConfig(status)
-                                  return (
-                                    <button
-                                      key={status}
-                                      onClick={async () => {
-                                        setJob(prev => prev ? { ...prev, status } : null)
-                                        setIsStatusDropdownOpen(false)
-                                        try {
-                                          await fetch(`/api/jobs/${jobId}`, {
-                                            method: "PATCH",
-                                            headers: { "Content-Type": "application/json" },
-                                            credentials: "include",
-                                            body: JSON.stringify({ status })
-                                          })
-                                        } catch (error) {
-                                          console.error("Error updating status:", error)
-                                          fetchJob()
-                                        }
-                                      }}
-                                      className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                        job.status === status ? "bg-gray-50 font-medium" : ""
-                                      }`}
-                                    >
-                                      <span className={`w-2 h-2 rounded-full ${config.color.split(" ")[0]}`} />
-                                      {config.label}
-                                    </button>
-                                  )
-                                })}
-                                
-                                {/* Show current custom status if it exists */}
-                                {!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) && (
-                                  <button
-                                    onClick={() => setIsStatusDropdownOpen(false)}
-                                    className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm bg-gray-50 font-medium"
-                                  >
-                                    <span className="w-2 h-2 rounded-full bg-purple-100" />
-                                    {job.status}
-                                  </button>
-                                )}
-                                
-                                {/* Custom status input */}
-                                <div className="border-t border-gray-100 mt-1 pt-1 px-2 pb-2">
-                                  <p className="text-xs text-gray-400 mb-1 px-1">Custom status</p>
-                                  <div className="flex gap-1">
-                                    <Input
-                                      placeholder="Type custom status..."
-                                      value={customStatusInput}
-                                      onChange={(e) => setCustomStatusInput(e.target.value)}
-                                      onKeyDown={async (e) => {
-                                        if (e.key === "Enter" && customStatusInput.trim()) {
-                                          e.preventDefault()
-                                          const newStatus = customStatusInput.trim()
-                                          setJob(prev => prev ? { ...prev, status: newStatus } : null)
-                                          setIsStatusDropdownOpen(false)
-                                          setCustomStatusInput("")
-                                          try {
-                                            await fetch(`/api/jobs/${jobId}`, {
-                                              method: "PATCH",
-                                              headers: { "Content-Type": "application/json" },
-                                              credentials: "include",
-                                              body: JSON.stringify({ status: newStatus })
-                                            })
-                                          } catch (error) {
-                                            console.error("Error updating status:", error)
-                                            fetchJob()
-                                          }
-                                        }
-                                      }}
-                                      className="h-7 text-xs flex-1"
-                                    />
+                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleDelete} className="text-red-600 hover:text-red-700">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Main Content - 8 columns */}
+          <div className="col-span-12 lg:col-span-8 space-y-6">
+            {/* Header Card */}
+            <Card>
+              <CardContent className="p-6">
+                {editing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Name</Label>
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="mt-1 text-lg font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <Label>Description</Label>
+                      <Input
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Optional description"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Deadline</Label>
+                      <Input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        className="mt-1 w-48"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Title + Status */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
+                          {/* Status Dropdown */}
+                          {permissions?.canEdit ? (
+                            <div className="relative">
+                              <button
+                                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                                className="flex items-center gap-1"
+                              >
+                                <StatusBadge status={job.status} />
+                                <ChevronDown className="w-3 h-3 text-gray-400" />
+                              </button>
+                              {isStatusDropdownOpen && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
+                                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
+                                    <div className="py-1">
+                                      {["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map(status => (
+                                        <button
+                                          key={status}
+                                          onClick={() => handleStatusChange(status)}
+                                          className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${job.status === status ? "bg-gray-50 font-medium" : ""}`}
+                                        >
+                                          <StatusBadge status={status} size="sm" />
+                                        </button>
+                                      ))}
+                                      <div className="border-t border-gray-100 mt-1 pt-1 px-2 pb-2">
+                                        <p className="text-xs text-gray-400 mb-1 px-1">Custom status</p>
+                                        <Input
+                                          placeholder="Type and press Enter"
+                                          value={customStatusInput}
+                                          onChange={(e) => setCustomStatusInput(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && customStatusInput.trim()) {
+                                              handleStatusChange(customStatusInput.trim())
+                                            }
+                                          }}
+                                          className="h-7 text-xs"
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
-                                  <p className="text-xs text-gray-400 mt-1 px-1">Press Enter to apply</p>
-                                </div>
-                              </div>
+                                </>
+                              )}
                             </div>
-                          </>
+                          ) : (
+                            <StatusBadge status={job.status} />
+                          )}
+                        </div>
+                        {job.description && (
+                          <p className="text-gray-500 mb-3">{job.description}</p>
                         )}
                       </div>
-                    ) : (
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusConfig(job.status).color}`}>
-                        {getStatusConfig(job.status).label}
-                      </span>
-                    )}
-                  </div>
-                  {job.description && (
-                    <p className="text-gray-500 mb-3">{job.description}</p>
-                  )}
-                  
-                  {/* Deadline - prominent display */}
-                  {job.dueDate && (
-                    <div className="flex items-center gap-2 mb-3 text-sm">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium">Deadline:</span>
-                      <span className={`${
-                        differenceInDays(new Date(job.dueDate), new Date()) < 0 
-                          ? "text-red-600 font-medium" 
-                          : differenceInDays(new Date(job.dueDate), new Date()) <= 3
-                          ? "text-amber-600 font-medium"
-                          : "text-gray-700"
-                      }`}>
-                        {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
-                      </span>
                     </div>
-                  )}
 
-                  {/* Inline Labels - always visible with add/remove */}
-                  <div className="mb-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Tag className="w-4 h-4 text-gray-400" />
-                      {displayLabels.map((label: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"
-                        >
-                          {label}
-                          {permissions?.canEdit && (
-                            <button
-                              onClick={async () => {
-                                const newLabels = displayLabels.filter((l: string) => l !== label)
-                                setEditLabels(newLabels)
-                                // Save to server
-                                try {
-                                  await fetch(`/api/jobs/${jobId}`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    credentials: "include",
-                                    body: JSON.stringify({ labels: { tags: newLabels } })
-                                  })
-                                  fetchJob()
-                                } catch (error) {
-                                  console.error("Error removing label:", error)
-                                }
-                              }}
-                              className="hover:text-blue-600"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
+                    {/* Deadline */}
+                    {job.dueDate && (
+                      <div className="flex items-center gap-2 mb-3 text-sm">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Deadline:</span>
+                        <span className={`${
+                          differenceInDays(new Date(job.dueDate), new Date()) < 0 
+                            ? "text-red-600 font-medium" 
+                            : differenceInDays(new Date(job.dueDate), new Date()) <= 3
+                            ? "text-amber-600 font-medium"
+                            : "text-gray-700"
+                        }`}>
+                          {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Labels */}
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <Tag className="w-4 h-4 text-gray-400" />
+                      {displayLabels.map((label: string) => (
+                        <Chip
+                          key={label}
+                          label={label}
+                          color="blue"
+                          removable={permissions?.canEdit}
+                          onRemove={() => handleRemoveLabel(label)}
+                          size="sm"
+                        />
                       ))}
                       {permissions?.canEdit && (
-                        <div className="inline-flex items-center">
-                          <Input
-                            placeholder="Add label..."
-                            value={newLabelInput}
-                            onChange={(e) => setNewLabelInput(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === "Enter" && newLabelInput.trim()) {
-                                e.preventDefault()
-                                const label = newLabelInput.trim()
-                                if (!displayLabels.includes(label)) {
-                                  const newLabels = [...displayLabels, label]
-                                  setEditLabels(newLabels)
-                                  setNewLabelInput("")
-                                  // Save to server
-                                  try {
-                                    await fetch(`/api/jobs/${jobId}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      credentials: "include",
-                                      body: JSON.stringify({ labels: { tags: newLabels } })
-                                    })
-                                    fetchJob()
-                                  } catch (error) {
-                                    console.error("Error adding label:", error)
-                                  }
-                                }
-                              }
-                            }}
-                            className="w-28 h-7 text-xs"
-                          />
-                        </div>
-                      )}
-                      {displayLabels.length === 0 && !permissions?.canEdit && (
-                        <span className="text-xs text-gray-400">No labels</span>
+                        <Input
+                          placeholder="Add label..."
+                          value={newLabelInput}
+                          onChange={(e) => setNewLabelInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              handleAddLabel(newLabelInput)
+                            }
+                          }}
+                          className="w-28 h-7 text-xs"
+                        />
                       )}
                     </div>
-                  </div>
 
-                  {/* Inline Stakeholders - always visible with add/remove */}
-                  <div className="mb-3">
+                    {/* Stakeholders */}
                     <div className="flex flex-wrap items-center gap-2">
                       <Users className="w-4 h-4 text-gray-400" />
-                      {stakeholders.map((s, idx) => (
-                        <span
-                          key={idx}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                            s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
-                            s.type === "group" ? "bg-green-100 text-green-800" :
-                            "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
-                          {s.type === "group" && <Users className="w-3 h-3" />}
-                          {s.type === "individual" && <User className="w-3 h-3" />}
-                          {s.name}
-                          {permissions?.canEdit && (
-                            <button
-                              onClick={async () => {
-                                const newStakeholders = stakeholders.filter(st => !(st.type === s.type && st.id === s.id))
-                                setStakeholders(newStakeholders)
-                                // Save to server
-                                try {
-                                  await fetch(`/api/jobs/${jobId}`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    credentials: "include",
-                                    body: JSON.stringify({ stakeholders: newStakeholders })
-                                  })
-                                  fetchJob()
-                                } catch (error) {
-                                  console.error("Error removing stakeholder:", error)
-                                }
-                              }}
-                              className="hover:opacity-70"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </span>
+                      {stakeholders.map((s) => (
+                        <Chip
+                          key={`${s.type}-${s.id}`}
+                          label={s.name}
+                          color={s.type === "contact_type" ? "purple" : s.type === "group" ? "green" : "gray"}
+                          removable={permissions?.canEdit}
+                          onRemove={() => handleRemoveStakeholder(s.type, s.id)}
+                          size="sm"
+                        />
                       ))}
                       {permissions?.canEdit && (
                         <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
@@ -1383,144 +893,67 @@ export default function JobDetailPage() {
                                   </SelectContent>
                                 </Select>
                               </div>
-
                               {stakeholderType === "contact_type" && (
-                                <div className="space-y-2">
-                                  <Label>Select Contact Type</Label>
-                                  <div className="max-h-48 overflow-y-auto space-y-1">
-                                    {availableTypes.map(type => (
-                                      <button
-                                        key={type.value}
-                                        type="button"
-                                        onClick={async () => {
-                                          const exists = stakeholders.some(s => s.type === "contact_type" && s.id === type.value)
-                                          if (!exists) {
-                                            const newStakeholders = [...stakeholders, { type: "contact_type" as const, id: type.value, name: type.label }]
-                                            setStakeholders(newStakeholders)
-                                            setIsAddStakeholderOpen(false)
-                                            // Save to server
-                                            try {
-                                              await fetch(`/api/jobs/${jobId}`, {
-                                                method: "PATCH",
-                                                headers: { "Content-Type": "application/json" },
-                                                credentials: "include",
-                                                body: JSON.stringify({ stakeholders: newStakeholders })
-                                              })
-                                              fetchJob()
-                                            } catch (error) {
-                                              console.error("Error adding stakeholder:", error)
-                                            }
-                                          }
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
-                                      >
-                                        <span>{type.label}</span>
-                                        <span className="text-xs text-gray-500">{type.count} contacts</span>
-                                      </button>
-                                    ))}
-                                    {availableTypes.length === 0 && (
-                                      <p className="text-sm text-gray-500 text-center py-4">No contact types found</p>
-                                    )}
-                                  </div>
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                  {availableTypes.map(type => (
+                                    <button
+                                      key={type.value}
+                                      onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
+                                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                    >
+                                      <span>{type.label}</span>
+                                      <span className="text-xs text-gray-500">{type.count} contacts</span>
+                                    </button>
+                                  ))}
+                                  {availableTypes.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center py-4">No contact types found</p>
+                                  )}
                                 </div>
                               )}
-
                               {stakeholderType === "group" && (
-                                <div className="space-y-2">
-                                  <Label>Select Group</Label>
-                                  <div className="max-h-48 overflow-y-auto space-y-1">
-                                    {availableGroups.map(group => (
-                                      <button
-                                        key={group.id}
-                                        type="button"
-                                        onClick={async () => {
-                                          const exists = stakeholders.some(s => s.type === "group" && s.id === group.id)
-                                          if (!exists) {
-                                            const newStakeholders = [...stakeholders, { type: "group" as const, id: group.id, name: group.name }]
-                                            setStakeholders(newStakeholders)
-                                            setIsAddStakeholderOpen(false)
-                                            // Save to server
-                                            try {
-                                              await fetch(`/api/jobs/${jobId}`, {
-                                                method: "PATCH",
-                                                headers: { "Content-Type": "application/json" },
-                                                credentials: "include",
-                                                body: JSON.stringify({ stakeholders: newStakeholders })
-                                              })
-                                              fetchJob()
-                                            } catch (error) {
-                                              console.error("Error adding stakeholder:", error)
-                                            }
-                                          }
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
-                                      >
-                                        <span>{group.name}</span>
-                                        <span className="text-xs text-gray-500">{group.memberCount} members</span>
-                                      </button>
-                                    ))}
-                                    {availableGroups.length === 0 && (
-                                      <p className="text-sm text-gray-500 text-center py-4">No groups found</p>
-                                    )}
-                                  </div>
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                  {availableGroups.map(group => (
+                                    <button
+                                      key={group.id}
+                                      onClick={() => handleAddStakeholder("group", group.id, group.name)}
+                                      className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                    >
+                                      <span>{group.name}</span>
+                                      <span className="text-xs text-gray-500">{group.memberCount} members</span>
+                                    </button>
+                                  ))}
+                                  {availableGroups.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center py-4">No groups found</p>
+                                  )}
                                 </div>
                               )}
-
                               {stakeholderType === "individual" && (
-                                <div className="space-y-2">
-                                  <Label>Search Contacts</Label>
+                                <div>
                                   <Input
                                     placeholder="Search by name or email..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                   />
-                                  <div className="max-h-48 overflow-y-auto space-y-1">
+                                  <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
                                     {searchingEntities ? (
                                       <div className="flex justify-center py-4">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
                                       </div>
                                     ) : searchResults.length > 0 ? (
                                       searchResults.map(entity => (
                                         <button
                                           key={entity.id}
-                                          type="button"
-                                          onClick={async () => {
-                                            const name = `${entity.firstName} ${entity.lastName || ""}`.trim()
-                                            const exists = stakeholders.some(s => s.type === "individual" && s.id === entity.id)
-                                            if (!exists) {
-                                              const newStakeholders = [...stakeholders, { type: "individual" as const, id: entity.id, name }]
-                                              setStakeholders(newStakeholders)
-                                              setIsAddStakeholderOpen(false)
-                                              setSearchQuery("")
-                                              setSearchResults([])
-                                              // Save to server
-                                              try {
-                                                await fetch(`/api/jobs/${jobId}`, {
-                                                  method: "PATCH",
-                                                  headers: { "Content-Type": "application/json" },
-                                                  credentials: "include",
-                                                  body: JSON.stringify({ stakeholders: newStakeholders })
-                                                })
-                                                fetchJob()
-                                              } catch (error) {
-                                                console.error("Error adding stakeholder:", error)
-                                              }
-                                            }
-                                          }}
+                                          onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
                                           className="w-full text-left px-3 py-2 rounded hover:bg-gray-100"
                                         >
-                                          <div className="font-medium text-sm">
-                                            {entity.firstName} {entity.lastName || ""}
-                                          </div>
-                                          {entity.email && (
-                                            <div className="text-xs text-gray-500">{entity.email}</div>
-                                          )}
+                                          <div className="font-medium text-sm">{entity.firstName} {entity.lastName || ""}</div>
+                                          {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
                                         </button>
                                       ))
                                     ) : searchQuery.length >= 2 ? (
                                       <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>
                                     ) : (
-                                      <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
+                                      <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters</p>
                                     )}
                                   </div>
                                 </div>
@@ -1529,562 +962,286 @@ export default function JobDetailPage() {
                           </DialogContent>
                         </Dialog>
                       )}
-                      {stakeholders.length === 0 && !permissions?.canEdit && (
-                        <span className="text-xs text-gray-400">No stakeholders</span>
-                      )}
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <User className="w-4 h-4" />
-                      {job.owner.name || job.owner.email.split("@")[0]}
-                    </span>
-                    {job.client && (
-                      <span className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        {job.client.firstName} {job.client.lastName || ""}
-                      </span>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {!editing && permissions?.canEdit && (
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setEditing(true)}>
-                  <Edit2 className="w-4 h-4 mr-2" />
-                  Edit
-                </Button>
-                <Button variant="outline" onClick={handleDelete} className="text-red-600 hover:text-red-700">
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ============================================ */}
-      {/* NEXT ACTION BANNER */}
-      {/* ============================================ */}
-      {nextAction && !bannerDismissed && (
-        <div className={`mb-6 p-4 rounded-lg border ${SEVERITY_STYLES[nextAction.severity]}`}>
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">{nextAction.message}</p>
-                {nextAction.subMessage && (
-                  <p className="text-sm opacity-80 mt-0.5">{nextAction.subMessage}</p>
+                  </>
                 )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {nextAction.primaryAction && (
-                nextAction.primaryAction.href ? (
-                  <Link href={nextAction.primaryAction.href}>
-                    <Button size="sm" className="bg-white text-gray-900 hover:bg-gray-100 border">
-                      {nextAction.primaryAction.label}
-                    </Button>
-                  </Link>
-                ) : (
-                  <Button size="sm" className="bg-white text-gray-900 hover:bg-gray-100 border">
-                    {nextAction.primaryAction.label}
-                  </Button>
-                )
-              )}
-              {nextAction.secondaryAction && (
-                <Button size="sm" variant="ghost">
-                  {nextAction.secondaryAction.label}
-                </Button>
-              )}
-              {nextAction.dismissible && (
-                <button
-                  onClick={() => setBannerDismissed(true)}
-                  className="text-current opacity-60 hover:opacity-100"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+              </CardContent>
+            </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ============================================ */}
-        {/* MAIN CONTENT COLUMN */}
-        {/* ============================================ */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Primary Actions */}
-          <div className="flex gap-3">
-            <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
-              <Button className="bg-green-600 hover:bg-green-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Request
-              </Button>
-            </Link>
-            <Button variant="outline" onClick={() => document.getElementById("comment-input")?.focus()}>
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Comment
-            </Button>
-          </div>
-
-          {/* Awaiting Response Section */}
-          <Card>
-            <CardHeader className="pb-2">
-              <button
-                onClick={() => setAwaitingExpanded(!awaitingExpanded)}
-                className="flex items-center justify-between w-full"
-              >
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-amber-500" />
-                  Awaiting Response
-                  <span className="text-sm font-normal text-gray-500">
-                    ({awaitingTasks.length})
-                  </span>
-                </CardTitle>
-                {awaitingExpanded ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
-                )}
-              </button>
-            </CardHeader>
-            {awaitingExpanded && (
-              <CardContent>
-                {tasksLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+            {/* Conditional Primary Section based on Mode */}
+            {itemMode === "setup" && (
+              <Card>
+                <CardContent className="p-8">
+                  <div className="text-center mb-6">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FileText className="w-6 h-6 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">How would you like to track this item?</h3>
+                    <p className="text-sm text-gray-500">Choose how you want to work on this item</p>
                   </div>
-                ) : tasksError ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-red-500">{tasksError}</p>
-                    <button 
-                      onClick={fetchTasks}
-                      className="text-xs text-blue-600 hover:underline mt-1"
+                  <div className="grid grid-cols-2 gap-4">
+                    <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
+                      <div className="border border-gray-200 rounded-lg p-6 hover:border-green-300 hover:bg-green-50/50 transition-all cursor-pointer text-center">
+                        <Mail className="w-8 h-8 text-green-600 mx-auto mb-3" />
+                        <h4 className="font-medium text-gray-900 mb-1">Send Requests</h4>
+                        <p className="text-xs text-gray-500">Email stakeholders and track responses</p>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={() => document.getElementById("comment-input")?.focus()}
+                      className="border border-gray-200 rounded-lg p-6 hover:border-blue-300 hover:bg-blue-50/50 transition-all cursor-pointer text-center"
                     >
-                      Try again
+                      <MessageSquare className="w-8 h-8 text-blue-600 mx-auto mb-3" />
+                      <h4 className="font-medium text-gray-900 mb-1">Track Internally</h4>
+                      <p className="text-xs text-gray-500">Use for internal work without emails</p>
                     </button>
                   </div>
-                ) : awaitingTasks.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    No one is currently awaiting a response
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {awaitingTasks.map(task => {
+                </CardContent>
+              </Card>
+            )}
+
+            {itemMode === "waiting" && awaitingTasks.length > 0 && (
+              <Card className="border-amber-200 bg-amber-50/30">
+                <CardContent className="p-4">
+                  <SectionHeader
+                    title="Awaiting Response"
+                    count={awaitingTasks.length}
+                    icon={<Clock className="w-4 h-4 text-amber-500" />}
+                    action={
+                      <Button size="sm" variant="outline">
+                        <Bell className="w-3 h-3 mr-1" />
+                        Send Reminder
+                      </Button>
+                    }
+                  />
+                  <div className="space-y-2 mt-3">
+                    {awaitingTasks.slice(0, 5).map(task => {
                       const daysWaiting = differenceInDays(new Date(), new Date(task.createdAt))
                       const isUrgent = daysWaiting >= 7
-                      const isWarning = daysWaiting >= 3 && daysWaiting < 7
-
                       return (
-                        <div 
-                          key={task.id} 
-                          className={`flex items-center justify-between p-3 rounded-lg ${
-                            isUrgent ? "bg-red-50" : isWarning ? "bg-amber-50" : "bg-gray-50"
-                          }`}
+                        <div
+                          key={task.id}
+                          className={`flex items-center justify-between p-3 rounded-lg bg-white border ${isUrgent ? "border-red-200" : "border-gray-100"}`}
                         >
-                          <Link 
-                            href={task.campaignName 
-                              ? `/dashboard/requests?campaignName=${encodeURIComponent(task.campaignName)}`
-                              : `/dashboard/requests`
-                            }
-                            className="flex items-center gap-3 flex-1 hover:opacity-80"
-                          >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              isUrgent ? "bg-red-100" : isWarning ? "bg-amber-100" : "bg-gray-200"
-                            }`}>
-                              <User className={`w-4 h-4 ${
-                                isUrgent ? "text-red-600" : isWarning ? "text-amber-600" : "text-gray-500"
-                              }`} />
-                            </div>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-2 rounded-full ${isUrgent ? "bg-red-500" : daysWaiting >= 3 ? "bg-amber-500" : "bg-gray-300"}`} />
                             <div>
                               <div className="font-medium text-sm text-gray-900">
-                                {task.entity?.email || "Unknown recipient"}
+                                {task.entity?.firstName} {task.entity?.lastName || ""}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {task.campaignName || "Request"} • {daysWaiting} day{daysWaiting !== 1 ? "s" : ""} waiting
+                                {task.campaignName || "Request"} · {daysWaiting} day{daysWaiting !== 1 ? "s" : ""} waiting
                               </div>
                             </div>
-                          </Link>
-                          <Button size="sm" variant="outline" className="text-xs">
-                            <Bell className="w-3 h-3 mr-1" />
-                            Send Reminder
-                          </Button>
+                          </div>
                         </div>
                       )
                     })}
+                    {awaitingTasks.length > 5 && (
+                      <p className="text-xs text-gray-500 text-center py-2">
+                        +{awaitingTasks.length - 5} more awaiting
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Requests Section (collapsed by default unless in setup mode) */}
+            {requests.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <SectionHeader
+                    title="Requests"
+                    count={requests.length}
+                    icon={<Mail className="w-4 h-4 text-blue-500" />}
+                    collapsible
+                    expanded={requestsExpanded}
+                    onToggle={() => setRequestsExpanded(!requestsExpanded)}
+                    action={
+                      <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
+                        <Button size="sm" variant="outline">
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Button>
+                      </Link>
+                    }
+                  />
+                  {requestsExpanded && (
+                    <div className="space-y-2 mt-3">
+                      {requests.map(request => (
+                        <div key={request.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                          <div>
+                            <div className="font-medium text-sm text-gray-900">
+                              {request.suggestedCampaignName || request.generatedSubject || "Request"}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {request.taskCount} recipient{request.taskCount !== 1 ? "s" : ""} · 
+                              {request.sentAt ? ` Sent ${formatDistanceToNow(new Date(request.sentAt), { addSuffix: true })}` : " Draft"}
+                            </div>
+                          </div>
+                          <StatusBadge status={request.status} size="sm" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Timeline / Comments */}
+            <Card>
+              <CardContent className="p-4">
+                <SectionHeader
+                  title="Activity"
+                  icon={<MessageSquare className="w-4 h-4 text-gray-500" />}
+                  collapsible
+                  expanded={timelineExpanded}
+                  onToggle={() => setTimelineExpanded(!timelineExpanded)}
+                />
+                {timelineExpanded && (
+                  <div className="mt-3">
+                    {/* Comment Input */}
+                    <div className="flex gap-3 mb-4">
+                      <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                        {getInitials(job.owner.name, job.owner.email)}
+                      </div>
+                      <div className="flex-1">
+                        <Textarea
+                          id="comment-input"
+                          placeholder="Add a comment..."
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          className="min-h-[80px] resize-none"
+                        />
+                        <div className="flex justify-end mt-2">
+                          <Button
+                            size="sm"
+                            onClick={handleAddComment}
+                            disabled={!newComment.trim() || submittingComment}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <Send className="w-3 h-3 mr-1" />
+                            {submittingComment ? "Posting..." : "Post"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timeline Events */}
+                    {timelineEvents.length === 0 && comments.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {comments.slice(0, 10).map(comment => (
+                          <div key={comment.id} className="flex gap-3">
+                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                              {getInitials(comment.author.name, comment.author.email)}
+                            </div>
+                            <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-sm text-gray-900">
+                                  {comment.author.name || comment.author.email.split("@")[0]}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
-            )}
-          </Card>
+            </Card>
+          </div>
 
-          {/* Requests Section */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-blue-500" />
-                  Requests
-                  <span className="text-sm font-normal text-gray-500">
-                    ({requests.length})
-                  </span>
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {requestsLoading ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          {/* Sidebar - 4 columns */}
+          <div className="col-span-12 lg:col-span-4 space-y-4">
+            {/* Owner */}
+            <Card>
+              <CardContent className="p-4">
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
+                    {getInitials(job.owner.name, job.owner.email)}
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
+                    <div className="text-sm text-gray-500">{job.owner.email}</div>
+                  </div>
                 </div>
-              ) : requests.length === 0 ? (
-                <div className="text-center py-6">
-                  <p className="text-sm text-gray-500 mb-3">No requests in this item yet</p>
-                  <Link href={`/dashboard/quest/new?jobId=${jobId}`}>
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add First Request
-                    </Button>
-                  </Link>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {requests.map(request => (
-                    <Link
-                      key={request.id}
-                      href={`/dashboard/requests?campaignName=${encodeURIComponent(request.suggestedCampaignName || '')}`}
-                      className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-900 truncate">
-                            {request.generatedSubject || request.suggestedCampaignName || "Untitled Request"}
+                {permissions?.isOwner && (
+                  <p className="text-xs text-green-600 mt-2">You own this item</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Stakeholder Contacts */}
+            {stakeholders.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    Stakeholders
+                    <span className="text-gray-400 font-normal ml-1">
+                      ({stakeholderContacts.length})
+                    </span>
+                  </h4>
+                  {stakeholderContactsLoading ? (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
+                    </div>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {stakeholderContacts.map(contact => (
+                        <div key={contact.id} className="flex items-center gap-2 p-2 rounded bg-gray-50">
+                          <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                            {getInitials(`${contact.firstName} ${contact.lastName || ""}`, contact.email || contact.firstName)}
                           </div>
-                          <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                            <span>{request.taskCount} recipient{request.taskCount !== 1 ? "s" : ""}</span>
-                            <span>•</span>
-                            <span>{format(new Date(request.createdAt), "MMM d, yyyy")}</span>
-                            {request.sentAt && (
-                              <>
-                                <span>•</span>
-                                <span className="text-green-600">Sent</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <ExternalLink className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Timeline Section */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Eye className="w-5 h-5" />
-                  Timeline
-                </CardTitle>
-                <div className="flex gap-1">
-                  {(["all", "emails", "comments"] as const).map(filter => (
-                    <button
-                      key={filter}
-                      onClick={() => setTimelineFilter(filter)}
-                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                        timelineFilter === filter
-                          ? "bg-gray-900 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Add Comment Input */}
-              <div className="flex gap-2 mb-4">
-                <Textarea
-                  id="comment-input"
-                  placeholder="Add a comment..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  className="min-h-[60px]"
-                />
-                <Button
-                  onClick={handleAddComment}
-                  disabled={!newComment.trim() || submittingComment}
-                  className="bg-green-600 hover:bg-green-700 self-end"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-
-              {/* Timeline Events */}
-              {timelineLoading ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
-                </div>
-              ) : timelineError ? (
-                <div className="text-center py-4">
-                  <p className="text-sm text-amber-600">{timelineError}</p>
-                  <p className="text-xs text-gray-500 mt-1">Comments are still available below</p>
-                  <button 
-                    onClick={fetchTimeline}
-                    className="text-xs text-blue-600 hover:underline mt-2"
-                  >
-                    Try again
-                  </button>
-                  {comments.length > 0 && (
-                    <div className="mt-4 space-y-3 text-left">
-                      {comments.slice(0, 10).map(comment => (
-                        <div key={comment.id} className="flex gap-3 p-3 rounded-lg bg-blue-50">
-                          <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-sm text-gray-900">
-                                {comment.author.name || comment.author.email.split("@")[0]}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-                              </span>
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {contact.firstName} {contact.lastName || ""}
                             </div>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                            {contact.email && (
+                              <div className="text-xs text-gray-500 truncate">{contact.email}</div>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              ) : timelineEvents.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  No activity yet
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {timelineEvents.slice(0, 20).map(event => renderTimelineEvent(event))}
-                  {timelineEvents.length > 20 && (
-                    <button className="w-full text-center text-sm text-blue-600 hover:underline py-2">
-                      Load more...
-                    </button>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* ============================================ */}
-        {/* SIDEBAR */}
-        {/* ============================================ */}
-        <div className="space-y-6">
-          {/* Owner Card */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Owner</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
-                  {getInitials(job.owner.name, job.owner.email)}
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900">
-                    {job.owner.name || job.owner.email.split("@")[0]}
-                  </div>
-                  <div className="text-sm text-gray-500">{job.owner.email}</div>
-                </div>
-              </div>
-              {permissions?.isOwner && (
-                <p className="text-xs text-green-600 mt-2">You own this item</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Stakeholders Card */}
-          {stakeholders.length > 0 && (
+            {/* Details */}
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-700">
-                  Stakeholders
-                  <span className="text-xs font-normal text-gray-500 ml-2">
-                    ({stakeholderContacts.length} contact{stakeholderContacts.length !== 1 ? "s" : ""})
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Stakeholder type badges */}
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {stakeholders.map((s, idx) => (
-                    <span
-                      key={idx}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
-                        s.type === "contact_type" ? "bg-purple-100 text-purple-800" :
-                        s.type === "group" ? "bg-green-100 text-green-800" :
-                        "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {s.type === "contact_type" && <Building2 className="w-3 h-3" />}
-                      {s.type === "group" && <Users className="w-3 h-3" />}
-                      {s.type === "individual" && <User className="w-3 h-3" />}
-                      {s.name}
-                    </span>
-                  ))}
+              <CardContent className="p-4">
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Details</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Created</span>
+                    <span className="text-gray-900">{format(new Date(job.createdAt), "MMM d, yyyy")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Updated</span>
+                    <span className="text-gray-900">{formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Requests</span>
+                    <span className="text-gray-900">{requests.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Comments</span>
+                    <span className="text-gray-900">{comments.length}</span>
+                  </div>
                 </div>
-
-                {/* Contacts list with scroll */}
-                {stakeholderContactsLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
-                  </div>
-                ) : stakeholderContacts.length === 0 ? (
-                  <p className="text-sm text-gray-500">No contacts found</p>
-                ) : (
-                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
-                    {stakeholderContacts.map((contact) => (
-                      <div 
-                        key={contact.id} 
-                        className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100"
-                      >
-                        <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                          {getInitials(
-                            `${contact.firstName} ${contact.lastName || ""}`.trim(),
-                            contact.email || contact.firstName
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {contact.firstName} {contact.lastName || ""}
-                          </div>
-                          {contact.email && (
-                            <div className="text-xs text-gray-500 truncate">{contact.email}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </CardContent>
             </Card>
-          )}
-
-          {/* Collaborators Card */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-gray-700">Collaborators</CardTitle>
-                {permissions?.canManageCollaborators && (
-                  <Dialog open={isAddCollaboratorOpen} onOpenChange={setIsAddCollaboratorOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 px-2">
-                        <UserPlus className="w-4 h-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add Collaborator</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 pt-4">
-                        <div>
-                          <Label>User ID</Label>
-                          <Input
-                            placeholder="Enter user ID"
-                            value={selectedUserId}
-                            onChange={(e) => setSelectedUserId(e.target.value)}
-                            className="mt-1"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">
-                            Enter the user ID of the team member to add
-                          </p>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setIsAddCollaboratorOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={handleAddCollaborator}
-                            disabled={!selectedUserId || addingCollaborator}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            {addingCollaborator ? "Adding..." : "Add"}
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {(!job.collaborators || job.collaborators.length === 0) ? (
-                <p className="text-sm text-gray-500">No collaborators yet</p>
-              ) : (
-                <div className="space-y-3">
-                  {job.collaborators.map((collab) => (
-                    <div key={collab.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                          {getInitials(collab.user.name, collab.user.email)}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {collab.user.name || collab.user.email.split("@")[0]}
-                          </div>
-                          <div className="text-xs text-gray-500">{collab.role}</div>
-                        </div>
-                      </div>
-                      {permissions?.canManageCollaborators && (
-                        <button
-                          onClick={() => handleRemoveCollaborator(collab.userId)}
-                          className="text-gray-400 hover:text-red-500"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Stats Card */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Created</span>
-                  <span className="text-gray-900">{format(new Date(job.createdAt), "MMM d, yyyy")}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Last activity</span>
-                  <span className="text-gray-900">
-                    {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Requests</span>
-                  <span className="text-gray-900">{requests.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Comments</span>
-                  <span className="text-gray-900">{comments.length}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       </div>
     </div>
