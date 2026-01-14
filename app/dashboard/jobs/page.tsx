@@ -61,6 +61,15 @@ interface Job {
   completedCount: number
 }
 
+interface SavedView {
+  id: string
+  name: string
+  statusFilters: string[]
+  tagFilters: string[]
+}
+
+const SAVED_VIEWS_KEY = "checklist-saved-views"
+
 // ============================================
 // Helpers
 // ============================================
@@ -171,6 +180,24 @@ export default function JobsPage() {
   const [bulkLabelInput, setBulkLabelInput] = useState("")
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const bulkLabelRef = useRef<HTMLDivElement>(null)
+  
+  // Saved views state
+  const [savedViews, setSavedViews] = useState<SavedView[]>([])
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  const [isSaveViewOpen, setIsSaveViewOpen] = useState(false)
+  const [newViewName, setNewViewName] = useState("")
+
+  // Load saved views from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SAVED_VIEWS_KEY)
+      if (stored) {
+        setSavedViews(JSON.parse(stored))
+      }
+    } catch (e) {
+      console.error("Error loading saved views:", e)
+    }
+  }, [])
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -430,6 +457,47 @@ export default function JobsPage() {
     } finally {
       setBulkActionLoading(false)
     }
+  }
+
+  // Saved view handlers
+  const handleSaveView = () => {
+    if (!newViewName.trim()) return
+    
+    const newView: SavedView = {
+      id: Date.now().toString(),
+      name: newViewName.trim(),
+      statusFilters: [...statusFilters],
+      tagFilters: [...tagFilters]
+    }
+    
+    const updatedViews = [...savedViews, newView]
+    setSavedViews(updatedViews)
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updatedViews))
+    
+    setNewViewName("")
+    setIsSaveViewOpen(false)
+    setActiveViewId(newView.id)
+  }
+
+  const handleApplyView = (view: SavedView) => {
+    setStatusFilters(view.statusFilters)
+    setTagFilters(view.tagFilters)
+    setActiveViewId(view.id)
+  }
+
+  const handleDeleteView = (viewId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const updatedViews = savedViews.filter(v => v.id !== viewId)
+    setSavedViews(updatedViews)
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updatedViews))
+    if (activeViewId === viewId) {
+      setActiveViewId(null)
+    }
+  }
+
+  const handleClearViewSelection = () => {
+    setActiveViewId(null)
+    clearAllFilters()
   }
 
   // ============================================
@@ -811,7 +879,7 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[40px_2fr_100px_60px_100px_140px_120px_90px_90px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
+            <div className="grid grid-cols-[40px_minmax(200px,1fr)_90px_50px_90px_120px_100px_80px_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
               {/* Select All Checkbox */}
               <div className="flex items-center justify-center">
                 <input
@@ -850,7 +918,7 @@ export default function JobsPage() {
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className={`grid grid-cols-[40px_2fr_100px_60px_100px_140px_120px_90px_90px] gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
+                    className={`grid grid-cols-[40px_minmax(200px,1fr)_90px_50px_90px_120px_100px_80px_80px] gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
                   >
                     {/* Checkbox */}
                     <div className="flex items-center justify-center">
