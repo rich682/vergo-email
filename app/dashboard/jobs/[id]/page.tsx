@@ -244,6 +244,21 @@ export default function JobDetailPage() {
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [customStatusInput, setCustomStatusInput] = useState("")
 
+  // Collaborators
+  const [collaborators, setCollaborators] = useState<JobCollaborator[]>([])
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string | null; email: string }>>([])
+  const [isAddCollaboratorOpen, setIsAddCollaboratorOpen] = useState(false)
+  const [addingCollaborator, setAddingCollaborator] = useState(false)
+
+  // Notes
+  const [notes, setNotes] = useState("")
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
+
+  // Mention suggestions
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false)
+  const [mentionFilter, setMentionFilter] = useState("")
+
   // ============================================
   // Computed values
   // ============================================
@@ -448,6 +463,30 @@ export default function JobDetailPage() {
     }
   }, [])
 
+  const fetchCollaborators = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/collaborators`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setCollaborators(data.collaborators || [])
+      }
+    } catch (error) {
+      console.error("Error fetching collaborators:", error)
+    }
+  }, [jobId])
+
+  const fetchTeamMembers = useCallback(async () => {
+    try {
+      const response = await fetch("/api/org/users", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setTeamMembers((data.users || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email })))
+      }
+    } catch (error) {
+      console.error("Error fetching team members:", error)
+    }
+  }, [])
+
   // Search entities
   const searchEntities = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -485,7 +524,9 @@ export default function JobDetailPage() {
     fetchComments()
     fetchTimeline()
     fetchStakeholderOptions()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions])
+    fetchCollaborators()
+    fetchTeamMembers()
+  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers])
 
   useEffect(() => {
     if (stakeholders.length > 0) {
@@ -650,6 +691,92 @@ export default function JobDetailPage() {
       console.error("Error deleting job:", error)
     }
   }
+
+  const handleAddCollaborator = async (userId: string) => {
+    setAddingCollaborator(true)
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/collaborators`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId, role: "COLLABORATOR" })
+      })
+      if (response.ok) {
+        fetchCollaborators()
+        setIsAddCollaboratorOpen(false)
+      }
+    } catch (error) {
+      console.error("Error adding collaborator:", error)
+    } finally {
+      setAddingCollaborator(false)
+    }
+  }
+
+  const handleRemoveCollaborator = async (collaboratorId: string) => {
+    try {
+      await fetch(`/api/jobs/${jobId}/collaborators?collaboratorId=${collaboratorId}`, {
+        method: "DELETE",
+        credentials: "include"
+      })
+      fetchCollaborators()
+    } catch (error) {
+      console.error("Error removing collaborator:", error)
+    }
+  }
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true)
+    try {
+      await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ labels: { ...job?.labels, notes } })
+      })
+      setEditingNotes(false)
+      fetchJob()
+    } catch (error) {
+      console.error("Error saving notes:", error)
+    } finally {
+      setSavingNotes(false)
+    }
+  }
+
+  // Handle @mention in comment input
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setNewComment(value)
+    
+    // Check for @mention trigger
+    const lastAtIndex = value.lastIndexOf("@")
+    if (lastAtIndex !== -1) {
+      const textAfterAt = value.slice(lastAtIndex + 1)
+      const hasSpaceAfterAt = textAfterAt.includes(" ")
+      if (!hasSpaceAfterAt && textAfterAt.length <= 20) {
+        setMentionFilter(textAfterAt.toLowerCase())
+        setShowMentionSuggestions(true)
+      } else {
+        setShowMentionSuggestions(false)
+      }
+    } else {
+      setShowMentionSuggestions(false)
+    }
+  }
+
+  const handleMentionSelect = (user: { id: string; name: string | null; email: string }) => {
+    const lastAtIndex = newComment.lastIndexOf("@")
+    const displayName = user.name || user.email.split("@")[0]
+    const newValue = newComment.slice(0, lastAtIndex) + `@${displayName} `
+    setNewComment(newValue)
+    setShowMentionSuggestions(false)
+  }
+
+  const filteredTeamMembers = teamMembers.filter(m => {
+    if (!mentionFilter) return true
+    const name = (m.name || "").toLowerCase()
+    const email = m.email.toLowerCase()
+    return name.includes(mentionFilter) || email.includes(mentionFilter)
+  })
 
   // ============================================
   // Render
@@ -1110,20 +1237,49 @@ export default function JobDetailPage() {
                 />
                 {timelineExpanded && (
                   <div className="mt-3">
-                    {/* Comment Input */}
+                    {/* Comment Input with @mention support */}
                     <div className="flex gap-3 mb-4">
                       <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
                         {getInitials(job.owner.name, job.owner.email)}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 relative">
                         <Textarea
                           id="comment-input"
-                          placeholder="Add a comment..."
+                          placeholder="Add a comment... Use @ to mention team members"
                           value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
+                          onChange={handleCommentChange}
+                          onBlur={() => setTimeout(() => setShowMentionSuggestions(false), 200)}
                           className="min-h-[80px] resize-none"
                         />
-                        <div className="flex justify-end mt-2">
+                        {/* @mention suggestions dropdown */}
+                        {showMentionSuggestions && filteredTeamMembers.length > 0 && (
+                          <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-10">
+                            <div className="p-1">
+                              <p className="text-xs text-gray-500 px-2 py-1">Tag a team member</p>
+                              {filteredTeamMembers.slice(0, 5).map(member => (
+                                <button
+                                  key={member.id}
+                                  onClick={() => handleMentionSelect(member)}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-100 text-left"
+                                >
+                                  <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                                    {getInitials(member.name, member.email)}
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {member.name || member.email.split("@")[0]}
+                                    </div>
+                                    <div className="text-xs text-gray-500">{member.email}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-xs text-gray-400">
+                            Type @ to mention team members
+                          </p>
                           <button
                             onClick={handleAddComment}
                             disabled={!newComment.trim() || submittingComment}
@@ -1155,7 +1311,14 @@ export default function JobDetailPage() {
                                   {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
                                 </span>
                               </div>
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                              {/* Render comment with highlighted @mentions */}
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                                {comment.content.split(/(@\w+)/g).map((part, i) => 
+                                  part.startsWith("@") ? (
+                                    <span key={i} className="text-orange-600 font-medium">{part}</span>
+                                  ) : part
+                                )}
+                              </p>
                             </div>
                           </div>
                         ))}
@@ -1184,6 +1347,89 @@ export default function JobDetailPage() {
                 </div>
                 {permissions?.isOwner && (
                   <p className="text-xs text-orange-500 mt-2">You own this item</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Collaborators */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Collaborators
+                    {collaborators.length > 0 && (
+                      <span className="text-gray-400 font-normal ml-1">({collaborators.length})</span>
+                    )}
+                  </h4>
+                  {permissions?.canManageCollaborators && (
+                    <Dialog open={isAddCollaboratorOpen} onOpenChange={setIsAddCollaboratorOpen}>
+                      <DialogTrigger asChild>
+                        <button className="text-xs text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                          <UserPlus className="w-3 h-3" />
+                          Add
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Collaborator</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {teamMembers
+                            .filter(m => m.id !== job.ownerId && !collaborators.some(c => c.userId === m.id))
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                onClick={() => handleAddCollaborator(member.id)}
+                                disabled={addingCollaborator}
+                                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                              >
+                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                                  {getInitials(member.name, member.email)}
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {member.name || member.email.split("@")[0]}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{member.email}</div>
+                                </div>
+                              </button>
+                            ))}
+                          {teamMembers.filter(m => m.id !== job.ownerId && !collaborators.some(c => c.userId === m.id)).length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">No team members available to add</p>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+                {collaborators.length === 0 ? (
+                  <p className="text-sm text-gray-500">No collaborators yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {collaborators.map(collab => (
+                      <div key={collab.id} className="flex items-center justify-between p-2 rounded bg-gray-50">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                            {getInitials(collab.user.name, collab.user.email)}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {collab.user.name || collab.user.email.split("@")[0]}
+                            </div>
+                            <div className="text-xs text-gray-500">{collab.role}</div>
+                          </div>
+                        </div>
+                        {permissions?.canManageCollaborators && (
+                          <button
+                            onClick={() => handleRemoveCollaborator(collab.id)}
+                            className="text-gray-400 hover:text-red-500 p-1"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1220,6 +1466,58 @@ export default function JobDetailPage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Notes (Owner's private notes) */}
+            {permissions?.isOwner && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</h4>
+                    {!editingNotes ? (
+                      <button
+                        onClick={() => {
+                          setNotes((job?.labels as any)?.notes || "")
+                          setEditingNotes(true)
+                        }}
+                        className="text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={handleSaveNotes}
+                          disabled={savingNotes}
+                          className="text-xs text-green-600 hover:text-green-700"
+                        >
+                          <Save className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingNotes(false)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {editingNotes ? (
+                    <Textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Add private notes about this item..."
+                      className="min-h-[100px] text-sm resize-none"
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                      {(job?.labels as any)?.notes || (
+                        <span className="text-gray-400 italic">No notes yet. Click edit to add.</span>
+                      )}
+                    </p>
                   )}
                 </CardContent>
               </Card>
