@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, X, Filter, Check } from "lucide-react"
+import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
@@ -162,12 +162,24 @@ export default function JobsPage() {
   const [newJobTags, setNewJobTags] = useState<string[]>([])
   const [newTagInput, setNewTagInput] = useState("")
   const [creating, setCreating] = useState(false)
+  
+  // Selection state
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
+  
+  // Bulk action state
+  const [isBulkLabelOpen, setIsBulkLabelOpen] = useState(false)
+  const [bulkLabelInput, setBulkLabelInput] = useState("")
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
+  const bulkLabelRef = useRef<HTMLDivElement>(null)
 
-  // Close filter dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
         setIsFilterOpen(false)
+      }
+      if (bulkLabelRef.current && !bulkLabelRef.current.contains(event.target as Node)) {
+        setIsBulkLabelOpen(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -325,6 +337,101 @@ export default function JobsPage() {
     }
   }
 
+  // Selection handlers
+  const isAllSelected = filteredJobs.length > 0 && selectedJobIds.length === filteredJobs.length
+  const isSomeSelected = selectedJobIds.length > 0 && selectedJobIds.length < filteredJobs.length
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedJobIds([])
+    } else {
+      setSelectedJobIds(filteredJobs.map(j => j.id))
+    }
+  }
+
+  const toggleSelectJob = (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedJobIds(prev =>
+      prev.includes(jobId)
+        ? prev.filter(id => id !== jobId)
+        : [...prev, jobId]
+    )
+  }
+
+  const clearSelection = () => {
+    setSelectedJobIds([])
+  }
+
+  // Bulk action handlers
+  const handleBulkAddLabel = async (label: string) => {
+    if (!label.trim() || selectedJobIds.length === 0) return
+    
+    setBulkActionLoading(true)
+    try {
+      // Update each selected job to add the label
+      await Promise.all(selectedJobIds.map(async (jobId) => {
+        const job = jobs.find(j => j.id === jobId)
+        if (!job) return
+        
+        const currentTags = job.labels?.tags || []
+        if (currentTags.includes(label.trim())) return // Already has this label
+        
+        const newTags = [...currentTags, label.trim()]
+        
+        await fetch(`/api/jobs/${jobId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ tags: newTags })
+        })
+      }))
+      
+      // Refresh data
+      await fetchJobs()
+      await fetchAllJobs()
+      setBulkLabelInput("")
+      setIsBulkLabelOpen(false)
+    } catch (error) {
+      console.error("Error adding labels:", error)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
+  const handleBulkDuplicate = async () => {
+    if (selectedJobIds.length === 0) return
+    
+    setBulkActionLoading(true)
+    try {
+      // Duplicate each selected job
+      for (const jobId of selectedJobIds) {
+        const job = jobs.find(j => j.id === jobId)
+        if (!job) continue
+        
+        await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: `${job.name} (Copy)`,
+            description: job.description || undefined,
+            tags: job.labels?.tags || undefined,
+            dueDate: job.dueDate || undefined
+          })
+        })
+      }
+      
+      // Refresh data
+      await fetchJobs()
+      await fetchAllJobs()
+      setSelectedJobIds([])
+    } catch (error) {
+      console.error("Error duplicating items:", error)
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
   // ============================================
   // Render
   // ============================================
@@ -333,7 +440,25 @@ export default function JobsPage() {
     <div className="min-h-screen bg-white">
       <div className="px-8 py-4">
         {/* Action Row */}
-        <div className="flex items-center justify-end mb-4">
+        <div className="flex items-center justify-end gap-2 mb-4">
+          {/* AI Bulk Add Button (placeholder for future feature) */}
+          <button
+            className="
+              flex items-center gap-2 px-4 py-2 
+              border border-gray-200 rounded-full
+              text-sm font-medium text-gray-700
+              hover:border-purple-500 hover:text-purple-500
+              transition-colors
+            "
+            onClick={() => {
+              // TODO: Open AI Bulk Add modal
+              alert("AI Bulk Add coming soon! Upload your existing checklist and AI will automatically create items for you.")
+            }}
+          >
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            AI Bulk Add
+          </button>
+          
           {/* New Item CTA */}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
@@ -569,6 +694,97 @@ export default function JobsPage() {
           </div>
         )}
 
+        {/* Bulk Action Toolbar */}
+        {selectedJobIds.length > 0 && (
+          <div className="flex items-center gap-3 mb-4 p-3 bg-gray-900 text-white rounded-lg">
+            <span className="text-sm font-medium">
+              {selectedJobIds.length} item{selectedJobIds.length !== 1 ? "s" : ""} selected
+            </span>
+            
+            <div className="h-4 w-px bg-gray-600" />
+            
+            {/* Add Label */}
+            <div className="relative" ref={bulkLabelRef}>
+              <button
+                onClick={() => setIsBulkLabelOpen(!isBulkLabelOpen)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 rounded-md transition-colors"
+                disabled={bulkActionLoading}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                Add Label
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              
+              {isBulkLabelOpen && (
+                <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3">
+                  <div className="text-sm font-medium text-gray-700 mb-2">Add label to selected items</div>
+                  
+                  {/* Existing labels */}
+                  {allTags.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-500 mb-1">Quick add:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {allTags.slice(0, 6).map(tag => (
+                          <button
+                            key={tag}
+                            onClick={() => handleBulkAddLabel(tag)}
+                            className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full hover:bg-gray-200 transition-colors"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Custom label input */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Or type a new label..."
+                      value={bulkLabelInput}
+                      onChange={(e) => setBulkLabelInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && bulkLabelInput.trim()) {
+                          e.preventDefault()
+                          handleBulkAddLabel(bulkLabelInput.trim())
+                        }
+                      }}
+                      className="text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => handleBulkAddLabel(bulkLabelInput.trim())}
+                      disabled={!bulkLabelInput.trim() || bulkActionLoading}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Duplicate */}
+            <button
+              onClick={handleBulkDuplicate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 rounded-md transition-colors"
+              disabled={bulkActionLoading}
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Duplicate
+            </button>
+            
+            <div className="flex-1" />
+            
+            {/* Clear Selection */}
+            <button
+              onClick={clearSelection}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -595,7 +811,19 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <div className="grid grid-cols-[40px_1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
+              {/* Select All Checkbox */}
+              <div className="flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isSomeSelected
+                  }}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                />
+              </div>
               <div>Name</div>
               <div>Status</div>
               <div className="text-center">RAG</div>
@@ -616,13 +844,25 @@ export default function JobsPage() {
                 const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
                 const isOverdue = daysUntilDue !== null && daysUntilDue < 0
                 const ragRating = calculateRAGRating(job)
+                const isSelected = selectedJobIds.includes(job.id)
                 
                 return (
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className="grid grid-cols-[1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center"
+                    className={`grid grid-cols-[40px_1fr_100px_50px_80px_100px_100px_80px_80px] gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
                   >
+                    {/* Checkbox */}
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleSelectJob(job.id, e as unknown as React.MouseEvent)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                      />
+                    </div>
+                    
                     {/* Name + Labels */}
                     <div>
                       <div className="font-medium text-gray-900 mb-0.5">
