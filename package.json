@@ -14,6 +14,7 @@
     "build:ci": "npm run hygiene && npm test && npm run build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push:dev": "echo '⚠️  WARNING: db:push is for dev only. Use db:migrate for production-ready changes.' && prisma db push",
@@ -29,7 +30,10 @@
     "backfill:completion": "tsx scripts/backfill-completion-percentages.ts",
     "backfill:risk": "tsx scripts/backfill-risk-computation.ts",
     "cleanup:requests": "tsx scripts/cleanup-requests.ts",
-    "hygiene": "tsx scripts/repo-hygiene-check.ts"
+    "hygiene": "tsx scripts/repo-hygiene-check.ts",
+    "check:flags": "tsx scripts/check-feature-flags.ts",
+    "check:api-auth": "tsx scripts/check-api-auth.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
