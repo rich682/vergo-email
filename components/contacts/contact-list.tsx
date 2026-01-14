@@ -192,7 +192,8 @@ export function ContactList({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
+        {/* Personalization Tags filter - hidden for now */}
+        {/* <div className="space-y-2">
           <Label>Personalization Tags</Label>
           <div className="relative">
             <button
@@ -258,11 +259,11 @@ export function ContactList({
               </div>
             )}
           </div>
-        </div>
+        </div> */}
       </div>
 
-      {/* Selected state keys pills */}
-      {selectedStateKeys.length > 0 && (
+      {/* Selected state keys pills - hidden for now */}
+      {/* {selectedStateKeys.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-500">Filtering by:</span>
           {selectedStateKeys.map((key) => (
@@ -288,7 +289,7 @@ export function ContactList({
             Clear all
           </button>
         </div>
-      )}
+      )} */}
 
       {/* Selection bar */}
       {entities.length > 0 && (
@@ -347,14 +348,15 @@ export function ContactList({
               <th className="px-4 py-3 w-48">Email</th>
               <th className="px-4 py-3 w-24">Org</th>
               <th className="px-4 py-3 w-28">Groups</th>
-              <th className="px-4 py-3">Tags</th>
+              {/* Tags column hidden for now */}
+              {/* <th className="px-4 py-3">Tags</th> */}
               <th className="px-4 py-3 w-32 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {entities.length === 0 && (
               <tr>
-                <td colSpan={showSelectionColumn ? 7 : 6} className="px-4 py-4 text-gray-500">
+                <td colSpan={showSelectionColumn ? 6 : 5} className="px-4 py-4 text-gray-500">
                   No contacts found.
                 </td>
               </tr>
@@ -404,7 +406,8 @@ export function ContactList({
                     <span className="text-xs text-gray-400">None</span>
                   )}
                 </td>
-                <td className="px-4 py-2">
+                {/* Tags column data hidden for now */}
+                {/* <td className="px-4 py-2">
                   {entity.contactStates && entity.contactStates.length > 0 ? (
                     <span className="text-gray-600 text-xs" title={entity.contactStates.map(cs => cs.stateKey).join(", ")}>
                       {entity.contactStates.map(cs => cs.stateKey).join(", ")}
@@ -412,7 +415,7 @@ export function ContactList({
                   ) : (
                     <span className="text-xs text-gray-400">None</span>
                   )}
-                </td>
+                </td> */}
                 <td className="px-4 py-2">
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => onEdit(entity)}>

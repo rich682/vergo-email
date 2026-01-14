@@ -167,7 +167,8 @@ export default function ContactsPage() {
     { id: "contacts" as TabType, label: "Contacts", icon: Users },
     { id: "groups" as TabType, label: "Groups", icon: FolderOpen },
     { id: "types" as TabType, label: "Organizations", icon: Building2 },
-    { id: "tags" as TabType, label: "Tags", icon: Tag },
+    // Tags tab hidden for now - testing product-market fit without it
+    // { id: "tags" as TabType, label: "Tags", icon: Tag },
   ]
 
   return (
@@ -215,8 +216,8 @@ export default function ContactsPage() {
             </div>
           )}
 
-          {/* Tags Tab CTAs */}
-          {activeTab === "tags" && (
+          {/* Tags Tab CTAs - hidden for now */}
+          {/* {activeTab === "tags" && (
             <button
               onClick={() => setShowTagImport(!showTagImport)}
               className="
@@ -230,7 +231,7 @@ export default function ContactsPage() {
               <Upload className="w-4 h-4" />
               {showTagImport ? "Cancel" : "Import Tag Data"}
             </button>
-          )}
+          )} */}
         </div>
 
         {/* Tabs */}
@@ -324,27 +325,7 @@ export default function ContactsPage() {
               onTypesChange={fetchEntities}
             />
           </div>
-        ) : (
-          <div className="max-w-2xl space-y-6">
-            {showTagImport && (
-              <div className="border border-gray-200 rounded-lg p-6 bg-white">
-                <TagImportModal
-                  existingTags={tags}
-                  onSuccess={handleTagImportSuccess}
-                  onClose={() => setShowTagImport(false)}
-                />
-              </div>
-            )}
-
-            <TagsManager
-              onTagsChange={() => {
-                fetchEntities()
-                fetchAvailableStateKeys()
-                fetchTags()
-              }}
-            />
-          </div>
-        )}
+        ) : null /* Tags tab hidden for now */}
       </div>
     </div>
   )
