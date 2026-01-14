@@ -946,41 +946,6 @@ export default function JobsPage() {
                         </div>
                       )}
                       
-                      {/* Individual search */}
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Or search for individuals:</p>
-                        <Input
-                          placeholder="Search contacts by name or email..."
-                          value={stakeholderSearchQuery}
-                          onChange={(e) => setStakeholderSearchQuery(e.target.value)}
-                          className="text-sm"
-                        />
-                        {stakeholderSearchLoading && (
-                          <p className="text-xs text-gray-500 mt-1">Searching...</p>
-                        )}
-                        {stakeholderSearchResults.length > 0 && (
-                          <div className="mt-1 border border-gray-200 rounded-md max-h-32 overflow-y-auto">
-                            {stakeholderSearchResults
-                              .filter(c => !newJobStakeholders.some(s => s.type === "individual" && s.id === c.id))
-                              .map(contact => (
-                                <button
-                                  key={contact.id}
-                                  type="button"
-                                  onClick={() => handleAddStakeholder(
-                                    "individual",
-                                    contact.id,
-                                    `${contact.firstName}${contact.lastName ? ` ${contact.lastName}` : ""}`
-                                  )}
-                                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
-                                >
-                                  <span>{contact.firstName} {contact.lastName}</span>
-                                  <span className="text-xs text-gray-400">{contact.email}</span>
-                                </button>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                      
                       {/* No stakeholders option - more prominent button */}
                       {newJobStakeholders.length === 0 && (
                         <button
@@ -1430,7 +1395,7 @@ export default function JobsPage() {
           /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[36px_minmax(180px,2fr)_minmax(80px,150px)_85px_40px_60px_90px_70px_65px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
+            <div className="grid grid-cols-[36px_minmax(150px,1.5fr)_minmax(80px,1fr)_75px_45px_55px_80px_80px_60px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
               {/* Select All Checkbox */}
               <div className="flex items-center justify-center">
                 <input
@@ -1471,7 +1436,7 @@ export default function JobsPage() {
                   <div
                     key={job.id}
                     onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className={`grid grid-cols-[36px_minmax(180px,2fr)_minmax(80px,150px)_85px_40px_60px_90px_70px_65px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
+                    className={`grid grid-cols-[36px_minmax(150px,1.5fr)_minmax(80px,1fr)_75px_45px_55px_80px_80px_60px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
                   >
                     {/* Checkbox */}
                     <div className="flex items-center justify-center">

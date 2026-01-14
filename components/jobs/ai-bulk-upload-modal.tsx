@@ -83,8 +83,16 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete }: AIBu
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to interpret spreadsheet")
+        // Try to parse as JSON, fall back to text
+        let errorMessage = "Failed to interpret spreadsheet"
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+        } catch {
+          const text = await response.text()
+          errorMessage = text || errorMessage
+        }
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
