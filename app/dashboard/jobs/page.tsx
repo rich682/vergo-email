@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, KeyboardEvent } from "react"
+import { useState, useEffect, useCallback, useRef, KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, UserCircle, X, Clock, Tag, Filter } from "lucide-react"
+import { Plus, Briefcase, X, Filter, Check } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
@@ -55,8 +55,9 @@ interface Job {
 }
 
 // ============================================
-// Helper to get initials
+// Helpers
 // ============================================
+
 function getInitials(name: string | null, email: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/)
@@ -68,13 +69,12 @@ function getInitials(name: string | null, email: string): string {
   return email[0]?.toUpperCase() || "?"
 }
 
-// Status config matching Bills UI style
-const STATUS_CONFIG: Record<string, { label: string; count?: number }> = {
-  ACTIVE: { label: "Active" },
-  WAITING: { label: "Waiting" },
-  COMPLETED: { label: "Completed" },
-  ARCHIVED: { label: "Archived" },
-}
+const STATUS_OPTIONS = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "WAITING", label: "Waiting" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "ARCHIVED", label: "Archived" },
+]
 
 // ============================================
 // Main Component
@@ -82,15 +82,17 @@ const STATUS_CONFIG: Record<string, { label: string; count?: number }> = {
 
 export default function JobsPage() {
   const router = useRouter()
+  const filterRef = useRef<HTMLDivElement>(null)
   
   // Data state
   const [jobs, setJobs] = useState<Job[]>([])
   const [allJobs, setAllJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
   
-  // Filter state
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [tagFilter, setTagFilter] = useState<string[]>([])
+  // Filter state - multi-select
+  const [statusFilters, setStatusFilters] = useState<string[]>([])
+  const [tagFilters, setTagFilters] = useState<string[]>([])
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   
   // Create modal state
@@ -101,20 +103,38 @@ export default function JobsPage() {
   const [newTagInput, setNewTagInput] = useState("")
   const [creating, setCreating] = useState(false)
 
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
   // ============================================
   // Derived data
   // ============================================
   
-  // Collect all unique tags from ALL jobs
   const allTags = Array.from(
     new Set(allJobs.flatMap(job => job.labels?.tags || []))
   ).sort()
 
-  // Count jobs by status
-  const statusCounts = allJobs.reduce((acc, job) => {
-    acc[job.status] = (acc[job.status] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+  const hasActiveFilters = statusFilters.length > 0 || tagFilters.length > 0
+
+  // Filter jobs client-side for search
+  const filteredJobs = jobs.filter(job => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      job.name.toLowerCase().includes(query) ||
+      job.description?.toLowerCase().includes(query) ||
+      job.owner.name?.toLowerCase().includes(query) ||
+      job.owner.email.toLowerCase().includes(query)
+    )
+  })
 
   // ============================================
   // Data fetching
@@ -136,13 +156,26 @@ export default function JobsPage() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter)
-      if (tagFilter.length > 0) params.set("tags", tagFilter.join(","))
+      // Support multiple statuses by fetching all and filtering client-side
+      // Or if API supports it, pass comma-separated
+      if (statusFilters.length === 1) {
+        params.set("status", statusFilters[0])
+      }
+      if (tagFilters.length > 0) {
+        params.set("tags", tagFilters.join(","))
+      }
       
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setJobs(data.jobs || [])
+        let fetchedJobs = data.jobs || []
+        
+        // Client-side filter for multiple statuses
+        if (statusFilters.length > 1) {
+          fetchedJobs = fetchedJobs.filter((job: Job) => statusFilters.includes(job.status))
+        }
+        
+        setJobs(fetchedJobs)
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/jobs"
       }
@@ -151,7 +184,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, tagFilter])
+  }, [statusFilters, tagFilters])
 
   useEffect(() => { fetchAllJobs() }, [fetchAllJobs])
   useEffect(() => { fetchJobs() }, [fetchJobs])
@@ -159,6 +192,35 @@ export default function JobsPage() {
   // ============================================
   // Handlers
   // ============================================
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev => 
+      prev.includes(status) 
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
+  }
+
+  const toggleTagFilter = (tag: string) => {
+    setTagFilters(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    )
+  }
+
+  const clearAllFilters = () => {
+    setStatusFilters([])
+    setTagFilters([])
+  }
+
+  const removeFilter = (type: "status" | "tag", value: string) => {
+    if (type === "status") {
+      setStatusFilters(prev => prev.filter(s => s !== value))
+    } else {
+      setTagFilters(prev => prev.filter(t => t !== value))
+    }
+  }
 
   const handleCreateJob = async () => {
     if (!newJobName.trim()) return
@@ -210,108 +272,18 @@ export default function JobsPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="px-8 py-6">
-        {/* Page Header - matching Bills style */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">
-            {UI_LABELS.jobsPageTitle}
-          </h1>
-          <p className="text-sm text-gray-500">
-            {UI_LABELS.jobsPageSubtitle}
-          </p>
-        </div>
-
-        {/* Status Pills - matching Bills UI exactly */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            {/* Status pills like Bills */}
-            <button
-              onClick={() => setStatusFilter("ACTIVE")}
-              className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                ${statusFilter === "ACTIVE" 
-                  ? "bg-gray-900 text-white" 
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-                }
-              `}
-            >
-              Active
-              {statusCounts.ACTIVE > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-                  statusFilter === "ACTIVE" ? "bg-white/20" : "bg-gray-100"
-                }`}>
-                  {statusCounts.ACTIVE}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setStatusFilter("WAITING")}
-              className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                ${statusFilter === "WAITING" 
-                  ? "bg-gray-900 text-white" 
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-                }
-              `}
-            >
-              Waiting
-              {statusCounts.WAITING > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-                  statusFilter === "WAITING" ? "bg-white/20" : "bg-gray-100"
-                }`}>
-                  {statusCounts.WAITING}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setStatusFilter("COMPLETED")}
-              className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                ${statusFilter === "COMPLETED" 
-                  ? "bg-gray-900 text-white" 
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-                }
-              `}
-            >
-              Completed
-              {statusCounts.COMPLETED > 0 && (
-                <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-                  statusFilter === "COMPLETED" ? "bg-white/20" : "bg-gray-100"
-                }`}>
-                  {statusCounts.COMPLETED}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setStatusFilter("ARCHIVED")}
-              className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                ${statusFilter === "ARCHIVED" 
-                  ? "bg-gray-900 text-white" 
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-                }
-              `}
-            >
-              Archived
-            </button>
-
-            <button
-              onClick={() => setStatusFilter("all")}
-              className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                ${statusFilter === "all" 
-                  ? "bg-gray-900 text-white" 
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-                }
-              `}
-            >
-              All
-            </button>
+        {/* Page Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+              {UI_LABELS.jobsPageTitle}
+            </h1>
+            <p className="text-sm text-gray-500">
+              {UI_LABELS.jobsPageSubtitle}
+            </p>
           </div>
-
-          {/* New Item CTA - matching Bills "New Bill" button style */}
+          
+          {/* New Item CTA */}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <button className="
@@ -416,51 +388,160 @@ export default function JobsPage() {
           </Dialog>
         </div>
 
-        {/* Search and Filter Row - matching Bills */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="relative flex-1 max-w-md">
+        {/* Search and Filter Row */}
+        <div className="flex items-center gap-3 mb-4">
+          {/* Search */}
+          <div className="relative flex-1 max-w-lg">
             <Input
               placeholder="Search"
-              className="pl-10 bg-white border-gray-200"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white border-gray-200 rounded-full"
             />
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
           
-          <button 
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className="
-              flex items-center gap-2 px-4 py-2
-              border border-gray-200 rounded-lg
-              text-sm font-medium text-gray-700
-              hover:bg-gray-50 transition-colors
-            "
-          >
-            <Filter className="w-4 h-4" />
-            Filter
-          </button>
+          {/* Filter Dropdown */}
+          <div className="relative" ref={filterRef}>
+            <button 
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`
+                flex items-center gap-2 px-4 py-2
+                border rounded-full
+                text-sm font-medium
+                transition-colors
+                ${hasActiveFilters 
+                  ? "border-gray-900 bg-gray-900 text-white" 
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                }
+              `}
+            >
+              <Filter className="w-4 h-4" />
+              Filter
+              {hasActiveFilters && (
+                <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs">
+                  {statusFilters.length + tagFilters.length}
+                </span>
+              )}
+            </button>
+
+            {/* Filter Dropdown Panel */}
+            {isFilterOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                {/* Status Section */}
+                <div className="p-3 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Status</p>
+                  <div className="space-y-1">
+                    {STATUS_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => toggleStatusFilter(option.value)}
+                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                      >
+                        <span className="text-gray-700">{option.label}</span>
+                        {statusFilters.includes(option.value) && (
+                          <Check className="w-4 h-4 text-gray-900" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Labels Section */}
+                {allTags.length > 0 && (
+                  <div className="p-3 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Labels</p>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {allTags.map(tag => (
+                        <button
+                          key={tag}
+                          onClick={() => toggleTagFilter(tag)}
+                          className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                        >
+                          <span className="text-gray-700">{tag}</span>
+                          {tagFilters.includes(tag) && (
+                            <Check className="w-4 h-4 text-gray-900" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Clear All */}
+                {hasActiveFilters && (
+                  <div className="p-2">
+                    <button
+                      onClick={clearAllFilters}
+                      className="w-full px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Active Filters Display */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {statusFilters.map(status => (
+              <button
+                key={status}
+                onClick={() => removeFilter("status", status)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-gray-200 transition-colors"
+              >
+                {STATUS_OPTIONS.find(s => s.value === status)?.label || status}
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ))}
+            {tagFilters.map(tag => (
+              <button
+                key={tag}
+                onClick={() => removeFilter("tag", tag)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-gray-200 transition-colors"
+              >
+                {tag}
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ))}
+            <button
+              onClick={clearAllFilters}
+              className="text-sm text-blue-600 hover:text-blue-700 ml-1"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
           </div>
-        ) : jobs.length === 0 ? (
+        ) : filteredJobs.length === 0 ? (
           <div className="border border-dashed border-gray-200 rounded-lg">
             <EmptyState
               icon={<Briefcase className="w-6 h-6" />}
-              title={`No ${UI_LABELS.jobPlural.toLowerCase()} yet`}
-              description={`Create your first ${UI_LABELS.jobSingular.toLowerCase()} to start organizing work`}
-              action={{
-                label: UI_LABELS.createJob,
-                onClick: () => setIsCreateOpen(true)
-              }}
+              title={hasActiveFilters || searchQuery ? "No matching items" : `No ${UI_LABELS.jobPlural.toLowerCase()} yet`}
+              description={
+                hasActiveFilters || searchQuery 
+                  ? "Try adjusting your filters or search query"
+                  : `Create your first ${UI_LABELS.jobSingular.toLowerCase()} to start organizing work`
+              }
+              action={
+                hasActiveFilters || searchQuery 
+                  ? { label: "Clear Filters", onClick: () => { clearAllFilters(); setSearchQuery(""); } }
+                  : { label: UI_LABELS.createJob, onClick: () => setIsCreateOpen(true) }
+              }
             />
           </div>
         ) : (
-          /* Table-style list matching Bills */
+          /* Table-style list */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -473,7 +554,7 @@ export default function JobsPage() {
             
             {/* Table Body */}
             <div className="divide-y divide-gray-100">
-              {jobs.map((job) => {
+              {filteredJobs.map((job) => {
                 const jobTags = job.labels?.tags || []
                 const dueDate = job.dueDate ? new Date(job.dueDate) : null
                 const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
@@ -504,7 +585,7 @@ export default function JobsPage() {
                       )}
                     </div>
                     
-                    {/* Status - pill style like Bills */}
+                    {/* Status */}
                     <div className="col-span-2">
                       <span className={`
                         inline-flex px-2.5 py-1 rounded-full text-xs font-medium border
@@ -514,7 +595,7 @@ export default function JobsPage() {
                         ${job.status === "ARCHIVED" ? "border-gray-200 text-gray-500" : ""}
                         ${!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) ? "border-purple-200 text-purple-700 bg-purple-50" : ""}
                       `}>
-                        {STATUS_CONFIG[job.status]?.label || job.status}
+                        {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
                       </span>
                     </div>
                     
