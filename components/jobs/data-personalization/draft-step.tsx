@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -43,7 +43,7 @@ interface DraftStepProps {
   onBack: () => void
 }
 
-type DraftState = "idle" | "generating" | "ready" | "refining" | "error"
+type DraftState = "generating" | "ready" | "refining" | "error"
 
 export function DraftStep({
   jobId,
@@ -55,10 +55,9 @@ export function DraftStep({
   onContinue,
   onBack,
 }: DraftStepProps) {
-  const [state, setState] = useState<DraftState>("idle")
+  const [state, setState] = useState<DraftState>("generating") // Start generating immediately
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
-  const [userGoal, setUserGoal] = useState("")
   const [error, setError] = useState<string | null>(null)
   
   // Column analysis
@@ -123,7 +122,7 @@ export function DraftStep({
   }
 
   // Generate draft
-  const generateDraft = useCallback(async () => {
+  const generateDraft = useCallback(async (goal?: string) => {
     setState("generating")
     setError(null)
 
@@ -134,7 +133,7 @@ export function DraftStep({
         credentials: "include",
         body: JSON.stringify({
           draftId,
-          userGoal: userGoal.trim() || undefined,
+          userGoal: goal?.trim() || undefined,
         }),
       })
 
@@ -156,7 +155,12 @@ export function DraftStep({
       setError(err.message || "Failed to generate draft")
       setState("error")
     }
-  }, [jobId, draftId, userGoal])
+  }, [jobId, draftId])
+  
+  // Auto-generate draft on mount
+  useEffect(() => {
+    generateDraft()
+  }, []) // Only run once on mount
 
   // Refine draft
   const refineDraft = useCallback(async () => {
@@ -337,35 +341,6 @@ export function DraftStep({
 
   return (
     <div className="space-y-6">
-      {/* Generate Draft Section */}
-      {state === "idle" && (
-        <div className="border rounded-lg p-6 text-center">
-          <Sparkles className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Generate AI Draft</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            AI will create a personalized email template using your dataset columns.
-          </p>
-          
-          <div className="max-w-md mx-auto mb-4">
-            <Label className="text-left block mb-2 text-sm">
-              What would you like to communicate? (optional)
-            </Label>
-            <Textarea
-              value={userGoal}
-              onChange={(e) => setUserGoal(e.target.value)}
-              placeholder="e.g., Request payment for outstanding invoices, remind about upcoming deadline..."
-              className="resize-none"
-              rows={2}
-            />
-          </div>
-          
-          <Button onClick={generateDraft}>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Generate Draft
-          </Button>
-        </div>
-      )}
-
       {/* Generating State */}
       {state === "generating" && (
         <div className="flex flex-col items-center justify-center py-12">
