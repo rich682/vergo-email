@@ -40,7 +40,7 @@ export default async function DashboardLayout({
       {/* Main content area - offset by sidebar width (w-20 = 5rem = 80px) */}
       <div className="pl-20">
         {/* Top header bar */}
-        <header className="h-16 border-b border-gray-100 flex items-center justify-between px-8">
+        <header className="h-20 border-b border-gray-100 flex items-center justify-between px-8">
           {/* Page title on the left */}
           <PageTitle />
           
@@ -62,7 +62,7 @@ export default async function DashboardLayout({
         </header>
         
         {/* Page content */}
-        <main className="min-h-[calc(100vh-4rem)]">
+        <main className="min-h-[calc(100vh-5rem)]">
           {children}
         </main>
       </div>

@@ -26,7 +26,8 @@ const config = {
       },
       fontWeight: {
         thin: '300',
-        normal: '300', // Default body text uses thin
+        light: '300', // Thin weight
+        normal: '400', // Roman weight (default)
         medium: '400', // Roman weight for titles
       },
       colors: {

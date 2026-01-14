@@ -118,7 +118,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply bg-white text-gray-900 font-sans;
+    @apply bg-white text-gray-900 font-sans font-light;
   }
   
   /* Page titles use Roman (weight 400) */
