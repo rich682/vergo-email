@@ -40,6 +40,10 @@ import { SectionHeader } from "@/components/ui/section-header"
 // Send Request Modal
 import { SendRequestModal } from "@/components/jobs/send-request-modal"
 
+// Labels components
+import { LabelsManager } from "@/components/jobs/labels-manager"
+import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
+
 // ============================================
 // Types
 // ============================================
@@ -83,6 +87,7 @@ interface Job {
   dueDate: string | null
   labels: string[] | null
   stakeholders?: JobStakeholder[]
+  noStakeholdersNeeded?: boolean
   createdAt: string
   updatedAt: string
   owner: JobOwner
@@ -212,6 +217,7 @@ export default function JobDetailPage() {
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
   const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
   const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
+  const [noStakeholdersNeeded, setNoStakeholdersNeeded] = useState(false)
 
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -304,6 +310,8 @@ export default function JobDetailPage() {
           setEditLabels([])
         }
         setStakeholders(data.job.stakeholders || [])
+        // Check if user explicitly marked this item as not needing stakeholders
+        setNoStakeholdersNeeded(data.job.noStakeholdersNeeded || jobLabels?.noStakeholdersNeeded || false)
       } else if (response.status === 404) {
         router.push("/dashboard/jobs")
       } else if (response.status === 401) {
@@ -1114,8 +1122,8 @@ export default function JobDetailPage() {
 
             {/* Conditional Primary Section based on Mode */}
             {itemMode === "setup" && (
-              stakeholders.length === 0 ? (
-                // No stakeholders - show warning with CTA to add
+              stakeholders.length === 0 && !noStakeholdersNeeded ? (
+                // No stakeholders and not marked as internal-only - show warning with CTA to add
                 <div className="border border-amber-200 bg-amber-50 rounded-lg p-8 text-center">
                   <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Add stakeholders to send a request</h3>
@@ -1127,6 +1135,26 @@ export default function JobDetailPage() {
                     className="bg-gray-900 hover:bg-gray-800"
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
+                    Add Stakeholders
+                  </Button>
+                </div>
+              ) : noStakeholdersNeeded && stakeholders.length === 0 ? (
+                // Marked as no stakeholders needed - show internal item info
+                <div className="border border-gray-200 rounded-lg p-6 text-center">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Users className="w-6 h-6 text-gray-500" />
+                  </div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-1">Internal Item</h3>
+                  <p className="text-sm text-gray-500">
+                    This item has no stakeholders. You can add stakeholders anytime if needed.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAddStakeholderOpen(true)}
+                    className="mt-3"
+                  >
+                    <UserPlus className="w-3 h-3 mr-1" />
                     Add Stakeholders
                   </Button>
                 </div>
@@ -1210,7 +1238,7 @@ export default function JobDetailPage() {
                     expanded={requestsExpanded}
                     onToggle={() => setRequestsExpanded(!requestsExpanded)}
                     action={
-                      stakeholders.length === 0 ? (
+                      stakeholders.length === 0 && !noStakeholdersNeeded ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -1220,7 +1248,7 @@ export default function JobDetailPage() {
                           <UserPlus className="w-3 h-3 mr-1" />
                           Add Stakeholders
                         </Button>
-                      ) : (
+                      ) : stakeholders.length > 0 ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -1229,7 +1257,7 @@ export default function JobDetailPage() {
                           <Plus className="w-3 h-3 mr-1" />
                           Add
                         </Button>
-                      )
+                      ) : null
                     }
                   />
                   {requestsExpanded && (
@@ -1463,7 +1491,16 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Stakeholder Contacts */}
+            {/* Contact Labels */}
+            {stakeholders.length > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <LabelsManager jobId={jobId} canEdit={permissions?.canEdit} />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Stakeholder Contacts with Labels */}
             {stakeholders.length > 0 && (
               <Card>
                 <CardContent className="p-4">
@@ -1473,29 +1510,7 @@ export default function JobDetailPage() {
                       ({stakeholderContacts.length})
                     </span>
                   </h4>
-                  {stakeholderContactsLoading ? (
-                    <div className="flex justify-center py-4">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
-                    </div>
-                  ) : (
-                    <div className="max-h-48 overflow-y-auto space-y-2">
-                      {stakeholderContacts.map(contact => (
-                        <div key={contact.id} className="flex items-center gap-2 p-2 rounded bg-gray-50">
-                          <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                            {getInitials(`${contact.firstName} ${contact.lastName || ""}`, contact.email || contact.firstName)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">
-                              {contact.firstName} {contact.lastName || ""}
-                            </div>
-                            {contact.email && (
-                              <div className="text-xs text-gray-500 truncate">{contact.email}</div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <ContactLabelsTable jobId={jobId} canEdit={permissions?.canEdit} />
                 </CardContent>
               </Card>
             )}

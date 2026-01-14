@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
 import { DomainDetectionService } from "@/lib/services/domain-detection.service"
-import { ContactStateService } from "@/lib/services/contact-state.service"
 
 export async function GET(
   request: NextRequest,
@@ -37,7 +36,6 @@ export async function GET(
   // Type assertion needed because Prisma includes groups but TypeScript doesn't infer it
     const entityWithGroups = entity as typeof entity & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
-      contactStates: Array<{ stateKey: string; stateValue?: string; metadata: any; updatedAt: Date; source: string; tag?: { id: string; name: string; displayName?: string } }>
     }
 
   return NextResponse.json({
@@ -53,14 +51,6 @@ export async function GET(
       id: eg.group.id,
       name: eg.group.name,
       color: eg.group.color
-    })),
-    contactStates: entityWithGroups.contactStates?.map((cs) => ({
-      stateKey: cs.stateKey,
-      stateValue: cs.stateValue,
-      metadata: cs.metadata,
-      updatedAt: cs.updatedAt,
-      source: cs.source,
-      tag: cs.tag
     })),
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt
@@ -125,45 +115,8 @@ export async function PATCH(
       }
     }
 
-    // Update tag values if provided
-    if (tagValues !== undefined && typeof tagValues === 'object') {
-      // Get current contact states to find tags to remove
-      const entity = await EntityService.findById(params.id, session.user.organizationId)
-      if (entity) {
-        const entityWithStates = entity as typeof entity & {
-          contactStates: Array<{ id: string; stateKey: string; tag?: { name: string } }>
-        }
-        
-        // Get current tag names
-        const currentTagNames = new Set(
-          entityWithStates.contactStates?.map(cs => cs.tag?.name || cs.stateKey) || []
-        )
-        
-        // Tags in the new values
-        const newTagNames = new Set(Object.keys(tagValues))
-        
-        // Remove tags that are no longer in the values
-        for (const tagName of currentTagNames) {
-          if (!newTagNames.has(tagName)) {
-            await ContactStateService.delete(params.id, tagName, session.user.organizationId)
-          }
-        }
-        
-        // Upsert tags with values
-        for (const [tagName, value] of Object.entries(tagValues)) {
-          if (value && typeof value === 'string' && value.trim()) {
-            await ContactStateService.upsert({
-              entityId: params.id,
-              organizationId: session.user.organizationId,
-              stateKey: tagName,
-              stateValue: value.trim(),
-              metadata: value.trim(),
-              source: "manual"
-            })
-          }
-        }
-      }
-    }
+    // Note: Tag values (ContactState) have been removed.
+    // Item-scoped labels (JobLabel/JobContactLabel) are now used instead.
 
     // Fetch updated entity
     const updated = await EntityService.findById(
@@ -184,7 +137,6 @@ export async function PATCH(
 
     const updatedWithGroups = updated as typeof updated & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
-      contactStates: Array<{ stateKey: string; stateValue?: string; metadata: any; updatedAt: Date; source: string; tag?: { id: string; name: string; displayName?: string } }>
     }
 
     return NextResponse.json({
@@ -200,14 +152,6 @@ export async function PATCH(
         id: eg.group.id,
         name: eg.group.name,
         color: eg.group.color
-      })),
-      contactStates: updatedWithGroups.contactStates?.map((cs) => ({
-        stateKey: cs.stateKey,
-        stateValue: cs.stateValue,
-        metadata: cs.metadata,
-        updatedAt: cs.updatedAt,
-        source: cs.source,
-        tag: cs.tag
       })),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt

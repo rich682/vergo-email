@@ -61,6 +61,7 @@ export async function GET(
     const labels = job.labels as any
     const stakeholders = labels?.stakeholders || []
     const customStatus = labels?.customStatus || null
+    const noStakeholdersNeeded = labels?.noStakeholdersNeeded || false
     
     // Return effective status (custom status takes precedence if set)
     const effectiveStatus = customStatus || job.status
@@ -70,7 +71,8 @@ export async function GET(
       job: {
         ...job,
         status: effectiveStatus, // Return effective status for UI
-        stakeholders
+        stakeholders,
+        noStakeholdersNeeded
       },
       permissions: {
         canEdit,

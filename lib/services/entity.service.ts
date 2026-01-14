@@ -51,11 +51,6 @@ export class EntityService {
           include: {
             group: true
           }
-        },
-        contactStates: {
-          include: {
-            tag: true
-          }
         }
       }
     })
@@ -74,11 +69,6 @@ export class EntityService {
         groups: {
           include: {
             group: true
-          }
-        },
-        contactStates: {
-          include: {
-            tag: true
           }
         }
       }
@@ -109,8 +99,6 @@ export class EntityService {
       groupId?: string
       search?: string
       contactType?: string
-      stateKey?: string
-      stateKeys?: string[] // Support multiple state keys
     }
   ): Promise<Entity[]> {
     const where: any = {
@@ -136,24 +124,6 @@ export class EntityService {
       where.contactType = options.contactType
     }
 
-    // Support multiple state keys (AND logic - contact must have ALL selected tags)
-    if (options?.stateKeys && options.stateKeys.length > 0) {
-      where.AND = options.stateKeys.map(key => ({
-        contactStates: {
-          some: {
-            stateKey: key
-          }
-        }
-      }))
-    } else if (options?.stateKey) {
-      // Backwards compatibility for single stateKey
-      where.contactStates = {
-        some: {
-          stateKey: options.stateKey
-        }
-      }
-    }
-
     return prisma.entity.findMany({
       where,
       include: {
@@ -161,8 +131,7 @@ export class EntityService {
           include: {
             group: true
           }
-        },
-        contactStates: true
+        }
       },
       orderBy: {
         firstName: "asc"

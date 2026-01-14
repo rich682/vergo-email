@@ -6,18 +6,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BulkActionToolbar } from "./bulk-action-toolbar"
-import { X, Check } from "lucide-react"
+import { X } from "lucide-react"
 
 interface Group {
   id: string
   name: string
   color?: string | null
-}
-
-interface TagInfo {
-  id: string
-  name: string
-  displayName: string
 }
 
 interface Entity {
@@ -29,28 +23,18 @@ interface Entity {
   groups: Group[]
   contactType?: string
   contactTypeCustomLabel?: string
-  contactStates?: Array<{
-    stateKey: string
-    metadata?: any
-    updatedAt?: string
-    source?: string
-  }>
 }
 
 interface ContactListProps {
   entities: Entity[]
   groups: Group[]
-  tags: TagInfo[]
-  availableStateKeys: string[]
   search: string
   selectedGroupId?: string
   selectedContactType?: string
-  selectedStateKeys: string[]
   selectedEntityIds: string[]
   onSearchChange: (value: string) => void
   onGroupFilterChange: (value?: string) => void
   onContactTypeChange: (value?: string) => void
-  onStateKeysChange: (keys: string[]) => void
   onSelectedEntitiesChange: (ids: string[]) => void
   onEdit: (entity: Entity) => void
   onDelete: () => void
@@ -68,23 +52,17 @@ const CONTACT_TYPES = [
 export function ContactList({
   entities,
   groups,
-  tags,
-  availableStateKeys,
   search,
   selectedGroupId,
   selectedContactType,
-  selectedStateKeys,
   selectedEntityIds,
   onSearchChange,
   onGroupFilterChange,
   onContactTypeChange,
-  onStateKeysChange,
   onSelectedEntitiesChange,
   onEdit,
   onDelete
 }: ContactListProps) {
-  const [stateKeyDropdownOpen, setStateKeyDropdownOpen] = useState(false)
-  
   // Always show selection column
   const showSelectionColumn = true
 
@@ -99,22 +77,6 @@ export function ContactList({
     } catch (err) {
       console.error(err)
     }
-  }
-
-  const toggleStateKey = (key: string) => {
-    if (selectedStateKeys.includes(key)) {
-      onStateKeysChange(selectedStateKeys.filter(k => k !== key))
-    } else {
-      onStateKeysChange([...selectedStateKeys, key])
-    }
-  }
-
-  const selectAllStateKeys = () => {
-    onStateKeysChange([...availableStateKeys])
-  }
-
-  const clearStateKeys = () => {
-    onStateKeysChange([])
   }
 
   const toggleEntitySelection = (id: string) => {
@@ -441,7 +403,6 @@ export function ContactList({
         selectedCount={selectedEntityIds.length}
         selectedEntityIds={selectedEntityIds}
         groups={groups}
-        tags={tags}
         contactTypes={CONTACT_TYPES}
         onClearSelection={clearEntitySelection}
         onActionComplete={handleBulkActionComplete}

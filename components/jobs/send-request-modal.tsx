@@ -14,7 +14,7 @@
  * - POST /api/quests/[id]/execute (send)
  */
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
@@ -39,15 +39,30 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Tag,
+  Filter,
 } from "lucide-react"
 
 // Types
+interface JobLabel {
+  id: string
+  name: string
+  color: string | null
+}
+
+interface ContactLabelInfo {
+  labelId: string
+  labelName: string
+  labelColor: string | null
+}
+
 interface StakeholderContact {
   id: string
   email: string | null
   firstName: string
   lastName: string | null
   contactType?: string
+  labels?: ContactLabelInfo[] // Labels applied to this contact for this job
 }
 
 interface Job {
@@ -153,9 +168,54 @@ export function SendRequestModal({
   // Recipients with exclusion toggles
   const [recipients, setRecipients] = useState<Array<StakeholderContact & { included: boolean }>>([])
   
+  // Label filter state
+  const [availableLabels, setAvailableLabels] = useState<JobLabel[]>([])
+  const [selectedLabelFilter, setSelectedLabelFilter] = useState<string | null>(null) // null = all, "none" = no labels, or label ID
+  const [showLabelFilter, setShowLabelFilter] = useState(false)
+  
   // Preview state
   const [showPreview, setShowPreview] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
+
+  // Fetch labels for this job
+  const fetchLabels = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/labels`, {
+        credentials: "include",
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableLabels(data.labels || [])
+      }
+    } catch (err) {
+      console.error("Error fetching labels:", err)
+    }
+  }, [job.id])
+
+  // Fetch contact labels for this job
+  const fetchContactLabels = useCallback(async (): Promise<Map<string, ContactLabelInfo[]>> => {
+    const labelMap = new Map<string, ContactLabelInfo[]>()
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/contact-labels`, {
+        credentials: "include",
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const contacts = data.contacts || []
+        for (const contact of contacts) {
+          const labels: ContactLabelInfo[] = (contact.jobLabels || []).map((jl: any) => ({
+            labelId: jl.jobLabel.id,
+            labelName: jl.jobLabel.name,
+            labelColor: jl.jobLabel.color,
+          }))
+          labelMap.set(contact.id, labels)
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching contact labels:", err)
+    }
+    return labelMap
+  }, [job.id])
 
   // Fetch draft when modal opens
   const fetchDraft = useCallback(async () => {
@@ -163,28 +223,33 @@ export function SendRequestModal({
     setError(null)
     
     try {
-      const response = await fetch(`/api/jobs/${job.id}/request/draft`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      })
+      // Fetch labels and contact labels in parallel with draft
+      const [draftResponse, contactLabelsMap] = await Promise.all([
+        fetch(`/api/jobs/${job.id}/request/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        }),
+        fetchContactLabels(),
+      ])
 
-      if (!response.ok) {
-        const data = await response.json()
+      if (!draftResponse.ok) {
+        const data = await draftResponse.json()
         throw new Error(data.error || "Failed to generate draft")
       }
 
-      const data: DraftResponse = await response.json()
+      const data: DraftResponse = await draftResponse.json()
       
       setSubject(data.draft.subject)
       setBody(data.draft.body)
       setUsedFallback(data.usedFallback)
       
-      // Initialize recipients from response (all included by default)
+      // Initialize recipients from response with labels (all included by default)
       setRecipients(
         data.recipients.map(r => ({
           ...r,
           included: true,
+          labels: contactLabelsMap.get(r.id) || [],
         }))
       )
       
@@ -196,21 +261,29 @@ export function SendRequestModal({
       setSubject(`Request: ${job.name}`)
       setBody(`Hi {{First Name}},\n\nI'm reaching out regarding ${job.name}.\n\nPlease let me know if you have any questions.\n\nBest regards`)
       setUsedFallback(true)
+      
+      // Fetch contact labels for fallback
+      const contactLabelsMap = await fetchContactLabels()
       setRecipients(
         stakeholderContacts
           .filter(c => c.email)
-          .map(r => ({ ...r, included: true }))
+          .map(r => ({ 
+            ...r, 
+            included: true,
+            labels: contactLabelsMap.get(r.id) || [],
+          }))
       )
       setState("ready")
     }
-  }, [job.id, job.name, stakeholderContacts])
+  }, [job.id, job.name, stakeholderContacts, fetchContactLabels])
 
-  // Fetch draft when modal opens
+  // Fetch draft and labels when modal opens
   useEffect(() => {
     if (open && state === "idle") {
       fetchDraft()
+      fetchLabels()
     }
-  }, [open, state, fetchDraft])
+  }, [open, state, fetchDraft, fetchLabels])
 
   // Reset state when modal closes
   useEffect(() => {
@@ -226,6 +299,9 @@ export function SendRequestModal({
       setRecipients([])
       setShowPreview(false)
       setPreviewIndex(0)
+      setAvailableLabels([])
+      setSelectedLabelFilter(null)
+      setShowLabelFilter(false)
     }
   }, [open])
 
@@ -391,10 +467,47 @@ export function SendRequestModal({
     }
   }
 
+  // Filter recipients by label
+  const applyLabelFilter = useCallback((labelFilter: string | null) => {
+    setSelectedLabelFilter(labelFilter)
+    
+    // Update recipient inclusion based on filter
+    setRecipients(prev => prev.map(r => {
+      if (labelFilter === null) {
+        // Show all - keep current inclusion state
+        return r
+      } else if (labelFilter === "none") {
+        // Only include recipients with no labels
+        return { ...r, included: !r.labels || r.labels.length === 0 }
+      } else {
+        // Only include recipients with the selected label
+        return { ...r, included: r.labels?.some(l => l.labelId === labelFilter) || false }
+      }
+    }))
+  }, [])
+
   // Computed values
   const includedCount = recipients.filter(r => r.included).length
   const totalCount = recipients.length
   const includedRecipients = recipients.filter(r => r.included)
+  
+  // Count recipients by label for filter display
+  const labelCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    let noLabelCount = 0
+    
+    for (const r of recipients) {
+      if (!r.labels || r.labels.length === 0) {
+        noLabelCount++
+      } else {
+        for (const label of r.labels) {
+          counts.set(label.labelId, (counts.get(label.labelId) || 0) + 1)
+        }
+      }
+    }
+    
+    return { labelCounts: counts, noLabelCount }
+  }, [recipients])
   
   // Preview helpers
   const currentPreviewRecipient = includedRecipients[previewIndex]
@@ -490,11 +603,97 @@ export function SendRequestModal({
 
             {/* Recipients */}
             <div>
-              <Label className="flex items-center gap-2 mb-2">
-                <Users className="w-4 h-4 text-gray-500" />
-                Recipients ({includedCount} of {totalCount})
-              </Label>
-              <div className="border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-500" />
+                  Recipients ({includedCount} of {totalCount})
+                </Label>
+                
+                {/* Label Filter */}
+                {availableLabels.length > 0 && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowLabelFilter(!showLabelFilter)}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
+                        selectedLabelFilter !== null
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      <Filter className="w-3.5 h-3.5" />
+                      {selectedLabelFilter === null 
+                        ? "Filter by label" 
+                        : selectedLabelFilter === "none"
+                        ? "No label"
+                        : availableLabels.find(l => l.id === selectedLabelFilter)?.name || "Filter"
+                      }
+                    </button>
+                    
+                    {showLabelFilter && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={() => setShowLabelFilter(false)} 
+                        />
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px] py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              applyLabelFilter(null)
+                              setShowLabelFilter(false)
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                              selectedLabelFilter === null ? "bg-gray-50 font-medium" : ""
+                            }`}
+                          >
+                            All recipients
+                            <span className="text-xs text-gray-400 ml-2">({totalCount})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              applyLabelFilter("none")
+                              setShowLabelFilter(false)
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                              selectedLabelFilter === "none" ? "bg-gray-50 font-medium" : ""
+                            }`}
+                          >
+                            No label
+                            <span className="text-xs text-gray-400 ml-2">({labelCounts.noLabelCount})</span>
+                          </button>
+                          <div className="border-t border-gray-100 my-1" />
+                          {availableLabels.map(label => (
+                            <button
+                              key={label.id}
+                              type="button"
+                              onClick={() => {
+                                applyLabelFilter(label.id)
+                                setShowLabelFilter(false)
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                selectedLabelFilter === label.id ? "bg-gray-50 font-medium" : ""
+                              }`}
+                            >
+                              <div 
+                                className="w-2.5 h-2.5 rounded-full" 
+                                style={{ backgroundColor: label.color || "#6b7280" }}
+                              />
+                              <span className="capitalize">{label.name}</span>
+                              <span className="text-xs text-gray-400 ml-auto">
+                                ({labelCounts.labelCounts.get(label.id) || 0})
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
                 {recipients.length === 0 ? (
                   <p className="p-3 text-sm text-gray-500 text-center">No recipients with email addresses</p>
                 ) : (
@@ -520,11 +719,35 @@ export function SendRequestModal({
                             {recipient.email}
                           </div>
                         </div>
-                        {recipient.contactType && (
-                          <span className="text-xs text-gray-400 px-2 py-0.5 bg-gray-100 rounded">
-                            {recipient.contactType}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {/* Show labels */}
+                          {recipient.labels && recipient.labels.length > 0 && (
+                            <div className="flex gap-1">
+                              {recipient.labels.slice(0, 2).map(label => (
+                                <span
+                                  key={label.labelId}
+                                  className="text-xs px-1.5 py-0.5 rounded capitalize"
+                                  style={{
+                                    backgroundColor: `${label.labelColor || "#6b7280"}20`,
+                                    color: label.labelColor || "#6b7280",
+                                  }}
+                                >
+                                  {label.labelName}
+                                </span>
+                              ))}
+                              {recipient.labels.length > 2 && (
+                                <span className="text-xs text-gray-400">
+                                  +{recipient.labels.length - 2}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {recipient.contactType && (
+                            <span className="text-xs text-gray-400 px-2 py-0.5 bg-gray-100 rounded">
+                              {recipient.contactType}
+                            </span>
+                          )}
+                        </div>
                       </label>
                     ))}
                   </div>

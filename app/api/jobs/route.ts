@@ -105,13 +105,19 @@ export async function POST(request: NextRequest) {
     // Build labels object, merging stakeholders if provided
     let finalLabels = labels || {}
     if (stakeholders && Array.isArray(stakeholders)) {
-      // Filter out "No Stakeholders" placeholder
+      // Check if "No Stakeholders" placeholder was selected
+      const hasNoStakeholdersFlag = stakeholders.some(
+        (s: any) => s.type === "contact_type" && s.id === "NONE"
+      )
+      // Filter out "No Stakeholders" placeholder from actual stakeholders
       const validStakeholders = stakeholders.filter(
         (s: any) => !(s.type === "contact_type" && s.id === "NONE")
       )
       finalLabels = {
         ...finalLabels,
-        stakeholders: validStakeholders
+        stakeholders: validStakeholders,
+        // Store flag indicating user explicitly chose "no stakeholders needed"
+        noStakeholdersNeeded: hasNoStakeholdersFlag
       }
     }
 

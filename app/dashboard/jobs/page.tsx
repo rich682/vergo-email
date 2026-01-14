@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown, Trash2 } from "lucide-react"
+import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown, Trash2, Users } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 
@@ -981,14 +981,15 @@ export default function JobsPage() {
                         )}
                       </div>
                       
-                      {/* No stakeholders option */}
+                      {/* No stakeholders option - more prominent button */}
                       {newJobStakeholders.length === 0 && (
                         <button
                           type="button"
                           onClick={() => handleAddStakeholder("contact_type", "NONE", "No Stakeholders")}
-                          className="text-xs text-gray-500 hover:text-gray-700 underline"
+                          className="w-full mt-3 py-2 px-3 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                         >
-                          This item has no external stakeholders
+                          <Users className="w-4 h-4" />
+                          This item has no stakeholders
                         </button>
                       )}
                     </div>

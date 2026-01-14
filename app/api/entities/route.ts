@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
 import { DomainDetectionService } from "@/lib/services/domain-detection.service"
-import { ContactStateService } from "@/lib/services/contact-state.service"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -49,12 +48,12 @@ export async function GET(request: NextRequest) {
 
     const entityWithGroups = entity as typeof entity & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
-      contactStates: Array<{ stateKey: string; metadata: any; updatedAt: Date; source: string }>
     }
 
     return {
       id: entity.id,
       firstName: entity.firstName,
+      lastName: entity.lastName,
       email: entity.email,
       phone: entity.phone,
       contactType: entity.contactType,
@@ -64,12 +63,6 @@ export async function GET(request: NextRequest) {
         id: eg.group.id,
         name: eg.group.name,
         color: eg.group.color
-      })),
-      contactStates: entityWithGroups.contactStates?.map((cs) => ({
-        stateKey: cs.stateKey,
-        metadata: cs.metadata,
-        updatedAt: cs.updatedAt,
-        source: cs.source
       })),
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt
@@ -102,6 +95,7 @@ export async function POST(request: NextRequest) {
 
     const entity = await EntityService.create({
       firstName,
+      lastName: lastName?.trim() || undefined,
       email,
       phone: phone || undefined,
       contactType,
@@ -109,17 +103,6 @@ export async function POST(request: NextRequest) {
       organizationId: session.user.organizationId,
       groupIds: groupIds || []
     })
-
-    // Store lastName as a ContactState if provided
-    if (lastName && lastName.trim()) {
-      await ContactStateService.upsert({
-        entityId: entity.id,
-        organizationId: session.user.organizationId,
-        stateKey: "lastName",
-        metadata: { value: lastName.trim() },
-        source: "manual"
-      })
-    }
 
     // Fetch with groups
     const entityWithGroups = await EntityService.findById(

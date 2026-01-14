@@ -73,32 +73,18 @@ export class QuestInterpreterService {
    * Fetch organization context for LLM prompt injection
    */
   static async getOrganizationContext(organizationId: string): Promise<OrganizationContext> {
-    const [groups, stateKeys] = await Promise.all([
-      // Get all groups for the organization
-      prisma.group.findMany({
-        where: { organizationId },
-        select: { id: true, name: true }
-      }),
-      // Get distinct state keys with counts
-      prisma.contactState.groupBy({
-        by: ['stateKey'],
-        where: { organizationId },
-        _count: { stateKey: true }
-      })
-    ])
+    // Get all groups for the organization
+    const groups = await prisma.group.findMany({
+      where: { organizationId },
+      select: { id: true, name: true }
+    })
 
-    // Filter out core entity fields from state keys
-    const filteredStateKeys = stateKeys.filter(
-      s => !EXCLUDED_STATE_KEYS.has(s.stateKey.toLowerCase())
-    )
-
+    // Note: State keys functionality has been removed as part of the migration
+    // to item-scoped labels. The availableStateKeys array is now always empty.
     return {
       availableContactTypes: VALID_CONTACT_TYPES.filter(t => t !== "UNKNOWN" && t !== "CUSTOM"),
       availableGroups: groups.map(g => ({ id: g.id, name: g.name })),
-      availableStateKeys: filteredStateKeys.map(s => ({
-        stateKey: s.stateKey,
-        count: s._count.stateKey
-      }))
+      availableStateKeys: []
     }
   }
 
@@ -553,41 +539,14 @@ IMPORTANT:
     // Use the recipient filter service to get actual recipients
     const result = await resolveRecipientsWithReasons(organizationId, dbSelection)
 
-    // Get entity IDs for fetching tag values
-    const entityIds = result.recipientsWithReasons
-      .map(r => r.id)
-      .filter((id): id is string => id !== undefined)
-
-    // Fetch tag values for all recipients if there are selected tags
-    let tagValuesByEntity: Map<string, Record<string, string>> = new Map()
-    
-    if (selection.stateFilter?.stateKeys?.length && entityIds.length > 0) {
-      const contactStates = await prisma.contactState.findMany({
-        where: {
-          organizationId,
-          entityId: { in: entityIds },
-          stateKey: { in: selection.stateFilter.stateKeys }
-        },
-        include: {
-          tag: true
-        }
-      })
-
-      // Build map of entityId -> { tagName: tagValue }
-      for (const state of contactStates) {
-        const tagName = state.stateKey
-        const existing = tagValuesByEntity.get(state.entityId) || {}
-        existing[tagName] = state.stateValue || ""
-        tagValuesByEntity.set(state.entityId, existing)
-      }
-    }
-
+    // Note: Tag values functionality has been removed as part of the migration
+    // to item-scoped labels. Recipients are returned without tag values.
     return result.recipientsWithReasons.map(r => ({
       id: r.id,
       email: r.email,
       name: r.firstName || r.name,
       contactType: r.contactType,
-      tagValues: r.id ? tagValuesByEntity.get(r.id) : undefined
+      tagValues: undefined
     }))
   }
 }

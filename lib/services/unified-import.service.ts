@@ -1,7 +1,5 @@
-import { prisma } from "@/lib/prisma"
 import { GroupService } from "@/lib/services/group.service"
 import { EntityService } from "@/lib/services/entity.service"
-import { ContactStateService } from "@/lib/services/contact-state.service"
 import { ContactType } from "@prisma/client"
 import * as XLSX from "xlsx"
 
@@ -321,85 +319,8 @@ export class UnifiedImportService {
         await EntityService.addToGroup(entity.id, gid)
       }
 
-      // Custom fields -> ContactState upsert (auto-creates Tags)
-      // Skip this entire section if coreFieldsOnly is true
-      if (!coreFieldsOnly) {
-        const customEntries = { ...row.customFields }
-        // Note: lastName is now a proper Entity field, not a custom field/tag
-
-        // Sync deletions: remove states for columns present in file but blank in this row
-        if (syncCustomFields && customFieldColumns.length > 0) {
-          for (const stateKey of customFieldColumns) {
-            if (!stateKey) continue
-            const rawValue = row.customFieldsRaw?.[stateKey]
-            const isBlank = rawValue === null || rawValue === ""
-            if (isBlank) {
-              // Get or create tag to find existing state (returns null for reserved names)
-              const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
-              if (!tagId) continue // Skip reserved tag names
-              
-              const existingField = await prisma.contactState.findUnique({
-                where: {
-                  organizationId_entityId_tagId: {
-                    organizationId,
-                    entityId: entity.id,
-                    tagId
-                  }
-                }
-              })
-              if (existingField) {
-                await prisma.contactState.delete({
-                  where: { id: existingField.id }
-                })
-                summary.customFieldsDeleted += 1
-              }
-            }
-          }
-        }
-
-        for (const [stateKeyRaw, value] of Object.entries(customEntries)) {
-          const stateKey = stateKeyRaw.trim()
-          if (!stateKey) continue
-
-          // Get or create tag first (returns null for reserved names like lastName)
-          const tagId = await ContactStateService.getOrCreateTag(organizationId, stateKey)
-          if (!tagId) continue // Skip reserved tag names - they're stored on Entity directly
-
-          const existingField = await prisma.contactState.findUnique({
-            where: {
-              organizationId_entityId_tagId: {
-                organizationId,
-                entityId: entity.id,
-                tagId
-              }
-            }
-          })
-
-          if (existingField) {
-            await prisma.contactState.update({
-              where: { id: existingField.id },
-              data: {
-                stateValue: typeof value === 'string' ? value : JSON.stringify(value),
-                metadata: value
-              }
-            })
-            summary.customFieldsUpdated += 1
-          } else {
-            await prisma.contactState.create({
-              data: {
-                organizationId,
-                entityId: entity.id,
-                tagId,
-                stateKey: stateKey.toLowerCase().replace(/\s+/g, "_"),
-                stateValue: typeof value === 'string' ? value : JSON.stringify(value),
-                metadata: value,
-                source: "CSV_UPLOAD"
-              }
-            })
-            summary.customFieldsCreated += 1
-          }
-        }
-      }
+      // Note: Custom fields (ContactState) have been removed.
+      // Item-scoped labels (JobLabel/JobContactLabel) are now used instead.
     }
 
     return summary

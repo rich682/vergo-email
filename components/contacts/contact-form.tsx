@@ -5,29 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { GroupsInput } from "@/components/contacts/groups-input"
-import { Tag, X, Plus } from "lucide-react"
 
 interface Group {
   id: string
   name: string
   color?: string | null
-}
-
-interface ContactState {
-  stateKey: string
-  stateValue?: string
-  metadata?: any
-  tag?: {
-    id: string
-    name: string
-    displayName?: string
-  }
-}
-
-interface AvailableTag {
-  id: string
-  name: string
-  displayName: string
 }
 
 interface EntityInput {
@@ -39,37 +21,12 @@ interface EntityInput {
   contactType?: string
   contactTypeCustomLabel?: string
   groups?: { id: string; name: string }[]
-  contactStates?: ContactState[]
 }
 
 interface ContactFormProps {
   entity?: EntityInput
   onSuccess: () => void
   onCancel: () => void
-}
-
-// Helper to extract tag values from contactStates
-function getTagValuesFromStates(contactStates?: ContactState[]): Record<string, string> {
-  if (!contactStates) return {}
-  const values: Record<string, string> = {}
-  for (const cs of contactStates) {
-    const tagName = cs.tag?.name || cs.stateKey
-    // Get value from stateValue or metadata
-    let value = cs.stateValue || ""
-    if (!value && cs.metadata) {
-      if (typeof cs.metadata === "string") {
-        value = cs.metadata
-      } else if (typeof cs.metadata === "object" && cs.metadata.value) {
-        value = cs.metadata.value
-      } else if (typeof cs.metadata === "object") {
-        value = JSON.stringify(cs.metadata)
-      }
-    }
-    if (tagName && value) {
-      values[tagName] = value
-    }
-  }
-  return values
 }
 
 export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
@@ -83,10 +40,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     entity?.groups?.map((g) => g.id) || []
   )
   const [groups, setGroups] = useState<Group[]>([])
-  const [availableTags, setAvailableTags] = useState<AvailableTag[]>([])
-  const [tagValues, setTagValues] = useState<Record<string, string>>(
-    getTagValuesFromStates(entity?.contactStates)
-  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,13 +51,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         if (groupsRes.ok) {
           const data = await groupsRes.json()
           setGroups(Array.isArray(data) ? data : [])
-        }
-        
-        // Load available tags
-        const tagsRes = await fetch("/api/contacts/tags")
-        if (tagsRes.ok) {
-          const data = await tagsRes.json()
-          setAvailableTags(data.tags || [])
         }
       } catch (err) {
         console.error("Failed to load data", err)
@@ -121,7 +67,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     setContactType(entity?.contactType || "UNKNOWN")
     setContactTypeCustomLabel(entity?.contactTypeCustomLabel || "")
     setGroupIds(entity?.groups?.map((g) => g.id) || [])
-    setTagValues(getTagValuesFromStates(entity?.contactStates))
   }, [entity])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,7 +83,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         contactType,
         contactTypeCustomLabel: contactType === "CUSTOM" ? contactTypeCustomLabel || undefined : undefined,
         groupIds,
-        tagValues // Include tag values in the payload
       }
 
       const res = await fetch(
@@ -162,29 +106,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
       setSubmitting(false)
     }
   }
-
-  const handleTagValueChange = (tagName: string, value: string) => {
-    setTagValues(prev => {
-      if (value === "") {
-        // Remove the tag if value is empty
-        const { [tagName]: _, ...rest } = prev
-        return rest
-      }
-      return { ...prev, [tagName]: value }
-    })
-  }
-
-  const handleRemoveTag = (tagName: string) => {
-    setTagValues(prev => {
-      const { [tagName]: _, ...rest } = prev
-      return rest
-    })
-  }
-
-  // Tags that are assigned to this contact
-  const assignedTagNames = Object.keys(tagValues)
-  // Tags that are available but not yet assigned
-  const unassignedTags = availableTags.filter(t => !assignedTagNames.includes(t.name))
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
@@ -265,83 +186,6 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
           onChangeSelected={setGroupIds}
         />
       </div>
-
-      {/* Tags Section */}
-      {availableTags.length > 0 && (
-        <div className="space-y-3">
-          <Label className="flex items-center gap-2">
-            <Tag className="w-4 h-4" />
-            Personalization Tags
-          </Label>
-          <p className="text-xs text-gray-500 -mt-1">
-            Add custom data for this contact (e.g., invoice numbers, due dates)
-          </p>
-          
-          {/* Assigned tags */}
-          {assignedTagNames.length > 0 && (
-            <div className="space-y-2">
-              {assignedTagNames.map(tagName => {
-                const tag = availableTags.find(t => t.name === tagName)
-                return (
-                  <div key={tagName} className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <Label className="text-xs text-gray-500 mb-1 block">
-                        {tag?.displayName || tagName}
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={tagValues[tagName] || ""}
-                          onChange={(e) => handleTagValueChange(tagName, e.target.value)}
-                          placeholder={`Enter ${tag?.displayName || tagName}...`}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveTag(tagName)}
-                          className="text-gray-400 hover:text-red-500 px-2"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          
-          {/* Add tag dropdown */}
-          {unassignedTags.length > 0 && (
-            <div className="flex items-center gap-2">
-              <select
-                className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleTagValueChange(e.target.value, "")
-                    // Focus will be on the new input after re-render
-                  }
-                }}
-              >
-                <option value="">+ Add a tag...</option>
-                {unassignedTags.map(tag => (
-                  <option key={tag.id} value={tag.name}>
-                    {tag.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          
-          {assignedTagNames.length === 0 && unassignedTags.length === 0 && (
-            <p className="text-sm text-gray-400 italic">
-              No tags available. Create tags in Settings → Tags.
-            </p>
-          )}
-        </div>
-      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">

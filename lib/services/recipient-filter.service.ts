@@ -1,22 +1,19 @@
 import { prisma } from "@/lib/prisma"
 
-// Support both single stateKey (legacy) and multiple stateKeys
+// Note: State filter functionality has been removed as part of the migration
+// to item-scoped labels. The stateFilter field is kept for backward compatibility
+// but is no longer used for filtering.
 export type RecipientFilter = {
-  stateKey?: string // Legacy single key
-  stateKeys?: string[] // Multiple keys
-  mode?: "has" | "missing"
+  stateKey?: string // Legacy single key (deprecated)
+  stateKeys?: string[] // Multiple keys (deprecated)
+  mode?: "has" | "missing" // (deprecated)
 }
 
 export type RecipientSelection = {
   entityIds?: string[]
   groupIds?: string[]
   contactTypes?: string[] // Contact types like "CLIENT", "VENDOR", etc.
-  stateFilter?: RecipientFilter
-}
-
-export type ContactStateData = {
-  stateKey: string
-  metadata: Record<string, any> | null
+  stateFilter?: RecipientFilter // Deprecated - kept for backward compatibility
 }
 
 // ============================================================================
@@ -28,12 +25,10 @@ export type InclusionReasonType =
   | "contact_type"
   | "group_membership"
   | "direct_selection"
-  | "state_filter_match"
 
 export type ExclusionReasonType =
   | "missing_email"
   | "missing_required_field"
-  | "state_filter_mismatch"
   | "duplicate_email"
 
 export type InclusionReason = {
@@ -52,7 +47,7 @@ export type ResolvedRecipient = {
   firstName?: string | null
   lastName?: string | null
   entityId?: string
-  contactStates: ContactStateData[]
+  contactType?: string | null
 }
 
 export type ResolvedRecipientWithReasons = ResolvedRecipient & {
@@ -118,7 +113,7 @@ export async function resolveRecipientsWithReasons(
     entityIds.length
       ? prisma.entity.findMany({
           where: { organizationId, id: { in: entityIds } },
-          include: { contactStates: true, groups: { include: { group: true } } }
+          include: { groups: { include: { group: true } } }
         })
       : Promise.resolve([]),
     // Entities from groups (used as filter if contactTypes are selected)
@@ -128,7 +123,7 @@ export async function resolveRecipientsWithReasons(
             organizationId,
             groups: { some: { groupId: { in: groupIds } } }
           },
-          include: { contactStates: true, groups: { include: { group: true } } }
+          include: { groups: { include: { group: true } } }
         })
       : Promise.resolve([]),
     // Entities by contact type
@@ -138,7 +133,7 @@ export async function resolveRecipientsWithReasons(
             organizationId,
             contactType: { in: contactTypes as any[] }
           },
-          include: { contactStates: true, groups: { include: { group: true } } }
+          include: { groups: { include: { group: true } } }
         })
       : Promise.resolve([])
   ])
@@ -205,14 +200,6 @@ export async function resolveRecipientsWithReasons(
   const seenEmails = new Set<string>()
   const includedEntities: { entity: EntityWithGroups; reasons: InclusionReason[] }[] = []
 
-  // Get filter keys - support both legacy single key and multiple keys
-  const filterKeys = selection.stateFilter?.stateKeys?.length 
-    ? selection.stateFilter.stateKeys 
-    : selection.stateFilter?.stateKey 
-      ? [selection.stateFilter.stateKey]
-      : []
-  const filterMode = selection.stateFilter?.mode
-
   // Process all entities with reasons
   for (const [entityId, { entity, reasons }] of entityInclusionReasons) {
     // Check for missing email
@@ -237,28 +224,6 @@ export async function resolveRecipientsWithReasons(
       continue
     }
 
-    // Check state filter
-    if (filterKeys.length > 0 && filterMode === "has") {
-      const entityStateKeys = new Set((entity.contactStates || []).map(cs => cs.stateKey))
-      const missingKeys = filterKeys.filter(key => !entityStateKeys.has(key))
-      
-      if (missingKeys.length > 0) {
-        excludedRecipients.push({
-          email: entity.email,
-          entityId: entity.id,
-          name: entity.firstName,
-          exclusionReasons: missingKeys.map(key => ({ 
-            type: "state_filter_mismatch" as const, 
-            key 
-          }))
-        })
-        continue
-      }
-      
-      // Add state filter match reason
-      reasons.push({ type: "state_filter_match", value: filterKeys.join(", ") })
-    }
-
     seenEmails.add(emailLower)
     includedEntities.push({ entity, reasons })
   }
@@ -270,10 +235,7 @@ export async function resolveRecipientsWithReasons(
     firstName: entity.firstName,
     lastName: entity.lastName,
     entityId: entity.id,
-    contactStates: (entity.contactStates || []).map((cs) => ({
-      stateKey: cs.stateKey,
-      metadata: cs.metadata as Record<string, any> | null
-    })),
+    contactType: entity.contactType as string | null,
     inclusionReasons: reasons
   }))
 
@@ -295,13 +257,13 @@ export async function resolveRecipientsWithReasons(
 }
 
 /**
- * Build personalization data for a recipient from their contact info and states.
+ * Build personalization data for a recipient from their contact info.
  * This creates a flat key-value map suitable for template rendering.
- * Supports both single key (legacy) and multiple keys.
+ * Note: Contact state functionality has been removed as part of the migration
+ * to item-scoped labels.
  */
 export function buildRecipientPersonalizationData(
-  recipient: ResolvedRecipient,
-  selectedKeys?: string | string[] | null
+  recipient: ResolvedRecipient
 ): Record<string, string> {
   const data: Record<string, string> = {
     "First Name": recipient.firstName || recipient.name || "",
@@ -310,45 +272,6 @@ export function buildRecipientPersonalizationData(
 
   if (recipient.lastName) {
     data["Last Name"] = recipient.lastName
-  }
-
-  // Normalize to array
-  const keysArray = selectedKeys 
-    ? (Array.isArray(selectedKeys) ? selectedKeys : [selectedKeys])
-    : []
-
-  // Add contact states as merge fields
-  for (const cs of recipient.contactStates) {
-    // If specific keys are selected, only include those
-    if (keysArray.length > 0) {
-      if (keysArray.includes(cs.stateKey)) {
-        // Flatten metadata into the data object
-        if (cs.metadata && typeof cs.metadata === "object") {
-          for (const [key, value] of Object.entries(cs.metadata)) {
-            if (value !== null && value !== undefined) {
-              data[key] = String(value)
-            }
-          }
-        }
-        // Also add the state key itself as a tag with its value
-        if (cs.metadata) {
-          // If metadata is a simple value, use it directly
-          const metaValue = typeof cs.metadata === "object" 
-            ? (Object.values(cs.metadata)[0] ?? "")
-            : cs.metadata
-          data[cs.stateKey] = String(metaValue)
-        }
-      }
-    } else {
-      // No specific keys selected - include all states
-      if (cs.metadata && typeof cs.metadata === "object") {
-        for (const [key, value] of Object.entries(cs.metadata)) {
-          if (value !== null && value !== undefined) {
-            data[key] = String(value)
-          }
-        }
-      }
-    }
   }
 
   return data

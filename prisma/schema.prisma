@@ -72,9 +72,7 @@ model Organization {
 
   users                  User[]
   entities               Entity[]
-  contactStates          ContactState[]
   groups                 Group[]
-  tags                   Tag[]
   jobs                   Job[]
   connectedEmailAccounts ConnectedEmailAccount[]
   automationRules        AutomationRule[]
@@ -117,13 +115,13 @@ model Entity {
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   groups         EntityGroup[]
   tasks          Task[]
   messages       Message[]
   reminderStates ReminderState[]
-  contactStates  ContactState[]
-  clientJobs     Job[]           @relation("JobClient") // Jobs where this entity is the primary client
+  clientJobs     Job[]             @relation("JobClient") // Jobs where this entity is the primary client
+  jobLabels      JobContactLabel[] // Item-scoped labels applied to this contact
 
   @@index([organizationId])
   @@index([email])
@@ -170,53 +168,6 @@ enum ContactType {
   CUSTOM
 }
 
-enum ContactStateSource {
-  CSV_UPLOAD
-  MANUAL
-  FUTURE_AUTOMATION
-}
-
-// Tag definitions - like Groups, these are first-class entities that can be managed
-model Tag {
-  id             String   @id @default(cuid())
-  name           String // Normalized name (lowercase, underscores)
-  displayName    String? // Human-friendly display name
-  description    String?
-  organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactStates ContactState[]
-
-  @@unique([organizationId, name])
-  @@index([organizationId])
-}
-
-// ContactState stores the actual tag values for each contact
-model ContactState {
-  id             String             @id @default(cuid())
-  organizationId String
-  entityId       String
-  tagId          String // Reference to Tag
-  stateKey       String // Denormalized tag name for backward compatibility
-  stateValue     String? // The actual value for this contact-tag pair
-  metadata       Json?
-  source         ContactStateSource @default(CSV_UPLOAD)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  entity       Entity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, entityId, tagId])
-  @@index([organizationId, stateKey])
-  @@index([organizationId, tagId])
-  @@index([entityId])
-  @@index([tagId])
-}
-
 // Job represents a persistent work container (e.g., "Tax Planning - Year End 2024")
 // Jobs own Tasks (requests), enabling aggregation and status tracking across recipients
 enum JobStatus {
@@ -247,11 +198,51 @@ model Job {
   requests      EmailDraft[]      // Request-level association
   comments      JobComment[]      // Internal collaboration comments
 
+  jobLabels     JobLabel[]        // Item-scoped labels for contacts
+
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([clientId])
   @@index([ownerId])
   @@index([organizationId, createdAt])
+}
+
+// JobLabel defines labels that can be applied to contacts within a specific Job
+// e.g., "paid", "unpaid", "pending" with metadata schemas like invoice_number, amount
+model JobLabel {
+  id              String   @id @default(cuid())
+  jobId           String
+  organizationId  String
+  name            String   // "unpaid", "received", "pending"
+  color           String?  // "#ef4444"
+  metadataSchema  Json     @default("[]") // [{key: "invoice_number", label: "Invoice #", type: "text"}]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  job           Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  contactLabels JobContactLabel[]
+
+  @@unique([jobId, name])
+  @@index([jobId])
+  @@index([organizationId])
+}
+
+// JobContactLabel applies a label to a contact within a Job's context
+// Stores the metadata values for that contact-label pair
+model JobContactLabel {
+  id          String   @id @default(cuid())
+  jobLabelId  String
+  entityId    String
+  metadata    Json     @default("{}") // {invoice_number: "INV-001", amount: "500.00"}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobLabel JobLabel @relation(fields: [jobLabelId], references: [id], onDelete: Cascade)
+  entity   Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([jobLabelId, entityId])
+  @@index([jobLabelId])
+  @@index([entityId])
 }
 
 // JobCollaborator join table for team collaboration on Jobs

@@ -1,0 +1,161 @@
+import { NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { JobLabelService, MetadataFieldSchema } from "@/lib/services/job-label.service"
+import { prisma } from "@/lib/prisma"
+
+// GET /api/jobs/[id]/labels - List all labels for a job
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const { id: jobId } = await params
+    const organizationId = session.user.organizationId
+
+    // Verify job belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId },
+    })
+
+    if (!job) {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 404 }
+      )
+    }
+
+    const labels = await JobLabelService.getLabelsForJob(jobId)
+
+    // Include stats
+    const stats = await JobLabelService.getLabelStats(jobId)
+    const statsMap = new Map(stats.map((s) => [s.labelId, s.count]))
+
+    const labelsWithStats = labels.map((label) => ({
+      ...label,
+      metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+      contactCount: statsMap.get(label.id) || 0,
+    }))
+
+    return NextResponse.json({
+      success: true,
+      labels: labelsWithStats,
+    })
+  } catch (error: any) {
+    console.error("List job labels error:", error)
+    return NextResponse.json(
+      { error: "Failed to list labels", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// POST /api/jobs/[id]/labels - Create a new label
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const { id: jobId } = await params
+    const organizationId = session.user.organizationId
+
+    // Verify job belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId },
+    })
+
+    if (!job) {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 404 }
+      )
+    }
+
+    const body = await request.json()
+    const { name, color, metadataSchema } = body as {
+      name: string
+      color?: string
+      metadataSchema?: MetadataFieldSchema[]
+    }
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Label name is required" },
+        { status: 400 }
+      )
+    }
+
+    // Validate metadataSchema if provided
+    if (metadataSchema) {
+      if (!Array.isArray(metadataSchema)) {
+        return NextResponse.json(
+          { error: "metadataSchema must be an array" },
+          { status: 400 }
+        )
+      }
+
+      for (const field of metadataSchema) {
+        if (!field.key || !field.label || !field.type) {
+          return NextResponse.json(
+            { error: "Each metadata field must have key, label, and type" },
+            { status: 400 }
+          )
+        }
+        if (!["text", "number", "date", "currency"].includes(field.type)) {
+          return NextResponse.json(
+            { error: `Invalid field type: ${field.type}` },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
+    const label = await JobLabelService.createLabel({
+      jobId,
+      organizationId,
+      name,
+      color,
+      metadataSchema,
+    })
+
+    return NextResponse.json({
+      success: true,
+      label: {
+        ...label,
+        metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+        contactCount: 0,
+      },
+    })
+  } catch (error: any) {
+    console.error("Create job label error:", error)
+
+    // Handle unique constraint violation
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "A label with this name already exists for this item" },
+        { status: 409 }
+      )
+    }
+
+    return NextResponse.json(
+      { error: "Failed to create label", message: error.message },
+      { status: 500 }
+    )
+  }
+}

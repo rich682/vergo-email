@@ -338,86 +338,15 @@ export class QuestService {
       stateFilter: quest.confirmedSelection.stateFilter
     })
 
-    // Get tag values for all recipients if tags are selected
-    const selectedTags = quest.confirmedSelection.stateFilter?.stateKeys || []
-    let tagValuesByEntity: Map<string, Record<string, string>> = new Map()
-
-    console.log(`getRecipientsWithTagValues: Quest ${id}`)
-    console.log(`  - confirmedSelection.stateFilter:`, quest.confirmedSelection.stateFilter)
-    console.log(`  - selectedTags: [${selectedTags.join(', ')}]`)
-    console.log(`  - recipientCount: ${recipientResult.recipients.length}`)
-
-    if (selectedTags.length > 0) {
-      const entityIds = recipientResult.recipients.map(r => r.entityId).filter(Boolean) as string[]
-      console.log(`  - entityIds: [${entityIds.slice(0, 3).join(', ')}${entityIds.length > 3 ? '...' : ''}]`)
-      
-      if (entityIds.length > 0) {
-        // Normalize tag names to lowercase for case-insensitive matching
-        const normalizedTags = selectedTags.map(t => t.toLowerCase().replace(/\s+/g, "_"))
-        console.log(`  - normalizedTags: [${normalizedTags.join(', ')}]`)
-        
-        const contactStates = await prisma.contactState.findMany({
-          where: {
-            organizationId,
-            entityId: { in: entityIds },
-            stateKey: { in: normalizedTags }
-          },
-          include: {
-            tag: true
-          }
-        })
-
-        console.log(`  - Found ${contactStates.length} ContactState records`)
-        if (contactStates.length > 0) {
-          console.log(`  - Sample ContactState:`, {
-            entityId: contactStates[0].entityId,
-            stateKey: contactStates[0].stateKey,
-            stateValue: contactStates[0].stateValue,
-            tagName: contactStates[0].tag?.name
-          })
-        } else {
-          // Debug: check what stateKeys actually exist for these entities
-          const allStates = await prisma.contactState.findMany({
-            where: {
-              organizationId,
-              entityId: { in: entityIds.slice(0, 3) }
-            },
-            select: {
-              entityId: true,
-              stateKey: true,
-              stateValue: true
-            }
-          })
-          console.log(`  - DEBUG: All stateKeys for first 3 entities:`, allStates)
-        }
-
-        // Build map of entityId -> { tagName: tagValue }
-        // Use both the stateKey and the original selected tag name for matching
-        for (const state of contactStates) {
-          const existing = tagValuesByEntity.get(state.entityId) || {}
-          // Store with the stateKey (normalized)
-          existing[state.stateKey] = state.stateValue || ""
-          // Also store with the original selected tag name if different
-          const originalTag = selectedTags.find(t => 
-            t.toLowerCase().replace(/\s+/g, "_") === state.stateKey
-          )
-          if (originalTag && originalTag !== state.stateKey) {
-            existing[originalTag] = state.stateValue || ""
-          }
-          tagValuesByEntity.set(state.entityId, existing)
-        }
-      }
-    }
-
+    // Note: Tag values functionality has been removed as part of the migration
+    // to item-scoped labels. This method now returns recipients without tag values.
     const result = recipientResult.recipientsWithReasons.map(r => ({
       id: r.entityId,
       email: r.email,
       name: r.firstName || r.name,
       contactType: r.contactType,
-      tagValues: r.entityId ? tagValuesByEntity.get(r.entityId) : undefined
+      tagValues: undefined
     }))
-
-    console.log(`  - Result sample:`, result.slice(0, 2).map(r => ({ email: r.email, tagValues: r.tagValues })))
 
     return result
   }
@@ -464,57 +393,12 @@ export class QuestService {
       // Import template renderer for personalization
       const { renderTemplate } = await import("@/lib/utils/template-renderer")
 
-      // Fetch tag values for all recipients if tags are selected
-      const selectedTags = quest.confirmedSelection.stateFilter?.stateKeys || []
-      let recipientTagValues: Map<string, Record<string, string>> = new Map()
-      
-      if (selectedTags.length > 0) {
-        // Fetch contact states for all recipients
-        const entityIds = recipientResult.recipients.map(r => r.entityId).filter(Boolean) as string[]
-        if (entityIds.length > 0) {
-          const contactStates = await prisma.contactState.findMany({
-            where: {
-              organizationId,
-              entityId: { in: entityIds },
-              stateKey: { in: selectedTags }
-            },
-            include: {
-              tag: true
-            }
-          })
-          
-          // Build a map of entityId -> { tagName: tagValue }
-          for (const state of contactStates) {
-            const tagName = state.tag?.displayName || state.tag?.name || state.stateKey
-            const existing = recipientTagValues.get(state.entityId) || {}
-            existing[tagName] = state.stateValue || ""
-            recipientTagValues.set(state.entityId, existing)
-          }
-        }
-      }
-
       // Render personalized emails for each recipient
       const perRecipientEmails = recipientResult.recipients.map(r => {
         // Build personalization data from recipient
         const data: Record<string, string> = {
           "First Name": r.firstName || r.name?.split(" ")[0] || "",
           "Email": r.email || ""
-        }
-        
-        // Add tag values for this recipient
-        if (r.entityId && recipientTagValues.has(r.entityId)) {
-          const tagData = recipientTagValues.get(r.entityId)!
-          Object.assign(data, tagData)
-        }
-        
-        // Also add tag values using the raw stateKey names (for backwards compatibility)
-        if (r.entityId && selectedTags.length > 0) {
-          const tagData = recipientTagValues.get(r.entityId) || {}
-          for (const tagKey of selectedTags) {
-            if (!(tagKey in data)) {
-              data[tagKey] = tagData[tagKey] || ""
-            }
-          }
         }
 
         // Render templates with recipient data

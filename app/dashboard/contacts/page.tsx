@@ -5,11 +5,9 @@ import { Button } from "@/components/ui/button"
 import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
-import { TagImportModal } from "@/components/contacts/tag-import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
 import { TypesManager } from "@/components/contacts/types-manager"
-import { TagsManager } from "@/components/contacts/tags-manager"
-import { Users, FolderOpen, Building2, Tag, Plus, Upload } from "lucide-react"
+import { Users, FolderOpen, Building2, Plus, Upload } from "lucide-react"
 
 interface Group {
   id: string
@@ -27,42 +25,28 @@ interface Entity {
   groups: Group[]
   contactType?: string
   contactTypeCustomLabel?: string
-  contactStates?: Array<{ stateKey: string; metadata?: any; updatedAt?: string }>
 }
 
-interface TagInfo {
-  id: string
-  name: string
-  displayName: string
-  contactCount: number
-}
-
-type TabType = "contacts" | "groups" | "types" | "tags"
+type TabType = "contacts" | "groups" | "types"
 
 export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
   const [entities, setEntities] = useState<Entity[]>([])
   const [groups, setGroups] = useState<Group[]>([])
-  const [tags, setTags] = useState<TagInfo[]>([])
-  const [availableStateKeys, setAvailableStateKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
   const [selectedContactType, setSelectedContactType] = useState<string | undefined>()
-  const [selectedStateKeys, setSelectedStateKeys] = useState<string[]>([])
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [showTagImport, setShowTagImport] = useState(false)
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchEntities()
     fetchGroups()
-    fetchAvailableStateKeys()
-    fetchTags()
-  }, [search, selectedGroupId, selectedContactType, selectedStateKeys])
+  }, [search, selectedGroupId, selectedContactType])
 
   const fetchEntities = async () => {
     try {
@@ -71,7 +55,6 @@ export default function ContactsPage() {
       if (search) params.append("search", search)
       if (selectedGroupId) params.append("groupId", selectedGroupId)
       if (selectedContactType) params.append("contactType", selectedContactType)
-      if (selectedStateKeys.length > 0) params.append("stateKeys", selectedStateKeys.join(","))
 
       const response = await fetch(`/api/entities?${params.toString()}`)
       if (response.ok) {
@@ -98,35 +81,10 @@ export default function ContactsPage() {
     }
   }
 
-  const fetchAvailableStateKeys = async () => {
-    try {
-      const response = await fetch("/api/contacts/state-keys")
-      if (response.ok) {
-        const data = await response.json()
-        setAvailableStateKeys(data.stateKeys || [])
-      }
-    } catch (error) {
-      console.error("Error fetching state keys:", error)
-    }
-  }
-
-  const fetchTags = async () => {
-    try {
-      const response = await fetch("/api/contacts/tags")
-      if (response.ok) {
-        const data = await response.json()
-        setTags(data.tags || [])
-      }
-    } catch (error) {
-      console.error("Error fetching tags:", error)
-    }
-  }
-
   const handleFormSuccess = () => {
     setShowForm(false)
     setEditingEntity(null)
     fetchEntities()
-    fetchAvailableStateKeys()
   }
 
   const handleEdit = (entity: Entity) => {
@@ -140,26 +98,16 @@ export default function ContactsPage() {
 
   const handleDelete = () => {
     fetchEntities()
-    fetchAvailableStateKeys()
   }
 
   const handleImportSuccess = () => {
     fetchEntities()
-    fetchAvailableStateKeys()
-    fetchTags()
-  }
-
-  const handleTagImportSuccess = () => {
-    fetchEntities()
-    fetchAvailableStateKeys()
-    fetchTags()
   }
 
   const switchToTab = (tab: TabType) => {
     setActiveTab(tab)
     setShowForm(false)
     setShowImport(false)
-    setShowTagImport(false)
     setEditingEntity(null)
   }
 
@@ -167,8 +115,6 @@ export default function ContactsPage() {
     { id: "contacts" as TabType, label: "Contacts", icon: Users },
     { id: "groups" as TabType, label: "Groups", icon: FolderOpen },
     { id: "types" as TabType, label: "Organizations", icon: Building2 },
-    // Tags tab hidden for now - testing product-market fit without it
-    // { id: "tags" as TabType, label: "Tags", icon: Tag },
   ]
 
   return (
@@ -295,17 +241,13 @@ export default function ContactsPage() {
               <ContactList
                 entities={entities}
                 groups={groups}
-                tags={tags}
-                availableStateKeys={availableStateKeys}
                 search={search}
                 selectedGroupId={selectedGroupId}
                 selectedContactType={selectedContactType}
-                selectedStateKeys={selectedStateKeys}
                 selectedEntityIds={selectedEntityIds}
                 onSearchChange={setSearch}
                 onGroupFilterChange={setSelectedGroupId}
                 onContactTypeChange={setSelectedContactType}
-                onStateKeysChange={setSelectedStateKeys}
                 onSelectedEntitiesChange={setSelectedEntityIds}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

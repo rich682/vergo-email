@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ContactStateService } from "@/lib/services/contact-state.service"
 
 type BulkAction = 
   | "add_to_groups" 
   | "remove_from_groups" 
   | "set_type" 
-  | "add_tag" 
-  | "remove_tag"
   | "delete"
 
 interface BulkUpdateRequest {
@@ -19,8 +16,6 @@ interface BulkUpdateRequest {
     groupIds?: string[]
     contactType?: string
     contactTypeCustomLabel?: string
-    tagName?: string
-    tagValue?: string
   }
 }
 
@@ -131,100 +126,10 @@ export async function POST(request: NextRequest) {
         break
       }
 
-      case "add_tag": {
-        if (!payload?.tagName) {
-          return NextResponse.json({ error: "tagName required for add_tag" }, { status: 400 })
-        }
-
-        const tagName = payload.tagName.toLowerCase().replace(/\s+/g, "_")
-        console.log(`[Bulk Update] Adding tag "${tagName}" to ${validEntityIds.length} entities`)
-
-        // Get or create the tag
-        const tagId = await ContactStateService.getOrCreateTag(organizationId, tagName)
-        if (!tagId) {
-          console.log(`[Bulk Update] Tag "${tagName}" is reserved, cannot create`)
-          return NextResponse.json({ error: `Cannot create reserved tag name: ${tagName}` }, { status: 400 })
-        }
-        
-        console.log(`[Bulk Update] Tag ID: ${tagId}`)
-
-        for (const entityId of validEntityIds) {
-          try {
-            // First check if the contact state already exists
-            const existing = await prisma.contactState.findFirst({
-              where: {
-                organizationId,
-                entityId,
-                tagId
-              }
-            })
-
-            if (existing) {
-              // Already exists, no need to update
-              updated++
-            } else {
-              // Create new - use MANUAL as the source (closest to bulk UI action)
-              await prisma.contactState.create({
-                data: {
-                  organizationId,
-                  entityId,
-                  tagId,
-                  stateKey: tagName,
-                  stateValue: "",
-                  source: "MANUAL"
-                }
-              })
-              updated++
-            }
-          } catch (err: any) {
-            console.error(`[Bulk Update] Error adding tag to entity ${entityId}:`, err)
-            errors.push({ entityId, error: err.message })
-          }
-        }
-        
-        console.log(`[Bulk Update] Successfully added tag to ${updated} entities, ${errors.length} errors`)
-        break
-      }
-
-      case "remove_tag": {
-        if (!payload?.tagName) {
-          return NextResponse.json({ error: "tagName required for remove_tag" }, { status: 400 })
-        }
-
-        const tagName = payload.tagName.toLowerCase().replace(/\s+/g, "_")
-
-        // Find the tag
-        const tag = await prisma.tag.findFirst({
-          where: {
-            organizationId,
-            name: tagName
-          }
-        })
-
-        if (tag) {
-          await prisma.contactState.deleteMany({
-            where: {
-              organizationId,
-              entityId: { in: validEntityIds },
-              tagId: tag.id
-            }
-          })
-        }
-        updated = validEntityIds.length
-        break
-      }
-
       case "delete": {
         // Delete all related data first
         await prisma.entityGroup.deleteMany({
           where: { entityId: { in: validEntityIds } }
-        })
-
-        await prisma.contactState.deleteMany({
-          where: {
-            organizationId,
-            entityId: { in: validEntityIds }
-          }
         })
 
         // Delete entities
