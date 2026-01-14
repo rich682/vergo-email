@@ -4,8 +4,10 @@
  * POST /api/quests/[id]/execute - Execute a quest (send emails)
  * 
  * Accepts optional edited subject/body to update the draft before sending.
+ * When subject/body are provided, the quest status is transitioned to "ready"
+ * to allow immediate execution (used by Item-initiated Send Request flow).
  * 
- * Feature Flag: QUEST_UI
+ * Feature Flag: QUEST_UI (bypassed when quest has jobId for Item-initiated requests)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -13,6 +15,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
+import { prisma } from "@/lib/prisma"
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
@@ -23,26 +26,35 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
     }
 
     const organizationId = session.user.organizationId
     const { id } = await params
+
+    // Check if this quest has a jobId (Item-initiated request)
+    // If so, bypass the feature flag check
+    const emailDraft = await prisma.emailDraft.findFirst({
+      where: { id, organizationId },
+      select: { jobId: true }
+    })
+
+    const hasJobId = !!emailDraft?.jobId
+
+    // Check feature flag - bypass if quest has jobId (Item-initiated request)
+    if (!isQuestUIEnabled() && !hasJobId) {
+      return NextResponse.json(
+        { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
+        { status: 404 }
+      )
+    }
 
     // Parse request body for optional edits
     let editedSubject: string | undefined
@@ -84,8 +96,25 @@ export async function POST(
 
   } catch (error: any) {
     console.error("Quest execute error:", error)
+    
+    // Map known error messages to error codes
+    let errorCode = "UNKNOWN"
+    const errorMessage = error.message || ""
+    
+    if (errorMessage.includes("Quest not found")) {
+      errorCode = "ORG_ACCESS_DENIED"
+    } else if (errorMessage.includes("not ready for execution")) {
+      errorCode = "QUEST_NOT_READY"
+    } else if (errorMessage.includes("No recipients")) {
+      errorCode = "NO_VALID_RECIPIENTS"
+    } else if (errorMessage.includes("No active email account")) {
+      errorCode = "SENDER_NOT_CONNECTED"
+    } else if (errorMessage.includes("Gmail") || errorMessage.includes("SMTP") || errorMessage.includes("email provider")) {
+      errorCode = "PROVIDER_SEND_FAILED"
+    }
+    
     return NextResponse.json(
-      { error: "Failed to execute quest", message: error.message },
+      { error: "Failed to execute quest", errorCode, message: error.message },
       { status: 500 }
     )
   }

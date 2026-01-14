@@ -48,7 +48,8 @@ export class QuestService {
       interpretation,
       userModifications,
       confirmedSchedule,
-      confirmedReminders
+      confirmedReminders,
+      initialStatus  // Optional: override default status (e.g., "ready" for Item-initiated immediate sends)
     } = input
 
     // Merge interpretation with user modifications
@@ -122,10 +123,14 @@ export class QuestService {
       aiGenerationStatus: "processing"
     })
 
+    // Determine initial status - use provided initialStatus or default to "pending_confirmation"
+    // When initialStatus is "ready", the quest can be executed immediately (used by Item-initiated Send Request flow)
+    const status = initialStatus || "pending_confirmation"
+
     // Store Quest metadata in EmailDraft (using existing JSON columns)
     await this.updateQuestMetadata(emailDraft.id, organizationId, {
       questType: "one_time",
-      status: "pending_confirmation",
+      status,
       confirmedSelection,
       scheduleConfig,
       remindersConfig,
@@ -135,7 +140,7 @@ export class QuestService {
 
     return this.emailDraftToQuest(emailDraft, {
       questType: "one_time",
-      status: "pending_confirmation",
+      status,
       confirmedSelection,
       scheduleConfig,
       remindersConfig,

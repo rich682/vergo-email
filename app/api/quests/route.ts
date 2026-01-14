@@ -4,7 +4,7 @@
  * GET /api/quests - List all quests for the organization
  * POST /api/quests - Create a new quest from confirmed interpretation
  * 
- * Feature Flag: QUEST_UI
+ * Feature Flag: QUEST_UI (bypassed when jobId is provided for Item-initiated requests)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   // Check feature flag
   if (!isQuestUIEnabled()) {
     return NextResponse.json(
-      { error: "Quest UI is not enabled" },
+      { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
       { status: 404 }
     )
   }
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
     }
@@ -61,17 +61,44 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Quest list error:", error)
     return NextResponse.json(
-      { error: "Failed to list quests", message: error.message },
+      { error: "Failed to list quests", errorCode: "UNKNOWN", message: error.message },
       { status: 500 }
     )
   }
 }
 
 export async function POST(request: NextRequest) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
+  // Parse request body first to check for jobId (allows bypassing feature flag)
+  let body: any
+  try {
+    body = await request.json()
+  } catch {
     return NextResponse.json(
-      { error: "Quest UI is not enabled" },
+      { error: "Invalid request body", errorCode: "INVALID_REQUEST_PAYLOAD" },
+      { status: 400 }
+    )
+  }
+
+  const {
+    originalPrompt,
+    interpretation,
+    userModifications,
+    confirmedSchedule,
+    confirmedReminders,
+    jobId  // Optional: parent Job for Request-level association
+  } = body as {
+    originalPrompt: string
+    interpretation: QuestInterpretationResult
+    userModifications?: any
+    confirmedSchedule?: any
+    confirmedReminders?: any
+    jobId?: string | null
+  }
+
+  // Check feature flag - bypass if jobId is provided (Item-initiated request)
+  if (!isQuestUIEnabled() && !jobId) {
+    return NextResponse.json(
+      { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
       { status: 404 }
     )
   }
@@ -81,7 +108,7 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
     }
@@ -92,32 +119,14 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       console.error("Quest create error: userId is missing from session", { session })
       return NextResponse.json(
-        { error: "User ID not found in session" },
+        { error: "User ID not found in session", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
     }
 
-    // Parse request body
-    const body = await request.json()
-    const {
-      originalPrompt,
-      interpretation,
-      userModifications,
-      confirmedSchedule,
-      confirmedReminders,
-      jobId  // Optional: parent Job for Request-level association
-    } = body as {
-      originalPrompt: string
-      interpretation: QuestInterpretationResult
-      userModifications?: any
-      confirmedSchedule?: any
-      confirmedReminders?: any
-      jobId?: string | null
-    }
-
     if (!originalPrompt || !interpretation) {
       return NextResponse.json(
-        { error: "originalPrompt and interpretation are required" },
+        { error: "originalPrompt and interpretation are required", errorCode: "INVALID_REQUEST_PAYLOAD" },
         { status: 400 }
       )
     }
@@ -130,13 +139,18 @@ export async function POST(request: NextRequest) {
       })
       if (!job) {
         return NextResponse.json(
-          { error: "Job not found or does not belong to this organization" },
+          { error: "Job not found or does not belong to this organization", errorCode: "ORG_ACCESS_DENIED" },
           { status: 400 }
         )
       }
     }
 
     // Create quest
+    // When jobId is provided with immediate send timing, set initialStatus to "ready"
+    // so the quest can be executed immediately without going through the confirmation flow
+    const isImmediateSend = confirmedSchedule?.sendTiming === "immediate"
+    const initialStatus = (jobId && isImmediateSend) ? "ready" : undefined
+
     const input: QuestCreateInput = {
       organizationId,
       userId,
@@ -145,10 +159,11 @@ export async function POST(request: NextRequest) {
       interpretation,
       userModifications,
       confirmedSchedule,
-      confirmedReminders
+      confirmedReminders,
+      initialStatus  // Set to "ready" for Item-initiated immediate sends
     }
 
-    console.log(`Quest create: Creating quest for org ${organizationId}, user ${userId}`)
+    console.log(`Quest create: Creating quest for org ${organizationId}, user ${userId}, jobId: ${jobId || 'none'}, initialStatus: ${initialStatus || 'default'}`)
     
     const quest = await QuestService.createFromInterpretation(input)
 
@@ -170,7 +185,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Quest create error:", error)
     return NextResponse.json(
-      { error: "Failed to create quest", message: error.message },
+      { error: "Failed to create quest", errorCode: "UNKNOWN", message: error.message },
       { status: 500 }
     )
   }

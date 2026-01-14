@@ -282,6 +282,7 @@ export type QuestCreateInput = {
   userModifications?: Partial<QuestRecipientSelection>
   confirmedSchedule?: QuestScheduleIntent
   confirmedReminders?: QuestReminderIntent
+  initialStatus?: QuestStatus  // Override default status (e.g., "ready" for Item-initiated immediate sends)
 }
 
 /**

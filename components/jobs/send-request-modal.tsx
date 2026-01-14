@@ -94,6 +94,42 @@ interface DraftResponse {
   usedFallback: boolean
 }
 
+// Error codes from backend
+type QuestErrorCode = 
+  | "QUEST_UI_DISABLED"
+  | "SENDER_NOT_CONNECTED"
+  | "NO_VALID_RECIPIENTS"
+  | "UNRESOLVED_VARIABLES"
+  | "INVALID_REQUEST_PAYLOAD"
+  | "ORG_ACCESS_DENIED"
+  | "QUEST_NOT_READY"
+  | "PROVIDER_SEND_FAILED"
+  | "UNKNOWN"
+
+// Map error codes to user-friendly messages
+function getErrorMessage(errorCode: QuestErrorCode | undefined, fallbackMessage: string): string {
+  switch (errorCode) {
+    case "SENDER_NOT_CONNECTED":
+      return "Connect your email account to send requests. Go to Settings → Email Accounts."
+    case "NO_VALID_RECIPIENTS":
+      return "No valid recipients selected. Please select at least one recipient with a valid email address."
+    case "UNRESOLVED_VARIABLES":
+      return "This message contains placeholders that can't be resolved for some recipients."
+    case "PROVIDER_SEND_FAILED":
+      return "Email provider failed to send. Please try again or check your email account connection."
+    case "QUEST_NOT_READY":
+      return "The request is not ready to send. Please try again."
+    case "ORG_ACCESS_DENIED":
+      return "You don't have permission to perform this action."
+    case "INVALID_REQUEST_PAYLOAD":
+      return "Invalid request data. Please refresh and try again."
+    case "QUEST_UI_DISABLED":
+      return "This feature is currently disabled."
+    default:
+      return fallbackMessage || "An unexpected error occurred. Please try again."
+  }
+}
+
 export function SendRequestModal({
   open,
   onOpenChange,
@@ -300,7 +336,8 @@ export function SendRequestModal({
 
       if (!createResponse.ok) {
         const data = await createResponse.json()
-        throw new Error(data.error || "Failed to create request")
+        const errorMessage = getErrorMessage(data.errorCode, data.error || "Failed to create request")
+        throw new Error(errorMessage)
       }
 
       const { quest } = await createResponse.json()
@@ -318,7 +355,8 @@ export function SendRequestModal({
 
       if (!executeResponse.ok) {
         const data = await executeResponse.json()
-        throw new Error(data.error || "Failed to send request")
+        const errorMessage = getErrorMessage(data.errorCode, data.error || "Failed to send request")
+        throw new Error(errorMessage)
       }
 
       const result = await executeResponse.json()
