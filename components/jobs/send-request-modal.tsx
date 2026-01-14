@@ -299,8 +299,9 @@ export function SendRequestModal({
     setMode(selectedMode)
     if (selectedMode === "standard") {
       setState("idle") // This will trigger fetchDraft
+    } else if (selectedMode === "data_personalization") {
+      setState("idle") // Move past mode_selection to show the flow component
     }
-    // For data_personalization, the flow component handles everything
   }
 
   // Reset state when modal closes
