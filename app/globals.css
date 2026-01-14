@@ -2,8 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Import font - using system fonts that match Vergo style */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+/* Custom Fonts - Neue Haas Display */
+@font-face {
+  font-family: 'Neue Haas Display';
+  src: url('/fonts/NeueHaasDisplayThin.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Neue Haas Display';
+  src: url('/fonts/NeueHaasDisplayRoman.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 @layer base {
   :root {
@@ -100,18 +114,21 @@
     @apply border-border;
   }
   html {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   body {
-    @apply bg-white text-gray-900;
+    @apply bg-white text-gray-900 font-sans;
+  }
+  
+  /* Page titles use Roman (weight 400) */
+  h1, h2 {
+    @apply font-display;
   }
 }
 
-
-
-
-
-
-
+/* Utility class for display/title font */
+.font-display {
+  font-family: 'Neue Haas Display', system-ui, sans-serif;
+  font-weight: 400;
+}

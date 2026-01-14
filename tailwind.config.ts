@@ -18,6 +18,17 @@ const config = {
       },
     },
     extend: {
+      fontFamily: {
+        // Body text - Thin weight (300)
+        sans: ['Neue Haas Display', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        // Page titles - Roman weight (400)
+        display: ['Neue Haas Display', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+      },
+      fontWeight: {
+        thin: '300',
+        normal: '300', // Default body text uses thin
+        medium: '400', // Roman weight for titles
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
