@@ -37,6 +37,9 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SectionHeader } from "@/components/ui/section-header"
 
+// Send Request Modal
+import { SendRequestModal } from "@/components/jobs/send-request-modal"
+
 // ============================================
 // Types
 // ============================================
@@ -249,6 +252,9 @@ export default function JobDetailPage() {
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string | null; email: string }>>([])
   const [isAddCollaboratorOpen, setIsAddCollaboratorOpen] = useState(false)
   const [addingCollaborator, setAddingCollaborator] = useState(false)
+
+  // Send Request Modal
+  const [isSendRequestOpen, setIsSendRequestOpen] = useState(false)
 
   // Notes
   const [notes, setNotes] = useState("")
@@ -1108,32 +1114,41 @@ export default function JobDetailPage() {
 
             {/* Conditional Primary Section based on Mode */}
             {itemMode === "setup" && (
-              <div className="border border-gray-200 rounded-lg p-8">
-                <div className="text-center mb-6">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <FileText className="w-6 h-6 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-1">How would you like to track this item?</h3>
-                  <p className="text-sm text-gray-500">Choose how you want to work on this item</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
-                    <div className="border border-gray-200 rounded-lg p-6 hover:border-orange-300 hover:bg-orange-50/50 transition-all cursor-pointer text-center">
-                      <Mail className="w-8 h-8 text-orange-500 mx-auto mb-3" />
-                      <h4 className="font-medium text-gray-900 mb-1">Send Requests</h4>
-                      <p className="text-xs text-gray-500">Email stakeholders and track responses</p>
-                    </div>
-                  </Link>
-                  <button
-                    onClick={() => document.getElementById("comment-input")?.focus()}
-                    className="border border-gray-200 rounded-lg p-6 hover:border-gray-300 hover:bg-gray-50 transition-all cursor-pointer text-center"
+              stakeholders.length === 0 ? (
+                // No stakeholders - show warning with CTA to add
+                <div className="border border-amber-200 bg-amber-50 rounded-lg p-8 text-center">
+                  <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Add stakeholders to send a request</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    You need to add stakeholders (contacts, groups, or types) before you can send a request for this item.
+                  </p>
+                  <Button
+                    onClick={() => setIsAddStakeholderOpen(true)}
+                    className="bg-gray-900 hover:bg-gray-800"
                   >
-                    <MessageSquare className="w-8 h-8 text-gray-500 mx-auto mb-3" />
-                    <h4 className="font-medium text-gray-900 mb-1">Track Internally</h4>
-                    <p className="text-xs text-gray-500">Use for internal work without emails</p>
-                  </button>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Add Stakeholders
+                  </Button>
                 </div>
-              </div>
+              ) : (
+                // Has stakeholders - show Send Request CTA
+                <div className="border border-gray-200 rounded-lg p-8 text-center">
+                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Mail className="w-6 h-6 text-orange-500" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to send a request</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Send an email to {stakeholderContacts.filter(c => c.email).length} stakeholder{stakeholderContacts.filter(c => c.email).length !== 1 ? 's' : ''} for this item.
+                  </p>
+                  <Button
+                    onClick={() => setIsSendRequestOpen(true)}
+                    className="bg-gray-900 hover:bg-gray-800"
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Send Request
+                  </Button>
+                </div>
+              )
             )}
 
             {itemMode === "waiting" && awaitingTasks.length > 0 && (
@@ -1195,12 +1210,26 @@ export default function JobDetailPage() {
                     expanded={requestsExpanded}
                     onToggle={() => setRequestsExpanded(!requestsExpanded)}
                     action={
-                      <Link href={`/dashboard/quest/new?jobId=${job.id}`}>
-                        <Button size="sm" variant="outline">
+                      stakeholders.length === 0 ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsAddStakeholderOpen(true)}
+                          title="Add stakeholders to send requests"
+                        >
+                          <UserPlus className="w-3 h-3 mr-1" />
+                          Add Stakeholders
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsSendRequestOpen(true)}
+                        >
                           <Plus className="w-3 h-3 mr-1" />
                           Add
                         </Button>
-                      </Link>
+                      )
                     }
                   />
                   {requestsExpanded && (
@@ -1550,6 +1579,33 @@ export default function JobDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Send Request Modal */}
+      <SendRequestModal
+        open={isSendRequestOpen}
+        onOpenChange={setIsSendRequestOpen}
+        job={{
+          id: job.id,
+          name: job.name,
+          description: job.description,
+          dueDate: job.dueDate,
+          labels: job.labels,
+        }}
+        stakeholderContacts={stakeholderContacts.filter(c => c.email).map(c => ({
+          id: c.id,
+          email: c.email!,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          contactType: c.stakeholderType === "contact_type" ? c.stakeholderName : undefined,
+        }))}
+        onSuccess={() => {
+          // Refresh data after successful send
+          fetchJob()
+          fetchRequests()
+          fetchTasks()
+          fetchTimeline()
+        }}
+      />
     </div>
   )
 }
