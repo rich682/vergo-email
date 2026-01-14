@@ -232,7 +232,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="contactType">Contact Type</Label>
+        <Label htmlFor="contactType">Organization</Label>
         <select
           id="contactType"
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"

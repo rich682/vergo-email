@@ -151,7 +151,7 @@ export function ContactList({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="type-filter">Type</Label>
+          <Label htmlFor="type-filter">Organization</Label>
           <Select
             value={selectedContactType ?? "all"}
             onValueChange={(value) =>
@@ -345,7 +345,7 @@ export function ContactList({
               )}
               <th className="px-4 py-3 w-40">Name</th>
               <th className="px-4 py-3 w-48">Email</th>
-              <th className="px-4 py-3 w-24">Type</th>
+              <th className="px-4 py-3 w-24">Org</th>
               <th className="px-4 py-3 w-28">Groups</th>
               <th className="px-4 py-3">Tags</th>
               <th className="px-4 py-3 w-32 text-right">Actions</th>

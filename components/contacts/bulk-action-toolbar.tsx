@@ -357,7 +357,7 @@ export function BulkActionToolbar({
               )}
             </div>
 
-            {/* Set Type */}
+            {/* Set Organization */}
             <div className="relative">
               <Button
                 variant="outline"
@@ -365,13 +365,13 @@ export function BulkActionToolbar({
                 onClick={() => setActiveAction(activeAction === "set_type" ? null : "set_type")}
                 className="gap-2"
               >
-                Set Type
+                Set Org
                 <ChevronDown className="w-3 h-3" />
               </Button>
               
               {activeAction === "set_type" && (
                 <div className="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Select contact type:</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">Select organization:</div>
                   <div className="space-y-1">
                     {contactTypes.map(type => (
                       <button

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Trash2, Building2, Lock } from "lucide-react"
 
-// Built-in types that cannot be deleted
+// Built-in organization types that cannot be deleted
 const BUILT_IN_TYPES = [
   { id: "EMPLOYEE", label: "Employee", description: "Internal team members" },
   { id: "CLIENT", label: "Client", description: "Customers and clients" },
@@ -58,11 +58,11 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
     // Check if name already exists
     const normalizedName = newTypeName.trim().toUpperCase()
     if (BUILT_IN_TYPES.some(t => t.id === normalizedName || t.label.toUpperCase() === normalizedName)) {
-      setError("This type name is reserved")
+      setError("This organization name is reserved")
       return
     }
     if (customTypes.some(t => t.label.toUpperCase() === normalizedName)) {
-      setError("This custom type already exists")
+      setError("This custom organization already exists")
       return
     }
     
@@ -78,14 +78,14 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
       
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to create type")
+        throw new Error(data.error || "Failed to create organization")
       }
       
       setNewTypeName("")
       fetchTypeCounts()
       onTypesChange?.()
     } catch (err: any) {
-      setError(err.message || "Failed to create type")
+      setError(err.message || "Failed to create organization")
     } finally {
       setCreating(false)
     }
@@ -94,11 +94,11 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
   const handleDelete = async (label: string) => {
     const count = customTypes.find(t => t.label === label)?.count || 0
     if (count > 0) {
-      if (!confirm(`This type is used by ${count} contact(s). Deleting it will set those contacts to "Unknown" type. Continue?`)) {
+      if (!confirm(`This organization is used by ${count} contact(s). Deleting it will set those contacts to "Unknown" organization. Continue?`)) {
         return
       }
     } else {
-      if (!confirm(`Are you sure you want to delete the custom type "${label}"?`)) {
+      if (!confirm(`Are you sure you want to delete the custom organization "${label}"?`)) {
         return
       }
     }
@@ -112,25 +112,25 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
       
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to delete type")
+        throw new Error(data.error || "Failed to delete organization")
       }
       
       fetchTypeCounts()
       onTypesChange?.()
     } catch (err: any) {
-      setError(err.message || "Failed to delete type")
+      setError(err.message || "Failed to delete organization")
     }
   }
 
   if (loading) {
-    return <div className="text-sm text-gray-500">Loading types...</div>
+    return <div className="text-sm text-gray-500">Loading organizations...</div>
   }
 
   return (
     <div className="space-y-6">
-      {/* Built-in types */}
+      {/* Built-in organizations */}
       <div className="space-y-2">
-        <Label>Built-in Types</Label>
+        <Label>Built-in Organizations</Label>
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
           {BUILT_IN_TYPES.map((type) => (
             <div
@@ -153,15 +153,15 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
             </div>
           ))}
         </div>
-        <p className="text-xs text-gray-500">Built-in types cannot be deleted.</p>
+        <p className="text-xs text-gray-500">Built-in organizations cannot be deleted.</p>
       </div>
 
-      {/* Create custom type */}
+      {/* Create custom organization */}
       <div className="space-y-2">
-        <Label>Create Custom Type</Label>
+        <Label>Create Custom Organization</Label>
         <div className="flex gap-2">
           <Input
-            placeholder="Enter type name..."
+            placeholder="Enter organization name..."
             value={newTypeName}
             onChange={(e) => setNewTypeName(e.target.value)}
             onKeyDown={(e) => {
@@ -183,12 +183,12 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
         </div>
       )}
 
-      {/* Custom types list */}
+      {/* Custom organizations list */}
       <div className="space-y-2">
-        <Label>Custom Types ({customTypes.length})</Label>
+        <Label>Custom Organizations ({customTypes.length})</Label>
         {customTypes.length === 0 ? (
           <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 text-center text-gray-500 text-sm">
-            No custom types yet. Create one above.
+            No custom organizations yet. Create one above.
           </div>
         ) : (
           <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -221,7 +221,7 @@ export function TypesManager({ onTypesChange }: TypesManagerProps) {
       </div>
 
       <p className="text-xs text-gray-500">
-        Custom types help categorize contacts beyond the built-in options. When creating a contact, select "Custom" as the type and enter your custom label.
+        Custom organizations help categorize contacts beyond the built-in options. When creating a contact, select "Custom" as the organization and enter your custom label.
       </p>
     </div>
   )
