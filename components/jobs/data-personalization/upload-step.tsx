@@ -156,10 +156,25 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     }
   }
 
+  // Check if dataset has a name column
+  const hasNameColumn = parseResult?.columns.some(col => 
+    col.key.includes('first_name') || 
+    col.key.includes('firstname') || 
+    col.key.includes('name') ||
+    col.key === 'first' ||
+    col.label.toLowerCase().includes('first name') ||
+    col.label.toLowerCase().includes('name')
+  ) ?? false
+
   // Handle upload to backend
   const handleContinue = async () => {
     if (!parseResult) {
       setError("Please select a valid email column")
+      return
+    }
+
+    if (!hasNameColumn) {
+      setError("Your file must include a 'First Name' or 'Name' column for personalization. Please add this column and re-upload.")
       return
     }
 
@@ -235,8 +250,11 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
               ? "Drop the file here..."
               : "Drag & drop a CSV or Excel file, or click to select"}
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 mb-2">
             Supports .csv, .xlsx, .xls (max 10MB, 5000 rows)
+          </p>
+          <p className="text-xs text-amber-600 font-medium">
+            Required columns: Email, First Name (or Name)
           </p>
         </div>
       )}
@@ -388,6 +406,20 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
         </div>
       )}
 
+      {/* Missing Name Column Warning */}
+      {parseResult && !hasNameColumn && !error && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Missing Required Column</p>
+            <p className="text-sm text-amber-600">
+              Your file must include a "First Name" or "Name" column for email personalization. 
+              Please add this column to your spreadsheet and re-upload.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
         <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -406,7 +438,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
         </Button>
         <Button
           onClick={handleContinue}
-          disabled={!parseResult || parseResult.validation.validEmails === 0 || state === "uploading"}
+          disabled={!parseResult || parseResult.validation.validEmails === 0 || state === "uploading" || !hasNameColumn}
         >
           {state === "uploading" ? (
             <>

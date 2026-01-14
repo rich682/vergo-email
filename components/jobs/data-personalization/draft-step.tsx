@@ -26,8 +26,6 @@ import {
   CheckCircle,
   Plus,
   ChevronRight,
-  Tag,
-  AlertTriangle,
 } from "lucide-react"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
@@ -42,13 +40,7 @@ interface DraftStepProps {
   onBack: () => void
 }
 
-interface SuggestedColumn {
-  name: string
-  type: string
-  reason: string
-}
-
-type DraftState = "idle" | "generating" | "ready" | "error"
+type DraftState = "idle" | "generating" | "ready" | "refining" | "error"
 
 export function DraftStep({
   jobId,
@@ -69,7 +61,9 @@ export function DraftStep({
   // Column analysis
   const [usedColumns, setUsedColumns] = useState<string[]>([])
   const [unusedColumns, setUnusedColumns] = useState<string[]>([])
-  const [suggestedMissingColumns, setSuggestedMissingColumns] = useState<SuggestedColumn[]>([])
+  
+  // Refinement
+  const [refinementInstruction, setRefinementInstruction] = useState("")
   
   // Add column modal
   const [showAddColumn, setShowAddColumn] = useState(false)
@@ -110,7 +104,7 @@ export function DraftStep({
       setBody(data.body)
       setUsedColumns(data.usedColumns || [])
       setUnusedColumns(data.unusedColumns || [])
-      setSuggestedMissingColumns(data.suggestedMissingColumns || [])
+      setRefinementInstruction("") // Clear refinement after generation
       setState("ready")
     } catch (err: any) {
       console.error("Draft generation error:", err)
@@ -118,6 +112,45 @@ export function DraftStep({
       setState("error")
     }
   }, [jobId, draftId, userGoal])
+
+  // Refine draft
+  const refineDraft = useCallback(async () => {
+    if (!refinementInstruction.trim()) return
+    
+    setState("refining")
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/request/dataset/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          draftId,
+          userGoal: refinementInstruction.trim(),
+          currentDraft: { subject, body }, // Pass current draft for refinement context
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to refine draft")
+      }
+
+      const data = await response.json()
+      
+      setSubject(data.subject)
+      setBody(data.body)
+      setUsedColumns(data.usedColumns || [])
+      setUnusedColumns(data.unusedColumns || [])
+      setRefinementInstruction("")
+      setState("ready")
+    } catch (err: any) {
+      console.error("Refine error:", err)
+      setError(err.message || "Failed to refine draft")
+      setState("ready")
+    }
+  }, [jobId, draftId, refinementInstruction, subject, body])
 
   // Insert field at cursor
   const insertField = (columnKey: string) => {
@@ -257,13 +290,6 @@ export function DraftStep({
     }
   }
 
-  // Pre-fill suggested column
-  const handleAddSuggested = (suggested: SuggestedColumn) => {
-    setNewColumnName(suggested.name)
-    setNewColumnType(suggested.type as DatasetColumn["type"])
-    setShowAddColumn(true)
-  }
-
   return (
     <div className="space-y-6">
       {/* Generate Draft Section */}
@@ -336,15 +362,40 @@ export function DraftStep({
               />
             </div>
 
-            {/* Regenerate button */}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setState("idle")}>
-                <Sparkles className="w-4 h-4 mr-1" />
-                Regenerate
-              </Button>
-              <span className="text-xs text-gray-500">
+            {/* Refinement Section */}
+            <div className="border-t pt-4 space-y-3">
+              <Label className="flex items-center gap-2 text-sm">
+                <Sparkles className="w-4 h-4 text-orange-500" />
+                Refine with AI (optional)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={refinementInstruction}
+                  onChange={(e) => setRefinementInstruction(e.target.value)}
+                  placeholder="e.g., make it more polite, add urgency, shorten the email..."
+                  disabled={state === "refining"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && refinementInstruction.trim()) {
+                      e.preventDefault()
+                      refineDraft()
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  onClick={refineDraft}
+                  disabled={!refinementInstruction.trim() || state === "refining"}
+                >
+                  {state === "refining" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Refine"
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">
                 Use merge fields like {"{{first_name}}"} for personalization
-              </span>
+              </p>
             </div>
           </div>
 
@@ -387,34 +438,6 @@ export function DraftStep({
                 Add Column
               </Button>
             </div>
-
-            {/* Suggested Missing Columns */}
-            {suggestedMissingColumns.length > 0 && (
-              <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
-                <Label className="mb-2 block font-medium text-amber-800 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  Suggested Columns
-                </Label>
-                <div className="space-y-2">
-                  {suggestedMissingColumns.map((suggested, i) => (
-                    <div key={i} className="bg-white rounded p-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-gray-900">{suggested.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2"
-                          onClick={() => handleAddSuggested(suggested)}
-                        >
-                          <Plus className="w-3 h-3" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-gray-500">{suggested.reason}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Column Stats */}
             <div className="border rounded-lg p-4">

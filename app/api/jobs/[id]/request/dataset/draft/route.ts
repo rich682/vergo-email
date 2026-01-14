@@ -19,6 +19,10 @@ import type { DatasetColumn } from "@/lib/utils/dataset-parser"
 interface DraftRequestBody {
   draftId: string
   userGoal?: string
+  currentDraft?: {
+    subject: string
+    body: string
+  }
 }
 
 export async function POST(
@@ -60,7 +64,8 @@ export async function POST(
 
     // Parse request body
     const requestBody: DraftRequestBody = await request.json()
-    const { draftId, userGoal } = requestBody
+    const { draftId, userGoal, currentDraft } = requestBody
+    const isRefinement = !!currentDraft
 
     if (!draftId) {
       return NextResponse.json(
@@ -153,7 +158,33 @@ export async function POST(
       c.key.includes('first_name') || c.key.includes('firstname') || c.key.includes('name')
     )
 
-    let prompt = `Generate a professional email for a business request. You MUST use the merge fields provided.
+    let prompt: string
+    
+    if (isRefinement && currentDraft) {
+      // Refinement mode - modify existing draft
+      prompt = `You are refining an existing email draft. Apply the user's requested changes while keeping the merge fields intact.
+
+CURRENT DRAFT:
+Subject: ${currentDraft.subject}
+Body:
+${currentDraft.body}
+
+USER'S REFINEMENT REQUEST: ${userGoal}
+
+AVAILABLE MERGE FIELDS (preserve these):
+${columns.map(col => `- {{${col.key}}}`).join('\n')}
+
+INSTRUCTIONS:
+1. Apply the user's requested changes to the draft
+2. Keep ALL existing merge fields ({{field_name}} syntax) - do not remove them
+3. Maintain the same general structure unless the user asks for changes
+4. Keep the email professional and actionable
+5. Return the refined subject and body
+
+Refine the email according to the user's request.`
+    } else {
+      // Initial generation mode
+      prompt = `Generate a professional email for a business request. You MUST use the merge fields provided.
 
 ITEM CONTEXT:
 - Item Name: ${job.name}
@@ -189,6 +220,7 @@ CRITICAL REQUIREMENTS:
 8. Include a clear call-to-action
 
 Generate an email that uses EVERY merge field listed above.`
+    }
 
     // Generate draft using AI
     let subject: string
