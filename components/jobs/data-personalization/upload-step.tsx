@@ -180,12 +180,24 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
         }),
       })
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to upload dataset")
+      // Handle response - check for empty body first
+      const responseText = await response.text()
+      
+      if (!responseText) {
+        throw new Error("Server returned an empty response. Please try again.")
       }
 
-      const data = await response.json()
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (parseErr) {
+        console.error("Failed to parse response:", responseText)
+        throw new Error("Invalid response from server. Please try again.")
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to upload dataset")
+      }
       
       onUploadComplete({
         draftId: data.draftId,
@@ -197,7 +209,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     } catch (err: any) {
       console.error("Upload error:", err)
       setError(err.message || "Failed to upload dataset")
-      setState("error")
+      setState("idle") // Reset to idle so user can try again
     }
   }
 

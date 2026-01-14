@@ -214,10 +214,16 @@ function isDateValue(value: string): boolean {
 
 /**
  * Check if a value looks like currency
+ * Must have currency symbol OR decimal places to be considered currency
  */
 function isCurrencyValue(value: string): boolean {
   if (!value || value.trim() === "") return false
-  return CURRENCY_REGEX.test(value.trim())
+  const trimmed = value.trim()
+  // Must have currency symbol OR have exactly 2 decimal places to be currency
+  const hasCurrencySymbol = /^[$£€¥]/.test(trimmed)
+  const hasDecimalPlaces = /\.\d{2}$/.test(trimmed)
+  if (!hasCurrencySymbol && !hasDecimalPlaces) return false
+  return CURRENCY_REGEX.test(trimmed)
 }
 
 /**
