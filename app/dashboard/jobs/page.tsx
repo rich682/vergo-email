@@ -69,7 +69,38 @@ interface SavedView {
   name: string
   statusFilters: string[]
   tagFilters: string[]
+  ownerFilters: string[]
+  ragFilters: string[]
+  hasRequestsFilter: string
+  dueDateFilter: string
 }
+
+// RAG filter options
+const RAG_OPTIONS = [
+  { value: "green", label: "On Track", color: "bg-green-500" },
+  { value: "amber", label: "At Risk", color: "bg-amber-500" },
+  { value: "red", label: "Overdue/Critical", color: "bg-red-500" },
+  { value: "gray", label: "No Due Date", color: "bg-gray-300" },
+]
+
+// Due date filter options
+const DUE_DATE_OPTIONS = [
+  { value: "overdue", label: "Overdue" },
+  { value: "today", label: "Due Today" },
+  { value: "this_week", label: "Due This Week" },
+  { value: "next_week", label: "Due Next Week" },
+  { value: "this_month", label: "Due This Month" },
+  { value: "no_due_date", label: "No Due Date" },
+]
+
+// Has requests filter options
+const HAS_REQUESTS_OPTIONS = [
+  { value: "any", label: "Any" },
+  { value: "yes", label: "Has Requests" },
+  { value: "no", label: "No Requests" },
+  { value: "pending", label: "Pending Responses" },
+  { value: "all_responded", label: "All Responded" },
+]
 
 const SAVED_VIEWS_KEY = "tasks-saved-views"
 
@@ -165,6 +196,10 @@ export default function JobsPage() {
   // Filter state - multi-select
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [tagFilters, setTagFilters] = useState<string[]>([])
+  const [ownerFilters, setOwnerFilters] = useState<string[]>([])
+  const [ragFilters, setRagFilters] = useState<string[]>([])
+  const [hasRequestsFilter, setHasRequestsFilter] = useState<string>("any")
+  const [dueDateFilter, setDueDateFilter] = useState<string>("")
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   
   // Create modal state
@@ -246,18 +281,73 @@ export default function JobsPage() {
     new Set(allJobs.flatMap(job => job.labels?.tags || []))
   ).sort()
 
-  const hasActiveFilters = statusFilters.length > 0 || tagFilters.length > 0
+  const hasActiveFilters = statusFilters.length > 0 || tagFilters.length > 0 || ownerFilters.length > 0 || ragFilters.length > 0 || hasRequestsFilter !== "any" || dueDateFilter !== ""
+  
+  // Get unique owners from all jobs
+  const allOwners = Array.from(
+    new Map(allJobs.map(job => [job.owner.id, job.owner])).values()
+  ).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
 
-  // Filter jobs client-side for search
+  // Filter jobs client-side for search and additional filters
   const filteredJobs = jobs.filter(job => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      job.name.toLowerCase().includes(query) ||
-      job.description?.toLowerCase().includes(query) ||
-      job.owner.name?.toLowerCase().includes(query) ||
-      job.owner.email.toLowerCase().includes(query)
-    )
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      const matchesSearch = (
+        job.name.toLowerCase().includes(query) ||
+        job.description?.toLowerCase().includes(query) ||
+        job.owner.name?.toLowerCase().includes(query) ||
+        job.owner.email.toLowerCase().includes(query)
+      )
+      if (!matchesSearch) return false
+    }
+    
+    // Owner filter
+    if (ownerFilters.length > 0 && !ownerFilters.includes(job.owner.id)) {
+      return false
+    }
+    
+    // RAG filter
+    if (ragFilters.length > 0) {
+      const jobRag = calculateRAGRating(job)
+      if (!ragFilters.includes(jobRag)) return false
+    }
+    
+    // Has requests filter
+    if (hasRequestsFilter !== "any") {
+      if (hasRequestsFilter === "yes" && job.taskCount === 0) return false
+      if (hasRequestsFilter === "no" && job.taskCount > 0) return false
+      if (hasRequestsFilter === "pending" && (job.taskCount === 0 || job.respondedCount === job.taskCount)) return false
+      if (hasRequestsFilter === "all_responded" && (job.taskCount === 0 || job.respondedCount < job.taskCount)) return false
+    }
+    
+    // Due date filter
+    if (dueDateFilter) {
+      const dueDate = job.dueDate ? new Date(job.dueDate) : null
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const endOfWeek = new Date(today)
+      endOfWeek.setDate(today.getDate() + (7 - today.getDay()))
+      const endOfNextWeek = new Date(endOfWeek)
+      endOfNextWeek.setDate(endOfWeek.getDate() + 7)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      
+      if (dueDateFilter === "overdue") {
+        if (!dueDate || dueDate >= today) return false
+      } else if (dueDateFilter === "today") {
+        if (!dueDate || dueDate.toDateString() !== today.toDateString()) return false
+      } else if (dueDateFilter === "this_week") {
+        if (!dueDate || dueDate < today || dueDate > endOfWeek) return false
+      } else if (dueDateFilter === "next_week") {
+        if (!dueDate || dueDate <= endOfWeek || dueDate > endOfNextWeek) return false
+      } else if (dueDateFilter === "this_month") {
+        if (!dueDate || dueDate < today || dueDate > endOfMonth) return false
+      } else if (dueDateFilter === "no_due_date") {
+        if (dueDate) return false
+      }
+    }
+    
+    return true
   })
 
   // ============================================
@@ -441,14 +531,46 @@ export default function JobsPage() {
   const clearAllFilters = () => {
     setStatusFilters([])
     setTagFilters([])
+    setOwnerFilters([])
+    setRagFilters([])
+    setHasRequestsFilter("any")
+    setDueDateFilter("")
+    setActiveViewId(null)
   }
 
-  const removeFilter = (type: "status" | "tag", value: string) => {
+  const toggleOwnerFilter = (ownerId: string) => {
+    setOwnerFilters(prev => 
+      prev.includes(ownerId) 
+        ? prev.filter(id => id !== ownerId)
+        : [...prev, ownerId]
+    )
+    setActiveViewId(null)
+  }
+
+  const toggleRagFilter = (rag: string) => {
+    setRagFilters(prev => 
+      prev.includes(rag) 
+        ? prev.filter(r => r !== rag)
+        : [...prev, rag]
+    )
+    setActiveViewId(null)
+  }
+
+  const removeFilter = (type: "status" | "tag" | "owner" | "rag" | "requests" | "due", value: string) => {
     if (type === "status") {
       setStatusFilters(prev => prev.filter(s => s !== value))
-    } else {
+    } else if (type === "tag") {
       setTagFilters(prev => prev.filter(t => t !== value))
+    } else if (type === "owner") {
+      setOwnerFilters(prev => prev.filter(o => o !== value))
+    } else if (type === "rag") {
+      setRagFilters(prev => prev.filter(r => r !== value))
+    } else if (type === "requests") {
+      setHasRequestsFilter("any")
+    } else if (type === "due") {
+      setDueDateFilter("")
     }
+    setActiveViewId(null)
   }
 
   const handleCreateJob = async () => {
@@ -1142,7 +1264,7 @@ export default function JobsPage() {
 
             {/* Filter Dropdown Panel */}
             {isFilterOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
                 {/* Status Section */}
                 <div className="p-3 border-b border-gray-100">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Status</p>
@@ -1162,11 +1284,103 @@ export default function JobsPage() {
                   </div>
                 </div>
 
+                {/* Owner Section */}
+                {allOwners.length > 0 && (
+                  <div className="p-3 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Owner</p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {allOwners.map(owner => (
+                        <button
+                          key={owner.id}
+                          onClick={() => toggleOwnerFilter(owner.id)}
+                          className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                              {getInitials(owner.name, owner.email)}
+                            </div>
+                            <span className="text-gray-700">{owner.name || owner.email}</span>
+                          </div>
+                          {ownerFilters.includes(owner.id) && (
+                            <Check className="w-4 h-4 text-gray-900" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* RAG Rating Section */}
+                <div className="p-3 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Risk Status</p>
+                  <div className="space-y-1">
+                    {RAG_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => toggleRagFilter(option.value)}
+                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${option.color}`} />
+                          <span className="text-gray-700">{option.label}</span>
+                        </div>
+                        {ragFilters.includes(option.value) && (
+                          <Check className="w-4 h-4 text-gray-900" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Due Date Section */}
+                <div className="p-3 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Due Date</p>
+                  <div className="space-y-1">
+                    {DUE_DATE_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setDueDateFilter(dueDateFilter === option.value ? "" : option.value)
+                          setActiveViewId(null)
+                        }}
+                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                      >
+                        <span className="text-gray-700">{option.label}</span>
+                        {dueDateFilter === option.value && (
+                          <Check className="w-4 h-4 text-gray-900" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Requests Section */}
+                <div className="p-3 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Requests</p>
+                  <div className="space-y-1">
+                    {HAS_REQUESTS_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setHasRequestsFilter(option.value)
+                          setActiveViewId(null)
+                        }}
+                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
+                      >
+                        <span className="text-gray-700">{option.label}</span>
+                        {hasRequestsFilter === option.value && (
+                          <Check className="w-4 h-4 text-gray-900" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Labels Section */}
                 {allTags.length > 0 && (
                   <div className="p-3 border-b border-gray-100">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Labels</p>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
                       {allTags.map(tag => (
                         <button
                           key={tag}
@@ -1190,7 +1404,7 @@ export default function JobsPage() {
                       onClick={clearAllFilters}
                       className="w-full px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
                     >
-                      Clear All
+                      Clear All Filters
                     </button>
                   </div>
                 )}
@@ -1399,26 +1613,27 @@ export default function JobsPage() {
           </div>
         ) : (
           /* Table-style list with fixed layout */
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
-              {/* Column width definitions - ensures deterministic layout */}
+          <div className="border border-gray-200 rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[1000px]" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+              {/* Column width definitions - all in pixels for consistency */}
               <colgroup>
-                <col style={{ width: '36px' }} />
-                <col style={{ width: '22%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '75px' }} />
-                <col style={{ width: '45px' }} />
-                <col style={{ width: '55px' }} />
-                <col style={{ width: '100px' }} />
-                <col style={{ width: '80px' }} />
-                <col style={{ width: '65px' }} />
-                <col style={{ width: '75px' }} />
+                <col style={{ width: '40px' }} />   {/* Checkbox */}
+                <col style={{ width: '240px' }} /> {/* Name */}
+                <col style={{ width: '120px' }} /> {/* Labels */}
+                <col style={{ width: '80px' }} />  {/* Status */}
+                <col style={{ width: '50px' }} />  {/* RAG */}
+                <col style={{ width: '70px' }} />  {/* Contacts */}
+                <col style={{ width: '70px' }} />  {/* Requests */}
+                <col style={{ width: '100px' }} /> {/* Owner */}
+                <col style={{ width: '90px' }} />  {/* Collaborators */}
+                <col style={{ width: '70px' }} />  {/* Due */}
+                <col style={{ width: '90px' }} />  {/* Updated */}
               </colgroup>
               
               {/* Table Header */}
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <th className="px-2 py-3 text-center overflow-hidden">
+                  <th className="px-2 py-3 text-center">
                     <div className="flex items-center justify-center">
                       <input
                         type="checkbox"
@@ -1431,16 +1646,16 @@ export default function JobsPage() {
                       />
                     </div>
                   </th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Name</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Labels</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Status</th>
-                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">RAG</th>
-                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">Contacts</th>
-                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">Requests</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Owner</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Collaborators</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Due</th>
-                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Updated</th>
+                  <th className="px-2 py-3 text-left">Name</th>
+                  <th className="px-2 py-3 text-left">Labels</th>
+                  <th className="px-2 py-3 text-left">Status</th>
+                  <th className="px-2 py-3 text-center">RAG</th>
+                  <th className="px-2 py-3 text-center">Contacts</th>
+                  <th className="px-2 py-3 text-center">Requests</th>
+                  <th className="px-2 py-3 text-left">Owner</th>
+                  <th className="px-2 py-3 text-left">Collab</th>
+                  <th className="px-2 py-3 text-left">Due</th>
+                  <th className="px-2 py-3 text-left">Updated</th>
                 </tr>
               </thead>
               
@@ -1463,7 +1678,7 @@ export default function JobsPage() {
                       className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? "bg-orange-50" : ""}`}
                     >
                       {/* Checkbox */}
-                      <td className="px-2 py-3 text-center overflow-hidden">
+                      <td className="px-2 py-3 text-center">
                         <div className="flex items-center justify-center">
                           <input
                             type="checkbox"
@@ -1476,22 +1691,22 @@ export default function JobsPage() {
                       </td>
                       
                       {/* Name */}
-                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap">
-                        <span className="font-medium text-gray-900">{job.name}</span>
+                      <td className="px-2 py-3">
+                        <div className="truncate font-medium text-gray-900" title={job.name}>
+                          {job.name}
+                        </div>
                       </td>
                       
                       {/* Labels */}
-                      <td className="px-2 py-3 overflow-hidden">
-                        <div className="flex gap-1 min-w-0 overflow-hidden">
+                      <td className="px-2 py-3">
+                        <div className="flex gap-1 overflow-hidden">
                           {jobTags.length > 0 ? (
                             <>
-                              {jobTags.slice(0, 2).map(tag => (
-                                <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[60px] flex-shrink-0">
-                                  {tag}
-                                </span>
-                              ))}
-                              {jobTags.length > 2 && (
-                                <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 2}</span>
+                              <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[50px]" title={jobTags[0]}>
+                                {jobTags[0]}
+                              </span>
+                              {jobTags.length > 1 && (
+                                <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 1}</span>
                               )}
                             </>
                           ) : (
@@ -1501,9 +1716,9 @@ export default function JobsPage() {
                       </td>
                       
                       {/* Status */}
-                      <td className="px-2 py-3 overflow-hidden">
+                      <td className="px-2 py-3">
                         <span className={`
-                          inline-flex px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap
+                          inline-flex px-2 py-0.5 rounded-full text-xs font-medium border
                           ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
                           ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
                           ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
@@ -1515,70 +1730,64 @@ export default function JobsPage() {
                       </td>
                       
                       {/* RAG Rating */}
-                      <td className="px-2 py-3 text-center overflow-hidden">
+                      <td className="px-2 py-3 text-center">
                         <div className="flex justify-center">
                           <RAGBadge rating={ragRating} />
                         </div>
                       </td>
                       
                       {/* Contacts Count */}
-                      <td className="px-2 py-3 text-center overflow-hidden">
-                        {contactCount > 0 ? (
-                          <span className="text-sm text-gray-600">{contactCount}</span>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
+                      <td className="px-2 py-3 text-center">
+                        <span className={`text-sm ${contactCount > 0 ? "text-gray-600" : "text-gray-400"}`}>
+                          {contactCount > 0 ? contactCount : "—"}
+                        </span>
                       </td>
                       
                       {/* Requests Count */}
-                      <td className="px-2 py-3 text-center overflow-hidden">
-                        {job.taskCount > 0 ? (
-                          <span className="text-sm text-gray-600">{job.taskCount}</span>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
+                      <td className="px-2 py-3 text-center">
+                        <span className={`text-sm ${job.taskCount > 0 ? "text-gray-600" : "text-gray-400"}`}>
+                          {job.taskCount > 0 ? job.taskCount : "—"}
+                        </span>
                       </td>
                       
                       {/* Owner */}
-                      <td className="px-2 py-3 overflow-hidden">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                      <td className="px-2 py-3">
+                        <div className="flex items-center gap-1.5">
                           <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
                             {getInitials(job.owner.name, job.owner.email)}
                           </div>
-                          <span className="text-sm text-gray-600 truncate min-w-0">
+                          <span className="text-sm text-gray-600 truncate" title={job.owner.name || job.owner.email}>
                             {job.owner.name?.split(" ")[0] || job.owner.email.split("@")[0]}
                           </span>
                         </div>
                       </td>
                       
                       {/* Collaborators */}
-                      <td className="px-2 py-3 overflow-hidden">
-                        <div className="flex items-center min-w-0">
-                          {collaborators.length > 0 ? (
-                            <div className="flex -space-x-1.5">
-                              {collaborators.slice(0, 2).map((collab) => (
-                                <div
-                                  key={collab.id}
-                                  className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium flex-shrink-0"
-                                  title={collab.user.name || collab.user.email}
-                                >
-                                  {getInitials(collab.user.name, collab.user.email)}
-                                </div>
-                              ))}
-                              {collaborators.length > 2 && (
-                                <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium flex-shrink-0">
-                                  +{collaborators.length - 2}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">—</span>
-                          )}
-                        </div>
+                      <td className="px-2 py-3">
+                        {collaborators.length > 0 ? (
+                          <div className="flex -space-x-1.5">
+                            {collaborators.slice(0, 2).map((collab) => (
+                              <div
+                                key={collab.id}
+                                className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
+                                title={collab.user.name || collab.user.email}
+                              >
+                                {getInitials(collab.user.name, collab.user.email)}
+                              </div>
+                            ))}
+                            {collaborators.length > 2 && (
+                              <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
+                                +{collaborators.length - 2}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </td>
                       
                       {/* Due Date */}
-                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap">
+                      <td className="px-2 py-3">
                         {dueDate ? (
                           <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
                             {format(dueDate, "d MMM")}
@@ -1589,8 +1798,10 @@ export default function JobsPage() {
                       </td>
                       
                       {/* Updated */}
-                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-gray-500">
-                        {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
+                      <td className="px-2 py-3">
+                        <span className="text-sm text-gray-500 truncate block" title={formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}>
+                          {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
+                        </span>
                       </td>
                     </tr>
                   )
