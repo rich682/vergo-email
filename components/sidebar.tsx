@@ -25,6 +25,15 @@ function TasksIcon({ className }: { className?: string }) {
   )
 }
 
+function RequestsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 2L11 13" />
+      <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+    </svg>
+  )
+}
+
 function CollectionIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -77,6 +86,11 @@ const navItems: NavItem[] = [
     label: UI_LABELS.jobsNavLabel, 
     icon: TasksIcon,
     featureFlag: isJobsUIEnabled 
+  },
+  {
+    href: "/dashboard/requests",
+    label: "Requests",
+    icon: RequestsIcon
   },
   {
     href: "/dashboard/collection",

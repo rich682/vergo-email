@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectedItemStatus, CollectedItemSource } from "@prisma/client"
+import { CollectedItemSource } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
 
 /**
  * GET /api/collection
  * List all collected items across all jobs for the organization
+ * Simplified view - just attachments with task/owner info
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,19 +22,19 @@ export async function GET(request: NextRequest) {
 
     // Parse query params for filters
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status") as CollectedItemStatus | null
     const source = searchParams.get("source") as CollectedItemSource | null
+    const jobId = searchParams.get("jobId")
 
     const where: any = {
       organizationId
     }
 
-    if (status && ["UNREVIEWED", "APPROVED", "REJECTED"].includes(status)) {
-      where.status = status
-    }
-
     if (source && ["EMAIL_REPLY", "MANUAL_UPLOAD"].includes(source)) {
       where.source = source
+    }
+
+    if (jobId) {
+      where.jobId = jobId
     }
 
     const items = await prisma.collectedItem.findMany({
@@ -42,7 +43,14 @@ export async function GET(request: NextRequest) {
         job: {
           select: {
             id: true,
-            name: true
+            name: true,
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
           }
         },
         task: {
@@ -58,42 +66,31 @@ export async function GET(request: NextRequest) {
               }
             }
           }
-        },
-        message: {
-          select: {
-            id: true,
-            subject: true,
-            createdAt: true
-          }
-        },
-        reviewer: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
         }
       },
       orderBy: { receivedAt: "desc" }
     })
 
-    // Calculate summary
-    const allItems = await prisma.collectedItem.findMany({
-      where: { organizationId },
-      select: { status: true }
+    // Get total count
+    const total = await prisma.collectedItem.count({
+      where: { organizationId }
     })
 
-    const summary = {
-      total: allItems.length,
-      approved: allItems.filter(i => i.status === "APPROVED").length,
-      rejected: allItems.filter(i => i.status === "REJECTED").length,
-      unreviewed: allItems.filter(i => i.status === "UNREVIEWED").length
-    }
+    // Get unique jobs for filter dropdown
+    const jobs = await prisma.job.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: { name: "asc" }
+    })
 
     return NextResponse.json({
       success: true,
       items,
-      summary
+      total,
+      jobs
     })
   } catch (error: any) {
     console.error("Error fetching collection items:", error)
