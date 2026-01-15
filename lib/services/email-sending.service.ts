@@ -158,8 +158,8 @@ export class EmailSendingService {
     subject: string
     body: string
     htmlBody?: string
-    campaignName?: string  // Legacy - kept for backwards compatibility
-    campaignType?: string  // Legacy - kept for backwards compatibility
+    campaignName?: string
+    campaignType?: string
     accountId?: string
     deadlineDate?: Date | null
     remindersConfig?: {
@@ -260,11 +260,11 @@ export class EmailSendingService {
     // Create task with jobId for direct Item association
     const task = await TaskCreationService.createTaskFromEmail({
       organizationId: data.organizationId,
-      jobId: data.jobId || null,  // Link task directly to Item
+      jobId: data.jobId || null,
       entityEmail: data.to,
       entityName: data.toName,
-      campaignName: data.campaignName,  // Legacy
-      campaignType: data.campaignType,  // Legacy
+      campaignName: data.campaignName,
+      campaignType: data.campaignType,
       threadId,
       replyToEmail: replyTo,
       subject: data.subject,
@@ -403,8 +403,8 @@ export class EmailSendingService {
     subject: string
     body: string
     htmlBody?: string
-    campaignName?: string  // Legacy - kept for backwards compatibility
-    campaignType?: string  // Legacy - kept for backwards compatibility
+    campaignName?: string
+    campaignType?: string
     accountId?: string
     perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
     deadlineDate?: Date | null
@@ -437,14 +437,14 @@ export class EmailSendingService {
 
         const result = await this.sendEmail({
           organizationId: data.organizationId,
-          jobId: data.jobId,  // Pass jobId to link tasks to Item
+          jobId: data.jobId,
           to: recipient.email,
           toName: recipient.name,
           subject: subjectToUse,
           body: bodyToUse,
           htmlBody: htmlBodyToUse,
-          campaignName: data.campaignName,  // Legacy
-          campaignType: data.campaignType,  // Legacy
+          campaignName: data.campaignName,
+          campaignType: data.campaignType,
           accountId: data.accountId,
           deadlineDate,
           remindersConfig: data.remindersConfig

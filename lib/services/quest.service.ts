@@ -423,15 +423,13 @@ export class QuestService {
         }
       })
 
-      // Generate a clean campaign name from the subject (legacy - kept for backwards compatibility)
-      // Use the first recipient's rendered subject as the campaign name
+      // Generate a campaign name from the subject for grouping/display
       const campaignName = perRecipientEmails[0]?.subject || quest.originalPrompt.substring(0, 50)
 
       // Send emails with personalized content
-      // Pass jobId to link created Tasks directly to the parent Item
       const results = await EmailSendingService.sendBulkEmail({
         organizationId,
-        jobId,  // Link tasks directly to Item (new approach)
+        jobId,
         recipients: recipientResult.recipients.map(r => ({
           email: r.email,
           name: r.firstName || r.name || undefined
@@ -440,7 +438,7 @@ export class QuestService {
         body: quest.body || "",
         htmlBody: quest.htmlBody,
         perRecipientEmails,
-        campaignName,  // Legacy - kept for backwards compatibility
+        campaignName,
         deadlineDate: quest.scheduleConfig?.deadline || null,
         remindersConfig
       })

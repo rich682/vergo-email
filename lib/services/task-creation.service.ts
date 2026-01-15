@@ -9,8 +9,8 @@ export class TaskCreationService {
     jobId?: string | null  // Parent Job/Item for request-level association
     entityEmail: string
     entityName?: string
-    campaignName?: string  // Legacy - kept for backwards compatibility
-    campaignType?: string  // Legacy - kept for backwards compatibility
+    campaignName?: string  // Optional grouping name
+    campaignType?: string  // Optional type classification
     threadId: string
     replyToEmail: string
     subject?: string
@@ -34,10 +34,10 @@ export class TaskCreationService {
     return prisma.task.create({
       data: {
         organizationId: data.organizationId,
-        jobId: data.jobId || null,  // Link task directly to Item
+        jobId: data.jobId || null,
         entityId: entity.id,
-        campaignName: data.campaignName || null,  // Legacy
-        campaignType: data.campaignType as any || null,  // Legacy
+        campaignName: data.campaignName || null,
+        campaignType: data.campaignType as any || null,
         status: "AWAITING_RESPONSE",
         threadId: data.threadId,
         replyToEmail: data.replyToEmail,

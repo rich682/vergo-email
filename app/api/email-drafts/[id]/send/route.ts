@@ -462,7 +462,7 @@ export async function POST(
       subject: subjectTemplate, // Will be overridden per-recipient if personalization
       body: bodyTemplate, // Will be overridden per-recipient if personalization
       htmlBody: htmlBodyTemplate, // Will be overridden per-recipient if personalization
-      campaignName: campaignName || draft.suggestedCampaignName || undefined,  // Legacy
+      campaignName: campaignName || draft.suggestedCampaignName || undefined,
       accountId: emailAccountId,
       deadlineDate: deadlineDate || undefined,
       remindersConfig: remindersConfig || undefined,

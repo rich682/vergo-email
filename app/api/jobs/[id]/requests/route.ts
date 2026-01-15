@@ -4,10 +4,7 @@
  * GET /api/jobs/[id]/requests - Get EmailDrafts (Requests) associated with a Job
  * 
  * Returns a list of EmailDrafts that have jobId set to this job.
- * These represent the "Requests" created within the Job context.
- * 
- * Tasks are now linked directly via jobId (new approach) with fallback to
- * campaignName matching (legacy approach) for backwards compatibility.
+ * Tasks are linked directly via jobId.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -70,7 +67,6 @@ export async function GET(
         subjectTemplate: true,
         bodyTemplate: true,
         htmlBodyTemplate: true,
-        suggestedCampaignName: true,  // Legacy - kept for backwards compatibility
         status: true,
         sentAt: true,
         createdAt: true,
@@ -87,17 +83,14 @@ export async function GET(
       orderBy: { createdAt: "desc" }
     })
 
-    // Get tasks directly by jobId (new approach)
-    // This is the primary way to find tasks associated with this Item
-    const tasksByJobId = await prisma.task.findMany({
+    // Get tasks directly by jobId
+    const tasks = await prisma.task.findMany({
       where: {
         organizationId,
         jobId
       },
       select: {
         id: true,
-        jobId: true,
-        campaignName: true,  // Legacy - kept for grouping fallback
         status: true,
         remindersEnabled: true,
         remindersFrequencyHours: true,
@@ -125,88 +118,21 @@ export async function GET(
       }
     })
 
-    // Legacy fallback: Get tasks by campaignName for older requests
-    // that were created before jobId was added to tasks
-    const campaignNames = requests
-      .map(r => r.suggestedCampaignName)
-      .filter((name): name is string => !!name)
-
-    const tasksByCampaignName = campaignNames.length > 0
-      ? await prisma.task.findMany({
-          where: {
-            organizationId,
-            jobId: null,  // Only get tasks without jobId (legacy)
-            campaignName: { in: campaignNames }
-          },
-          select: {
-            id: true,
-            jobId: true,
-            campaignName: true,
-            status: true,
-            remindersEnabled: true,
-            remindersFrequencyHours: true,
-            remindersMaxCount: true,
-            createdAt: true,
-            entity: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true
-              }
-            },
-            messages: {
-              where: { direction: "OUTBOUND" },
-              orderBy: { sentAt: "asc" },
-              take: 1,
-              select: {
-                id: true,
-                subject: true,
-                body: true,
-                sentAt: true
-              }
-            }
-          }
-        })
-      : []
-
-    // Combine all tasks (deduplicate by id)
-    const allTasksMap = new Map<string, typeof tasksByJobId[0]>()
-    for (const task of tasksByJobId) {
-      allTasksMap.set(task.id, task)
-    }
-    for (const task of tasksByCampaignName) {
-      if (!allTasksMap.has(task.id)) {
-        allTasksMap.set(task.id, task)
-      }
-    }
-    const allTasks = Array.from(allTasksMap.values())
-
-    // Group tasks by request
-    // For new tasks: match by createdAt proximity to request sentAt
-    // For legacy tasks: match by campaignName
+    // Match tasks to requests by creation time proximity
     const enrichedRequests = requests.map(request => {
-      // Find tasks for this request
-      let requestTasks: typeof allTasks = []
+      let requestTasks: typeof tasks = []
 
-      // First, try to match tasks created around the same time as the request was sent
+      // Match tasks created around the same time as the request was sent
       if (request.sentAt) {
         const sentTime = new Date(request.sentAt).getTime()
         // Tasks created within 5 minutes of the request being sent
-        requestTasks = allTasks.filter(task => {
+        requestTasks = tasks.filter(task => {
           const taskTime = new Date(task.createdAt).getTime()
-          return Math.abs(taskTime - sentTime) < 5 * 60 * 1000 // 5 minutes
+          return Math.abs(taskTime - sentTime) < 5 * 60 * 1000
         })
       }
 
-      // Fallback: match by campaignName (legacy)
-      if (requestTasks.length === 0 && request.suggestedCampaignName) {
-        requestTasks = allTasks.filter(task => 
-          task.campaignName === request.suggestedCampaignName
-        )
-      }
-
-      // Get reminder config from first task (all tasks in a request share the same config)
+      // Get reminder config from first task
       const firstTask = requestTasks[0]
       const reminderConfig = firstTask ? {
         enabled: firstTask.remindersEnabled,

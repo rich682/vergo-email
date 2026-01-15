@@ -181,7 +181,7 @@ export async function POST(
           subject: subjectResult.rendered,
           body: bodyResult.rendered,
           htmlBody,
-          campaignName,  // Legacy - kept for backwards compatibility
+          campaignName,
           campaignType: CampaignType.DOCUMENT_REQUEST,
           deadlineDate: job.dueDate || undefined,
           remindersConfig: reminderConfig?.enabled ? {
