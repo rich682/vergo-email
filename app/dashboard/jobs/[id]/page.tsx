@@ -276,7 +276,6 @@ export default function JobDetailPage() {
 
   // UI state
   const [awaitingExpanded, setAwaitingExpanded] = useState(true)
-  const [subtasksExpanded, setSubtasksExpanded] = useState(true)
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false)
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
@@ -1258,27 +1257,14 @@ export default function JobDetailPage() {
               </Card>
             )}
 
-            {/* Subtasks Section - Checklist items within this task */}
-            <Card>
-              <CardContent className="p-4">
-                <SectionHeader
-                  title="Subtasks"
-                  icon={<CheckCircle className="w-4 h-4 text-green-500" />}
-                  collapsible
-                  expanded={subtasksExpanded}
-                  onToggle={() => setSubtasksExpanded(!subtasksExpanded)}
-                />
-                {subtasksExpanded && (
-                  <div className="mt-3">
-                    <SubtasksTable
-                      jobId={jobId}
-                      teamMembers={teamMembers.map(m => ({ id: m.id, name: m.name, email: m.email }))}
-                      onViewAttachments={(subtaskId) => setSelectedSubtaskId(subtaskId)}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Subtasks - nested tasks under this task */}
+            <div className="border rounded-lg bg-white overflow-hidden">
+              <SubtasksTable
+                jobId={jobId}
+                teamMembers={teamMembers.map(m => ({ id: m.id, name: m.name, email: m.email }))}
+                onViewAttachments={(subtaskId) => setSelectedSubtaskId(subtaskId)}
+              />
+            </div>
 
             {/* Attachments Section - Direct file uploads on this task */}
             <Card>
