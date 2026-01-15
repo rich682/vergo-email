@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 /**
  * GET /api/requests
  * List all requests (Tasks) for the organization
- * Each Task represents a request sent to one contact
+ * Each Task represents a request sent to one contact (initial email, not reminders)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const jobId = searchParams.get("jobId")
     const ownerId = searchParams.get("ownerId")
     const status = searchParams.get("status") as TaskStatus | null
+    const labelId = searchParams.get("labelId")
 
     const where: any = {
       organizationId,
@@ -38,6 +39,15 @@ export async function GET(request: NextRequest) {
 
     if (status && Object.values(TaskStatus).includes(status)) {
       where.status = status
+    }
+
+    // Filter by label (label is on the job)
+    if (labelId) {
+      where.job = {
+        jobLabels: {
+          some: { id: labelId }
+        }
+      }
     }
 
     // Build the query
@@ -63,6 +73,13 @@ export async function GET(request: NextRequest) {
                 name: true,
                 email: true
               }
+            },
+            jobLabels: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
             }
           }
         }
@@ -76,9 +93,14 @@ export async function GET(request: NextRequest) {
       filteredTasks = tasks.filter(t => t.job?.ownerId === ownerId)
     }
 
-    // Get unique jobs for filter dropdown
-    const jobs = await prisma.job.findMany({
-      where: { organizationId },
+    // Get only jobs that have sent requests (tasks with jobId)
+    const jobsWithRequests = await prisma.job.findMany({
+      where: { 
+        organizationId,
+        tasks: {
+          some: {} // Has at least one task
+        }
+      },
       select: {
         id: true,
         name: true
@@ -94,6 +116,25 @@ export async function GET(request: NextRequest) {
         name: true,
         email: true
       },
+      orderBy: { name: "asc" }
+    })
+
+    // Get all labels from jobs that have requests
+    const labelsFromJobs = await prisma.jobLabel.findMany({
+      where: {
+        job: {
+          organizationId,
+          tasks: {
+            some: {}
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true
+      },
+      distinct: ["name"],
       orderBy: { name: "asc" }
     })
 
@@ -116,8 +157,9 @@ export async function GET(request: NextRequest) {
       success: true,
       requests: filteredTasks,
       total: filteredTasks.length,
-      jobs,
+      jobs: jobsWithRequests, // Only jobs with requests
       owners,
+      labels: labelsFromJobs, // Labels for filtering
       statusSummary
     })
   } catch (error: any) {

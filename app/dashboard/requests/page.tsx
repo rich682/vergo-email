@@ -14,7 +14,7 @@ import {
 import { 
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
   CheckCircle, AlertCircle, MessageSquare, Bell,
-  Pause, PlayCircle, MoreHorizontal, Search, X, Calendar
+  Pause, PlayCircle, Search, X, Calendar, Tag, Paperclip
 } from "lucide-react"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
@@ -43,6 +43,11 @@ interface RequestTask {
       name: string | null
       email: string
     }
+    jobLabels?: Array<{
+      id: string
+      name: string
+      color: string | null
+    }>
   } | null
 }
 
@@ -57,66 +62,49 @@ interface OwnerOption {
   email: string
 }
 
-// Status options for the dropdown
+interface LabelOption {
+  id: string
+  name: string
+  color: string | null
+}
+
+// Status options for the dropdown - cleaner set for user actions
 const STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, color: "amber" },
-  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, color: "blue" },
-  { value: "FULFILLED", label: "Complete", icon: CheckCircle, color: "green" },
-  { value: "REJECTED", label: "Rejected", icon: AlertCircle, color: "red" },
-  { value: "ON_HOLD", label: "On Hold", icon: Pause, color: "gray" },
+  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  { value: "FULFILLED", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  { value: "REJECTED", label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
+  { value: "ON_HOLD", label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
 ]
 
-// Status badge component
-function StatusBadge({ status }: { status: string }) {
-  const statusConfig = STATUS_OPTIONS.find(s => s.value === status)
-  
-  if (!statusConfig) {
-    // Handle legacy statuses
-    switch (status) {
-      case "REPLIED":
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-            <MessageSquare className="w-3 h-3" />
-            Replied
-          </span>
-        )
-      case "HAS_ATTACHMENTS":
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-            <Mail className="w-3 h-3" />
-            Has Attachments
-          </span>
-        )
-      case "FLAGGED":
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-            <AlertCircle className="w-3 h-3" />
-            Flagged
-          </span>
-        )
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-            <MoreHorizontal className="w-3 h-3" />
-            {status}
-          </span>
-        )
-    }
-  }
+// All possible statuses including system-set ones
+const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
+  AWAITING_RESPONSE: { label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  IN_PROGRESS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  HAS_ATTACHMENTS: { label: "Has Attachments", icon: Paperclip, bgColor: "bg-purple-100", textColor: "text-purple-700" },
+  VERIFYING: { label: "Verifying", icon: Clock, bgColor: "bg-yellow-100", textColor: "text-yellow-700" },
+  FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  REJECTED: { label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
+  FLAGGED: { label: "Flagged", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
+  MANUAL_REVIEW: { label: "Review", icon: AlertCircle, bgColor: "bg-orange-100", textColor: "text-orange-700" },
+  ON_HOLD: { label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
+}
 
-  const Icon = statusConfig.icon
-  const colorClasses = {
-    amber: "bg-amber-100 text-amber-700",
-    blue: "bg-blue-100 text-blue-700",
-    green: "bg-green-100 text-green-700",
-    red: "bg-red-100 text-red-700",
-    gray: "bg-gray-100 text-gray-700",
-  }[statusConfig.color] || "bg-gray-100 text-gray-700"
+// Status badge component - cleaner display
+function StatusBadge({ status }: { status: string }) {
+  const config = ALL_STATUS_DISPLAY[status] || { 
+    label: status, 
+    icon: Clock, 
+    bgColor: "bg-gray-100", 
+    textColor: "text-gray-700" 
+  }
+  const Icon = config.icon
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClasses}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
       <Icon className="w-3 h-3" />
-      {statusConfig.label}
+      {config.label}
     </span>
   )
 }
@@ -163,7 +151,7 @@ function StatusDropdown({
       onValueChange={handleStatusChange}
       disabled={updating}
     >
-      <SelectTrigger className="w-[140px] h-8 text-xs">
+      <SelectTrigger className="w-[150px] h-8 text-xs border-0 bg-transparent p-0 hover:bg-gray-50 rounded-full">
         <SelectValue>
           <StatusBadge status={currentStatus} />
         </SelectValue>
@@ -199,6 +187,7 @@ export default function RequestsPage() {
   const [total, setTotal] = useState(0)
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [owners, setOwners] = useState<OwnerOption[]>([])
+  const [labels, setLabels] = useState<LabelOption[]>([])
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -207,14 +196,15 @@ export default function RequestsPage() {
   const [jobFilter, setJobFilter] = useState<string>("all")
   const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [labelFilter, setLabelFilter] = useState<string>("all")
   const [contactSearch, setContactSearch] = useState<string>("")
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
-  const [hasReminders, setHasReminders] = useState<string>("all") // "all", "yes", "no"
+  const [hasReminders, setHasReminders] = useState<string>("all")
 
   // Check if any filters are active
   const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
-    contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all"
+    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all"
 
   // Fetch all requests
   const fetchRequests = useCallback(async () => {
@@ -226,6 +216,7 @@ export default function RequestsPage() {
       if (jobFilter !== "all") params.set("jobId", jobFilter)
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
+      if (labelFilter !== "all") params.set("labelId", labelFilter)
       
       const response = await fetch(
         `/api/requests?${params.toString()}`,
@@ -275,13 +266,14 @@ export default function RequestsPage() {
       setTotal(data.total || 0)
       setJobs(data.jobs || [])
       setOwners(data.owners || [])
+      setLabels(data.labels || [])
       setStatusSummary(data.statusSummary || {})
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [jobFilter, ownerFilter, statusFilter, contactSearch, dateFrom, dateTo, hasReminders])
+  }, [jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders])
 
   useEffect(() => {
     fetchRequests()
@@ -292,6 +284,7 @@ export default function RequestsPage() {
     setJobFilter("all")
     setOwnerFilter("all")
     setStatusFilter("all")
+    setLabelFilter("all")
     setContactSearch("")
     setDateFrom("")
     setDateTo("")
@@ -376,11 +369,11 @@ export default function RequestsPage() {
       <div className="space-y-3 mb-4">
         {/* First row - Main filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Task Filter */}
+          {/* Task Filter - Only shows tasks with requests */}
           <Select value={jobFilter} onValueChange={setJobFilter}>
             <SelectTrigger className="w-[180px]">
               <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Filter by Task" />
+              <SelectValue placeholder="All Tasks" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Tasks</SelectItem>
@@ -394,8 +387,8 @@ export default function RequestsPage() {
 
           {/* Owner Filter */}
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Owner" />
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="All Owners" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Owners</SelectItem>
@@ -409,8 +402,8 @@ export default function RequestsPage() {
 
           {/* Status Filter */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Status" />
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
@@ -424,11 +417,35 @@ export default function RequestsPage() {
             </SelectContent>
           </Select>
 
+          {/* Labels Filter */}
+          {labels.length > 0 && (
+            <Select value={labelFilter} onValueChange={setLabelFilter}>
+              <SelectTrigger className="w-[140px]">
+                <Tag className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="All Labels" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Labels</SelectItem>
+                {labels.map(label => (
+                  <SelectItem key={label.id} value={label.id}>
+                    <span className="flex items-center gap-2">
+                      <span 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: label.color || "#6B7280" }}
+                      />
+                      {label.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Reminders Filter */}
           <Select value={hasReminders} onValueChange={setHasReminders}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-[130px]">
               <Bell className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Reminders" />
+              <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
@@ -444,7 +461,7 @@ export default function RequestsPage() {
               placeholder="Search contact..."
               value={contactSearch}
               onChange={(e) => setContactSearch(e.target.value)}
-              className="pl-9 w-[160px]"
+              className="pl-9 w-[150px]"
             />
           </div>
 
@@ -539,13 +556,37 @@ export default function RequestsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {request.job ? (
-                      <Link 
-                        href={`/dashboard/jobs/${request.job.id}`}
-                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                      >
-                        {request.job.name}
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
+                      <div>
+                        <Link 
+                          href={`/dashboard/jobs/${request.job.id}`}
+                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                        >
+                          {request.job.name}
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                        {/* Show labels if any */}
+                        {request.job.jobLabels && request.job.jobLabels.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {request.job.jobLabels.slice(0, 2).map(label => (
+                              <span 
+                                key={label.id}
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{ 
+                                  backgroundColor: `${label.color || "#6B7280"}20`,
+                                  color: label.color || "#6B7280"
+                                }}
+                              >
+                                {label.name}
+                              </span>
+                            ))}
+                            {request.job.jobLabels.length > 2 && (
+                              <span className="text-xs text-gray-400">
+                                +{request.job.jobLabels.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-sm text-gray-500">—</span>
                     )}
