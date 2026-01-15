@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Pencil, Archive, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2 } from "lucide-react"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 
 interface SidebarProps {
@@ -123,7 +123,6 @@ const otherNavItems: NavItem[] = [
 ]
 
 export function Sidebar({ className = "" }: SidebarProps) {
-  const [expanded, setExpanded] = useState(false)
   const [tasksExpanded, setTasksExpanded] = useState(true)
   const [boards, setBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
@@ -166,7 +165,6 @@ export function Sidebar({ className = "" }: SidebarProps) {
       if (response.ok) {
         fetchBoards()
         setBoardMenuOpen(null)
-        // If we're viewing this board, go to all tasks
         if (currentBoardId === boardId) {
           router.push("/dashboard/jobs")
         }
@@ -199,38 +197,18 @@ export function Sidebar({ className = "" }: SidebarProps) {
       <div
         className={`
           fixed left-0 top-0 h-full bg-white border-r border-gray-100 z-40
-          flex flex-col
-          transition-all duration-200 ease-in-out
-          ${expanded ? "w-64" : "w-20"}
+          flex flex-col w-64
           ${className}
         `}
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => {
-          setExpanded(false)
-          setBoardMenuOpen(null)
-        }}
       >
         {/* Logo */}
-        <div className={`
-          h-20 flex items-center
-          ${expanded ? "px-5" : "justify-center"}
-        `}>
+        <div className="h-20 flex items-center px-5">
           <Link href="/dashboard/jobs" className="flex items-center">
-            {expanded ? (
-              <img 
-                src="/logo.svg" 
-                alt="Vergo" 
-                className="h-8 w-auto"
-              />
-            ) : (
-              <img 
-                src="/icon.png" 
-                alt="Vergo" 
-                width={32} 
-                height={32}
-                className="flex-shrink-0"
-              />
-            )}
+            <img 
+              src="/logo.svg" 
+              alt="Vergo" 
+              className="h-8 w-auto"
+            />
           </Link>
         </div>
 
@@ -241,13 +219,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
             <li>
               {/* Tasks Header */}
               <button
-                onClick={() => {
-                  if (expanded) {
-                    setTasksExpanded(!tasksExpanded)
-                  } else {
-                    router.push("/dashboard/jobs")
-                  }
-                }}
+                onClick={() => setTasksExpanded(!tasksExpanded)}
                 className={`
                   w-full flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
                   transition-all duration-150
@@ -255,28 +227,22 @@ export function Sidebar({ className = "" }: SidebarProps) {
                     ? "bg-gray-100 text-gray-900" 
                     : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                   }
-                  ${expanded ? "" : "justify-center"}
                 `}
-                style={{ width: expanded ? "calc(100% - 24px)" : "calc(100% - 24px)" }}
-                title={!expanded ? UI_LABELS.jobsNavLabel : undefined}
+                style={{ width: "calc(100% - 24px)" }}
               >
                 <TasksIcon className="w-6 h-6 flex-shrink-0" />
-                {expanded && (
-                  <>
-                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                      {UI_LABELS.jobsNavLabel}
-                    </span>
-                    {tasksExpanded ? (
-                      <ChevronDown className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-400" />
-                    )}
-                  </>
+                <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                  {UI_LABELS.jobsNavLabel}
+                </span>
+                {tasksExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
                 )}
               </button>
 
-              {/* Boards Sub-items (when expanded) */}
-              {expanded && tasksExpanded && (
+              {/* Boards Sub-items */}
+              {tasksExpanded && (
                 <ul className="mt-1 ml-6 space-y-0.5">
                   {/* All Tasks */}
                   <li>
@@ -371,7 +337,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
                       className="
                         flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm
                         text-gray-500 hover:bg-gray-50 hover:text-gray-700
-                        transition-all duration-150 w-full
+                        transition-all duration-150
                       "
                       style={{ width: "calc(100% - 24px)" }}
                     >
@@ -402,16 +368,12 @@ export function Sidebar({ className = "" }: SidebarProps) {
                         ? "bg-gray-100 text-gray-900" 
                         : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                       }
-                      ${expanded ? "" : "justify-center"}
                     `}
-                    title={!expanded ? item.label : undefined}
                   >
                     <Icon className="w-6 h-6 flex-shrink-0" />
-                    {expanded && (
-                      <span className="text-base font-normal whitespace-nowrap">
-                        {item.label}
-                      </span>
-                    )}
+                    <span className="text-base font-normal whitespace-nowrap">
+                      {item.label}
+                    </span>
                   </Link>
                 </li>
               )

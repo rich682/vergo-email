@@ -37,8 +37,8 @@ export default async function DashboardLayout({
       {/* Sidebar */}
       <Sidebar />
       
-      {/* Main content area - offset by sidebar width (w-20 = 5rem = 80px) */}
-      <div className="pl-20">
+      {/* Main content area - offset by sidebar width (w-64 = 16rem = 256px) */}
+      <div className="pl-64">
         {/* Top header bar */}
         <header className="h-20 border-b border-gray-100 flex items-center justify-between px-8">
           {/* Page title on the left */}
