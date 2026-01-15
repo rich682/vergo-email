@@ -496,6 +496,37 @@ Use plain language. Be concise.`
       }
     }
   ),
+  // Scheduled function to automatically sync Microsoft/Outlook accounts for new replies
+  inngest.createFunction(
+    { 
+      id: "sync-microsoft-accounts",
+      name: "Sync Microsoft Accounts for Replies"
+    },
+    { 
+      cron: "* * * * *" // Run every 1 minute
+    },
+    async () => {
+      try {
+        console.log("[Inngest Sync] Starting scheduled Microsoft sync...")
+        const result = await EmailSyncService.syncMicrosoftAccounts()
+        console.log(`[Inngest Sync] Microsoft completed: ${result.accountsProcessed} accounts, ${result.messagesFetched} messages fetched, ${result.repliesPersisted} replies persisted, ${result.errors} errors`)
+        return {
+          success: true,
+          accountsProcessed: result.accountsProcessed,
+          messagesFetched: result.messagesFetched,
+          repliesPersisted: result.repliesPersisted,
+          errors: result.errors
+        }
+      } catch (error: any) {
+        console.error("[Inngest Sync] Error syncing Microsoft accounts:", error)
+        // Don't throw - allow retry on next schedule
+        return {
+          success: false,
+          error: error.message
+        }
+      }
+    }
+  ),
   // Scheduled function to send due reminders
   inngest.createFunction(
     {
