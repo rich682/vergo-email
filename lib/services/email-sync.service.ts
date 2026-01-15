@@ -8,6 +8,10 @@ import {
 } from "@/lib/providers/email-ingest/types"
 import { GmailIngestProvider } from "@/lib/providers/email-ingest/gmail-ingest.provider"
 import { MicrosoftIngestProvider } from "@/lib/providers/email-ingest/microsoft-ingest.provider"
+import { logger } from "@/lib/logger"
+
+// Create service-specific logger
+const log = logger.child({ service: "EmailSyncService" })
 
 type SyncSummary = {
   accountsProcessed: number
@@ -65,13 +69,7 @@ export class EmailSyncService {
   static async syncAccountsByProvider(
     provider: EmailProvider
   ): Promise<SyncSummary> {
-    console.log(
-      JSON.stringify({
-        event: "sync_start",
-        provider,
-        timestampMs: Date.now(),
-      })
-    )
+    log.info("Starting email sync", { provider }, { operation: "syncAccountsByProvider" })
 
     const accounts = await prisma.connectedEmailAccount.findMany({
       where: { provider, isActive: true },
@@ -94,15 +92,10 @@ export class EmailSyncService {
           .update(account.id)
           .digest("hex")
           .substring(0, 16)
-        console.error(
-          JSON.stringify({
-            event: "sync_account_error",
-            provider,
-            accountHash,
-            timestampMs: Date.now(),
-            error: error.message?.substring(0, 200),
-          })
-        )
+        log.error("Sync account error", error, {
+          provider,
+          accountHash
+        }, { operation: "syncAccountsByProvider" })
         errors++
       }
     }
@@ -114,14 +107,10 @@ export class EmailSyncService {
       errors,
     }
 
-    console.log(
-      JSON.stringify({
-        event: "sync_complete",
-        provider,
-        timestampMs: Date.now(),
-        ...summary,
-      })
-    )
+    log.info("Email sync complete", {
+      provider,
+      ...summary
+    }, { operation: "syncAccountsByProvider" })
 
     return summary
   }
@@ -136,28 +125,20 @@ export class EmailSyncService {
     const adapter = this.providerMap[account.provider]
 
     if (!adapter) {
-      console.warn(
-        JSON.stringify({
-          event: "sync_account_skipped",
-          provider: account.provider,
-          accountHash,
-          reason: "no_adapter",
-          timestampMs: Date.now(),
-        })
-      )
+      log.warn("Sync account skipped - no adapter", {
+        provider: account.provider,
+        accountHash,
+        reason: "no_adapter"
+      }, { operation: "syncAccount" })
       return { messagesFetched: 0, repliesPersisted: 0, skipped: 0, errors: 0 }
     }
 
     const cursor = (account.syncCursor as ProviderCursor) || null
-    console.log(
-      JSON.stringify({
-        event: "sync_account_start",
-        provider: account.provider,
-        accountHash,
-        cursorBefore: cursor,
-        timestampMs: Date.now(),
-      })
-    )
+    log.debug("Sync account start", {
+      provider: account.provider,
+      accountHash,
+      hasCursor: !!cursor
+    }, { operation: "syncAccount" })
 
     const fetchResult = await adapter.fetchInboundSinceCursor(account, cursor)
     const inboundMessages = fetchResult.messages || []

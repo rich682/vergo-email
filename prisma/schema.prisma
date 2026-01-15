@@ -108,6 +108,11 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Auth token fields for verification, password reset, and invites
+  emailVerified     Boolean   @default(false)
+  verificationToken String?   @unique
+  tokenExpiresAt    DateTime?
+
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   emailDrafts       EmailDraft[]
   ownedJobs         Job[]             @relation("JobOwner")
@@ -117,6 +122,7 @@ model User {
 
   @@index([organizationId])
   @@index([email])
+  @@index([verificationToken])
 }
 
 model Entity {

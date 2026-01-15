@@ -12,6 +12,10 @@ import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 import { ReminderStateService } from "./reminder-state.service"
 import { prisma } from "@/lib/prisma"
+import { logger } from "@/lib/logger"
+
+// Create service-specific logger
+const log = logger.child({ service: "EmailSendingService" })
 
 export class EmailSendingService {
   static generateThreadId(): string {
@@ -197,8 +201,16 @@ export class EmailSendingService {
     }
 
     if (!account) {
+      log.error("No active email account found", undefined, { organizationId: data.organizationId })
       throw new Error("No active email account found")
     }
+
+    log.info("Sending email", {
+      to: data.to,
+      subject: data.subject.substring(0, 50),
+      provider: "provider" in account ? account.provider : "SMTP",
+      jobId: data.jobId
+    }, { organizationId: data.organizationId, operation: "sendEmail" })
 
     // Generate thread ID for internal tracking
     const threadId = this.generateThreadId()
@@ -285,6 +297,13 @@ export class EmailSendingService {
       providerData: sendResult.providerData,
       trackingToken
     })
+
+    log.info("Email sent successfully", {
+      taskId: task.id,
+      threadId,
+      messageId: sendResult.messageId,
+      to: data.to
+    }, { organizationId: data.organizationId, operation: "sendEmail" })
 
     return {
       taskId: task.id,
@@ -455,6 +474,11 @@ export class EmailSendingService {
           ...result
         })
       } catch (error: any) {
+        log.error("Failed to send email to recipient", error, {
+          email: recipient.email,
+          campaignName: data.campaignName
+        }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
+        
         results.push({
           email: recipient.email,
           taskId: "",
@@ -474,8 +498,8 @@ export class EmailSendingService {
         for (const taskId of successfulTaskIds) {
           try {
             await ReminderStateService.initializeForTask(taskId, data.remindersConfig)
-          } catch (error) {
-            console.error("[EmailSendingService] Failed to initialize reminders for task", taskId, error)
+          } catch (error: any) {
+            log.error("Failed to initialize reminders for task", error, { taskId }, { organizationId: data.organizationId })
           }
         }
       }

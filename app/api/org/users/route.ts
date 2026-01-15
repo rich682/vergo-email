@@ -12,6 +12,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { UserRole } from "@prisma/client"
+import { AuthEmailService } from "@/lib/services/auth-email.service"
 
 /**
  * GET /api/org/users - List users in organization
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
  * Admin-only endpoint
  * 
  * Creates a user record with status "pending" (empty password)
- * For demo purposes, no email is sent - user appears as "Invited/Pending"
+ * Sends an invitation email with a link to set password
  */
 export async function POST(request: NextRequest) {
   try {
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userRole = (session.user as any).role as UserRole
+    const inviterName = (session.user as any).name || (session.user as any).email
 
     // Admin-only check
     if (userRole !== UserRole.ADMIN) {
@@ -143,15 +145,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create user with empty password (pending status)
-    // User cannot login until password is set
+    // Get organization name for the invite email
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true }
+    })
+
+    // Generate invite token
+    const inviteToken = AuthEmailService.generateToken()
+    const tokenExpiresAt = AuthEmailService.getTokenExpiry("invite")
+
+    // Create user with empty password (pending status) and invite token
     const newUser = await prisma.user.create({
       data: {
         email: email.toLowerCase().trim(),
         name: name?.trim() || null,
         role: userRoleToSet,
         organizationId,
-        passwordHash: ""  // Empty = pending, cannot login
+        passwordHash: "",  // Empty = pending, cannot login
+        verificationToken: inviteToken,
+        tokenExpiresAt: tokenExpiresAt,
+        emailVerified: false
       },
       select: {
         id: true,
@@ -163,8 +177,25 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // Send invitation email
+    const emailResult = await AuthEmailService.sendTeamInviteEmail(
+      newUser.email,
+      inviteToken,
+      organization?.name || "your team",
+      inviterName,
+      userRoleToSet
+    )
+
+    if (!emailResult.success) {
+      console.error(`[InviteUser] Failed to send invite email to ${newUser.email}:`, emailResult.error)
+      // Don't fail the request - user is created, they just need a resend
+    } else {
+      console.log(`[InviteUser] Invite email sent to ${newUser.email}`)
+    }
+
     return NextResponse.json({
       success: true,
+      emailSent: emailResult.success,
       user: {
         ...newUser,
         status: "pending",

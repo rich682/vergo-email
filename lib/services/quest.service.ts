@@ -17,6 +17,7 @@ import { EmailDraftService } from "./email-draft.service"
 import { AIEmailGenerationService } from "./ai-email-generation.service"
 import { EmailSendingService } from "./email-sending.service"
 import { resolveRecipientsWithReasons } from "./recipient-filter.service"
+import { logger } from "@/lib/logger"
 import type {
   Quest,
   QuestType,
@@ -31,6 +32,9 @@ import type {
   StandingQuestMetadata,
   StandingQuestSchedule
 } from "@/lib/types/quest"
+
+// Create service-specific logger
+const log = logger.child({ service: "QuestService" })
 
 // Metadata key for Quest data stored in EmailDraft JSON columns
 const QUEST_METADATA_KEY = "questMetadata"
@@ -371,6 +375,13 @@ export class QuestService {
     })
     const jobId = emailDraft?.jobId || null
 
+    log.info("Executing quest", {
+      questId: id,
+      jobId,
+      questType: quest.type,
+      status: quest.status
+    }, { organizationId, operation: "execute" })
+
     // Update status to executing
     await this.updateQuestMetadata(id, organizationId, {
       status: "executing"
@@ -464,6 +475,13 @@ export class QuestService {
         sentAt: new Date()
       })
 
+      log.info("Quest execution complete", {
+        questId: id,
+        emailsSent: successful.length,
+        errors: errors.length,
+        finalStatus
+      }, { organizationId, operation: "execute" })
+
       return {
         success: successful.length > 0,
         emailsSent: successful.length,
@@ -471,6 +489,10 @@ export class QuestService {
         errors: errors.length > 0 ? errors : undefined
       }
     } catch (error: any) {
+      log.error("Quest execution failed", error, {
+        questId: id
+      }, { organizationId, operation: "execute" })
+      
       await this.updateQuestMetadata(id, organizationId, {
         status: "failed"
       })
