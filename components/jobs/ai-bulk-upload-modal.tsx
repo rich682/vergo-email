@@ -24,11 +24,12 @@ interface AIBulkUploadModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImportComplete: () => void
+  boardId?: string | null
 }
 
 type UploadState = "idle" | "parsing" | "interpreting" | "preview" | "importing" | "complete" | "error"
 
-export function AIBulkUploadModal({ open, onOpenChange, onImportComplete }: AIBulkUploadModalProps) {
+export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardId }: AIBulkUploadModalProps) {
   const [state, setState] = useState<UploadState>("idle")
   const [fileName, setFileName] = useState<string | null>(null)
   const [rawRows, setRawRows] = useState<string[][]>([])
@@ -156,7 +157,8 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete }: AIBu
           body: JSON.stringify({
             name: item.name,
             dueDate: item.dueDate || undefined,
-            ownerId: item.ownerId || undefined
+            ownerId: item.ownerId || undefined,
+            boardId: boardId || undefined
           })
         })
         imported++

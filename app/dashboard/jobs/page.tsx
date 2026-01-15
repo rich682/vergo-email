@@ -24,11 +24,14 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Loader2
+  Loader2,
+  Copy,
+  Sparkles
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
+import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 
 // ============================================
 // Types
@@ -177,6 +180,7 @@ function TaskRow({
   teamMembers,
   onStatusChange,
   onDelete,
+  onDuplicate,
   expandedSubtasks,
   onToggleSubtasks
 }: { 
@@ -184,6 +188,7 @@ function TaskRow({
   teamMembers: { id: string; name: string | null; email: string }[]
   onStatusChange: (jobId: string, status: string) => void
   onDelete: (jobId: string) => void
+  onDuplicate: (jobId: string) => void
   expandedSubtasks: Set<string>
   onToggleSubtasks: (jobId: string) => void
 }) {
@@ -330,6 +335,17 @@ function TaskRow({
                 onClick={(e) => {
                   e.stopPropagation()
                   setMenuOpen(false)
+                  onDuplicate(job.id)
+                }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicate
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMenuOpen(false)
                   onDelete(job.id)
                 }}
                 className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
@@ -412,6 +428,7 @@ function StatusGroup({
   teamMembers,
   onStatusChange,
   onDelete,
+  onDuplicate,
   expandedSubtasks,
   onToggleSubtasks,
   onAddTask
@@ -421,6 +438,7 @@ function StatusGroup({
   teamMembers: { id: string; name: string | null; email: string }[]
   onStatusChange: (jobId: string, status: string) => void
   onDelete: (jobId: string) => void
+  onDuplicate: (jobId: string) => void
   expandedSubtasks: Set<string>
   onToggleSubtasks: (jobId: string) => void
   onAddTask: () => void
@@ -476,6 +494,7 @@ function StatusGroup({
                   teamMembers={teamMembers}
                   onStatusChange={onStatusChange}
                   onDelete={onDelete}
+                  onDuplicate={onDuplicate}
                   expandedSubtasks={expandedSubtasks}
                   onToggleSubtasks={onToggleSubtasks}
                 />
@@ -535,6 +554,9 @@ export default function JobsPage() {
   const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
   const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
   const [stakeholderSearchResults, setStakeholderSearchResults] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null }[]>([])
+  
+  // Bulk upload modal
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
 
   // ============================================
   // Data fetching
@@ -680,6 +702,33 @@ export default function JobsPage() {
     }
   }
 
+  const handleDuplicate = async (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId)
+    if (!job) return
+    
+    try {
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: `${job.name} (Copy)`,
+          description: job.description,
+          dueDate: job.dueDate,
+          ownerId: job.ownerId,
+          labels: job.labels,
+          boardId: boardId || undefined
+        })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setJobs(prev => [data.job, ...prev])
+      }
+    } catch (error) {
+      console.error("Error duplicating job:", error)
+    }
+  }
+
   const handleToggleSubtasks = (jobId: string) => {
     setExpandedSubtasks(prev => {
       const next = new Set(prev)
@@ -792,13 +841,19 @@ export default function JobsPage() {
             )}
           </div>
           
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                New Task
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI Bulk Add
+            </Button>
+            
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Task
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
@@ -963,6 +1018,7 @@ export default function JobsPage() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Search */}
@@ -1006,6 +1062,7 @@ export default function JobsPage() {
                 teamMembers={teamMembers}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
+                onDuplicate={handleDuplicate}
                 expandedSubtasks={expandedSubtasks}
                 onToggleSubtasks={handleToggleSubtasks}
                 onAddTask={() => setIsCreateOpen(true)}
@@ -1014,6 +1071,17 @@ export default function JobsPage() {
           </div>
         )}
       </div>
+      
+      {/* AI Bulk Upload Modal */}
+      <AIBulkUploadModal
+        open={isBulkUploadOpen}
+        onOpenChange={setIsBulkUploadOpen}
+        onImportComplete={() => {
+          setIsBulkUploadOpen(false)
+          fetchJobs()
+        }}
+        boardId={boardId}
+      />
     </div>
   )
 }

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/boards - Create a new board
+ * POST /api/boards - Create a new board (or duplicate an existing one)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, periodStart, periodEnd } = body
+    const { name, description, periodStart, periodEnd, duplicateFromId } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
@@ -68,14 +68,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const board = await BoardService.create({
-      organizationId,
-      name: name.trim(),
-      description: description?.trim() || undefined,
-      periodStart: periodStart ? new Date(periodStart) : undefined,
-      periodEnd: periodEnd ? new Date(periodEnd) : undefined,
-      createdById: userId
-    })
+    let board
+
+    // If duplicating from an existing board
+    if (duplicateFromId) {
+      board = await BoardService.duplicate(
+        duplicateFromId,
+        organizationId,
+        name.trim(),
+        userId
+      )
+    } else {
+      // Create a new board
+      board = await BoardService.create({
+        organizationId,
+        name: name.trim(),
+        description: description?.trim() || undefined,
+        periodStart: periodStart ? new Date(periodStart) : undefined,
+        periodEnd: periodEnd ? new Date(periodEnd) : undefined,
+        createdById: userId
+      })
+    }
 
     return NextResponse.json({ board }, { status: 201 })
   } catch (error: any) {

@@ -244,4 +244,78 @@ export class BoardService {
     })
     return !!board
   }
+
+  /**
+   * Duplicate a board with all its jobs and subtasks
+   */
+  static async duplicate(
+    sourceBoardId: string,
+    organizationId: string,
+    newName: string,
+    createdById: string
+  ): Promise<Board> {
+    // Get the source board with all jobs and subtasks
+    const sourceBoard = await prisma.board.findFirst({
+      where: { id: sourceBoardId, organizationId },
+      include: {
+        jobs: {
+          include: {
+            subtasks: true
+          }
+        }
+      }
+    })
+
+    if (!sourceBoard) {
+      throw new Error("Source board not found")
+    }
+
+    // Create the new board
+    const newBoard = await prisma.board.create({
+      data: {
+        organizationId,
+        name: newName,
+        description: sourceBoard.description,
+        periodStart: sourceBoard.periodStart,
+        periodEnd: sourceBoard.periodEnd,
+        createdById,
+        status: "OPEN"
+      }
+    })
+
+    // Duplicate all jobs
+    for (const job of sourceBoard.jobs) {
+      const newJob = await prisma.job.create({
+        data: {
+          organizationId,
+          boardId: newBoard.id,
+          name: job.name,
+          description: job.description,
+          ownerId: job.ownerId,
+          status: "ACTIVE", // Reset status for new board
+          dueDate: job.dueDate,
+          labels: job.labels as any,
+          sortOrder: job.sortOrder
+        }
+      })
+
+      // Duplicate subtasks for this job
+      for (const subtask of job.subtasks) {
+        await prisma.subtask.create({
+          data: {
+            organizationId,
+            jobId: newJob.id,
+            title: subtask.title,
+            description: subtask.description,
+            ownerId: subtask.ownerId,
+            status: "NOT_STARTED", // Reset status
+            dueDate: subtask.dueDate,
+            sortOrder: subtask.sortOrder
+          }
+        })
+      }
+    }
+
+    return newBoard
+  }
 }

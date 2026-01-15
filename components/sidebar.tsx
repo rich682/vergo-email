@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2, Copy } from "lucide-react"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 
 interface SidebarProps {
@@ -192,6 +192,31 @@ export function Sidebar({ className = "" }: SidebarProps) {
     }
   }
 
+  const handleDuplicateBoard = async (boardId: string) => {
+    const board = boards.find(b => b.id === boardId)
+    if (!board) return
+    
+    try {
+      // Create a new board with the same name + (Copy)
+      const response = await fetch("/api/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${board.name} (Copy)`,
+          duplicateFromId: boardId
+        })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        fetchBoards()
+        setBoardMenuOpen(null)
+        router.push(`/dashboard/jobs?boardId=${data.board.id}`)
+      }
+    } catch (error) {
+      console.error("Error duplicating board:", error)
+    }
+  }
+
   return (
     <>
       <div
@@ -305,6 +330,13 @@ export function Sidebar({ className = "" }: SidebarProps) {
                         {/* Board context menu */}
                         {boardMenuOpen === board.id && (
                           <div className="absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-50">
+                            <button
+                              onClick={() => handleDuplicateBoard(board.id)}
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <Copy className="w-4 h-4" />
+                              Duplicate
+                            </button>
                             <button
                               onClick={() => handleArchiveBoard(board.id)}
                               className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"

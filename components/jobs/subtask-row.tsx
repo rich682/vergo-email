@@ -11,7 +11,8 @@ import {
   Trash2,
   MoreHorizontal,
   User,
-  ChevronDown
+  ChevronDown,
+  Copy
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ interface SubtaskRowProps {
   teamMembers: TeamMember[]
   onUpdate: (id: string, data: Partial<Subtask>) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onDuplicate: (id: string) => Promise<void>
   onViewAttachments: (id: string) => void
 }
 
@@ -114,6 +116,7 @@ export function SubtaskRow({
   teamMembers,
   onUpdate,
   onDelete,
+  onDuplicate,
   onViewAttachments
 }: SubtaskRowProps) {
   const [isEditing, setIsEditing] = useState(false)
@@ -303,6 +306,13 @@ export function SubtaskRow({
         align="right"
       >
         <div className="py-1">
+          <button
+            onClick={() => onDuplicate(subtask.id)}
+            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Duplicate
+          </button>
           <button
             onClick={() => {
               if (window.confirm("Delete this subtask?")) {

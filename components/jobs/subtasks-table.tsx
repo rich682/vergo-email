@@ -130,6 +130,33 @@ export function SubtasksTable({
     }
   }
 
+  const handleDuplicateSubtask = async (id: string) => {
+    const subtask = subtasks.find(s => s.id === id)
+    if (!subtask) return
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/subtasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `${subtask.title} (Copy)`,
+          description: subtask.description,
+          ownerId: subtask.owner?.id,
+          dueDate: subtask.dueDate
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to duplicate subtask")
+      }
+
+      const data = await response.json()
+      setSubtasks([...subtasks, data.subtask])
+    } catch (error) {
+      console.error("Failed to duplicate subtask:", error)
+    }
+  }
+
   const completedCount = subtasks.filter(s => s.status === "DONE").length
   const totalCount = subtasks.length
 
@@ -173,6 +200,7 @@ export function SubtasksTable({
             teamMembers={teamMembers}
             onUpdate={handleUpdateSubtask}
             onDelete={handleDeleteSubtask}
+            onDuplicate={handleDuplicateSubtask}
             onViewAttachments={onViewAttachments}
           />
         ))}
