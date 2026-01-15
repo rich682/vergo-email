@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -12,6 +12,12 @@ interface SidebarProps {
 // Feature flag check for Jobs UI
 function isJobsUIEnabled(): boolean {
   return process.env.NEXT_PUBLIC_JOBS_UI === "true"
+}
+
+// Organization features type
+interface OrgFeatures {
+  expenses: boolean
+  ap: boolean
 }
 
 // Custom icons matching Vergo style (outline, thin strokes)
@@ -54,11 +60,35 @@ function SettingsIcon({ className }: { className?: string }) {
   )
 }
 
+function ExpensesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 16h4" />
+      <path d="M14 16h4" />
+    </svg>
+  )
+}
+
+function APIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14,2 14,8 20,8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <line x1="10" y1="9" x2="8" y2="9" />
+    </svg>
+  )
+}
+
 interface NavItem {
   href: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  featureFlag?: () => boolean
+  envFeatureFlag?: () => boolean  // Environment-based feature flag
+  orgFeatureKey?: keyof OrgFeatures  // Organization-based feature flag
 }
 
 const navItems: NavItem[] = [
@@ -66,12 +96,24 @@ const navItems: NavItem[] = [
     href: "/dashboard/jobs", 
     label: UI_LABELS.jobsNavLabel, 
     icon: ChecklistIcon,
-    featureFlag: isJobsUIEnabled 
+    envFeatureFlag: isJobsUIEnabled 
   },
   { 
     href: "/dashboard/contacts", 
     label: "Contacts", 
     icon: ContactsIcon 
+  },
+  {
+    href: "/dashboard/expenses",
+    label: "Expenses",
+    icon: ExpensesIcon,
+    orgFeatureKey: "expenses"
+  },
+  {
+    href: "/dashboard/ap",
+    label: "AP",
+    icon: APIcon,
+    orgFeatureKey: "ap"
   },
   { 
     href: "/dashboard/settings/team", 
@@ -87,7 +129,38 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ className = "" }: SidebarProps) {
   const [expanded, setExpanded] = useState(false)
+  const [orgFeatures, setOrgFeatures] = useState<OrgFeatures | null>(null)
   const pathname = usePathname()
+
+  // Fetch organization features on mount
+  useEffect(() => {
+    async function fetchFeatures() {
+      try {
+        const response = await fetch('/api/org/features', { credentials: 'include' })
+        if (response.ok) {
+          const data = await response.json()
+          setOrgFeatures(data.features)
+        }
+      } catch (error) {
+        console.error('Failed to fetch org features:', error)
+      }
+    }
+    fetchFeatures()
+  }, [])
+
+  // Filter nav items based on feature flags
+  const visibleNavItems = navItems.filter((item) => {
+    // Check environment-based feature flag
+    if (item.envFeatureFlag && !item.envFeatureFlag()) {
+      return false
+    }
+    // Check organization-based feature flag
+    if (item.orgFeatureKey) {
+      // Show if features haven't loaded yet (to avoid flash) or if enabled
+      return orgFeatures === null || orgFeatures[item.orgFeatureKey]
+    }
+    return true
+  })
 
   return (
     <div
@@ -130,42 +203,40 @@ export function Sidebar({ className = "" }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 pt-4">
         <ul className="space-y-1">
-          {navItems
-            .filter((item) => !item.featureFlag || item.featureFlag())
-            .map((item) => {
-              // Check if active - special handling for settings to not highlight when on team page
-              let isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-              // Don't highlight Settings when on Team page
-              if (item.href === "/dashboard/settings" && pathname.startsWith("/dashboard/settings/team")) {
-                isActive = false
-              }
-              const Icon = item.icon
-              
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`
-                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                      transition-all duration-150
-                      ${isActive 
-                        ? "bg-gray-100 text-gray-900" 
-                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                      }
-                      ${expanded ? "" : "justify-center"}
-                    `}
-                    title={!expanded ? item.label : undefined}
-                  >
-                    <Icon className="w-6 h-6 flex-shrink-0" />
-                    {expanded && (
-                      <span className="text-base font-normal whitespace-nowrap">
-                        {item.label}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
+          {visibleNavItems.map((item) => {
+            // Check if active - special handling for settings to not highlight when on team page
+            let isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+            // Don't highlight Settings when on Team page
+            if (item.href === "/dashboard/settings" && pathname.startsWith("/dashboard/settings/team")) {
+              isActive = false
+            }
+            const Icon = item.icon
+            
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`
+                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                    transition-all duration-150
+                    ${isActive 
+                      ? "bg-gray-100 text-gray-900" 
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }
+                    ${expanded ? "" : "justify-center"}
+                  `}
+                  title={!expanded ? item.label : undefined}
+                >
+                  <Icon className="w-6 h-6 flex-shrink-0" />
+                  {expanded && (
+                    <span className="text-base font-normal whitespace-nowrap">
+                      {item.label}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       </nav>
     </div>
