@@ -6,10 +6,11 @@ import { v4 as uuidv4 } from "uuid"
 export class TaskCreationService {
   static async createTaskFromEmail(data: {
     organizationId: string
+    jobId?: string | null  // Parent Job/Item for request-level association
     entityEmail: string
     entityName?: string
-    campaignName?: string
-    campaignType?: string
+    campaignName?: string  // Legacy - kept for backwards compatibility
+    campaignType?: string  // Legacy - kept for backwards compatibility
     threadId: string
     replyToEmail: string
     subject?: string
@@ -29,13 +30,14 @@ export class TaskCreationService {
       organizationId: data.organizationId
     })
 
-    // Create task
+    // Create task with jobId for direct Item association
     return prisma.task.create({
       data: {
         organizationId: data.organizationId,
+        jobId: data.jobId || null,  // Link task directly to Item
         entityId: entity.id,
-        campaignName: data.campaignName || null,
-        campaignType: data.campaignType as any || null,
+        campaignName: data.campaignName || null,  // Legacy
+        campaignType: data.campaignType as any || null,  // Legacy
         status: "AWAITING_RESPONSE",
         threadId: data.threadId,
         replyToEmail: data.replyToEmail,

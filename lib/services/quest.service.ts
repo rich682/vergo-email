@@ -364,6 +364,13 @@ export class QuestService {
       throw new Error(`Quest is not ready for execution. Current status: ${quest.status}`)
     }
 
+    // Get the jobId from the underlying EmailDraft for task association
+    const emailDraft = await prisma.emailDraft.findFirst({
+      where: { id, organizationId },
+      select: { jobId: true }
+    })
+    const jobId = emailDraft?.jobId || null
+
     // Update status to executing
     await this.updateQuestMetadata(id, organizationId, {
       status: "executing"
@@ -416,13 +423,15 @@ export class QuestService {
         }
       })
 
-      // Generate a clean campaign name from the subject (not the prompt)
+      // Generate a clean campaign name from the subject (legacy - kept for backwards compatibility)
       // Use the first recipient's rendered subject as the campaign name
       const campaignName = perRecipientEmails[0]?.subject || quest.originalPrompt.substring(0, 50)
 
       // Send emails with personalized content
+      // Pass jobId to link created Tasks directly to the parent Item
       const results = await EmailSendingService.sendBulkEmail({
         organizationId,
+        jobId,  // Link tasks directly to Item (new approach)
         recipients: recipientResult.recipients.map(r => ({
           email: r.email,
           name: r.firstName || r.name || undefined
@@ -431,7 +440,7 @@ export class QuestService {
         body: quest.body || "",
         htmlBody: quest.htmlBody,
         perRecipientEmails,
-        campaignName,
+        campaignName,  // Legacy - kept for backwards compatibility
         deadlineDate: quest.scheduleConfig?.deadline || null,
         remindersConfig
       })

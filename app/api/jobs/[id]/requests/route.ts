@@ -5,6 +5,9 @@
  * 
  * Returns a list of EmailDrafts that have jobId set to this job.
  * These represent the "Requests" created within the Job context.
+ * 
+ * Tasks are now linked directly via jobId (new approach) with fallback to
+ * campaignName matching (legacy approach) for backwards compatibility.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -13,6 +16,8 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { JobService } from "@/lib/services/job.service"
 import { UserRole } from "@prisma/client"
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: NextRequest,
@@ -51,7 +56,6 @@ export async function GET(
     }
 
     // Fetch EmailDrafts (Requests) for this job
-    console.log(`Fetching requests for job ${jobId}, org ${organizationId}`)
     const requests = await prisma.emailDraft.findMany({
       where: {
         jobId,
@@ -66,7 +70,7 @@ export async function GET(
         subjectTemplate: true,
         bodyTemplate: true,
         htmlBodyTemplate: true,
-        suggestedCampaignName: true,
+        suggestedCampaignName: true,  // Legacy - kept for backwards compatibility
         status: true,
         sentAt: true,
         createdAt: true,
@@ -83,26 +87,22 @@ export async function GET(
       orderBy: { createdAt: "desc" }
     })
 
-    console.log(`Found ${requests.length} requests for job ${jobId}`)
-
-    // Get task counts for each request (by campaignName)
-    const campaignNames = requests
-      .map(r => r.suggestedCampaignName)
-      .filter((name): name is string => !!name)
-
-    // Get tasks with their details for each campaign
-    const tasks = await prisma.task.findMany({
+    // Get tasks directly by jobId (new approach)
+    // This is the primary way to find tasks associated with this Item
+    const tasksByJobId = await prisma.task.findMany({
       where: {
         organizationId,
-        campaignName: { in: campaignNames }
+        jobId
       },
       select: {
         id: true,
-        campaignName: true,
+        jobId: true,
+        campaignName: true,  // Legacy - kept for grouping fallback
         status: true,
         remindersEnabled: true,
         remindersFrequencyHours: true,
         remindersMaxCount: true,
+        createdAt: true,
         entity: {
           select: {
             id: true,
@@ -125,22 +125,87 @@ export async function GET(
       }
     })
 
-    // Group tasks by campaign name
-    const tasksByCampaign = new Map<string, typeof tasks>()
-    for (const task of tasks) {
-      if (task.campaignName) {
-        const existing = tasksByCampaign.get(task.campaignName) || []
-        existing.push(task)
-        tasksByCampaign.set(task.campaignName, existing)
+    // Legacy fallback: Get tasks by campaignName for older requests
+    // that were created before jobId was added to tasks
+    const campaignNames = requests
+      .map(r => r.suggestedCampaignName)
+      .filter((name): name is string => !!name)
+
+    const tasksByCampaignName = campaignNames.length > 0
+      ? await prisma.task.findMany({
+          where: {
+            organizationId,
+            jobId: null,  // Only get tasks without jobId (legacy)
+            campaignName: { in: campaignNames }
+          },
+          select: {
+            id: true,
+            jobId: true,
+            campaignName: true,
+            status: true,
+            remindersEnabled: true,
+            remindersFrequencyHours: true,
+            remindersMaxCount: true,
+            createdAt: true,
+            entity: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true
+              }
+            },
+            messages: {
+              where: { direction: "OUTBOUND" },
+              orderBy: { sentAt: "asc" },
+              take: 1,
+              select: {
+                id: true,
+                subject: true,
+                body: true,
+                sentAt: true
+              }
+            }
+          }
+        })
+      : []
+
+    // Combine all tasks (deduplicate by id)
+    const allTasksMap = new Map<string, typeof tasksByJobId[0]>()
+    for (const task of tasksByJobId) {
+      allTasksMap.set(task.id, task)
+    }
+    for (const task of tasksByCampaignName) {
+      if (!allTasksMap.has(task.id)) {
+        allTasksMap.set(task.id, task)
       }
     }
+    const allTasks = Array.from(allTasksMap.values())
 
-    // Enrich requests with task details and reminder info
+    // Group tasks by request
+    // For new tasks: match by createdAt proximity to request sentAt
+    // For legacy tasks: match by campaignName
     const enrichedRequests = requests.map(request => {
-      const requestTasks = request.suggestedCampaignName 
-        ? tasksByCampaign.get(request.suggestedCampaignName) || []
-        : []
-      
+      // Find tasks for this request
+      let requestTasks: typeof allTasks = []
+
+      // First, try to match tasks created around the same time as the request was sent
+      if (request.sentAt) {
+        const sentTime = new Date(request.sentAt).getTime()
+        // Tasks created within 5 minutes of the request being sent
+        requestTasks = allTasks.filter(task => {
+          const taskTime = new Date(task.createdAt).getTime()
+          return Math.abs(taskTime - sentTime) < 5 * 60 * 1000 // 5 minutes
+        })
+      }
+
+      // Fallback: match by campaignName (legacy)
+      if (requestTasks.length === 0 && request.suggestedCampaignName) {
+        requestTasks = allTasks.filter(task => 
+          task.campaignName === request.suggestedCampaignName
+        )
+      }
+
       // Get reminder config from first task (all tasks in a request share the same config)
       const firstTask = requestTasks[0]
       const reminderConfig = firstTask ? {

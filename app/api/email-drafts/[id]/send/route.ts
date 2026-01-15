@@ -454,13 +454,15 @@ export async function POST(
     }
 
     // Send emails with per-recipient rendering
+    // Pass jobId to link tasks directly to Item (if draft has one)
     const results = await EmailSendingService.sendBulkEmail({
       organizationId: orgId,
+      jobId: draft.jobId || undefined,  // Link tasks directly to Item
       recipients: renderedEmails.map(e => ({ email: e.email, name: e.name })),
       subject: subjectTemplate, // Will be overridden per-recipient if personalization
       body: bodyTemplate, // Will be overridden per-recipient if personalization
       htmlBody: htmlBodyTemplate, // Will be overridden per-recipient if personalization
-      campaignName: campaignName || draft.suggestedCampaignName || undefined,
+      campaignName: campaignName || draft.suggestedCampaignName || undefined,  // Legacy
       accountId: emailAccountId,
       deadlineDate: deadlineDate || undefined,
       remindersConfig: remindersConfig || undefined,

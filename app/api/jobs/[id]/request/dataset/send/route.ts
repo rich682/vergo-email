@@ -172,22 +172,25 @@ export async function POST(
         // Extract name from data for display
         const recipientName = dataJson.first_name || dataJson.name || dataJson.full_name || undefined
 
-        // Send email
+        // Send email with jobId to link task directly to Item
         const sendResult = await EmailSendingService.sendEmail({
           organizationId,
+          jobId,  // Link task directly to Item
           to: recipient.recipientEmail,
           toName: recipientName,
           subject: subjectResult.rendered,
           body: bodyResult.rendered,
           htmlBody,
-          campaignName,
+          campaignName,  // Legacy - kept for backwards compatibility
           campaignType: CampaignType.DOCUMENT_REQUEST,
           deadlineDate: job.dueDate || undefined,
-          remindersEnabled: reminderConfig?.enabled || false,
-          remindersFrequencyHours: reminderConfig?.frequencyDays 
-            ? reminderConfig.frequencyDays * 24 
-            : undefined,
-          remindersMaxCount: reminderConfig?.maxCount
+          remindersConfig: reminderConfig?.enabled ? {
+            enabled: true,
+            startDelayHours: 24,  // Default start delay
+            frequencyHours: reminderConfig.frequencyDays ? reminderConfig.frequencyDays * 24 : 168,
+            maxCount: reminderConfig.maxCount || 3,
+            approved: true
+          } : undefined
         })
 
         // Update PersonalizationData with send status
@@ -199,14 +202,6 @@ export async function POST(
             renderStatus: "ok"
           }
         })
-
-        // Link task to job if possible
-        if (sendResult.taskId) {
-          await prisma.task.update({
-            where: { id: sendResult.taskId },
-            data: { jobId }
-          })
-        }
 
         results.push({
           email: recipient.recipientEmail,

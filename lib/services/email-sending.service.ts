@@ -152,15 +152,23 @@ export class EmailSendingService {
 
   static async sendEmail(data: {
     organizationId: string
+    jobId?: string | null  // Parent Job/Item for request-level association
     to: string
     toName?: string
     subject: string
     body: string
     htmlBody?: string
-    campaignName?: string
-    campaignType?: string
+    campaignName?: string  // Legacy - kept for backwards compatibility
+    campaignType?: string  // Legacy - kept for backwards compatibility
     accountId?: string
     deadlineDate?: Date | null
+    remindersConfig?: {
+      enabled: boolean
+      startDelayHours: number
+      frequencyHours: number
+      maxCount: number
+      approved: boolean
+    }
   }): Promise<{
     taskId: string
     threadId: string
@@ -249,17 +257,19 @@ export class EmailSendingService {
       })
     }
 
-    // Create task
+    // Create task with jobId for direct Item association
     const task = await TaskCreationService.createTaskFromEmail({
       organizationId: data.organizationId,
+      jobId: data.jobId || null,  // Link task directly to Item
       entityEmail: data.to,
       entityName: data.toName,
-      campaignName: data.campaignName,
-      campaignType: data.campaignType,
+      campaignName: data.campaignName,  // Legacy
+      campaignType: data.campaignType,  // Legacy
       threadId,
       replyToEmail: replyTo,
       subject: data.subject,
-      deadlineDate: data.deadlineDate || null
+      deadlineDate: data.deadlineDate || null,
+      remindersConfig: data.remindersConfig
     })
 
     // Log outbound message with tracking token
@@ -388,12 +398,13 @@ export class EmailSendingService {
 
   static async sendBulkEmail(data: {
     organizationId: string
+    jobId?: string | null  // Parent Job/Item for request-level association
     recipients: Array<{ email: string; name?: string }>
     subject: string
     body: string
     htmlBody?: string
-    campaignName?: string
-    campaignType?: string
+    campaignName?: string  // Legacy - kept for backwards compatibility
+    campaignType?: string  // Legacy - kept for backwards compatibility
     accountId?: string
     perRecipientEmails?: Array<{ email: string; subject: string; body: string; htmlBody: string }>
     deadlineDate?: Date | null
@@ -426,13 +437,14 @@ export class EmailSendingService {
 
         const result = await this.sendEmail({
           organizationId: data.organizationId,
+          jobId: data.jobId,  // Pass jobId to link tasks to Item
           to: recipient.email,
           toName: recipient.name,
           subject: subjectToUse,
           body: bodyToUse,
           htmlBody: htmlBodyToUse,
-          campaignName: data.campaignName,
-          campaignType: data.campaignType,
+          campaignName: data.campaignName,  // Legacy
+          campaignType: data.campaignType,  // Legacy
           accountId: data.accountId,
           deadlineDate,
           remindersConfig: data.remindersConfig

@@ -24,7 +24,6 @@ export class EmailDraftService {
     idempotencyKey?: string | null
     aiGenerationStatus?: string | null
   }): Promise<EmailDraft> {
-    console.log(`EmailDraftService.create: Creating draft with jobId: ${data.jobId || 'none'}`)
     const draft = await prisma.emailDraft.create({
       data: {
         organizationId: data.organizationId,
@@ -48,7 +47,6 @@ export class EmailDraftService {
         status: "DRAFT"
       }
     })
-    console.log(`EmailDraftService.create: Created draft ${draft.id} with jobId: ${draft.jobId || 'none'}`)
     return draft
   }
 
