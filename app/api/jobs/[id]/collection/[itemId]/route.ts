@@ -1,0 +1,183 @@
+import { NextRequest, NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
+import { CollectionService } from "@/lib/services/collection.service"
+import { CollectedItemStatus } from "@prisma/client"
+
+export const dynamic = "force-dynamic"
+
+/**
+ * GET /api/jobs/[id]/collection/[itemId]
+ * Get a single collected item
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string; itemId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const { id: jobId, itemId } = params
+
+    // Verify job exists and belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    const item = await CollectionService.getById(itemId, organizationId)
+
+    if (!item) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
+    }
+
+    // Verify item belongs to the job
+    if (item.jobId !== jobId) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      item
+    })
+  } catch (error: any) {
+    console.error("Error fetching collection item:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch item", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PATCH /api/jobs/[id]/collection/[itemId]
+ * Update a collected item (status, notes)
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string; itemId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId || !session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const { id: jobId, itemId } = params
+
+    // Verify job exists and belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    // Verify item exists and belongs to job
+    const existingItem = await CollectionService.getById(itemId, organizationId)
+    if (!existingItem || existingItem.jobId !== jobId) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
+    }
+
+    const body = await request.json()
+    const { status, rejectionReason, notes } = body
+
+    let updatedItem = existingItem
+
+    // Update status if provided
+    if (status && ["UNREVIEWED", "APPROVED", "REJECTED"].includes(status)) {
+      updatedItem = await CollectionService.updateStatus(
+        itemId,
+        organizationId,
+        status as CollectedItemStatus,
+        userId,
+        rejectionReason
+      )
+    }
+
+    // Update notes if provided
+    if (notes !== undefined) {
+      updatedItem = await CollectionService.updateNotes(
+        itemId,
+        organizationId,
+        notes
+      )
+    }
+
+    // Get updated approval status for the job
+    const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+
+    return NextResponse.json({
+      success: true,
+      item: updatedItem,
+      summary: approvalStatus
+    })
+  } catch (error: any) {
+    console.error("Error updating collection item:", error)
+    return NextResponse.json(
+      { error: "Failed to update item", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * DELETE /api/jobs/[id]/collection/[itemId]
+ * Delete a collected item
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string; itemId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const { id: jobId, itemId } = params
+
+    // Verify job exists and belongs to organization
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, organizationId }
+    })
+
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    // Verify item exists and belongs to job
+    const existingItem = await CollectionService.getById(itemId, organizationId)
+    if (!existingItem || existingItem.jobId !== jobId) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
+    }
+
+    await CollectionService.delete(itemId, organizationId)
+
+    // Get updated approval status for the job
+    const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+
+    return NextResponse.json({
+      success: true,
+      summary: approvalStatus
+    })
+  } catch (error: any) {
+    console.error("Error deleting collection item:", error)
+    return NextResponse.json(
+      { error: "Failed to delete item", message: error.message },
+      { status: 500 }
+    )
+  }
+}

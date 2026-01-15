@@ -71,7 +71,7 @@ interface SavedView {
   tagFilters: string[]
 }
 
-const SAVED_VIEWS_KEY = "checklist-saved-views"
+const SAVED_VIEWS_KEY = "tasks-saved-views"
 
 // ============================================
 // Helpers

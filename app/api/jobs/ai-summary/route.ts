@@ -1,7 +1,7 @@
 /**
  * Jobs AI Summary Endpoint
  * 
- * POST /api/jobs/ai-summary - Generate AI summary of checklist items
+ * POST /api/jobs/ai-summary - Generate AI summary of tasks
  * 
  * Returns risk overview, at-risk items, and recommendations
  */
@@ -60,9 +60,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         summary: {
-          riskOverview: "No checklist items to analyze yet. Create your first item to get started.",
+          riskOverview: "No tasks to analyze yet. Create your first task to get started.",
           atRiskItems: [],
-          recommendations: ["Create your first checklist item to start tracking work."],
+          recommendations: ["Create your first task to start tracking work."],
           totalItems: 0,
           completedItems: 0,
           activeItems: 0
@@ -138,8 +138,8 @@ export async function POST(request: NextRequest) {
     // Generate AI summary
     const openai = getOpenAIClient()
     
-    const systemPrompt = `You are an AI assistant helping accountants and professionals manage their work checklist. 
-Analyze the provided checklist items and generate:
+    const systemPrompt = `You are an AI assistant helping accountants and professionals manage their tasks. 
+Analyze the provided tasks and generate:
 1. A brief risk overview (2-3 sentences) highlighting the most critical issues
 2. Specific, actionable recommendations (3-5 items)
 
@@ -151,7 +151,7 @@ Focus on:
 
 Be concise and professional. Use specific item names when relevant.`
 
-    const userPrompt = `Analyze these ${jobs.length} checklist items:
+    const userPrompt = `Analyze these ${jobs.length} tasks:
 
 Summary:
 - Total items: ${total}
@@ -203,7 +203,7 @@ Provide a JSON response with:
       const overdueCount = atRiskItems.filter(i => i.daysUntilDue !== null && i.daysUntilDue < 0).length
       const dueSoonCount = atRiskItems.filter(i => i.daysUntilDue !== null && i.daysUntilDue >= 0 && i.daysUntilDue <= 7).length
       
-      let fallbackOverview = `You have ${total} checklist items. `
+      let fallbackOverview = `You have ${total} tasks. `
       if (overdueCount > 0) {
         fallbackOverview += `${overdueCount} item${overdueCount !== 1 ? 's are' : ' is'} overdue. `
       }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -14,19 +14,23 @@ function isJobsUIEnabled(): boolean {
   return process.env.NEXT_PUBLIC_JOBS_UI === "true"
 }
 
-// Organization features type
-interface OrgFeatures {
-  expenses: boolean
-  ap: boolean
-}
-
 // Custom icons matching Vergo style (outline, thin strokes)
-function ChecklistIcon({ className }: { className?: string }) {
+function TasksIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
       <rect x="9" y="3" width="6" height="4" rx="1" />
       <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+function CollectionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
     </svg>
   )
 }
@@ -60,60 +64,29 @@ function SettingsIcon({ className }: { className?: string }) {
   )
 }
 
-function ExpensesIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="M2 10h20" />
-      <path d="M6 16h4" />
-      <path d="M14 16h4" />
-    </svg>
-  )
-}
-
-function APIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14,2 14,8 20,8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <line x1="10" y1="9" x2="8" y2="9" />
-    </svg>
-  )
-}
-
 interface NavItem {
   href: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  envFeatureFlag?: () => boolean  // Environment-based feature flag
-  orgFeatureKey?: keyof OrgFeatures  // Organization-based feature flag
+  featureFlag?: () => boolean
 }
 
 const navItems: NavItem[] = [
   { 
     href: "/dashboard/jobs", 
     label: UI_LABELS.jobsNavLabel, 
-    icon: ChecklistIcon,
-    envFeatureFlag: isJobsUIEnabled 
+    icon: TasksIcon,
+    featureFlag: isJobsUIEnabled 
+  },
+  {
+    href: "/dashboard/collection",
+    label: "Collection",
+    icon: CollectionIcon
   },
   { 
     href: "/dashboard/contacts", 
     label: "Contacts", 
     icon: ContactsIcon 
-  },
-  {
-    href: "/dashboard/expenses",
-    label: "Expenses",
-    icon: ExpensesIcon,
-    orgFeatureKey: "expenses"
-  },
-  {
-    href: "/dashboard/ap",
-    label: "AP",
-    icon: APIcon,
-    orgFeatureKey: "ap"
   },
   { 
     href: "/dashboard/settings/team", 
@@ -129,35 +102,12 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ className = "" }: SidebarProps) {
   const [expanded, setExpanded] = useState(false)
-  const [orgFeatures, setOrgFeatures] = useState<OrgFeatures | null>(null)
   const pathname = usePathname()
-
-  // Fetch organization features on mount
-  useEffect(() => {
-    async function fetchFeatures() {
-      try {
-        const response = await fetch('/api/org/features', { credentials: 'include' })
-        if (response.ok) {
-          const data = await response.json()
-          setOrgFeatures(data.features)
-        }
-      } catch (error) {
-        console.error('Failed to fetch org features:', error)
-      }
-    }
-    fetchFeatures()
-  }, [])
 
   // Filter nav items based on feature flags
   const visibleNavItems = navItems.filter((item) => {
-    // Check environment-based feature flag
-    if (item.envFeatureFlag && !item.envFeatureFlag()) {
+    if (item.featureFlag && !item.featureFlag()) {
       return false
-    }
-    // Check organization-based feature flag
-    if (item.orgFeatureKey) {
-      // Show if features haven't loaded yet (to avoid flash) or if enabled
-      return orgFeatures === null || orgFeatures[item.orgFeatureKey]
     }
     return true
   })

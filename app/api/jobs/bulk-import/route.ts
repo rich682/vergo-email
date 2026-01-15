@@ -91,24 +91,24 @@ export async function POST(request: NextRequest) {
       ? `\n\nTeam members available for owner assignment:\n${teamMembersList.map(m => `- "${m.name}" (ID: ${m.id})`).join('\n')}`
       : ''
 
-    const systemPrompt = `You are a data extraction assistant. Your job is to interpret spreadsheet data and extract checklist items.
+    const systemPrompt = `You are a data extraction assistant. Your job is to interpret spreadsheet data and extract tasks.
 
 For each row, extract:
-1. The item name (the main task or item description)
+1. The task name (the main task description)
 2. A due date if one is present (in ISO format YYYY-MM-DD)
 3. An owner if one is mentioned (match to team member ID)${teamMembersPrompt}
 
 Rules:
 - Skip header rows (rows that look like column titles)
 - Skip empty or irrelevant rows
-- The item name should be a clear, concise description
+- The task name should be a clear, concise description
 - Only include a dueDate if there's a clear date in the row
 - If a date is relative (e.g., "next Friday"), convert it to an absolute date based on today being ${new Date().toISOString().split('T')[0]}
 - For owner matching: look for names in the spreadsheet that match team members. Use fuzzy matching (e.g., "Rich Kane" matches "Richard Kane", "Tracy B" matches "Tracy Baldwin"). Only include ownerId if you find a confident match.
 
 Return a JSON array of objects with "name", optionally "dueDate", and optionally "ownerId" (the matched team member ID) and "ownerName" (the matched name for display).`
 
-    const userPrompt = `Extract checklist items from this spreadsheet data:
+    const userPrompt = `Extract tasks from this spreadsheet data:
 
 ${formattedRows}
 

@@ -47,6 +47,9 @@ import { RequestDetailModal } from "@/components/jobs/request-detail-modal"
 import { LabelsManager } from "@/components/jobs/labels-manager"
 import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 
+// Collection components
+import { CollectionTab } from "@/components/jobs/collection/collection-tab"
+
 // ============================================
 // Types
 // ============================================
@@ -268,6 +271,7 @@ export default function JobDetailPage() {
   const [awaitingExpanded, setAwaitingExpanded] = useState(true)
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
+  const [collectionExpanded, setCollectionExpanded] = useState(false)
 
   // Stakeholder dialog
   const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
@@ -841,7 +845,7 @@ export default function JobDetailPage() {
           icon={<AlertCircle className="w-6 h-6" />}
           title="Item not found"
           description="This item may have been deleted or you don't have access."
-          action={{ label: "Back to Checklist", onClick: () => router.push("/dashboard/jobs") }}
+          action={{ label: "Back to Tasks", onClick: () => router.push("/dashboard/jobs") }}
         />
       </div>
     )
@@ -1337,6 +1341,24 @@ export default function JobDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Collection Section - Evidence/Attachments */}
+            <Card>
+              <CardContent className="p-4">
+                <SectionHeader
+                  title="Collection"
+                  icon={<Inbox className="w-4 h-4 text-purple-500" />}
+                  collapsible
+                  expanded={collectionExpanded}
+                  onToggle={() => setCollectionExpanded(!collectionExpanded)}
+                />
+                {collectionExpanded && (
+                  <div className="mt-3">
+                    <CollectionTab jobId={jobId} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Timeline / Comments */}
             <Card>

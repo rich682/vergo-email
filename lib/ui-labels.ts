@@ -6,34 +6,34 @@
  * Only UI copy uses these labels.
  * 
  * Terminology mapping:
- * - "Job" (internal) → "Item" (UI)
- * - "Jobs" (internal) → "Checklist" (UI for list/nav)
+ * - "Job" (internal) → "Task" (UI)
+ * - "Jobs" (internal) → "Tasks" (UI for list/nav)
  */
 
 export const UI_LABELS = {
   // Navigation
-  jobsNavLabel: "Checklist",
+  jobsNavLabel: "Tasks",
   
   // Singular/Plural
-  jobSingular: "Item",
-  jobPlural: "Items",
+  jobSingular: "Task",
+  jobPlural: "Tasks",
   
   // Actions
-  createJob: "Create Item",
-  newJob: "New Item",
+  createJob: "Create Task",
+  newJob: "New Task",
   
   // Filters
-  allJobs: "All Items",
-  myJobs: "My Items",
+  allJobs: "All Tasks",
+  myJobs: "My Tasks",
   
   // Page titles
-  jobsPageTitle: "Checklist",
+  jobsPageTitle: "Tasks",
   jobsPageSubtitle: "Manage your client work and track progress across requests",
-  jobDetailTitle: "Item Details",
+  jobDetailTitle: "Task Details",
   
   // Create modal
-  createJobModalTitle: "Create New Item",
-  jobNameLabel: "Item Name",
+  createJobModalTitle: "Create New Task",
+  jobNameLabel: "Task Name",
   jobNamePlaceholder: "e.g., Tax Planning - Year End 2024",
   jobDescriptionLabel: "Description (optional)",
   jobDescriptionPlaceholder: "Brief description of the work",
@@ -45,14 +45,14 @@ export const UI_LABELS = {
   statusArchived: "Archived",
   
   // New Request modal
-  addToExistingJob: "or add to an item",
-  createNewJob: "Create New Item",
-  createNewJobDescription: "Start a new item and add requests",
+  addToExistingJob: "or add to a task",
+  createNewJob: "Create New Task",
+  createNewJobDescription: "Start a new task and add requests",
   quickRequest: "Quick Request",
-  quickRequestDescription: "Create a standalone request without an item",
-  searchJobs: "Search items...",
-  noActiveJobs: "No active items",
-  noJobsMatchSearch: "No items match your search",
+  quickRequestDescription: "Create a standalone request without a task",
+  searchJobs: "Search tasks...",
+  noActiveJobs: "No active tasks",
+  noJobsMatchSearch: "No tasks match your search",
 } as const
 
 export type UILabels = typeof UI_LABELS

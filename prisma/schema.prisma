@@ -62,6 +62,18 @@ enum EmailDraftStatus {
   SENT
 }
 
+// Collection feature - request-scoped evidence intake
+enum CollectedItemStatus {
+  UNREVIEWED
+  APPROVED
+  REJECTED
+}
+
+enum CollectedItemSource {
+  EMAIL_REPLY
+  MANUAL_UPLOAD
+}
+
 model Organization {
   id          String   @id @default(cuid())
   name        String
@@ -99,6 +111,7 @@ model User {
   ownedJobs         Job[]             @relation("JobOwner")
   jobCollaborations JobCollaborator[]
   jobComments       JobComment[]
+  reviewedItems     CollectedItem[]   @relation("CollectedItemReviewer")
 
   @@index([organizationId])
   @@index([email])
@@ -191,15 +204,16 @@ model Job {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client        Entity?           @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
-  owner         User              @relation("JobOwner", fields: [ownerId], references: [id])
-  collaborators JobCollaborator[] // Team members who can collaborate on this job
-  tasks         Task[]            // Child tasks (requests) belonging to this job
-  requests      EmailDraft[]      // Request-level association
-  comments      JobComment[]      // Internal collaboration comments
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client          Entity?           @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
+  owner           User              @relation("JobOwner", fields: [ownerId], references: [id])
+  collaborators   JobCollaborator[] // Team members who can collaborate on this job
+  tasks           Task[]            // Child tasks (requests) belonging to this job
+  requests        EmailDraft[]      // Request-level association
+  comments        JobComment[]      // Internal collaboration comments
+  collectedItems  CollectedItem[]   // Evidence/attachments collected for this job
 
-  jobLabels     JobLabel[]        // Item-scoped labels for contacts
+  jobLabels       JobLabel[]        // Item-scoped labels for contacts
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -322,6 +336,7 @@ model Task {
   entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
   messages       Message[]
   reminderStates ReminderState[]
+  collectedItems CollectedItem[] // Evidence/attachments collected for this task
 
   @@index([organizationId])
   @@index([jobId])
@@ -357,8 +372,9 @@ model Message {
   aiReasoning      String? // Brief explanation of classification
   createdAt        DateTime         @default(now())
 
-  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  task           Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  collectedItems CollectedItem[] // Evidence/attachments extracted from this message
 
   @@index([taskId])
   @@index([entityId])
@@ -546,4 +562,53 @@ model ReminderState {
   @@index([entityId])
   @@index([organizationId, nextSendAt]) // For querying tasks that need reminders
   @@index([scheduledEventId]) // For idempotency checks
+}
+
+// CollectedItem represents evidence/attachments received in response to requests
+// This is the core model for the Collection feature - request-scoped evidence intake
+model CollectedItem {
+  id              String              @id @default(cuid())
+  organizationId  String
+  jobId           String              // Parent checklist item (required)
+  taskId          String?             // Optional: specific request/task this came from
+  messageId       String?             // Optional: source message if from email
+  
+  // File metadata
+  filename        String
+  fileKey         String              // Storage key (blob or local)
+  fileUrl         String?             // Cached URL for quick access
+  fileSize        Int?                // Bytes
+  mimeType        String?
+  
+  // Source tracking
+  source          CollectedItemSource
+  submittedBy     String?             // Email address of submitter
+  submittedByName String?             // Name if available
+  receivedAt      DateTime            // When the item was received
+  
+  // Approval workflow
+  status          CollectedItemStatus @default(UNREVIEWED)
+  reviewedBy      String?             // User ID who reviewed
+  reviewedAt      DateTime?
+  rejectionReason String?
+  
+  // Metadata
+  notes           String?             // Internal notes
+  metadata        Json?               // Extensible metadata
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  job             Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  task            Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  message         Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reviewer        User?               @relation("CollectedItemReviewer", fields: [reviewedBy], references: [id])
+  
+  @@index([organizationId])
+  @@index([jobId])
+  @@index([taskId])
+  @@index([messageId])
+  @@index([status])
+  @@index([jobId, status])
+  @@index([organizationId, jobId])
 }

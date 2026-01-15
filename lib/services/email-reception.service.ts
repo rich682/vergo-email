@@ -5,6 +5,7 @@ import { getStorageService } from "./storage.service"
 import { inngest } from "@/inngest/client"
 import { createHash } from "crypto"
 import { ReminderStateService } from "./reminder-state.service"
+import { CollectionService } from "./collection.service"
 
 export interface InboundEmailData {
   from: string
@@ -23,6 +24,19 @@ export interface InboundEmailData {
 }
 
 export class EmailReceptionService {
+  /**
+   * Extract name from email address if present
+   * e.g., "John Doe <john@example.com>" -> "John Doe"
+   */
+  private static extractNameFromEmail(email: string): string | undefined {
+    // Try to extract name from "Name <email>" format
+    const match = email.match(/^([^<]+)\s*<[^>]+>$/)
+    if (match && match[1]) {
+      return match[1].trim()
+    }
+    return undefined
+  }
+
   static async processInboundEmail(
     data: InboundEmailData
   ): Promise<{ taskId: string | null; messageId: string }> {
@@ -252,6 +266,34 @@ export class EmailReceptionService {
           : undefined
       }
     })
+
+    // Create CollectedItem records for attachments if task has a jobId
+    // This enables the Collection feature - request-scoped evidence intake
+    if (hasAttachments && task.jobId && data.attachments) {
+      const submitterName = this.extractNameFromEmail(data.from)
+      
+      for (let i = 0; i < data.attachments.length; i++) {
+        try {
+          await CollectionService.createFromEmailAttachment({
+            organizationId: task.organizationId,
+            jobId: task.jobId,
+            taskId: task.id,
+            messageId: message.id,
+            filename: data.attachments[i].filename,
+            fileKey: attachmentKeys[i],
+            fileSize: data.attachments[i].content.length,
+            mimeType: data.attachments[i].contentType,
+            submittedBy: data.from,
+            submittedByName: submitterName,
+            receivedAt: new Date()
+          })
+          console.log(`[Collection] Created CollectedItem for attachment: ${data.attachments[i].filename} (Task: ${task.id}, Job: ${task.jobId})`)
+        } catch (error) {
+          console.error(`[Collection] Error creating CollectedItem for attachment ${data.attachments[i].filename}:`, error)
+          // Don't fail the entire email processing if collection fails
+        }
+      }
+    }
 
     // Trigger AI processing
     await inngest.send({
