@@ -1392,169 +1392,195 @@ export default function JobsPage() {
             />
           </div>
         ) : (
-          /* Table-style list */
+          /* Table-style list with fixed layout */
           <div className="border border-gray-200 rounded-lg overflow-hidden">
-            {/* Table Header */}
-            <div className="grid grid-cols-[36px_minmax(150px,1.5fr)_minmax(80px,1fr)_75px_45px_55px_80px_80px_60px_70px] gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider items-center">
-              {/* Select All Checkbox */}
-              <div className="flex items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = isSomeSelected
-                  }}
-                  onChange={toggleSelectAll}
-                  className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
-                />
-              </div>
-              <div>Name</div>
-              <div>Labels</div>
-              <div>Status</div>
-              <div className="text-center">RAG</div>
-              <div className="text-center">Contacts</div>
-              <div>Owner</div>
-              <div>Collaborators</div>
-              <div>Due</div>
-              <div>Updated</div>
-            </div>
-            
-            {/* Table Body */}
-            <div className="divide-y divide-gray-100">
-              {filteredJobs.map((job) => {
-                const jobTags = job.labels?.tags || []
-                const collaborators = job.collaborators || []
-                const dueDate = job.dueDate ? new Date(job.dueDate) : null
-                const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
-                const isOverdue = daysUntilDue !== null && daysUntilDue < 0
-                const ragRating = calculateRAGRating(job)
-                const isSelected = selectedJobIds.includes(job.id)
-                // Use stakeholderCount from API if available, otherwise fall back to labels count
-                const contactCount = job.stakeholderCount ?? 0
-                
-                return (
-                  <div
-                    key={job.id}
-                    onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                    className={`grid grid-cols-[36px_minmax(150px,1.5fr)_minmax(80px,1fr)_75px_45px_55px_80px_80px_60px_70px] gap-2 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors items-center ${isSelected ? "bg-orange-50" : ""}`}
-                  >
-                    {/* Checkbox */}
+            <table className="w-full" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+              {/* Column width definitions - ensures deterministic layout */}
+              <colgroup>
+                <col style={{ width: '36px' }} />
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '75px' }} />
+                <col style={{ width: '45px' }} />
+                <col style={{ width: '55px' }} />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '80px' }} />
+                <col style={{ width: '65px' }} />
+                <col style={{ width: '75px' }} />
+              </colgroup>
+              
+              {/* Table Header */}
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-2 py-3 text-center overflow-hidden">
                     <div className="flex items-center justify-center">
                       <input
                         type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => toggleSelectJob(job.id, e as unknown as React.MouseEvent)}
-                        onClick={(e) => e.stopPropagation()}
+                        checked={isAllSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeSelected
+                        }}
+                        onChange={toggleSelectAll}
                         className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
                       />
                     </div>
-                    
-                    {/* Name */}
-                    <div className="truncate min-w-0">
-                      <span className="font-medium text-gray-900">
-                        {job.name}
-                      </span>
-                    </div>
-                    
-                    {/* Labels */}
-                    <div className="flex flex-wrap gap-1 overflow-hidden min-w-0">
-                      {jobTags.length > 0 ? (
-                        <>
-                          {jobTags.slice(0, 2).map(tag => (
-                            <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[70px]">
-                              {tag}
-                            </span>
-                          ))}
-                          {jobTags.length > 2 && (
-                            <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 2}</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </div>
-                    
-                    {/* Status */}
-                    <div>
-                      <span className={`
-                        inline-flex px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap
-                        ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
-                        ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
-                        ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
-                        ${job.status === "ARCHIVED" ? "border-gray-200 text-gray-500" : ""}
-                        ${!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) ? "border-purple-200 text-purple-700 bg-purple-50" : ""}
-                      `}>
-                        {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
-                      </span>
-                    </div>
-                    
-                    {/* RAG Rating */}
-                    <div className="flex justify-center">
-                      <RAGBadge rating={ragRating} />
-                    </div>
-                    
-                    {/* Contacts Count */}
-                    <div className="text-center">
-                      {contactCount > 0 ? (
-                        <span className="text-sm text-gray-600">{contactCount}</span>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </div>
-                    
-                    {/* Owner */}
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                        {getInitials(job.owner.name, job.owner.email)}
-                      </div>
-                      <span className="text-sm text-gray-600 truncate">
-                        {job.owner.name?.split(" ")[0] || job.owner.email.split("@")[0]}
-                      </span>
-                    </div>
-                    
-                    {/* Collaborators */}
-                    <div className="flex items-center">
-                      {collaborators.length > 0 ? (
-                        <div className="flex -space-x-1.5">
-                          {collaborators.slice(0, 2).map((collab) => (
-                            <div
-                              key={collab.id}
-                              className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
-                              title={collab.user.name || collab.user.email}
-                            >
-                              {getInitials(collab.user.name, collab.user.email)}
-                            </div>
-                          ))}
-                          {collaborators.length > 2 && (
-                            <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                              +{collaborators.length - 2}
-                            </div>
+                  </th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Name</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Labels</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Status</th>
+                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">RAG</th>
+                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">Contacts</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Owner</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Collaborators</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Due</th>
+                  <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Updated</th>
+                </tr>
+              </thead>
+              
+              {/* Table Body */}
+              <tbody className="divide-y divide-gray-100">
+                {filteredJobs.map((job) => {
+                  const jobTags = job.labels?.tags || []
+                  const collaborators = job.collaborators || []
+                  const dueDate = job.dueDate ? new Date(job.dueDate) : null
+                  const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
+                  const isOverdue = daysUntilDue !== null && daysUntilDue < 0
+                  const ragRating = calculateRAGRating(job)
+                  const isSelected = selectedJobIds.includes(job.id)
+                  const contactCount = job.stakeholderCount ?? 0
+                  
+                  return (
+                    <tr
+                      key={job.id}
+                      onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? "bg-orange-50" : ""}`}
+                    >
+                      {/* Checkbox */}
+                      <td className="px-2 py-3 text-center overflow-hidden">
+                        <div className="flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => toggleSelectJob(job.id, e as unknown as React.MouseEvent)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                          />
+                        </div>
+                      </td>
+                      
+                      {/* Name */}
+                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap">
+                        <span className="font-medium text-gray-900">{job.name}</span>
+                      </td>
+                      
+                      {/* Labels */}
+                      <td className="px-2 py-3 overflow-hidden">
+                        <div className="flex gap-1 min-w-0 overflow-hidden">
+                          {jobTags.length > 0 ? (
+                            <>
+                              {jobTags.slice(0, 2).map(tag => (
+                                <span key={tag} className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[60px] flex-shrink-0">
+                                  {tag}
+                                </span>
+                              ))}
+                              {jobTags.length > 2 && (
+                                <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 2}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </div>
-                    
-                    {/* Due Date */}
-                    <div>
-                      {dueDate ? (
-                        <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
-                          {format(dueDate, "d MMM")}
+                      </td>
+                      
+                      {/* Status */}
+                      <td className="px-2 py-3 overflow-hidden">
+                        <span className={`
+                          inline-flex px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap
+                          ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
+                          ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
+                          ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
+                          ${job.status === "ARCHIVED" ? "border-gray-200 text-gray-500" : ""}
+                          ${!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) ? "border-purple-200 text-purple-700 bg-purple-50" : ""}
+                        `}>
+                          {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
                         </span>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </div>
-                    
-                    {/* Updated */}
-                    <div className="text-sm text-gray-500 truncate">
-                      {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                      </td>
+                      
+                      {/* RAG Rating */}
+                      <td className="px-2 py-3 text-center overflow-hidden">
+                        <div className="flex justify-center">
+                          <RAGBadge rating={ragRating} />
+                        </div>
+                      </td>
+                      
+                      {/* Contacts Count */}
+                      <td className="px-2 py-3 text-center overflow-hidden">
+                        {contactCount > 0 ? (
+                          <span className="text-sm text-gray-600">{contactCount}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      
+                      {/* Owner */}
+                      <td className="px-2 py-3 overflow-hidden">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                            {getInitials(job.owner.name, job.owner.email)}
+                          </div>
+                          <span className="text-sm text-gray-600 truncate min-w-0">
+                            {job.owner.name?.split(" ")[0] || job.owner.email.split("@")[0]}
+                          </span>
+                        </div>
+                      </td>
+                      
+                      {/* Collaborators */}
+                      <td className="px-2 py-3 overflow-hidden">
+                        <div className="flex items-center min-w-0">
+                          {collaborators.length > 0 ? (
+                            <div className="flex -space-x-1.5">
+                              {collaborators.slice(0, 2).map((collab) => (
+                                <div
+                                  key={collab.id}
+                                  className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium flex-shrink-0"
+                                  title={collab.user.name || collab.user.email}
+                                >
+                                  {getInitials(collab.user.name, collab.user.email)}
+                                </div>
+                              ))}
+                              {collaborators.length > 2 && (
+                                <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium flex-shrink-0">
+                                  +{collaborators.length - 2}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </div>
+                      </td>
+                      
+                      {/* Due Date */}
+                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {dueDate ? (
+                          <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                            {format(dueDate, "d MMM")}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      
+                      {/* Updated */}
+                      <td className="px-2 py-3 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-gray-500">
+                        {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
