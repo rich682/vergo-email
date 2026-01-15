@@ -573,11 +573,17 @@ export default function JobsPage() {
         
         const newTags = [...currentTags, label.trim()]
         
+        // API expects labels object with tags property, not just tags
         await fetch(`/api/jobs/${jobId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ tags: newTags })
+          body: JSON.stringify({ 
+            labels: { 
+              ...job.labels,
+              tags: newTags 
+            } 
+          })
         })
       }))
       
