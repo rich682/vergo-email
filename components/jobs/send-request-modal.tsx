@@ -1036,6 +1036,10 @@ export function SendRequestModal({
                     </select>
                     <span className="text-xs text-gray-500">until they reply or deadline passes</span>
                   </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    <Sparkles className="w-3 h-3 inline mr-1" />
+                    Each reminder will be uniquely AI-generated, not a copy of the original
+                  </p>
                 </div>
               )}
             </div>

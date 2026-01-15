@@ -21,6 +21,7 @@ enum UserRole {
 
 enum TaskStatus {
   AWAITING_RESPONSE
+  IN_PROGRESS
   REPLIED
   HAS_ATTACHMENTS
   VERIFYING
@@ -28,6 +29,7 @@ enum TaskStatus {
   REJECTED
   FLAGGED
   MANUAL_REVIEW
+  ON_HOLD
 }
 
 enum MessageDirection {
@@ -370,6 +372,7 @@ model Message {
   lastOpenedAt     DateTime? // Most recent open time
   aiClassification String? // DATA, QUESTION, COMPLAINT, ACKNOWLEDGMENT, OTHER
   aiReasoning      String? // Brief explanation of classification
+  isAutoReply      Boolean          @default(false) // True if this is an OOO, bounce, or auto-reply
   createdAt        DateTime         @default(now())
 
   entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
@@ -383,6 +386,7 @@ model Message {
   @@index([trackingToken])
   @@index([messageIdHeader])
   @@index([threadId])
+  @@index([isAutoReply])
 }
 
 model AgentSchedule {

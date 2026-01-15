@@ -1,8 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import { X, Mail, Clock, Users, Calendar, Bell, ChevronDown, ChevronRight, Eye } from "lucide-react"
+import { X, Mail, Clock, Users, Calendar, Bell, ChevronDown, ChevronRight, Eye, Check, Pause, PlayCircle, AlertCircle, MoreHorizontal } from "lucide-react"
 import { format } from "date-fns"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface Recipient {
   id: string
@@ -51,11 +58,51 @@ interface RequestDetail {
 interface RequestDetailModalProps {
   request: RequestDetail
   onClose: () => void
+  onStatusChange?: () => void
 }
 
-export function RequestDetailModal({ request, onClose }: RequestDetailModalProps) {
+// Status options for recipient tasks
+const RECIPIENT_STATUS_OPTIONS = [
+  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, color: "amber" },
+  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, color: "blue" },
+  { value: "FULFILLED", label: "Complete", icon: Check, color: "green" },
+  { value: "REJECTED", label: "Rejected", icon: AlertCircle, color: "red" },
+  { value: "ON_HOLD", label: "On Hold", icon: Pause, color: "gray" },
+]
+
+function RecipientStatusBadge({ status }: { status: string }) {
+  const statusConfig = RECIPIENT_STATUS_OPTIONS.find(s => s.value === status)
+  
+  const colorClasses: Record<string, string> = {
+    amber: "bg-amber-100 text-amber-700",
+    blue: "bg-blue-100 text-blue-700",
+    green: "bg-green-100 text-green-700",
+    red: "bg-red-100 text-red-700",
+    gray: "bg-gray-100 text-gray-700",
+  }
+  
+  if (!statusConfig) {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+        {status.replace(/_/g, ' ')}
+      </span>
+    )
+  }
+  
+  const Icon = statusConfig.icon
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${colorClasses[statusConfig.color]}`}>
+      <Icon className="w-3 h-3" />
+      {statusConfig.label}
+    </span>
+  )
+}
+
+export function RequestDetailModal({ request, onClose, onStatusChange }: RequestDetailModalProps) {
   const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null)
   const [recipientsExpanded, setRecipientsExpanded] = useState(true)
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [localRecipients, setLocalRecipients] = useState<Recipient[]>(request.recipients)
 
   // Get the subject and body to display
   const displaySubject = request.subjectTemplate || request.generatedSubject || "No subject"
@@ -67,6 +114,40 @@ export function RequestDetailModal({ request, onClose }: RequestDetailModalProps
     if (hours < 24) return `Every ${hours} hour${hours !== 1 ? 's' : ''}`
     const days = Math.round(hours / 24)
     return `Every ${days} day${days !== 1 ? 's' : ''}`
+  }
+
+  // Handle status change for a recipient
+  const handleStatusChange = async (recipientId: string, newStatus: string) => {
+    setUpdatingStatus(recipientId)
+    try {
+      const response = await fetch(`/api/tasks/${recipientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: newStatus })
+      })
+      
+      if (!response.ok) {
+        throw new Error("Failed to update status")
+      }
+      
+      // Update local state
+      setLocalRecipients(prev => 
+        prev.map(r => r.id === recipientId ? { ...r, status: newStatus } : r)
+      )
+      
+      // Update selected recipient if it's the one being changed
+      if (selectedRecipient?.id === recipientId) {
+        setSelectedRecipient(prev => prev ? { ...prev, status: newStatus } : null)
+      }
+      
+      // Notify parent to refresh
+      onStatusChange?.()
+    } catch (err) {
+      console.error("Error updating status:", err)
+    } finally {
+      setUpdatingStatus(null)
+    }
   }
 
   return (
@@ -174,7 +255,7 @@ export function RequestDetailModal({ request, onClose }: RequestDetailModalProps
                 >
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-gray-500" />
-                    <span className="font-medium text-gray-900">Recipients ({request.recipients.length})</span>
+                    <span className="font-medium text-gray-900">Recipients ({localRecipients.length})</span>
                   </div>
                   {recipientsExpanded ? (
                     <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -184,15 +265,17 @@ export function RequestDetailModal({ request, onClose }: RequestDetailModalProps
                 </button>
                 {recipientsExpanded && (
                   <div className="border-t border-gray-200 max-h-64 overflow-y-auto">
-                    {request.recipients.map((recipient) => (
+                    {localRecipients.map((recipient) => (
                       <div
                         key={recipient.id}
-                        className={`flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                        className={`flex items-center justify-between p-3 hover:bg-gray-50 transition-colors ${
                           selectedRecipient?.id === recipient.id ? 'bg-purple-50' : ''
                         }`}
-                        onClick={() => setSelectedRecipient(recipient)}
                       >
-                        <div className="flex items-center gap-3">
+                        <div 
+                          className="flex items-center gap-3 flex-1 cursor-pointer"
+                          onClick={() => setSelectedRecipient(recipient)}
+                        >
                           <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
                             {recipient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                           </div>
@@ -202,16 +285,37 @@ export function RequestDetailModal({ request, onClose }: RequestDetailModalProps
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            recipient.status === 'COMPLETE' 
-                              ? 'bg-green-100 text-green-700'
-                              : recipient.status === 'AWAITING_RESPONSE'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {recipient.status.replace(/_/g, ' ')}
-                          </span>
-                          <Eye className="w-4 h-4 text-gray-400" />
+                          <Select 
+                            value={recipient.status} 
+                            onValueChange={(value) => handleStatusChange(recipient.id, value)}
+                            disabled={updatingStatus === recipient.id}
+                          >
+                            <SelectTrigger className="w-[130px] h-7 text-xs border-0 bg-transparent hover:bg-gray-100">
+                              <SelectValue>
+                                <RecipientStatusBadge status={recipient.status} />
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {RECIPIENT_STATUS_OPTIONS.map(option => {
+                                const Icon = option.icon
+                                return (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <span className="flex items-center gap-2">
+                                      <Icon className="w-3 h-3" />
+                                      {option.label}
+                                    </span>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            onClick={() => setSelectedRecipient(recipient)}
+                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                            title="View email"
+                          >
+                            <Eye className="w-4 h-4 text-gray-400" />
+                          </button>
                         </div>
                       </div>
                     ))}

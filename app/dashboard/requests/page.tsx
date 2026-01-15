@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -12,9 +13,10 @@ import {
 } from "@/components/ui/select"
 import { 
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
-  CheckCircle, AlertCircle, MessageSquare, Bell
+  CheckCircle, AlertCircle, MessageSquare, Bell,
+  Pause, PlayCircle, MoreHorizontal, Search, X, Calendar
 } from "lucide-react"
-import { formatDistanceToNow, format } from "date-fns"
+import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
 
 // Types
@@ -55,47 +57,132 @@ interface OwnerOption {
   email: string
 }
 
+// Status options for the dropdown
+const STATUS_OPTIONS = [
+  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, color: "amber" },
+  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, color: "blue" },
+  { value: "FULFILLED", label: "Complete", icon: CheckCircle, color: "green" },
+  { value: "REJECTED", label: "Rejected", icon: AlertCircle, color: "red" },
+  { value: "ON_HOLD", label: "On Hold", icon: Pause, color: "gray" },
+]
+
 // Status badge component
 function StatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "FULFILLED":
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-          <CheckCircle className="w-3 h-3" />
-          Complete
-        </span>
-      )
-    case "REPLIED":
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-          <MessageSquare className="w-3 h-3" />
-          Replied
-        </span>
-      )
-    case "HAS_ATTACHMENTS":
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-          <Mail className="w-3 h-3" />
-          Has Attachments
-        </span>
-      )
-    case "REJECTED":
-    case "FLAGGED":
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-          <AlertCircle className="w-3 h-3" />
-          {status === "REJECTED" ? "Rejected" : "Flagged"}
-        </span>
-      )
-    case "AWAITING_RESPONSE":
-    default:
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-          <Clock className="w-3 h-3" />
-          Awaiting
-        </span>
-      )
+  const statusConfig = STATUS_OPTIONS.find(s => s.value === status)
+  
+  if (!statusConfig) {
+    // Handle legacy statuses
+    switch (status) {
+      case "REPLIED":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+            <MessageSquare className="w-3 h-3" />
+            Replied
+          </span>
+        )
+      case "HAS_ATTACHMENTS":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+            <Mail className="w-3 h-3" />
+            Has Attachments
+          </span>
+        )
+      case "FLAGGED":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+            <AlertCircle className="w-3 h-3" />
+            Flagged
+          </span>
+        )
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+            <MoreHorizontal className="w-3 h-3" />
+            {status}
+          </span>
+        )
+    }
   }
+
+  const Icon = statusConfig.icon
+  const colorClasses = {
+    amber: "bg-amber-100 text-amber-700",
+    blue: "bg-blue-100 text-blue-700",
+    green: "bg-green-100 text-green-700",
+    red: "bg-red-100 text-red-700",
+    gray: "bg-gray-100 text-gray-700",
+  }[statusConfig.color] || "bg-gray-100 text-gray-700"
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClasses}`}>
+      <Icon className="w-3 h-3" />
+      {statusConfig.label}
+    </span>
+  )
+}
+
+// Status dropdown for changing status
+function StatusDropdown({ 
+  taskId, 
+  currentStatus, 
+  onStatusChange 
+}: { 
+  taskId: string
+  currentStatus: string
+  onStatusChange: () => void 
+}) {
+  const [updating, setUpdating] = useState(false)
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === currentStatus) return
+    
+    setUpdating(true)
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: newStatus })
+      })
+      
+      if (!response.ok) {
+        throw new Error("Failed to update status")
+      }
+      
+      onStatusChange()
+    } catch (err) {
+      console.error("Error updating status:", err)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <Select 
+      value={currentStatus} 
+      onValueChange={handleStatusChange}
+      disabled={updating}
+    >
+      <SelectTrigger className="w-[140px] h-8 text-xs">
+        <SelectValue>
+          <StatusBadge status={currentStatus} />
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {STATUS_OPTIONS.map(option => {
+          const Icon = option.icon
+          return (
+            <SelectItem key={option.value} value={option.value}>
+              <span className="flex items-center gap-2">
+                <Icon className="w-3 h-3" />
+                {option.label}
+              </span>
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
+  )
 }
 
 // Format reminder frequency
@@ -120,6 +207,14 @@ export default function RequestsPage() {
   const [jobFilter, setJobFilter] = useState<string>("all")
   const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [contactSearch, setContactSearch] = useState<string>("")
+  const [dateFrom, setDateFrom] = useState<string>("")
+  const [dateTo, setDateTo] = useState<string>("")
+  const [hasReminders, setHasReminders] = useState<string>("all") // "all", "yes", "no"
+
+  // Check if any filters are active
+  const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
+    contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all"
 
   // Fetch all requests
   const fetchRequests = useCallback(async () => {
@@ -143,7 +238,40 @@ export default function RequestsPage() {
       }
       
       const data = await response.json()
-      setRequests(data.requests || [])
+      let filteredRequests = data.requests || []
+      
+      // Client-side filtering for contact search
+      if (contactSearch) {
+        const searchLower = contactSearch.toLowerCase()
+        filteredRequests = filteredRequests.filter((r: RequestTask) => {
+          const name = `${r.entity?.firstName || ""} ${r.entity?.lastName || ""}`.toLowerCase()
+          const email = (r.entity?.email || "").toLowerCase()
+          return name.includes(searchLower) || email.includes(searchLower)
+        })
+      }
+      
+      // Client-side filtering for date range
+      if (dateFrom) {
+        const fromDate = parseISO(dateFrom)
+        filteredRequests = filteredRequests.filter((r: RequestTask) => 
+          isAfter(parseISO(r.createdAt), fromDate) || format(parseISO(r.createdAt), 'yyyy-MM-dd') === dateFrom
+        )
+      }
+      if (dateTo) {
+        const toDate = parseISO(dateTo)
+        filteredRequests = filteredRequests.filter((r: RequestTask) => 
+          isBefore(parseISO(r.createdAt), toDate) || format(parseISO(r.createdAt), 'yyyy-MM-dd') === dateTo
+        )
+      }
+      
+      // Client-side filtering for reminders
+      if (hasReminders === "yes") {
+        filteredRequests = filteredRequests.filter((r: RequestTask) => r.remindersEnabled)
+      } else if (hasReminders === "no") {
+        filteredRequests = filteredRequests.filter((r: RequestTask) => !r.remindersEnabled)
+      }
+      
+      setRequests(filteredRequests)
       setTotal(data.total || 0)
       setJobs(data.jobs || [])
       setOwners(data.owners || [])
@@ -153,16 +281,28 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [jobFilter, ownerFilter, statusFilter])
+  }, [jobFilter, ownerFilter, statusFilter, contactSearch, dateFrom, dateTo, hasReminders])
 
   useEffect(() => {
     fetchRequests()
   }, [fetchRequests])
 
+  // Clear all filters
+  const clearFilters = () => {
+    setJobFilter("all")
+    setOwnerFilter("all")
+    setStatusFilter("all")
+    setContactSearch("")
+    setDateFrom("")
+    setDateTo("")
+    setHasReminders("all")
+  }
+
   // Calculate summary stats
   const awaitingCount = statusSummary["AWAITING_RESPONSE"] || 0
-  const repliedCount = statusSummary["REPLIED"] || 0
+  const inProgressCount = statusSummary["IN_PROGRESS"] || 0
   const fulfilledCount = statusSummary["FULFILLED"] || 0
+  const onHoldCount = statusSummary["ON_HOLD"] || 0
 
   if (loading && requests.length === 0) {
     return (
@@ -199,7 +339,7 @@ export default function RequestsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-5 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-gray-900">{total}</div>
@@ -209,13 +349,13 @@ export default function RequestsPage() {
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-amber-700">{awaitingCount}</div>
-            <div className="text-sm text-amber-600">Awaiting Response</div>
+            <div className="text-sm text-amber-600">Awaiting</div>
           </CardContent>
         </Card>
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-700">{repliedCount}</div>
-            <div className="text-sm text-blue-600">Replied</div>
+            <div className="text-2xl font-bold text-blue-700">{inProgressCount}</div>
+            <div className="text-sm text-blue-600">In Progress</div>
           </CardContent>
         </Card>
         <Card className="border-green-200 bg-green-50">
@@ -224,67 +364,142 @@ export default function RequestsPage() {
             <div className="text-sm text-green-600">Complete</div>
           </CardContent>
         </Card>
+        <Card className="border-gray-200 bg-gray-50">
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-gray-700">{onHoldCount}</div>
+            <div className="text-sm text-gray-600">On Hold</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 mb-4">
-        {/* Filters */}
-        <Select value={jobFilter} onValueChange={setJobFilter}>
-          <SelectTrigger className="w-[200px]">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Filter by Task" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tasks</SelectItem>
-            {jobs.map(job => (
-              <SelectItem key={job.id} value={job.id}>
-                {job.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="space-y-3 mb-4">
+        {/* First row - Main filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Task Filter */}
+          <Select value={jobFilter} onValueChange={setJobFilter}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Filter by Task" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Tasks</SelectItem>
+              {jobs.map(job => (
+                <SelectItem key={job.id} value={job.id}>
+                  {job.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by Owner" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Owners</SelectItem>
-            {owners.map(owner => (
-              <SelectItem key={owner.id} value={owner.id}>
-                {owner.name || owner.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          {/* Owner Filter */}
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Owner" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {owners.map(owner => (
+                <SelectItem key={owner.id} value={owner.id}>
+                  {owner.name || owner.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Filter by Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="AWAITING_RESPONSE">Awaiting</SelectItem>
-            <SelectItem value="REPLIED">Replied</SelectItem>
-            <SelectItem value="HAS_ATTACHMENTS">Has Attachments</SelectItem>
-            <SelectItem value="FULFILLED">Complete</SelectItem>
-            <SelectItem value="REJECTED">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
+          {/* Status Filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              {STATUS_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              <SelectItem value="REPLIED">Replied</SelectItem>
+              <SelectItem value="HAS_ATTACHMENTS">Has Attachments</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Button variant="ghost" size="sm" onClick={fetchRequests}>
-          <RefreshCw className="w-4 h-4" />
-        </Button>
+          {/* Reminders Filter */}
+          <Select value={hasReminders} onValueChange={setHasReminders}>
+            <SelectTrigger className="w-[140px]">
+              <Bell className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Reminders" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="yes">With Reminders</SelectItem>
+              <SelectItem value="no">No Reminders</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Contact Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search contact..."
+              value={contactSearch}
+              onChange={(e) => setContactSearch(e.target.value)}
+              className="pl-9 w-[160px]"
+            />
+          </div>
+
+          <Button variant="ghost" size="sm" onClick={fetchRequests}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500">
+              <X className="w-4 h-4 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Second row - Date filters */}
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-gray-400" />
+          <span className="text-sm text-gray-500">Sent:</span>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-[140px] h-8 text-sm"
+            placeholder="From"
+          />
+          <span className="text-gray-400">—</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-[140px] h-8 text-sm"
+            placeholder="To"
+          />
+        </div>
       </div>
 
       {/* Requests Table */}
       {requests.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           <Mail className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No requests found</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {hasActiveFilters ? "No matching requests" : "No requests found"}
+          </h3>
           <p className="text-gray-500 mb-4">
-            Requests will appear here when you send them from your tasks.
+            {hasActiveFilters 
+              ? "Try adjusting your filters to see more results."
+              : "Requests will appear here when you send them from your tasks."
+            }
           </p>
+          {hasActiveFilters && (
+            <Button variant="outline" onClick={clearFilters}>
+              Clear Filters
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden">
@@ -345,7 +560,11 @@ export default function RequestsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={request.status} />
+                    <StatusDropdown 
+                      taskId={request.id}
+                      currentStatus={request.status}
+                      onStatusChange={fetchRequests}
+                    />
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-sm text-gray-900">

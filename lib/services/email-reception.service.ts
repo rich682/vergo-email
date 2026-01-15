@@ -37,6 +37,124 @@ export class EmailReceptionService {
     return undefined
   }
 
+  /**
+   * Detect if an email is an auto-reply (OOO, bounce, delivery notification, etc.)
+   * These should be flagged so they can be filtered out in the UI
+   */
+  static isAutoReply(data: InboundEmailData): boolean {
+    const fromLower = data.from.toLowerCase()
+    const subjectLower = (data.subject || "").toLowerCase()
+    
+    // Check sender patterns for bounces/system messages
+    const autoReplySenders = [
+      "mailer-daemon@",
+      "postmaster@",
+      "noreply@",
+      "no-reply@",
+      "donotreply@",
+      "do-not-reply@",
+      "auto-reply@",
+      "autoreply@",
+      "mailerdaemon@",
+      "mail-daemon@",
+      "daemon@",
+      "bounce@",
+      "bounces@",
+      "notifications@",
+    ]
+    
+    for (const sender of autoReplySenders) {
+      if (fromLower.includes(sender)) {
+        return true
+      }
+    }
+    
+    // Check subject patterns
+    const autoReplySubjects = [
+      "out of office",
+      "out-of-office",
+      "automatic reply",
+      "auto-reply",
+      "auto reply",
+      "autoreply",
+      "undeliverable",
+      "undelivered",
+      "delivery status",
+      "delivery failure",
+      "delivery notification",
+      "mail delivery failed",
+      "mail delivery subsystem",
+      "returned mail",
+      "failure notice",
+      "vacation reply",
+      "vacation response",
+      "i am out of the office",
+      "i'm out of the office",
+      "away from the office",
+      "currently out of office",
+      "on vacation",
+      "on leave",
+      "on holiday",
+      "will be back",
+      "will return",
+      "limited access to email",
+      "delayed response",
+      "automatic response",
+      "this is an automated",
+      "do not reply to this email",
+    ]
+    
+    for (const pattern of autoReplySubjects) {
+      if (subjectLower.includes(pattern)) {
+        return true
+      }
+    }
+    
+    // Check body for common auto-reply patterns (first 500 chars)
+    const bodyLower = (data.body || "").toLowerCase().substring(0, 500)
+    const autoReplyBodyPatterns = [
+      "this is an automated message",
+      "this is an automatic response",
+      "this is an auto-generated",
+      "this email was sent automatically",
+      "i am currently out of the office",
+      "i'm currently out of the office",
+      "i will be out of the office",
+      "thank you for your email. i am currently",
+      "your message was not delivered",
+      "the following message could not be delivered",
+      "delivery has failed",
+      "message delivery failed",
+      "undeliverable message",
+    ]
+    
+    for (const pattern of autoReplyBodyPatterns) {
+      if (bodyLower.includes(pattern)) {
+        return true
+      }
+    }
+    
+    // Check provider data for auto-submitted header
+    if (data.providerData?.headers) {
+      const headers = data.providerData.headers
+      // Check for Auto-Submitted header (RFC 3834)
+      if (headers["auto-submitted"] && headers["auto-submitted"] !== "no") {
+        return true
+      }
+      // Check for X-Auto-Response-Suppress header
+      if (headers["x-auto-response-suppress"]) {
+        return true
+      }
+      // Check for Precedence: bulk/junk/list
+      const precedence = headers["precedence"]?.toLowerCase()
+      if (precedence === "bulk" || precedence === "junk" || precedence === "auto_reply") {
+        return true
+      }
+    }
+    
+    return false
+  }
+
   static async processInboundEmail(
     data: InboundEmailData
   ): Promise<{ taskId: string | null; messageId: string }> {
@@ -247,6 +365,12 @@ export class EmailReceptionService {
       }
     })
 
+    // Check if this is an auto-reply (OOO, bounce, etc.)
+    const isAutoReply = this.isAutoReply(data)
+    if (isAutoReply) {
+      console.log(`[Email Reception] Detected auto-reply from ${data.from}: "${data.subject?.substring(0, 50)}"`)
+    }
+
     // Create message record
     const message = await prisma.message.create({
       data: {
@@ -261,6 +385,7 @@ export class EmailReceptionService {
         toAddress: data.to,
         providerId: data.providerId,
         providerData: data.providerData,
+        isAutoReply,
         attachments: attachmentKeys.length > 0
           ? ({ keys: attachmentKeys } as any)
           : undefined
@@ -269,7 +394,8 @@ export class EmailReceptionService {
 
     // Create CollectedItem records for attachments if task has a jobId
     // This enables the Collection feature - request-scoped evidence intake
-    if (hasAttachments && task.jobId && data.attachments) {
+    // Skip auto-replies to avoid polluting the collection with bounce/OOO attachments
+    if (hasAttachments && task.jobId && data.attachments && !isAutoReply) {
       const submitterName = this.extractNameFromEmail(data.from)
       
       for (let i = 0; i < data.attachments.length; i++) {
@@ -293,6 +419,8 @@ export class EmailReceptionService {
           // Don't fail the entire email processing if collection fails
         }
       }
+    } else if (hasAttachments && isAutoReply) {
+      console.log(`[Collection] Skipping CollectedItem creation for auto-reply attachments from ${data.from}`)
     }
 
     // Trigger AI processing

@@ -77,11 +77,23 @@ export async function PATCH(
     const body = await request.json()
     const { status } = body
 
-    // Validate status
-    const validStatuses = ["FULFILLED", "FLAGGED", "MANUAL_REVIEW", "REJECTED", "CLEAR"]
+    // Validate status - support all TaskStatus values plus CLEAR alias
+    const validStatuses = [
+      "AWAITING_RESPONSE",
+      "IN_PROGRESS",
+      "REPLIED",
+      "HAS_ATTACHMENTS",
+      "VERIFYING",
+      "FULFILLED",
+      "REJECTED",
+      "FLAGGED",
+      "MANUAL_REVIEW",
+      "ON_HOLD",
+      "CLEAR" // Alias for AWAITING_RESPONSE
+    ]
     if (!status || !validStatuses.includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status. Must be one of: FULFILLED, FLAGGED, MANUAL_REVIEW, REJECTED, CLEAR" },
+        { error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
         { status: 400 }
       )
     }

@@ -10,9 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { 
   Download, FileText, Filter, RefreshCw, FolderOpen,
-  FileImage, FileSpreadsheet, File, Archive, ExternalLink
+  FileImage, FileSpreadsheet, File, Archive, ExternalLink,
+  Info, Search, X
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import Link from "next/link"
@@ -33,6 +35,7 @@ interface CollectedItem {
   job?: {
     id: string
     name: string
+    ownerId?: string
     owner?: {
       id: string
       name: string | null
@@ -49,11 +52,21 @@ interface CollectedItem {
       email: string | null
     } | null
   } | null
+  message?: {
+    id: string
+    isAutoReply: boolean
+  } | null
 }
 
 interface JobOption {
   id: string
   name: string
+}
+
+interface OwnerOption {
+  id: string
+  name: string | null
+  email: string
 }
 
 // Helper to get file icon based on mime type
@@ -87,19 +100,27 @@ export default function CollectionPage() {
   // State
   const [items, setItems] = useState<CollectedItem[]>([])
   const [total, setTotal] = useState(0)
+  const [pdfCount, setPdfCount] = useState(0)
   const [jobs, setJobs] = useState<JobOption[]>([])
+  const [owners, setOwners] = useState<OwnerOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
   // Filters
   const [jobFilter, setJobFilter] = useState<string>("all")
+  const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [sourceFilter, setSourceFilter] = useState<string>("all")
+  const [fileTypeFilter, setFileTypeFilter] = useState<string>("pdf") // Default to PDF only
+  const [submitterSearch, setSubmitterSearch] = useState<string>("")
   
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   
   // Bulk action loading
   const [bulkLoading, setBulkLoading] = useState(false)
+
+  // Check if any filters are active
+  const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || sourceFilter !== "all" || fileTypeFilter !== "all" || submitterSearch !== ""
 
   // Fetch all items across all jobs
   const fetchItems = useCallback(async () => {
@@ -109,7 +130,10 @@ export default function CollectionPage() {
       
       const params = new URLSearchParams()
       if (jobFilter !== "all") params.set("jobId", jobFilter)
+      if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (sourceFilter !== "all") params.set("source", sourceFilter)
+      if (fileTypeFilter !== "all") params.set("fileType", fileTypeFilter)
+      if (submitterSearch) params.set("submitter", submitterSearch)
       
       const response = await fetch(
         `/api/collection?${params.toString()}`,
@@ -124,13 +148,15 @@ export default function CollectionPage() {
       const data = await response.json()
       setItems(data.items || [])
       setTotal(data.total || 0)
+      setPdfCount(data.pdfCount || 0)
       setJobs(data.jobs || [])
+      setOwners(data.owners || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [jobFilter, sourceFilter])
+  }, [jobFilter, ownerFilter, sourceFilter, fileTypeFilter, submitterSearch])
 
   useEffect(() => {
     fetchItems()
@@ -199,6 +225,15 @@ export default function CollectionPage() {
     }
   }
 
+  // Clear all filters
+  const clearFilters = () => {
+    setJobFilter("all")
+    setOwnerFilter("all")
+    setSourceFilter("all")
+    setFileTypeFilter("all")
+    setSubmitterSearch("")
+  }
+
   if (loading && items.length === 0) {
     return (
       <div className="p-8">
@@ -233,22 +268,29 @@ export default function CollectionPage() {
         </p>
       </div>
 
-      {/* Summary Card */}
-      <div className="mb-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-gray-900">{total}</div>
             <div className="text-sm text-gray-500">Total Attachments</div>
           </CardContent>
         </Card>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-red-700">{pdfCount}</div>
+            <div className="text-sm text-red-600">PDF Documents</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          {/* Filters */}
+      <div className="space-y-3 mb-4">
+        {/* First row - Main filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Task Filter */}
           <Select value={jobFilter} onValueChange={setJobFilter}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-[180px]">
               <Filter className="w-4 h-4 mr-2" />
               <SelectValue placeholder="Filter by Task" />
             </SelectTrigger>
@@ -262,6 +304,36 @@ export default function CollectionPage() {
             </SelectContent>
           </Select>
 
+          {/* Owner Filter */}
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Owner" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {owners.map(owner => (
+                <SelectItem key={owner.id} value={owner.id}>
+                  {owner.name || owner.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* File Type Filter */}
+          <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="File Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pdf">PDF Only</SelectItem>
+              <SelectItem value="document">Documents</SelectItem>
+              <SelectItem value="spreadsheet">Spreadsheets</SelectItem>
+              <SelectItem value="image">Images</SelectItem>
+              <SelectItem value="all">All Types</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Source Filter */}
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Source" />
@@ -273,27 +345,54 @@ export default function CollectionPage() {
             </SelectContent>
           </Select>
 
+          {/* Submitter Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search submitter..."
+              value={submitterSearch}
+              onChange={(e) => setSubmitterSearch(e.target.value)}
+              className="pl-9 w-[180px]"
+            />
+          </div>
+
           <Button variant="ghost" size="sm" onClick={fetchItems}>
             <RefreshCw className="w-4 h-4" />
           </Button>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="text-gray-500">
+              <X className="w-4 h-4 mr-1" />
+              Clear
+            </Button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Bulk Actions */}
-          {selectedIds.length > 0 && (
-            <div className="flex items-center gap-2 mr-4 px-3 py-1 bg-gray-100 rounded-lg">
-              <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleBulkDownload}
-                disabled={bulkLoading}
-              >
-                <Download className="w-4 h-4 mr-1" />
-                Download
-              </Button>
-            </div>
-          )}
+        {/* Second row - Bulk actions and download tip */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {/* Bulk Actions */}
+            {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-lg">
+                <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBulkDownload}
+                  disabled={bulkLoading}
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  Download
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Download location tip */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <Info className="w-3.5 h-3.5" />
+            <span>Tip: Change your browser settings to &quot;Ask where to save&quot; for more control over downloads</span>
+          </div>
         </div>
       </div>
 
@@ -301,10 +400,20 @@ export default function CollectionPage() {
       {items.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           <FolderOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No attachments collected yet</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {hasActiveFilters ? "No matching attachments" : "No attachments collected yet"}
+          </h3>
           <p className="text-gray-500 mb-4">
-            Attachments will appear here when stakeholders reply to your requests with files.
+            {hasActiveFilters 
+              ? "Try adjusting your filters to see more results."
+              : "Attachments will appear here when stakeholders reply to your requests with files."
+            }
           </p>
+          {hasActiveFilters && (
+            <Button variant="outline" onClick={clearFilters}>
+              Clear Filters
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden">
