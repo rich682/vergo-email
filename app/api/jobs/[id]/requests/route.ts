@@ -106,13 +106,13 @@ export async function GET(
         },
         messages: {
           where: { direction: "OUTBOUND" },
-          orderBy: { sentAt: "asc" },
+          orderBy: { createdAt: "asc" },
           take: 1,
           select: {
             id: true,
             subject: true,
             body: true,
-            sentAt: true
+            createdAt: true
           }
         }
       }
@@ -153,7 +153,7 @@ export async function GET(
           sentMessage: task.messages[0] ? {
             subject: task.messages[0].subject,
             body: task.messages[0].body,
-            sentAt: task.messages[0].sentAt
+            sentAt: task.messages[0].createdAt
           } : null
         }))
       }
