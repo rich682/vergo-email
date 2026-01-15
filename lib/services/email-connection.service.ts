@@ -236,6 +236,134 @@ export class EmailConnectionService {
 
     return result
   }
+
+  /**
+   * Get a valid Microsoft Graph access token for the given account.
+   * Automatically refreshes the token if it's expired or about to expire.
+   */
+  static async getMicrosoftAccessToken(
+    accountId: string
+  ): Promise<{ token: string; account: ConnectedEmailAccount } | null> {
+    const account = await prisma.connectedEmailAccount.findUnique({
+      where: { id: accountId }
+    })
+
+    if (!account || account.provider !== "MICROSOFT") {
+      return null
+    }
+
+    if (!account.accessToken || !account.refreshToken) {
+      return null
+    }
+
+    // Check if token is expired or about to expire (within 5 minutes)
+    const now = Date.now()
+    const expiry = account.tokenExpiresAt?.getTime() || 0
+    const needsRefresh = expiry < now + 5 * 60 * 1000
+
+    if (needsRefresh) {
+      const refreshedAccount = await this.refreshMicrosoftToken(accountId)
+      return {
+        token: decrypt(refreshedAccount.accessToken!),
+        account: refreshedAccount
+      }
+    }
+
+    return {
+      token: decrypt(account.accessToken),
+      account
+    }
+  }
+
+  /**
+   * Refresh Microsoft OAuth token using the refresh token.
+   */
+  static async refreshMicrosoftToken(
+    accountId: string
+  ): Promise<ConnectedEmailAccount> {
+    const account = await prisma.connectedEmailAccount.findUnique({
+      where: { id: accountId }
+    })
+
+    if (!account || account.provider !== "MICROSOFT") {
+      throw new Error("Account not found or not a Microsoft account")
+    }
+
+    if (!account.refreshToken) {
+      throw new Error("No refresh token available for Microsoft account")
+    }
+
+    const tenant = process.env.MS_TENANT_ID || "common"
+    const tokenUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`
+
+    const params = new URLSearchParams({
+      client_id: process.env.MS_CLIENT_ID || "",
+      client_secret: process.env.MS_CLIENT_SECRET || "",
+      grant_type: "refresh_token",
+      refresh_token: decrypt(account.refreshToken),
+      scope: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
+    })
+
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to refresh Microsoft token: ${errorText}`)
+    }
+
+    const data = await response.json()
+    const expiresInMs = data.expires_in ? Number(data.expires_in) * 1000 : 3600 * 1000
+
+    // Update account with new tokens
+    return prisma.connectedEmailAccount.update({
+      where: { id: accountId },
+      data: {
+        accessToken: encrypt(data.access_token),
+        refreshToken: data.refresh_token
+          ? encrypt(data.refresh_token)
+          : account.refreshToken,
+        tokenExpiresAt: new Date(Date.now() + expiresInMs)
+      }
+    })
+  }
+
+  /**
+   * Create a Microsoft connection for an organization.
+   */
+  static async createMicrosoftConnection(data: {
+    organizationId: string
+    email: string
+    accessToken: string
+    refreshToken: string
+    tokenExpiresAt: Date
+  }): Promise<ConnectedEmailAccount> {
+    const encryptedAccessToken = encrypt(data.accessToken)
+    const encryptedRefreshToken = encrypt(data.refreshToken)
+
+    const existingConnections = await prisma.connectedEmailAccount.count({
+      where: {
+        organizationId: data.organizationId,
+        isActive: true
+      }
+    })
+
+    return prisma.connectedEmailAccount.create({
+      data: {
+        organizationId: data.organizationId,
+        email: data.email,
+        provider: "MICROSOFT",
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        tokenExpiresAt: data.tokenExpiresAt,
+        isPrimary: existingConnections === 0,
+        isActive: true
+      }
+    })
+  }
 }
 
 

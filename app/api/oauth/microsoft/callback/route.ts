@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       grant_type: "authorization_code",
       code,
       redirect_uri: process.env.MS_REDIRECT_URI || "",
-      scope: "offline_access Mail.Send Contacts.Read",
+      scope: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
 
     const tokenResp = await fetch(tokenUrl, {
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
       tokenExpiresAt: new Date(Date.now() + expiresInMs),
-      scopes: "offline_access Mail.Send Contacts.Read",
+      scopes: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
 
     return NextResponse.redirect(new URL("/dashboard/settings?success=microsoft_connected", request.url))

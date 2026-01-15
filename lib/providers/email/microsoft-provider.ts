@@ -26,7 +26,7 @@ export class MicrosoftProvider implements EmailProviderDriver {
       client_secret: process.env.MS_CLIENT_SECRET || "",
       grant_type: "refresh_token",
       refresh_token: decrypt(account.refreshToken),
-      scope: "offline_access Mail.Send Contacts.Read",
+      scope: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
     const tenant = process.env.MS_TENANT_ID || "common"
     const tokenUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`

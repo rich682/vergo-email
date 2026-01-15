@@ -34,10 +34,32 @@ export class EmailSyncService {
   }
 
   /**
-   * Provider-agnostic entrypoint (currently Gmail only).
+   * Sync all Gmail accounts.
    */
   static async syncGmailAccounts(): Promise<SyncSummary> {
     return this.syncAccountsByProvider("GMAIL")
+  }
+
+  /**
+   * Sync all Microsoft/Outlook accounts.
+   */
+  static async syncMicrosoftAccounts(): Promise<SyncSummary> {
+    return this.syncAccountsByProvider("MICROSOFT")
+  }
+
+  /**
+   * Sync all email accounts across all providers.
+   */
+  static async syncAllAccounts(): Promise<SyncSummary> {
+    const gmailSummary = await this.syncGmailAccounts()
+    const microsoftSummary = await this.syncMicrosoftAccounts()
+
+    return {
+      accountsProcessed: gmailSummary.accountsProcessed + microsoftSummary.accountsProcessed,
+      messagesFetched: gmailSummary.messagesFetched + microsoftSummary.messagesFetched,
+      repliesPersisted: gmailSummary.repliesPersisted + microsoftSummary.repliesPersisted,
+      errors: gmailSummary.errors + microsoftSummary.errors,
+    }
   }
 
   static async syncAccountsByProvider(
@@ -142,12 +164,18 @@ export class EmailSyncService {
 
     const deduped = await this.persistInboundMessages(account, inboundMessages)
     const nextCursor = fetchResult.nextCursor || cursor || null
+    const existingCursor = account.syncCursor as ProviderCursor | null
+    
+    // Merge cursors - preserve existing provider cursors while updating the current one
     const mergedCursor: ProviderCursor = {
-      ...(account.syncCursor as ProviderCursor),
-      ...(nextCursor || {}),
+      // Preserve Gmail cursor
       gmail: nextCursor?.gmail
         ? nextCursor.gmail
-        : (account.syncCursor as ProviderCursor | null)?.gmail,
+        : existingCursor?.gmail,
+      // Preserve Microsoft cursor
+      microsoft: nextCursor?.microsoft
+        ? nextCursor.microsoft
+        : existingCursor?.microsoft,
     }
 
     await prisma.connectedEmailAccount.update({
