@@ -24,7 +24,8 @@ export class EmailDraftService {
     idempotencyKey?: string | null
     aiGenerationStatus?: string | null
   }): Promise<EmailDraft> {
-    return prisma.emailDraft.create({
+    console.log(`EmailDraftService.create: Creating draft with jobId: ${data.jobId || 'none'}`)
+    const draft = await prisma.emailDraft.create({
       data: {
         organizationId: data.organizationId,
         userId: data.userId,
@@ -47,6 +48,8 @@ export class EmailDraftService {
         status: "DRAFT"
       }
     })
+    console.log(`EmailDraftService.create: Created draft ${draft.id} with jobId: ${draft.jobId || 'none'}`)
+    return draft
   }
 
   static async findById(
@@ -95,7 +98,7 @@ export class EmailDraftService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "subjectTemplate" | "bodyTemplate" | "htmlBodyTemplate" | "availableTags" | "personalizationMode" | "blockOnMissingValues" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus">>
+    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "subjectTemplate" | "bodyTemplate" | "htmlBodyTemplate" | "availableTags" | "personalizationMode" | "blockOnMissingValues" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus" | "sentAt">>
   ): Promise<EmailDraft> {
     const updateData: any = { ...data }
     

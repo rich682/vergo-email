@@ -51,6 +51,7 @@ export async function GET(
     }
 
     // Fetch EmailDrafts (Requests) for this job
+    console.log(`Fetching requests for job ${jobId}, org ${organizationId}`)
     const requests = await prisma.emailDraft.findMany({
       where: {
         jobId,
@@ -81,6 +82,8 @@ export async function GET(
       },
       orderBy: { createdAt: "desc" }
     })
+
+    console.log(`Found ${requests.length} requests for job ${jobId}`)
 
     // Get task counts for each request (by campaignName)
     const campaignNames = requests

@@ -451,9 +451,10 @@ export class QuestService {
         executedAt: new Date().toISOString()
       })
 
-      // Update EmailDraft status
+      // Update EmailDraft status and sentAt timestamp
       await EmailDraftService.update(id, organizationId, {
-        status: "SENT"
+        status: "SENT",
+        sentAt: new Date()
       })
 
       return {
