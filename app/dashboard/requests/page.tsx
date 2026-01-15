@@ -18,8 +18,14 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 // Types
+interface BoardOption {
+  id: string
+  name: string
+}
+
 interface RequestTask {
   id: string
   campaignName: string | null
@@ -182,17 +188,22 @@ function formatReminderFrequency(hours: number | null): string {
 }
 
 export default function RequestsPage() {
+  const searchParams = useSearchParams()
+  const boardIdFromUrl = searchParams.get("boardId")
+  
   // State
   const [requests, setRequests] = useState<RequestTask[]>([])
   const [total, setTotal] = useState(0)
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [owners, setOwners] = useState<OwnerOption[]>([])
   const [labels, setLabels] = useState<LabelOption[]>([])
+  const [boards, setBoards] = useState<BoardOption[]>([])
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
   // Filters
+  const [boardFilter, setBoardFilter] = useState<string>(boardIdFromUrl || "all")
   const [jobFilter, setJobFilter] = useState<string>("all")
   const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -203,8 +214,24 @@ export default function RequestsPage() {
   const [hasReminders, setHasReminders] = useState<string>("all")
 
   // Check if any filters are active
-  const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
+  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
     labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all"
+
+  // Fetch boards for filter
+  useEffect(() => {
+    const fetchBoards = async () => {
+      try {
+        const response = await fetch("/api/boards?status=OPEN,CLOSED", { credentials: "include" })
+        if (response.ok) {
+          const data = await response.json()
+          setBoards(data.boards || [])
+        }
+      } catch (err) {
+        console.error("Error fetching boards:", err)
+      }
+    }
+    fetchBoards()
+  }, [])
 
   // Fetch all requests
   const fetchRequests = useCallback(async () => {
@@ -213,6 +240,7 @@ export default function RequestsPage() {
       setError(null)
       
       const params = new URLSearchParams()
+      if (boardFilter !== "all") params.set("boardId", boardFilter)
       if (jobFilter !== "all") params.set("jobId", jobFilter)
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
@@ -273,7 +301,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders])
+  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders])
 
   useEffect(() => {
     fetchRequests()
@@ -281,6 +309,7 @@ export default function RequestsPage() {
 
   // Clear all filters
   const clearFilters = () => {
+    setBoardFilter("all")
     setJobFilter("all")
     setOwnerFilter("all")
     setStatusFilter("all")
@@ -369,6 +398,23 @@ export default function RequestsPage() {
       <div className="space-y-3 mb-4">
         {/* First row - Main filters */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Board Filter */}
+          {boards.length > 0 && (
+            <Select value={boardFilter} onValueChange={setBoardFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Boards" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Boards</SelectItem>
+                {boards.map(board => (
+                  <SelectItem key={board.id} value={board.id}>
+                    {board.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Task Filter - Only shows tasks with requests */}
           <Select value={jobFilter} onValueChange={setJobFilter}>
             <SelectTrigger className="w-[180px]">

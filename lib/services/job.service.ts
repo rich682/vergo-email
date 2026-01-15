@@ -39,6 +39,7 @@ export interface CreateJobInput {
   name: string
   description?: string
   clientId?: string
+  boardId?: string  // Optional: parent board for period-based organization
   dueDate?: Date
   labels?: JobLabels  // Structured labels with tags, period, workType
   tags?: string[]     // Convenience: will be merged into labels.tags
@@ -49,6 +50,8 @@ export interface UpdateJobInput {
   description?: string
   clientId?: string | null
   ownerId?: string  // Can transfer ownership
+  boardId?: string | null  // Can move between boards
+  sortOrder?: number  // Order within board
   status?: JobStatus
   dueDate?: Date | null
   labels?: JobLabels  // Structured labels with tags, period, workType
@@ -209,6 +212,7 @@ export class JobService {
         name: input.name,
         description: input.description,
         clientId: input.clientId,
+        boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels,
         status: JobStatus.ACTIVE
@@ -331,6 +335,7 @@ export class JobService {
     options?: {
       status?: JobStatus
       clientId?: string
+      boardId?: string  // Filter by board
       ownerId?: string  // Filter by owner ("My Jobs")
       collaboratorId?: string  // Include jobs where user is collaborator
       tags?: string[]  // Filter by tags (ANY match)
@@ -342,7 +347,8 @@ export class JobService {
     let where: any = {
       organizationId,
       ...(options?.status && { status: options.status }),
-      ...(options?.clientId && { clientId: options.clientId })
+      ...(options?.clientId && { clientId: options.clientId }),
+      ...(options?.boardId && { boardId: options.boardId })
     }
 
     // If filtering by "My Jobs" (owner or collaborator)
@@ -485,6 +491,8 @@ export class JobService {
         ...(input.description !== undefined && { description: input.description }),
         ...(input.clientId !== undefined && { clientId: input.clientId }),
         ...(input.ownerId !== undefined && { ownerId: input.ownerId }),
+        ...(input.boardId !== undefined && { boardId: input.boardId }),
+        ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
         ...(input.status !== undefined && { status: input.status }),
         ...(input.dueDate !== undefined && { dueDate: input.dueDate }),
         ...(input.labels !== undefined && { labels: input.labels })

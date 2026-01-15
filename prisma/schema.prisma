@@ -76,6 +76,22 @@ enum CollectedItemSource {
   MANUAL_UPLOAD
 }
 
+// Board represents a period-based checklist (e.g., "January 2025 Book Close")
+// Boards group Jobs for accounting period workflows (Monday.com parity)
+enum BoardStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+// Subtask status for checklist items within a Job (Monday.com subitem parity)
+enum SubtaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  STUCK
+  DONE
+}
+
 model Organization {
   id          String   @id @default(cuid())
   name        String
@@ -93,6 +109,9 @@ model Organization {
   automationRules        AutomationRule[]
   emailDrafts            EmailDraft[]
   agentSchedules         AgentSchedule[]
+  boards                 Board[]
+  subtasks               Subtask[]
+  attachments            Attachment[]
 
   @@index([slug])
 }
@@ -119,6 +138,9 @@ model User {
   jobCollaborations JobCollaborator[]
   jobComments       JobComment[]
   reviewedItems     CollectedItem[]   @relation("CollectedItemReviewer")
+  createdBoards     Board[]           @relation("BoardCreator")
+  ownedSubtasks     Subtask[]         @relation("SubtaskOwner")
+  uploadedAttachments Attachment[]    @relation("AttachmentUploader")
 
   @@index([organizationId])
   @@index([email])
@@ -209,17 +231,22 @@ model Job {
   status         JobStatus @default(ACTIVE)
   dueDate        DateTime? // Target completion date
   labels         Json?     // Flexible tagging/categorization
+  boardId        String?   // Optional: parent Board for period-based organization
+  sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client          Entity?           @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
   owner           User              @relation("JobOwner", fields: [ownerId], references: [id])
+  board           Board?            @relation(fields: [boardId], references: [id], onDelete: SetNull)
   collaborators   JobCollaborator[] // Team members who can collaborate on this job
   tasks           Task[]            // Child tasks (requests) belonging to this job
   requests        EmailDraft[]      // Request-level association
   comments        JobComment[]      // Internal collaboration comments
   collectedItems  CollectedItem[]   // Evidence/attachments collected for this job
+  subtasks        Subtask[]         // Checklist subitems within this job
+  attachments     Attachment[]      // Direct file attachments on this job
 
   jobLabels       JobLabel[]        // Item-scoped labels for contacts
 
@@ -228,6 +255,7 @@ model Job {
   @@index([clientId])
   @@index([ownerId])
   @@index([organizationId, createdAt])
+  @@index([boardId])
 }
 
 // JobLabel defines labels that can be applied to contacts within a specific Job
@@ -621,4 +649,78 @@ model CollectedItem {
   @@index([status])
   @@index([jobId, status])
   @@index([organizationId, jobId])
+}
+
+// Board represents a period-based checklist (e.g., "January 2025 Book Close")
+// Boards group Jobs for accounting period workflows (Monday.com parity)
+model Board {
+  id             String      @id @default(cuid())
+  organizationId String
+  name           String      // "January 2025 Book Close", "Year-End Close 2024"
+  description    String?
+  status         BoardStatus @default(OPEN)
+  periodStart    DateTime?   // Optional period bounds
+  periodEnd      DateTime?
+  createdById    String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("BoardCreator", fields: [createdById], references: [id])
+  jobs         Job[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// Subtask represents a checklist item within a Job (Monday.com subitem parity)
+// Subtasks have their own owner, status, due date, and attachments
+model Subtask {
+  id             String        @id @default(cuid())
+  organizationId String
+  jobId          String
+  title          String
+  description    String?
+  ownerId        String?       // Nullable - Monday allows unassigned subitems
+  status         SubtaskStatus @default(NOT_STARTED)
+  dueDate        DateTime?
+  sortOrder      Int           @default(0) // Order within job for drag-drop reordering
+  completedAt    DateTime?     // Timestamp when marked as DONE
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  owner        User?        @relation("SubtaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  attachments  Attachment[]
+
+  @@index([organizationId])
+  @@index([jobId])
+  @@index([ownerId])
+  @@index([jobId, sortOrder])
+}
+
+// Attachment represents a direct file upload on a Job or Subtask
+// Distinct from CollectedItem which is for inbound email attachments
+model Attachment {
+  id             String   @id @default(cuid())
+  organizationId String
+  jobId          String?  // One of jobId or subtaskId must be set (enforced in app logic)
+  subtaskId      String?
+  filename       String
+  fileKey        String   // Storage key (same pattern as CollectedItem)
+  fileUrl        String?  // Cached URL for quick access
+  fileSize       Int?     // Bytes
+  mimeType       String?
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  subtask      Subtask?     @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+
+  @@index([organizationId])
+  @@index([jobId])
+  @@index([subtaskId])
 }

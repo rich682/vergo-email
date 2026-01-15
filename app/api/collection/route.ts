@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Parse query params for filters
     const { searchParams } = new URL(request.url)
+    const boardId = searchParams.get("boardId")
     const source = searchParams.get("source") as CollectedItemSource | null
     const jobId = searchParams.get("jobId")
     const fileType = searchParams.get("fileType") // "pdf", "image", "spreadsheet", "all"
@@ -30,6 +31,14 @@ export async function GET(request: NextRequest) {
 
     const where: any = {
       organizationId
+    }
+
+    // Filter by board (via job.boardId)
+    if (boardId) {
+      where.job = {
+        ...where.job,
+        boardId
+      }
     }
 
     if (source && ["EMAIL_REPLY", "MANUAL_UPLOAD"].includes(source)) {

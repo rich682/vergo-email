@@ -53,6 +53,10 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
+// Subtasks and Attachments components
+import { SubtasksTable } from "@/components/jobs/subtasks-table"
+import { AttachmentsPanel } from "@/components/attachments/attachments-panel"
+
 // ============================================
 // Types
 // ============================================
@@ -272,9 +276,14 @@ export default function JobDetailPage() {
 
   // UI state
   const [awaitingExpanded, setAwaitingExpanded] = useState(true)
+  const [subtasksExpanded, setSubtasksExpanded] = useState(true)
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false)
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(false)
+  
+  // Subtask attachments drawer state
+  const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null)
 
   // Stakeholder dialog
   const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
@@ -1263,6 +1272,46 @@ export default function JobDetailPage() {
               </Card>
             )}
 
+            {/* Subtasks Section - Checklist items within this task */}
+            <Card>
+              <CardContent className="p-4">
+                <SectionHeader
+                  title="Subtasks"
+                  icon={<CheckCircle className="w-4 h-4 text-green-500" />}
+                  collapsible
+                  expanded={subtasksExpanded}
+                  onToggle={() => setSubtasksExpanded(!subtasksExpanded)}
+                />
+                {subtasksExpanded && (
+                  <div className="mt-3">
+                    <SubtasksTable
+                      jobId={jobId}
+                      teamMembers={teamMembers.map(m => ({ id: m.id, name: m.name, email: m.email }))}
+                      onViewAttachments={(subtaskId) => setSelectedSubtaskId(subtaskId)}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Attachments Section - Direct file uploads on this task */}
+            <Card>
+              <CardContent className="p-4">
+                <SectionHeader
+                  title="Attachments"
+                  icon={<FileText className="w-4 h-4 text-orange-500" />}
+                  collapsible
+                  expanded={attachmentsExpanded}
+                  onToggle={() => setAttachmentsExpanded(!attachmentsExpanded)}
+                />
+                {attachmentsExpanded && (
+                  <div className="mt-3">
+                    <AttachmentsPanel jobId={jobId} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Requests Section (collapsed by default unless in setup mode) */}
             {requests.length > 0 && (
               <Card>
@@ -1678,6 +1727,18 @@ export default function JobDetailPage() {
           onClose={() => setSelectedRequest(null)}
         />
       )}
+
+      {/* Subtask Attachments Dialog */}
+      <Dialog open={!!selectedSubtaskId} onOpenChange={(open) => !open && setSelectedSubtaskId(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Subtask Attachments</DialogTitle>
+          </DialogHeader>
+          {selectedSubtaskId && (
+            <AttachmentsPanel subtaskId={selectedSubtaskId} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

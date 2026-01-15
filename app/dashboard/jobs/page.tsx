@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef, KeyboardEvent } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,15 +12,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Briefcase, X, Filter, Check, Sparkles, Tag, Copy, ChevronDown, Trash2, Users } from "lucide-react"
+import { 
+  Plus, 
+  ChevronDown, 
+  ChevronRight, 
+  Search, 
+  MoreHorizontal,
+  Trash2,
+  Users,
+  Calendar,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Loader2
+} from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
-
-// Design system components
-import { Chip } from "@/components/ui/chip"
 import { EmptyState } from "@/components/ui/empty-state"
-import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
-import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 
 // ============================================
 // Types
@@ -45,6 +53,15 @@ interface JobLabels {
   stakeholders?: JobStakeholder[]
 }
 
+interface Subtask {
+  id: string
+  title: string
+  status: "NOT_STARTED" | "IN_PROGRESS" | "STUCK" | "DONE"
+  ownerId: string | null
+  owner: { id: string; name: string | null; email: string } | null
+  dueDate: string | null
+}
+
 interface Job {
   id: string
   name: string
@@ -57,52 +74,47 @@ interface Job {
   updatedAt: string
   owner: JobOwner
   collaborators?: { id: string; userId: string; role: string; user: { id: string; name: string | null; email: string } }[]
-  client?: { id: string; firstName: string; lastName: string | null; email: string | null } | null
   taskCount: number
   respondedCount: number
   completedCount: number
-  stakeholderCount?: number  // Actual count of resolved contacts
+  stakeholderCount?: number
+  subtaskCount?: number
+  subtaskCompletedCount?: number
 }
 
-interface SavedView {
+interface Board {
   id: string
   name: string
-  statusFilters: string[]
-  tagFilters: string[]
-  ownerFilters: string[]
-  ragFilters: string[]
-  hasRequestsFilter: string
-  dueDateFilter: string
+  status: string
 }
 
-// RAG filter options
-const RAG_OPTIONS = [
-  { value: "green", label: "On Track", color: "bg-green-500" },
-  { value: "amber", label: "At Risk", color: "bg-amber-500" },
-  { value: "red", label: "Overdue/Critical", color: "bg-red-500" },
-  { value: "gray", label: "No Due Date", color: "bg-gray-300" },
+// Status group configuration
+const STATUS_GROUPS = [
+  { 
+    status: "ACTIVE", 
+    label: "To Do", 
+    icon: Clock,
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    defaultExpanded: true 
+  },
+  { 
+    status: "WAITING", 
+    label: "In Progress", 
+    icon: AlertCircle,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    defaultExpanded: true 
+  },
+  { 
+    status: "COMPLETED", 
+    label: "Done", 
+    icon: CheckCircle,
+    color: "text-green-600",
+    bgColor: "bg-green-50",
+    defaultExpanded: false 
+  },
 ]
-
-// Due date filter options
-const DUE_DATE_OPTIONS = [
-  { value: "overdue", label: "Overdue" },
-  { value: "today", label: "Due Today" },
-  { value: "this_week", label: "Due This Week" },
-  { value: "next_week", label: "Due Next Week" },
-  { value: "this_month", label: "Due This Month" },
-  { value: "no_due_date", label: "No Due Date" },
-]
-
-// Has requests filter options
-const HAS_REQUESTS_OPTIONS = [
-  { value: "any", label: "Any" },
-  { value: "yes", label: "Has Requests" },
-  { value: "no", label: "No Requests" },
-  { value: "pending", label: "Pending Responses" },
-  { value: "all_responded", label: "All Responded" },
-]
-
-const SAVED_VIEWS_KEY = "tasks-saved-views"
 
 // ============================================
 // Helpers
@@ -119,50 +131,27 @@ function getInitials(name: string | null, email: string): string {
   return email[0]?.toUpperCase() || "?"
 }
 
-const STATUS_OPTIONS = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "WAITING", label: "Waiting" },
-  { value: "COMPLETED", label: "Completed" },
-  { value: "ARCHIVED", label: "Archived" },
-]
-
-// RAG rating calculation based on item context
 type RAGRating = "green" | "amber" | "red" | "gray"
 
 function calculateRAGRating(job: Job): RAGRating {
   const dueDate = job.dueDate ? new Date(job.dueDate) : null
   const now = new Date()
   
-  // Completed items are always green
   if (job.status === "COMPLETED") return "green"
-  
-  // Archived items are gray
   if (job.status === "ARCHIVED") return "gray"
-  
-  // No due date = gray (can't assess risk)
   if (!dueDate) return "gray"
   
   const daysUntilDue = differenceInDays(dueDate, now)
   
-  // Overdue = red
   if (daysUntilDue < 0) return "red"
   
-  // Has outstanding requests with no responses and due soon
   const hasOutstandingRequests = job.taskCount > 0 && job.respondedCount === 0
   
-  // Due within 3 days with outstanding requests = red
   if (daysUntilDue <= 3 && hasOutstandingRequests) return "red"
-  
-  // Due within 7 days with outstanding requests = amber
   if (daysUntilDue <= 7 && hasOutstandingRequests) return "amber"
-  
-  // Due within 3 days = amber
   if (daysUntilDue <= 3) return "amber"
-  
-  // All responses received = green
   if (job.taskCount > 0 && job.respondedCount === job.taskCount) return "green"
   
-  // Default = green (on track)
   return "green"
 }
 
@@ -175,7 +164,337 @@ function RAGBadge({ rating }: { rating: RAGRating }) {
   }
   
   return (
-    <div className={`w-3 h-3 rounded-full ${colors[rating]}`} title={rating.charAt(0).toUpperCase() + rating.slice(1)} />
+    <div className={`w-2.5 h-2.5 rounded-full ${colors[rating]}`} />
+  )
+}
+
+// ============================================
+// Task Row Component (with inline subtasks)
+// ============================================
+
+function TaskRow({ 
+  job, 
+  teamMembers,
+  onStatusChange,
+  onDelete,
+  expandedSubtasks,
+  onToggleSubtasks
+}: { 
+  job: Job
+  teamMembers: { id: string; name: string | null; email: string }[]
+  onStatusChange: (jobId: string, status: string) => void
+  onDelete: (jobId: string) => void
+  expandedSubtasks: Set<string>
+  onToggleSubtasks: (jobId: string) => void
+}) {
+  const router = useRouter()
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [loadingSubtasks, setLoadingSubtasks] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  
+  const isExpanded = expandedSubtasks.has(job.id)
+  const rag = calculateRAGRating(job)
+  const subtaskCount = job.subtaskCount || 0
+  const subtaskCompletedCount = job.subtaskCompletedCount || 0
+
+  // Fetch subtasks when expanded
+  useEffect(() => {
+    if (isExpanded && subtasks.length === 0) {
+      fetchSubtasks()
+    }
+  }, [isExpanded])
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const fetchSubtasks = async () => {
+    setLoadingSubtasks(true)
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/subtasks`)
+      if (response.ok) {
+        const data = await response.json()
+        setSubtasks(data.subtasks || [])
+      }
+    } catch (error) {
+      console.error("Error fetching subtasks:", error)
+    } finally {
+      setLoadingSubtasks(false)
+    }
+  }
+
+  const handleRowClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on interactive elements
+    if ((e.target as HTMLElement).closest('button, input, select, [role="button"]')) {
+      return
+    }
+    router.push(`/dashboard/jobs/${job.id}`)
+  }
+
+  return (
+    <>
+      {/* Main Task Row */}
+      <div 
+        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 group"
+        onClick={handleRowClick}
+      >
+        {/* Expand/Collapse for subtasks */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSubtasks(job.id)
+          }}
+          className={`w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 ${subtaskCount === 0 ? 'invisible' : ''}`}
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-gray-500" />
+          )}
+        </button>
+
+        {/* Task checkbox (status toggle) */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            const newStatus = job.status === "COMPLETED" ? "ACTIVE" : "COMPLETED"
+            onStatusChange(job.id, newStatus)
+          }}
+          className={`
+            w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0
+            ${job.status === "COMPLETED" 
+              ? "bg-green-500 border-green-500 text-white" 
+              : "border-gray-300 hover:border-gray-400"
+            }
+          `}
+        >
+          {job.status === "COMPLETED" && <CheckCircle className="w-3 h-3" />}
+        </button>
+
+        {/* Task name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`font-medium truncate ${job.status === "COMPLETED" ? "line-through text-gray-400" : "text-gray-900"}`}>
+              {job.name}
+            </span>
+            {subtaskCount > 0 && (
+              <span className="text-xs text-gray-400 flex-shrink-0">
+                {subtaskCompletedCount}/{subtaskCount}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Owner */}
+        <div className="w-32 flex-shrink-0">
+          <div 
+            className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600"
+            title={job.owner.name || job.owner.email}
+          >
+            {getInitials(job.owner.name, job.owner.email)}
+          </div>
+        </div>
+
+        {/* RAG Status */}
+        <div className="w-16 flex-shrink-0 flex justify-center">
+          <RAGBadge rating={rag} />
+        </div>
+
+        {/* Due Date */}
+        <div className="w-28 flex-shrink-0 text-sm text-gray-500">
+          {job.dueDate ? format(new Date(job.dueDate), "MMM d") : "—"}
+        </div>
+
+        {/* Actions */}
+        <div className="w-10 flex-shrink-0 relative" ref={menuRef}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen(!menuOpen)
+            }}
+            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200"
+          >
+            <MoreHorizontal className="w-4 h-4 text-gray-500" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-36 bg-white border rounded-lg shadow-lg z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMenuOpen(false)
+                  onDelete(job.id)
+                }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Subtasks (expanded) */}
+      {isExpanded && (
+        <div className="bg-gray-50 border-b border-gray-100">
+          {loadingSubtasks ? (
+            <div className="px-12 py-3 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+              Loading subtasks...
+            </div>
+          ) : subtasks.length === 0 ? (
+            <div className="px-12 py-3 text-sm text-gray-400">
+              No subtasks
+            </div>
+          ) : (
+            subtasks.map((subtask) => (
+              <div 
+                key={subtask.id}
+                className="flex items-center gap-3 px-4 py-2 pl-16 hover:bg-gray-100"
+              >
+                <div className={`
+                  w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
+                  ${subtask.status === "DONE" 
+                    ? "bg-green-500 border-green-500 text-white" 
+                    : "border-gray-300"
+                  }
+                `}>
+                  {subtask.status === "DONE" && <CheckCircle className="w-2.5 h-2.5" />}
+                </div>
+                <span className={`text-sm flex-1 ${subtask.status === "DONE" ? "line-through text-gray-400" : "text-gray-700"}`}>
+                  {subtask.title}
+                </span>
+                {subtask.owner && (
+                  <div 
+                    className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500"
+                    title={subtask.owner.name || subtask.owner.email}
+                  >
+                    {getInitials(subtask.owner.name, subtask.owner.email)}
+                  </div>
+                )}
+                {subtask.dueDate && (
+                  <span className="text-xs text-gray-400">
+                    {format(new Date(subtask.dueDate), "MMM d")}
+                  </span>
+                )}
+              </div>
+            ))
+          )}
+          {/* Add subtask button */}
+          <button
+            onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+            className="w-full px-4 py-2 pl-16 text-left text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          >
+            <Plus className="w-3 h-3 inline mr-1" />
+            Add subtask
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ============================================
+// Status Group Component
+// ============================================
+
+function StatusGroup({
+  group,
+  jobs,
+  teamMembers,
+  onStatusChange,
+  onDelete,
+  expandedSubtasks,
+  onToggleSubtasks,
+  onAddTask
+}: {
+  group: typeof STATUS_GROUPS[0]
+  jobs: Job[]
+  teamMembers: { id: string; name: string | null; email: string }[]
+  onStatusChange: (jobId: string, status: string) => void
+  onDelete: (jobId: string) => void
+  expandedSubtasks: Set<string>
+  onToggleSubtasks: (jobId: string) => void
+  onAddTask: () => void
+}) {
+  const [isExpanded, setIsExpanded] = useState(group.defaultExpanded)
+  const Icon = group.icon
+
+  return (
+    <div className="mb-4">
+      {/* Group Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`
+          w-full flex items-center gap-2 px-4 py-2 rounded-lg
+          ${group.bgColor} hover:opacity-90 transition-opacity
+        `}
+      >
+        {isExpanded ? (
+          <ChevronDown className={`w-4 h-4 ${group.color}`} />
+        ) : (
+          <ChevronRight className={`w-4 h-4 ${group.color}`} />
+        )}
+        <Icon className={`w-4 h-4 ${group.color}`} />
+        <span className={`font-medium ${group.color}`}>{group.label}</span>
+        <span className={`text-sm ${group.color} opacity-70`}>({jobs.length})</span>
+      </button>
+
+      {/* Group Content */}
+      {isExpanded && (
+        <div className="mt-2 border rounded-lg bg-white overflow-hidden">
+          {jobs.length === 0 ? (
+            <div className="px-4 py-6 text-center text-gray-400 text-sm">
+              No tasks in this group
+            </div>
+          ) : (
+            <>
+              {/* Header Row */}
+              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase">
+                <div className="w-5" /> {/* Expand */}
+                <div className="w-5" /> {/* Checkbox */}
+                <div className="flex-1">Task</div>
+                <div className="w-32">Owner</div>
+                <div className="w-16 text-center">Status</div>
+                <div className="w-28">Due Date</div>
+                <div className="w-10" /> {/* Actions */}
+              </div>
+              
+              {/* Task Rows */}
+              {jobs.map((job) => (
+                <TaskRow
+                  key={job.id}
+                  job={job}
+                  teamMembers={teamMembers}
+                  onStatusChange={onStatusChange}
+                  onDelete={onDelete}
+                  expandedSubtasks={expandedSubtasks}
+                  onToggleSubtasks={onToggleSubtasks}
+                />
+              ))}
+            </>
+          )}
+          
+          {/* Add Task Row */}
+          <button
+            onClick={onAddTask}
+            className="w-full flex items-center gap-2 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-700 border-t"
+          >
+            <div className="w-5" />
+            <Plus className="w-4 h-4" />
+            <span className="text-sm">Add task</span>
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -185,211 +504,54 @@ function RAGBadge({ rating }: { rating: RAGRating }) {
 
 export default function JobsPage() {
   const router = useRouter()
-  const filterRef = useRef<HTMLDivElement>(null)
+  const searchParams = useSearchParams()
+  
+  // Board context from URL
+  const boardId = searchParams.get("boardId")
+  const [currentBoard, setCurrentBoard] = useState<Board | null>(null)
   
   // Data state
   const [jobs, setJobs] = useState<Job[]>([])
-  const [allJobs, setAllJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   
-  // Filter state - multi-select
-  const [statusFilters, setStatusFilters] = useState<string[]>([])
-  const [tagFilters, setTagFilters] = useState<string[]>([])
-  const [ownerFilters, setOwnerFilters] = useState<string[]>([])
-  const [ragFilters, setRagFilters] = useState<string[]>([])
-  const [hasRequestsFilter, setHasRequestsFilter] = useState<string>("any")
-  const [dueDateFilter, setDueDateFilter] = useState<string>("")
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  // Subtask expansion state
+  const [expandedSubtasks, setExpandedSubtasks] = useState<Set<string>>(new Set())
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
-  const [newJobTags, setNewJobTags] = useState<string[]>([])
-  const [newTagInput, setNewTagInput] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
-  const [newJobCollaboratorIds, setNewJobCollaboratorIds] = useState<string[]>([])
+  const [newJobStakeholders, setNewJobStakeholders] = useState<JobStakeholder[]>([])
   const [creating, setCreating] = useState(false)
   
-  // Team members for owner/collaborator selection
+  // Team members for owner selection
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string | null; email: string; isCurrentUser: boolean }[]>([])
-  const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   
-  // Stakeholder options for create modal
+  // Stakeholder options
   const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
   const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
-  const [newJobStakeholders, setNewJobStakeholders] = useState<JobStakeholder[]>([])
-  const [stakeholderOptionsLoading, setStakeholderOptionsLoading] = useState(false)
   const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
   const [stakeholderSearchResults, setStakeholderSearchResults] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null }[]>([])
-  const [stakeholderSearchLoading, setStakeholderSearchLoading] = useState(false)
-  
-  // Selection state
-  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([])
-  
-  // Bulk action state
-  const [isBulkLabelOpen, setIsBulkLabelOpen] = useState(false)
-  const [bulkLabelInput, setBulkLabelInput] = useState("")
-  const [bulkActionLoading, setBulkActionLoading] = useState(false)
-  const bulkLabelRef = useRef<HTMLDivElement>(null)
-  
-  // Delete confirmation state
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
-  
-  // Saved views state
-  const [savedViews, setSavedViews] = useState<SavedView[]>([])
-  const [activeViewId, setActiveViewId] = useState<string | null>(null)
-  const [isSaveViewOpen, setIsSaveViewOpen] = useState(false)
-  const [newViewName, setNewViewName] = useState("")
-  
-  // Bulk upload state
-  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
-
-  // Load saved views from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(SAVED_VIEWS_KEY)
-      if (stored) {
-        setSavedViews(JSON.parse(stored))
-      }
-    } catch (e) {
-      console.error("Error loading saved views:", e)
-    }
-  }, [])
-
-  // Close dropdowns on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
-        setIsFilterOpen(false)
-      }
-      if (bulkLabelRef.current && !bulkLabelRef.current.contains(event.target as Node)) {
-        setIsBulkLabelOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
-  // ============================================
-  // Derived data
-  // ============================================
-  
-  const allTags = Array.from(
-    new Set(allJobs.flatMap(job => job.labels?.tags || []))
-  ).sort()
-
-  const hasActiveFilters = statusFilters.length > 0 || tagFilters.length > 0 || ownerFilters.length > 0 || ragFilters.length > 0 || hasRequestsFilter !== "any" || dueDateFilter !== ""
-  
-  // Get unique owners from all jobs
-  const allOwners = Array.from(
-    new Map(allJobs.map(job => [job.owner.id, job.owner])).values()
-  ).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
-
-  // Filter jobs client-side for search and additional filters
-  const filteredJobs = jobs.filter(job => {
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      const matchesSearch = (
-        job.name.toLowerCase().includes(query) ||
-        job.description?.toLowerCase().includes(query) ||
-        job.owner.name?.toLowerCase().includes(query) ||
-        job.owner.email.toLowerCase().includes(query)
-      )
-      if (!matchesSearch) return false
-    }
-    
-    // Owner filter
-    if (ownerFilters.length > 0 && !ownerFilters.includes(job.owner.id)) {
-      return false
-    }
-    
-    // RAG filter
-    if (ragFilters.length > 0) {
-      const jobRag = calculateRAGRating(job)
-      if (!ragFilters.includes(jobRag)) return false
-    }
-    
-    // Has requests filter
-    if (hasRequestsFilter !== "any") {
-      if (hasRequestsFilter === "yes" && job.taskCount === 0) return false
-      if (hasRequestsFilter === "no" && job.taskCount > 0) return false
-      if (hasRequestsFilter === "pending" && (job.taskCount === 0 || job.respondedCount === job.taskCount)) return false
-      if (hasRequestsFilter === "all_responded" && (job.taskCount === 0 || job.respondedCount < job.taskCount)) return false
-    }
-    
-    // Due date filter
-    if (dueDateFilter) {
-      const dueDate = job.dueDate ? new Date(job.dueDate) : null
-      const now = new Date()
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const endOfWeek = new Date(today)
-      endOfWeek.setDate(today.getDate() + (7 - today.getDay()))
-      const endOfNextWeek = new Date(endOfWeek)
-      endOfNextWeek.setDate(endOfWeek.getDate() + 7)
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      
-      if (dueDateFilter === "overdue") {
-        if (!dueDate || dueDate >= today) return false
-      } else if (dueDateFilter === "today") {
-        if (!dueDate || dueDate.toDateString() !== today.toDateString()) return false
-      } else if (dueDateFilter === "this_week") {
-        if (!dueDate || dueDate < today || dueDate > endOfWeek) return false
-      } else if (dueDateFilter === "next_week") {
-        if (!dueDate || dueDate <= endOfWeek || dueDate > endOfNextWeek) return false
-      } else if (dueDateFilter === "this_month") {
-        if (!dueDate || dueDate < today || dueDate > endOfMonth) return false
-      } else if (dueDateFilter === "no_due_date") {
-        if (dueDate) return false
-      }
-    }
-    
-    return true
-  })
 
   // ============================================
   // Data fetching
   // ============================================
 
-  const fetchAllJobs = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/jobs`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setAllJobs(data.jobs || [])
-      }
-    } catch (error) {
-      console.error("Error fetching all jobs:", error)
-    }
-  }, [])
-
   const fetchJobs = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      // Support multiple statuses by fetching all and filtering client-side
-      // Or if API supports it, pass comma-separated
-      if (statusFilters.length === 1) {
-        params.set("status", statusFilters[0])
-      }
-      if (tagFilters.length > 0) {
-        params.set("tags", tagFilters.join(","))
+      if (boardId) {
+        params.set("boardId", boardId)
       }
       
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        let fetchedJobs = data.jobs || []
-        
-        // Client-side filter for multiple statuses
-        if (statusFilters.length > 1) {
-          fetchedJobs = fetchedJobs.filter((job: Job) => statusFilters.includes(job.status))
-        }
-        
-        setJobs(fetchedJobs)
+        setJobs(data.jobs || [])
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/jobs"
       }
@@ -398,21 +560,30 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilters, tagFilters])
+  }, [boardId])
 
-  useEffect(() => { fetchAllJobs() }, [fetchAllJobs])
-  useEffect(() => { fetchJobs() }, [fetchJobs])
+  const fetchBoard = useCallback(async () => {
+    if (!boardId) {
+      setCurrentBoard(null)
+      return
+    }
+    try {
+      const response = await fetch(`/api/boards/${boardId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentBoard(data.board)
+      }
+    } catch (error) {
+      console.error("Error fetching board:", error)
+    }
+  }, [boardId])
 
-  // Fetch team members when create modal opens
   const fetchTeamMembers = useCallback(async () => {
-    if (teamMembers.length > 0) return // Already fetched
-    setTeamMembersLoading(true)
     try {
       const response = await fetch("/api/org/team", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setTeamMembers(data.teamMembers || [])
-        // Set current user as default owner
         const currentUser = data.teamMembers?.find((m: any) => m.isCurrentUser)
         if (currentUser && !newJobOwnerId) {
           setNewJobOwnerId(currentUser.id)
@@ -420,157 +591,105 @@ export default function JobsPage() {
       }
     } catch (error) {
       console.error("Error fetching team members:", error)
-    } finally {
-      setTeamMembersLoading(false)
     }
-  }, [teamMembers.length, newJobOwnerId])
+  }, [newJobOwnerId])
 
-  useEffect(() => {
-    if (isCreateOpen) {
-      fetchTeamMembers()
-      fetchStakeholderOptions()
-    }
-  }, [isCreateOpen, fetchTeamMembers])
-
-  // Fetch stakeholder options (contact types and groups)
   const fetchStakeholderOptions = useCallback(async () => {
-    if (availableContactTypes.length > 0 && availableGroups.length > 0) return // Already fetched
-    setStakeholderOptionsLoading(true)
     try {
-      // Fetch contact types with counts
-      const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
-      if (typesRes.ok) {
-        const typesData = await typesRes.json()
-        const types: { value: string; label: string; count: number }[] = []
-        const builtInCounts = typesData.builtInCounts || {}
-        const builtInLabels: Record<string, string> = {
-          EMPLOYEE: "Employees", VENDOR: "Vendors", CLIENT: "Clients", PARTNER: "Partners", OTHER: "Other"
-        }
-        for (const [value, label] of Object.entries(builtInLabels)) {
-          if (builtInCounts[value] && builtInCounts[value] > 0) {
-            types.push({ value, label, count: builtInCounts[value] })
-          }
-        }
-        const customTypes = typesData.customTypes || []
-        for (const ct of customTypes) {
-          types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
-        }
+      // Fetch contact types
+      const typesResponse = await fetch("/api/contacts?groupBy=type", { credentials: "include" })
+      if (typesResponse.ok) {
+        const data = await typesResponse.json()
+        const types = Object.entries(data.byType || {}).map(([type, contacts]: [string, any]) => ({
+          value: type,
+          label: type.charAt(0).toUpperCase() + type.slice(1) + "s",
+          count: contacts.length
+        }))
         setAvailableContactTypes(types)
       }
       
       // Fetch groups
-      const groupsRes = await fetch("/api/groups", { credentials: "include" })
-      if (groupsRes.ok) {
-        const groupsData = await groupsRes.json()
-        const groups = (Array.isArray(groupsData) ? groupsData : []).map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          memberCount: g.entityCount || g._count?.entities || 0
-        }))
-        setAvailableGroups(groups)
+      const groupsResponse = await fetch("/api/groups", { credentials: "include" })
+      if (groupsResponse.ok) {
+        const data = await groupsResponse.json()
+        setAvailableGroups(data.groups || [])
       }
     } catch (error) {
       console.error("Error fetching stakeholder options:", error)
-    } finally {
-      setStakeholderOptionsLoading(false)
-    }
-  }, [availableContactTypes.length, availableGroups.length])
-
-  // Search for individual contacts
-  const searchContacts = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setStakeholderSearchResults([])
-      return
-    }
-    setStakeholderSearchLoading(true)
-    try {
-      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}&limit=10`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setStakeholderSearchResults(data.entities || [])
-      }
-    } catch (error) {
-      console.error("Error searching contacts:", error)
-    } finally {
-      setStakeholderSearchLoading(false)
     }
   }, [])
 
-  // Debounced search for individual contacts
+  useEffect(() => { fetchJobs() }, [fetchJobs])
+  useEffect(() => { fetchBoard() }, [fetchBoard])
+  useEffect(() => { 
+    if (isCreateOpen) {
+      fetchTeamMembers()
+      fetchStakeholderOptions()
+    }
+  }, [isCreateOpen, fetchTeamMembers, fetchStakeholderOptions])
+
+  // Search stakeholders
   useEffect(() => {
-    const debounce = setTimeout(() => {
-      if (stakeholderSearchQuery) {
-        searchContacts(stakeholderSearchQuery)
-      } else {
-        setStakeholderSearchResults([])
+    if (!stakeholderSearchQuery.trim()) {
+      setStakeholderSearchResults([])
+      return
+    }
+    const searchContacts = async () => {
+      try {
+        const response = await fetch(`/api/contacts?search=${encodeURIComponent(stakeholderSearchQuery)}`, { credentials: "include" })
+        if (response.ok) {
+          const data = await response.json()
+          setStakeholderSearchResults(data.contacts?.slice(0, 5) || [])
+        }
+      } catch (error) {
+        console.error("Error searching contacts:", error)
       }
-    }, 300)
-    return () => clearTimeout(debounce)
-  }, [stakeholderSearchQuery, searchContacts])
+    }
+    const timer = setTimeout(searchContacts, 300)
+    return () => clearTimeout(timer)
+  }, [stakeholderSearchQuery])
 
   // ============================================
   // Handlers
   // ============================================
 
-  const toggleStatusFilter = (status: string) => {
-    setStatusFilters(prev => 
-      prev.includes(status) 
-        ? prev.filter(s => s !== status)
-        : [...prev, status]
-    )
-  }
-
-  const toggleTagFilter = (tag: string) => {
-    setTagFilters(prev => 
-      prev.includes(tag) 
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
-    )
-  }
-
-  const clearAllFilters = () => {
-    setStatusFilters([])
-    setTagFilters([])
-    setOwnerFilters([])
-    setRagFilters([])
-    setHasRequestsFilter("any")
-    setDueDateFilter("")
-    setActiveViewId(null)
-  }
-
-  const toggleOwnerFilter = (ownerId: string) => {
-    setOwnerFilters(prev => 
-      prev.includes(ownerId) 
-        ? prev.filter(id => id !== ownerId)
-        : [...prev, ownerId]
-    )
-    setActiveViewId(null)
-  }
-
-  const toggleRagFilter = (rag: string) => {
-    setRagFilters(prev => 
-      prev.includes(rag) 
-        ? prev.filter(r => r !== rag)
-        : [...prev, rag]
-    )
-    setActiveViewId(null)
-  }
-
-  const removeFilter = (type: "status" | "tag" | "owner" | "rag" | "requests" | "due", value: string) => {
-    if (type === "status") {
-      setStatusFilters(prev => prev.filter(s => s !== value))
-    } else if (type === "tag") {
-      setTagFilters(prev => prev.filter(t => t !== value))
-    } else if (type === "owner") {
-      setOwnerFilters(prev => prev.filter(o => o !== value))
-    } else if (type === "rag") {
-      setRagFilters(prev => prev.filter(r => r !== value))
-    } else if (type === "requests") {
-      setHasRequestsFilter("any")
-    } else if (type === "due") {
-      setDueDateFilter("")
+  const handleStatusChange = async (jobId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (response.ok) {
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: newStatus } : j))
+      }
+    } catch (error) {
+      console.error("Error updating job status:", error)
     }
-    setActiveViewId(null)
+  }
+
+  const handleDelete = async (jobId: string) => {
+    if (!window.confirm("Delete this task?")) return
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
+      if (response.ok) {
+        setJobs(prev => prev.filter(j => j.id !== jobId))
+      }
+    } catch (error) {
+      console.error("Error deleting job:", error)
+    }
+  }
+
+  const handleToggleSubtasks = (jobId: string) => {
+    setExpandedSubtasks(prev => {
+      const next = new Set(prev)
+      if (next.has(jobId)) {
+        next.delete(jobId)
+      } else {
+        next.add(jobId)
+      }
+      return next
+    })
   }
 
   const handleCreateJob = async () => {
@@ -584,29 +703,15 @@ export default function JobsPage() {
         body: JSON.stringify({
           name: newJobName.trim(),
           description: newJobDescription.trim() || undefined,
-          tags: newJobTags.length > 0 ? newJobTags : undefined,
           dueDate: newJobDueDate,
           ownerId: newJobOwnerId,
-          stakeholders: newJobStakeholders.length > 0 ? newJobStakeholders : undefined
+          stakeholders: newJobStakeholders,
+          boardId: boardId || undefined  // Include current board
         })
       })
       if (response.ok) {
         const data = await response.json()
-        
-        // Add collaborators if any selected
-        if (newJobCollaboratorIds.length > 0) {
-          for (const collaboratorId of newJobCollaboratorIds) {
-            await fetch(`/api/jobs/${data.job.id}/collaborators`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ userId: collaboratorId })
-            })
-          }
-        }
-        
         setJobs(prev => [data.job, ...prev])
-        setAllJobs(prev => [data.job, ...prev])
         resetCreateForm()
         setIsCreateOpen(false)
         router.push(`/dashboard/jobs/${data.job.id}`)
@@ -621,19 +726,15 @@ export default function JobsPage() {
   const resetCreateForm = () => {
     setNewJobName("")
     setNewJobDescription("")
-    setNewJobTags([])
-    setNewTagInput("")
     setNewJobDueDate("")
-    setNewJobOwnerId("")
-    setNewJobCollaboratorIds([])
+    setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
     setNewJobStakeholders([])
     setStakeholderSearchQuery("")
     setStakeholderSearchResults([])
   }
 
   const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
-    const exists = newJobStakeholders.some(s => s.type === type && s.id === id)
-    if (exists) return
+    if (newJobStakeholders.some(s => s.type === type && s.id === id)) return
     setNewJobStakeholders(prev => [...prev, { type, id, name }])
     setStakeholderSearchQuery("")
     setStakeholderSearchResults([])
@@ -643,1171 +744,273 @@ export default function JobsPage() {
     setNewJobStakeholders(prev => prev.filter(s => !(s.type === type && s.id === id)))
   }
 
-  const handleAddNewTag = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && newTagInput.trim()) {
-      e.preventDefault()
-      const tag = newTagInput.trim()
-      if (!newJobTags.includes(tag)) {
-        setNewJobTags(prev => [...prev, tag])
-      }
-      setNewTagInput("")
-    }
-  }
+  // ============================================
+  // Filtered & Grouped Data
+  // ============================================
 
-  // Selection handlers
-  const isAllSelected = filteredJobs.length > 0 && selectedJobIds.length === filteredJobs.length
-  const isSomeSelected = selectedJobIds.length > 0 && selectedJobIds.length < filteredJobs.length
-
-  const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedJobIds([])
-    } else {
-      setSelectedJobIds(filteredJobs.map(j => j.id))
-    }
-  }
-
-  const toggleSelectJob = (jobId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setSelectedJobIds(prev =>
-      prev.includes(jobId)
-        ? prev.filter(id => id !== jobId)
-        : [...prev, jobId]
+  const filteredJobs = jobs.filter(job => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      job.name.toLowerCase().includes(query) ||
+      job.description?.toLowerCase().includes(query) ||
+      job.owner.name?.toLowerCase().includes(query) ||
+      job.owner.email.toLowerCase().includes(query)
     )
-  }
+  })
 
-  const clearSelection = () => {
-    setSelectedJobIds([])
-  }
-
-  // Bulk action handlers
-  const handleBulkAddLabel = async (label: string) => {
-    if (!label.trim() || selectedJobIds.length === 0) return
-    
-    setBulkActionLoading(true)
-    try {
-      // Update each selected job to add the label
-      await Promise.all(selectedJobIds.map(async (jobId) => {
-        const job = jobs.find(j => j.id === jobId)
-        if (!job) return
-        
-        const currentTags = job.labels?.tags || []
-        if (currentTags.includes(label.trim())) return // Already has this label
-        
-        const newTags = [...currentTags, label.trim()]
-        
-        // API expects labels object with tags property, not just tags
-        await fetch(`/api/jobs/${jobId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ 
-            labels: { 
-              ...job.labels,
-              tags: newTags 
-            } 
-          })
-        })
-      }))
-      
-      // Refresh data
-      await fetchJobs()
-      await fetchAllJobs()
-      setBulkLabelInput("")
-      setIsBulkLabelOpen(false)
-    } catch (error) {
-      console.error("Error adding labels:", error)
-    } finally {
-      setBulkActionLoading(false)
-    }
-  }
-
-  const handleBulkDuplicate = async () => {
-    if (selectedJobIds.length === 0) return
-    
-    setBulkActionLoading(true)
-    try {
-      // Duplicate each selected job
-      for (const jobId of selectedJobIds) {
-        const job = jobs.find(j => j.id === jobId)
-        if (!job) continue
-        
-        await fetch("/api/jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            name: `${job.name} (Copy)`,
-            description: job.description || undefined,
-            tags: job.labels?.tags || undefined,
-            dueDate: job.dueDate || undefined
-          })
-        })
-      }
-      
-      // Refresh data
-      await fetchJobs()
-      await fetchAllJobs()
-      setSelectedJobIds([])
-    } catch (error) {
-      console.error("Error duplicating items:", error)
-    } finally {
-      setBulkActionLoading(false)
-    }
-  }
-
-  const handleBulkDelete = async () => {
-    if (selectedJobIds.length === 0) return
-    
-    setBulkActionLoading(true)
-    try {
-      // Delete each selected job (hard delete)
-      const results = await Promise.all(selectedJobIds.map(async (jobId) => {
-        const response = await fetch(`/api/jobs/${jobId}?hard=true`, {
-          method: "DELETE",
-          credentials: "include"
-        })
-        return { jobId, ok: response.ok }
-      }))
-      
-      const failed = results.filter(r => !r.ok)
-      if (failed.length > 0) {
-        console.error(`Failed to delete ${failed.length} items`)
-      }
-      
-      // Refresh data
-      await fetchJobs()
-      await fetchAllJobs()
-      setSelectedJobIds([])
-      setIsDeleteConfirmOpen(false)
-    } catch (error) {
-      console.error("Error deleting items:", error)
-    } finally {
-      setBulkActionLoading(false)
-    }
-  }
-
-  // Saved view handlers
-  const handleSaveView = () => {
-    if (!newViewName.trim()) return
-    
-    const newView: SavedView = {
-      id: Date.now().toString(),
-      name: newViewName.trim(),
-      statusFilters: [...statusFilters],
-      tagFilters: [...tagFilters]
-    }
-    
-    const updatedViews = [...savedViews, newView]
-    setSavedViews(updatedViews)
-    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updatedViews))
-    
-    setNewViewName("")
-    setIsSaveViewOpen(false)
-    setActiveViewId(newView.id)
-  }
-
-  const handleApplyView = (view: SavedView) => {
-    setStatusFilters(view.statusFilters)
-    setTagFilters(view.tagFilters)
-    setActiveViewId(view.id)
-  }
-
-  const handleDeleteView = (viewId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    const updatedViews = savedViews.filter(v => v.id !== viewId)
-    setSavedViews(updatedViews)
-    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updatedViews))
-    if (activeViewId === viewId) {
-      setActiveViewId(null)
-    }
-  }
-
-  const handleClearViewSelection = () => {
-    setActiveViewId(null)
-    clearAllFilters()
-  }
+  const jobsByStatus = STATUS_GROUPS.reduce((acc, group) => {
+    acc[group.status] = filteredJobs.filter(j => j.status === group.status)
+    return acc
+  }, {} as Record<string, Job[]>)
 
   // ============================================
   // Render
   // ============================================
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-8 py-4">
-        {/* Saved Views + Action Row */}
-        <div className="flex items-center gap-2 mb-4 mt-4">
-          {/* Saved view pills */}
-          {savedViews.map((view) => (
-            <button
-              key={view.id}
-              onClick={() => handleApplyView(view)}
-              className={`
-                group flex items-center gap-2 px-4 py-2 
-                border rounded-full
-                text-sm font-medium
-                transition-colors
-                ${activeViewId === view.id
-                  ? "border-gray-900 bg-gray-900 text-white"
-                  : "border-gray-200 text-gray-600 hover:border-gray-400"
-                }
-              `}
-            >
-              {view.name}
-              <span
-                onClick={(e) => handleDeleteView(view.id, e)}
-                className={`
-                  opacity-0 group-hover:opacity-100 transition-opacity
-                  hover:text-red-400
-                  ${activeViewId === view.id ? "text-gray-400" : "text-gray-400"}
-                `}
-              >
-                <X className="w-3.5 h-3.5" />
-              </span>
-            </button>
-          ))}
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">
+              {currentBoard ? currentBoard.name : "All Tasks"}
+            </h1>
+            {currentBoard && (
+              <p className="text-sm text-gray-500 mt-1">
+                {filteredJobs.length} tasks
+              </p>
+            )}
+          </div>
           
-          {/* Save New View button - only show when filters are active */}
-          {hasActiveFilters && (
-            <Dialog open={isSaveViewOpen} onOpenChange={setIsSaveViewOpen}>
-              <DialogTrigger asChild>
-                <button
-                  className="
-                    flex items-center gap-2 px-4 py-2 
-                    border border-dashed border-gray-300 rounded-full
-                    text-sm font-medium text-gray-500
-                    hover:border-gray-400 hover:text-gray-600
-                    transition-colors
-                  "
-                >
-                  <Plus className="w-4 h-4" />
-                  Save New View
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Save New View</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <p className="text-sm text-gray-600">
-                    Enter a name for this view
-                  </p>
-                  <Input
-                    placeholder="View Name"
-                    value={newViewName}
-                    onChange={(e) => setNewViewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newViewName.trim()) {
-                        handleSaveView()
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsSaveViewOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleSaveView}
-                      disabled={!newViewName.trim()}
-                      className="bg-gray-900 text-white hover:bg-gray-800"
-                    >
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-          
-          {/* Spacer */}
-          <div className="flex-1" />
-          
-          {/* AI Bulk Add Button */}
-          <button
-            className="
-              flex items-center gap-2 px-4 py-2 
-              border border-gray-200 rounded-full
-              text-sm font-medium text-gray-700
-              hover:border-purple-500 hover:text-purple-500
-              transition-colors
-            "
-            onClick={() => setIsBulkUploadOpen(true)}
-          >
-            <Sparkles className="w-4 h-4 text-purple-500" />
-            AI Bulk Add
-          </button>
-          
-          {/* New Item CTA */}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <button className="
-                flex items-center gap-2 px-4 py-2 
-                border border-gray-200 rounded-full
-                text-sm font-medium text-gray-700
-                hover:border-orange-500 hover:text-orange-500
-                transition-colors
-              ">
-                <Plus className="w-4 h-4 text-orange-500" />
-                {UI_LABELS.newJob}
-              </button>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                New Task
+              </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>{UI_LABELS.createJobModalTitle}</DialogTitle>
+                <DialogTitle>Create New Task</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
-                {/* MANDATORY FIELDS */}
-                
-                {/* Item Name */}
+                {/* Task Name */}
                 <div>
-                  <Label htmlFor="jobName">{UI_LABELS.jobNameLabel} <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="taskName">Task Name <span className="text-red-500">*</span></Label>
                   <Input
-                    id="jobName"
-                    placeholder={UI_LABELS.jobNamePlaceholder}
+                    id="taskName"
                     value={newJobName}
                     onChange={(e) => setNewJobName(e.target.value)}
-                    className="mt-1"
+                    placeholder="e.g., Collect W-9 forms"
                   />
                 </div>
-                
+
                 {/* Owner */}
                 <div>
-                  <Label htmlFor="jobOwner">Owner <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="owner">Owner <span className="text-red-500">*</span></Label>
                   <select
-                    id="jobOwner"
+                    id="owner"
                     value={newJobOwnerId}
                     onChange={(e) => setNewJobOwnerId(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                    disabled={teamMembersLoading}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
                   >
-                    {teamMembersLoading ? (
-                      <option value="">Loading team members...</option>
-                    ) : (
-                      <>
-                        <option value="">Select owner</option>
-                        {teamMembers.map(member => (
-                          <option key={member.id} value={member.id}>
-                            {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
-                          </option>
-                        ))}
-                      </>
-                    )}
+                    <option value="">Select owner...</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                
-                {/* Deadline */}
+
+                {/* Due Date */}
                 <div>
-                  <Label htmlFor="jobDueDate">Deadline <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="dueDate">Due Date <span className="text-red-500">*</span></Label>
                   <Input
-                    id="jobDueDate"
+                    id="dueDate"
                     type="date"
                     value={newJobDueDate}
                     onChange={(e) => setNewJobDueDate(e.target.value)}
-                    className="mt-1"
-                    min={new Date().toISOString().split('T')[0]}
                   />
                 </div>
-                
+
                 {/* Stakeholders */}
                 <div>
                   <Label>Stakeholders <span className="text-red-500">*</span></Label>
-                  <p className="text-xs text-gray-500 mt-0.5 mb-2">Who will you be requesting information from?</p>
                   
                   {/* Selected stakeholders */}
                   {newJobStakeholders.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {newJobStakeholders.map(s => (
-                        <Chip
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {newJobStakeholders.map((s) => (
+                        <span
                           key={`${s.type}-${s.id}`}
-                          label={s.name}
-                          color={s.type === "contact_type" ? "blue" : s.type === "group" ? "purple" : "gray"}
-                          removable
-                          onRemove={() => handleRemoveStakeholder(s.type, s.id)}
-                        />
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                        >
+                          {s.name}
+                          <button
+                            onClick={() => handleRemoveStakeholder(s.type, s.id)}
+                            className="hover:text-blue-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick add options */}
+                  <div className="space-y-2 mb-2">
+                    {/* Contact types */}
+                    {availableContactTypes.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {availableContactTypes.map((type) => (
+                          <button
+                            key={type.value}
+                            onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
+                            disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}
+                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {type.label} ({type.count})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Groups */}
+                    {availableGroups.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {availableGroups.map((group) => (
+                          <button
+                            key={group.id}
+                            onClick={() => handleAddStakeholder("group", group.id, group.name)}
+                            disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}
+                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <Users className="w-3 h-3 inline mr-1" />
+                            {group.name} ({group.memberCount})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search for individual contacts */}
+                  <Input
+                    placeholder="Search contacts..."
+                    value={stakeholderSearchQuery}
+                    onChange={(e) => setStakeholderSearchQuery(e.target.value)}
+                  />
+                  {stakeholderSearchResults.length > 0 && (
+                    <div className="mt-1 border rounded-md max-h-32 overflow-y-auto">
+                      {stakeholderSearchResults.map((contact) => (
+                        <button
+                          key={contact.id}
+                          onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`)}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                        >
+                          {contact.firstName} {contact.lastName}
+                          {contact.email && <span className="text-gray-400 ml-2">{contact.email}</span>}
+                        </button>
                       ))}
                     </div>
                   )}
                   
-                  {stakeholderOptionsLoading ? (
-                    <p className="text-sm text-gray-500">Loading options...</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Contact Types */}
-                      {availableContactTypes.length > 0 && (
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">By Organization:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {availableContactTypes
-                              .filter(t => !newJobStakeholders.some(s => s.type === "contact_type" && s.id === t.value))
-                              .map(type => (
-                                <button
-                                  key={type.value}
-                                  type="button"
-                                  onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
-                                  className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full hover:bg-blue-100 transition-colors"
-                                >
-                                  + {type.label} ({type.count})
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Groups */}
-                      {availableGroups.length > 0 && (
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">By Group:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {availableGroups
-                              .filter(g => !newJobStakeholders.some(s => s.type === "group" && s.id === g.id))
-                              .map(group => (
-                                <button
-                                  key={group.id}
-                                  type="button"
-                                  onClick={() => handleAddStakeholder("group", group.id, group.name)}
-                                  className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full hover:bg-purple-100 transition-colors"
-                                >
-                                  + {group.name} ({group.memberCount})
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* No stakeholders option - more prominent button */}
-                      {newJobStakeholders.length === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleAddStakeholder("contact_type", "NONE", "No Stakeholders")}
-                          className="w-full mt-3 py-2 px-3 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Users className="w-4 h-4" />
-                          This item has no stakeholders
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {/* No stakeholders option */}
+                  <button
+                    onClick={() => handleAddStakeholder("contact_type", "NONE", "No Stakeholders (Internal)")}
+                    disabled={newJobStakeholders.some(s => s.id === "NONE")}
+                    className="mt-2 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                  >
+                    + Internal task (no stakeholders)
+                  </button>
                 </div>
-                
-                {/* Divider */}
-                <div className="border-t border-gray-200 pt-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Optional</p>
-                </div>
-                
-                {/* Description (optional) */}
+
+                {/* Description */}
                 <div>
-                  <Label htmlFor="jobDescription">{UI_LABELS.jobDescriptionLabel}</Label>
-                  <Input
-                    id="jobDescription"
-                    placeholder={UI_LABELS.jobDescriptionPlaceholder}
+                  <Label htmlFor="description">Description</Label>
+                  <textarea
+                    id="description"
                     value={newJobDescription}
                     onChange={(e) => setNewJobDescription(e.target.value)}
-                    className="mt-1"
+                    placeholder="Optional description..."
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
                   />
                 </div>
-                
-                {/* Collaborators (optional) */}
-                <div>
-                  <Label>Collaborators</Label>
-                  <div className="mt-2 space-y-2">
-                    {/* Selected collaborators */}
-                    {newJobCollaboratorIds.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {newJobCollaboratorIds.map(id => {
-                          const member = teamMembers.find(m => m.id === id)
-                          if (!member) return null
-                          return (
-                            <Chip
-                              key={id}
-                              label={member.name || member.email}
-                              color="gray"
-                              removable
-                              onRemove={() => setNewJobCollaboratorIds(prev => prev.filter(cId => cId !== id))}
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
-                    
-                    {/* Available team members to add */}
-                    {teamMembers.filter(m => 
-                      m.id !== newJobOwnerId && !newJobCollaboratorIds.includes(m.id)
-                    ).length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {teamMembers
-                          .filter(m => m.id !== newJobOwnerId && !newJobCollaboratorIds.includes(m.id))
-                          .map(member => (
-                            <button
-                              key={member.id}
-                              type="button"
-                              onClick={() => setNewJobCollaboratorIds(prev => [...prev, member.id])}
-                              className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full hover:bg-gray-200 transition-colors"
-                            >
-                              + {member.name || member.email}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Labels (optional) */}
-                <div>
-                  <Label>Labels</Label>
-                  <div className="mt-2">
-                    {newJobTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {newJobTags.map(tag => (
-                          <Chip
-                            key={tag}
-                            label={tag}
-                            color="gray"
-                            removable
-                            onRemove={() => setNewJobTags(prev => prev.filter(t => t !== tag))}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    
-                    {allTags.filter(t => !newJobTags.includes(t)).length > 0 && (
-                      <div className="mb-2">
-                        <p className="text-xs text-gray-500 mb-1">Click to add:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {allTags.filter(t => !newJobTags.includes(t)).slice(0, 8).map(tag => (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => setNewJobTags(prev => [...prev, tag])}
-                              className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full hover:bg-gray-200 transition-colors"
-                            >
-                              + {tag}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <Input
-                      placeholder="Or type a new label and press Enter"
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      onKeyDown={handleAddNewTag}
-                    />
-                  </div>
-                </div>
-                
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                     Cancel
                   </Button>
-                  <button
+                  <Button
                     onClick={handleCreateJob}
                     disabled={!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0 || creating}
-                    className="
-                      px-4 py-2 rounded-md text-sm font-medium
-                      bg-gray-900 text-white
-                      hover:bg-gray-800
-                      disabled:opacity-50 disabled:cursor-not-allowed
-                      transition-colors
-                    "
                   >
-                    {creating ? "Creating..." : UI_LABELS.createJob}
-                  </button>
+                    {creating ? "Creating..." : "Create Task"}
+                  </Button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        {/* AI Summary Panel */}
-        <AISummaryPanel />
-
-        {/* Search and Filter Row */}
-        <div className="flex items-center gap-3 mb-4 mt-4">
-          {/* Search */}
-          <div className="relative flex-1 max-w-lg">
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Search"
+              placeholder="Search tasks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white border-gray-200 rounded-full"
+              className="pl-10"
             />
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          
-          {/* Filter Dropdown */}
-          <div className="relative" ref={filterRef}>
-            <button 
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`
-                flex items-center gap-2 px-4 py-2
-                border rounded-full
-                text-sm font-medium
-                transition-colors
-                ${hasActiveFilters 
-                  ? "border-gray-900 bg-gray-900 text-white" 
-                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                }
-              `}
-            >
-              <Filter className="w-4 h-4" />
-              Filter
-              {hasActiveFilters && (
-                <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs">
-                  {statusFilters.length + tagFilters.length}
-                </span>
-              )}
-            </button>
-
-            {/* Filter Dropdown Panel */}
-            {isFilterOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
-                {/* Status Section */}
-                <div className="p-3 border-b border-gray-100">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Status</p>
-                  <div className="space-y-1">
-                    {STATUS_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => toggleStatusFilter(option.value)}
-                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                      >
-                        <span className="text-gray-700">{option.label}</span>
-                        {statusFilters.includes(option.value) && (
-                          <Check className="w-4 h-4 text-gray-900" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Owner Section */}
-                {allOwners.length > 0 && (
-                  <div className="p-3 border-b border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Owner</p>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {allOwners.map(owner => (
-                        <button
-                          key={owner.id}
-                          onClick={() => toggleOwnerFilter(owner.id)}
-                          className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                              {getInitials(owner.name, owner.email)}
-                            </div>
-                            <span className="text-gray-700">{owner.name || owner.email}</span>
-                          </div>
-                          {ownerFilters.includes(owner.id) && (
-                            <Check className="w-4 h-4 text-gray-900" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* RAG Rating Section */}
-                <div className="p-3 border-b border-gray-100">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Risk Status</p>
-                  <div className="space-y-1">
-                    {RAG_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => toggleRagFilter(option.value)}
-                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full ${option.color}`} />
-                          <span className="text-gray-700">{option.label}</span>
-                        </div>
-                        {ragFilters.includes(option.value) && (
-                          <Check className="w-4 h-4 text-gray-900" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Due Date Section */}
-                <div className="p-3 border-b border-gray-100">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Due Date</p>
-                  <div className="space-y-1">
-                    {DUE_DATE_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => {
-                          setDueDateFilter(dueDateFilter === option.value ? "" : option.value)
-                          setActiveViewId(null)
-                        }}
-                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                      >
-                        <span className="text-gray-700">{option.label}</span>
-                        {dueDateFilter === option.value && (
-                          <Check className="w-4 h-4 text-gray-900" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Requests Section */}
-                <div className="p-3 border-b border-gray-100">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Requests</p>
-                  <div className="space-y-1">
-                    {HAS_REQUESTS_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => {
-                          setHasRequestsFilter(option.value)
-                          setActiveViewId(null)
-                        }}
-                        className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                      >
-                        <span className="text-gray-700">{option.label}</span>
-                        {hasRequestsFilter === option.value && (
-                          <Check className="w-4 h-4 text-gray-900" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Labels Section */}
-                {allTags.length > 0 && (
-                  <div className="p-3 border-b border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Labels</p>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {allTags.map(tag => (
-                        <button
-                          key={tag}
-                          onClick={() => toggleTagFilter(tag)}
-                          className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-gray-50 text-sm text-left"
-                        >
-                          <span className="text-gray-700">{tag}</span>
-                          {tagFilters.includes(tag) && (
-                            <Check className="w-4 h-4 text-gray-900" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Clear All */}
-                {hasActiveFilters && (
-                  <div className="p-2">
-                    <button
-                      onClick={clearAllFilters}
-                      className="w-full px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                    >
-                      Clear All Filters
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Active Filters Display */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            {statusFilters.map(status => (
-              <button
-                key={status}
-                onClick={() => removeFilter("status", status)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-gray-200 transition-colors"
-              >
-                {STATUS_OPTIONS.find(s => s.value === status)?.label || status}
-                <X className="w-3.5 h-3.5" />
-              </button>
-            ))}
-            {tagFilters.map(tag => (
-              <button
-                key={tag}
-                onClick={() => removeFilter("tag", tag)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-gray-200 transition-colors"
-              >
-                {tag}
-                <X className="w-3.5 h-3.5" />
-              </button>
-            ))}
-            <button
-              onClick={clearAllFilters}
-              className="text-sm text-blue-600 hover:text-blue-700 ml-1"
-            >
-              Clear All
-            </button>
-          </div>
-        )}
-
-        {/* Bulk Action Toolbar */}
-        {selectedJobIds.length > 0 && (
-          <div className="flex items-center gap-3 mb-4 p-3 bg-gray-900 text-white rounded-lg">
-            <span className="text-sm font-medium">
-              {selectedJobIds.length} item{selectedJobIds.length !== 1 ? "s" : ""} selected
-            </span>
-            
-            <div className="h-4 w-px bg-gray-600" />
-            
-            {/* Add Label */}
-            <div className="relative" ref={bulkLabelRef}>
-              <button
-                onClick={() => setIsBulkLabelOpen(!isBulkLabelOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 rounded-md transition-colors"
-                disabled={bulkActionLoading}
-              >
-                <Tag className="w-3.5 h-3.5" />
-                Add Label
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              
-              {isBulkLabelOpen && (
-                <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Add label to selected items</div>
-                  
-                  {/* Existing labels */}
-                  {allTags.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-500 mb-1">Quick add:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {allTags.slice(0, 6).map(tag => (
-                          <button
-                            key={tag}
-                            onClick={() => handleBulkAddLabel(tag)}
-                            className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full hover:bg-gray-200 transition-colors"
-                          >
-                            {tag}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Custom label input */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Or type a new label..."
-                      value={bulkLabelInput}
-                      onChange={(e) => setBulkLabelInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && bulkLabelInput.trim()) {
-                          e.preventDefault()
-                          handleBulkAddLabel(bulkLabelInput.trim())
-                        }
-                      }}
-                      className="text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => handleBulkAddLabel(bulkLabelInput.trim())}
-                      disabled={!bulkLabelInput.trim() || bulkActionLoading}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Duplicate */}
-            <button
-              onClick={handleBulkDuplicate}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 hover:bg-gray-700 rounded-md transition-colors"
-              disabled={bulkActionLoading}
-            >
-              <Copy className="w-3.5 h-3.5" />
-              Duplicate
-            </button>
-            
-            {/* Delete */}
-            <button
-              onClick={() => setIsDeleteConfirmOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 rounded-md transition-colors"
-              disabled={bulkActionLoading}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete
-            </button>
-            
-            <div className="flex-1" />
-            
-            {/* Clear Selection */}
-            <button
-              onClick={clearSelection}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-            >
-              Clear selection
-            </button>
-          </div>
-        )}
-        
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Delete {selectedJobIds.length} item{selectedJobIds.length !== 1 ? "s" : ""}?</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <p className="text-sm text-gray-600">
-                Are you sure you want to delete {selectedJobIds.length === 1 ? "this item" : `these ${selectedJobIds.length} items`}? 
-                This action cannot be undone.
-              </p>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>
-                  Cancel
-                </Button>
-                <button
-                  onClick={handleBulkDelete}
-                  disabled={bulkActionLoading}
-                  className="
-                    px-4 py-2 rounded-md text-sm font-medium
-                    bg-red-600 text-white
-                    hover:bg-red-700
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    transition-colors
-                  "
-                >
-                  {bulkActionLoading ? "Deleting..." : "Delete"}
-                </button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* AI Bulk Upload Modal */}
-        <AIBulkUploadModal
-          open={isBulkUploadOpen}
-          onOpenChange={setIsBulkUploadOpen}
-          onImportComplete={() => {
-            fetchJobs()
-            fetchAllJobs()
-          }}
-        />
-
-        {/* Content */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
-          </div>
-        ) : filteredJobs.length === 0 ? (
-          <div className="border border-dashed border-gray-200 rounded-lg">
-            <EmptyState
-              icon={<Briefcase className="w-6 h-6" />}
-              title={hasActiveFilters || searchQuery ? "No matching items" : `No ${UI_LABELS.jobPlural.toLowerCase()} yet`}
-              description={
-                hasActiveFilters || searchQuery 
-                  ? "Try adjusting your filters or search query"
-                  : `Create your first ${UI_LABELS.jobSingular.toLowerCase()} to start organizing work`
-              }
-              action={
-                hasActiveFilters || searchQuery 
-                  ? { label: "Clear Filters", onClick: () => { clearAllFilters(); setSearchQuery(""); } }
-                  : { label: UI_LABELS.createJob, onClick: () => setIsCreateOpen(true) }
-              }
-            />
+        {/* Status Groups */}
+        {filteredJobs.length === 0 && !searchQuery ? (
+          <EmptyState
+            icon={<CheckCircle className="w-12 h-12 text-gray-300" />}
+            title="No tasks yet"
+            description={currentBoard 
+              ? "Create your first task in this board"
+              : "Create a board and add tasks to get started"
+            }
+            action={{
+              label: "Create Task",
+              onClick: () => setIsCreateOpen(true)
+            }}
+          />
+        ) : filteredJobs.length === 0 && searchQuery ? (
+          <div className="text-center py-12 text-gray-500">
+            No tasks match "{searchQuery}"
           </div>
         ) : (
-          /* Table-style list with fixed layout */
-          <div className="border border-gray-200 rounded-lg overflow-x-auto">
-            <table className="w-full min-w-[1000px]" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
-              {/* Column width definitions - all in pixels for consistency */}
-              <colgroup>
-                <col style={{ width: '40px' }} />   {/* Checkbox */}
-                <col style={{ width: '240px' }} /> {/* Name */}
-                <col style={{ width: '120px' }} /> {/* Labels */}
-                <col style={{ width: '80px' }} />  {/* Status */}
-                <col style={{ width: '50px' }} />  {/* RAG */}
-                <col style={{ width: '70px' }} />  {/* Contacts */}
-                <col style={{ width: '70px' }} />  {/* Requests */}
-                <col style={{ width: '100px' }} /> {/* Owner */}
-                <col style={{ width: '90px' }} />  {/* Collaborators */}
-                <col style={{ width: '70px' }} />  {/* Due */}
-                <col style={{ width: '90px' }} />  {/* Updated */}
-              </colgroup>
-              
-              {/* Table Header */}
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <th className="px-2 py-3 text-center">
-                    <div className="flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={isAllSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = isSomeSelected
-                        }}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
-                      />
-                    </div>
-                  </th>
-                  <th className="px-2 py-3 text-left">Name</th>
-                  <th className="px-2 py-3 text-left">Labels</th>
-                  <th className="px-2 py-3 text-left">Status</th>
-                  <th className="px-2 py-3 text-center">RAG</th>
-                  <th className="px-2 py-3 text-center">Contacts</th>
-                  <th className="px-2 py-3 text-center">Requests</th>
-                  <th className="px-2 py-3 text-left">Owner</th>
-                  <th className="px-2 py-3 text-left">Collab</th>
-                  <th className="px-2 py-3 text-left">Due</th>
-                  <th className="px-2 py-3 text-left">Updated</th>
-                </tr>
-              </thead>
-              
-              {/* Table Body */}
-              <tbody className="divide-y divide-gray-100">
-                {filteredJobs.map((job) => {
-                  const jobTags = job.labels?.tags || []
-                  const collaborators = job.collaborators || []
-                  const dueDate = job.dueDate ? new Date(job.dueDate) : null
-                  const daysUntilDue = dueDate ? differenceInDays(dueDate, new Date()) : null
-                  const isOverdue = daysUntilDue !== null && daysUntilDue < 0
-                  const ragRating = calculateRAGRating(job)
-                  const isSelected = selectedJobIds.includes(job.id)
-                  const contactCount = job.stakeholderCount ?? 0
-                  
-                  return (
-                    <tr
-                      key={job.id}
-                      onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? "bg-orange-50" : ""}`}
-                    >
-                      {/* Checkbox */}
-                      <td className="px-2 py-3 text-center">
-                        <div className="flex items-center justify-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => toggleSelectJob(job.id, e as unknown as React.MouseEvent)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
-                          />
-                        </div>
-                      </td>
-                      
-                      {/* Name */}
-                      <td className="px-2 py-3">
-                        <div className="truncate font-medium text-gray-900" title={job.name}>
-                          {job.name}
-                        </div>
-                      </td>
-                      
-                      {/* Labels */}
-                      <td className="px-2 py-3">
-                        <div className="flex gap-1 overflow-hidden">
-                          {jobTags.length > 0 ? (
-                            <>
-                              <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[50px]" title={jobTags[0]}>
-                                {jobTags[0]}
-                              </span>
-                              {jobTags.length > 1 && (
-                                <span className="text-xs text-gray-400 flex-shrink-0">+{jobTags.length - 1}</span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-sm text-gray-400">—</span>
-                          )}
-                        </div>
-                      </td>
-                      
-                      {/* Status */}
-                      <td className="px-2 py-3">
-                        <span className={`
-                          inline-flex px-2 py-0.5 rounded-full text-xs font-medium border
-                          ${job.status === "ACTIVE" ? "border-gray-300 text-gray-700" : ""}
-                          ${job.status === "WAITING" ? "border-amber-200 text-amber-700 bg-amber-50" : ""}
-                          ${job.status === "COMPLETED" ? "border-green-200 text-green-700 bg-green-50" : ""}
-                          ${job.status === "ARCHIVED" ? "border-gray-200 text-gray-500" : ""}
-                          ${!["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].includes(job.status) ? "border-purple-200 text-purple-700 bg-purple-50" : ""}
-                        `}>
-                          {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
-                        </span>
-                      </td>
-                      
-                      {/* RAG Rating */}
-                      <td className="px-2 py-3 text-center">
-                        <div className="flex justify-center">
-                          <RAGBadge rating={ragRating} />
-                        </div>
-                      </td>
-                      
-                      {/* Contacts Count */}
-                      <td className="px-2 py-3 text-center">
-                        <span className={`text-sm ${contactCount > 0 ? "text-gray-600" : "text-gray-400"}`}>
-                          {contactCount > 0 ? contactCount : "—"}
-                        </span>
-                      </td>
-                      
-                      {/* Requests Count */}
-                      <td className="px-2 py-3 text-center">
-                        <span className={`text-sm ${job.taskCount > 0 ? "text-gray-600" : "text-gray-400"}`}>
-                          {job.taskCount > 0 ? job.taskCount : "—"}
-                        </span>
-                      </td>
-                      
-                      {/* Owner */}
-                      <td className="px-2 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                            {getInitials(job.owner.name, job.owner.email)}
-                          </div>
-                          <span className="text-sm text-gray-600 truncate" title={job.owner.name || job.owner.email}>
-                            {job.owner.name?.split(" ")[0] || job.owner.email.split("@")[0]}
-                          </span>
-                        </div>
-                      </td>
-                      
-                      {/* Collaborators */}
-                      <td className="px-2 py-3">
-                        {collaborators.length > 0 ? (
-                          <div className="flex -space-x-1.5">
-                            {collaborators.slice(0, 2).map((collab) => (
-                              <div
-                                key={collab.id}
-                                className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium"
-                                title={collab.user.name || collab.user.email}
-                              >
-                                {getInitials(collab.user.name, collab.user.email)}
-                              </div>
-                            ))}
-                            {collaborators.length > 2 && (
-                              <div className="w-6 h-6 bg-gray-100 border-2 border-white rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                                +{collaborators.length - 2}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      
-                      {/* Due Date */}
-                      <td className="px-2 py-3">
-                        {dueDate ? (
-                          <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
-                            {format(dueDate, "d MMM")}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      
-                      {/* Updated */}
-                      <td className="px-2 py-3">
-                        <span className="text-sm text-gray-500 truncate block" title={formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}>
-                          {formatDistanceToNow(new Date(job.updatedAt), { addSuffix: false })}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div>
+            {STATUS_GROUPS.map((group) => (
+              <StatusGroup
+                key={group.status}
+                group={group}
+                jobs={jobsByStatus[group.status] || []}
+                teamMembers={teamMembers}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+                expandedSubtasks={expandedSubtasks}
+                onToggleSubtasks={handleToggleSubtasks}
+                onAddTask={() => setIsCreateOpen(true)}
+              />
+            ))}
           </div>
         )}
       </div>

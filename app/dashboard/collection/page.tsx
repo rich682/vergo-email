@@ -18,8 +18,14 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 // Types
+interface BoardOption {
+  id: string
+  name: string
+}
+
 interface CollectedItem {
   id: string
   jobId: string
@@ -97,16 +103,21 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function CollectionPage() {
+  const searchParams = useSearchParams()
+  const boardIdFromUrl = searchParams.get("boardId")
+  
   // State
   const [items, setItems] = useState<CollectedItem[]>([])
   const [total, setTotal] = useState(0)
   const [pdfCount, setPdfCount] = useState(0)
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [owners, setOwners] = useState<OwnerOption[]>([])
+  const [boards, setBoards] = useState<BoardOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
   // Filters
+  const [boardFilter, setBoardFilter] = useState<string>(boardIdFromUrl || "all")
   const [jobFilter, setJobFilter] = useState<string>("all")
   const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [sourceFilter, setSourceFilter] = useState<string>("all")
@@ -120,7 +131,23 @@ export default function CollectionPage() {
   const [bulkLoading, setBulkLoading] = useState(false)
 
   // Check if any filters are active
-  const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || sourceFilter !== "all" || fileTypeFilter !== "all" || submitterSearch !== ""
+  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || sourceFilter !== "all" || fileTypeFilter !== "all" || submitterSearch !== ""
+
+  // Fetch boards for filter
+  useEffect(() => {
+    const fetchBoards = async () => {
+      try {
+        const response = await fetch("/api/boards?status=OPEN,CLOSED", { credentials: "include" })
+        if (response.ok) {
+          const data = await response.json()
+          setBoards(data.boards || [])
+        }
+      } catch (err) {
+        console.error("Error fetching boards:", err)
+      }
+    }
+    fetchBoards()
+  }, [])
 
   // Fetch all items across all jobs
   const fetchItems = useCallback(async () => {
@@ -129,6 +156,7 @@ export default function CollectionPage() {
       setError(null)
       
       const params = new URLSearchParams()
+      if (boardFilter !== "all") params.set("boardId", boardFilter)
       if (jobFilter !== "all") params.set("jobId", jobFilter)
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (sourceFilter !== "all") params.set("source", sourceFilter)
@@ -156,7 +184,7 @@ export default function CollectionPage() {
     } finally {
       setLoading(false)
     }
-  }, [jobFilter, ownerFilter, sourceFilter, fileTypeFilter, submitterSearch])
+  }, [boardFilter, jobFilter, ownerFilter, sourceFilter, fileTypeFilter, submitterSearch])
 
   useEffect(() => {
     fetchItems()
@@ -227,6 +255,7 @@ export default function CollectionPage() {
 
   // Clear all filters
   const clearFilters = () => {
+    setBoardFilter("all")
     setJobFilter("all")
     setOwnerFilter("all")
     setSourceFilter("all")
@@ -288,6 +317,23 @@ export default function CollectionPage() {
       <div className="space-y-3 mb-4">
         {/* First row - Main filters */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Board Filter */}
+          {boards.length > 0 && (
+            <Select value={boardFilter} onValueChange={setBoardFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Boards" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Boards</SelectItem>
+                {boards.map(board => (
+                  <SelectItem key={board.id} value={board.id}>
+                    {board.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Task Filter */}
           <Select value={jobFilter} onValueChange={setJobFilter}>
             <SelectTrigger className="w-[180px]">

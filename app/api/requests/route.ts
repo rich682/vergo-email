@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Parse query params for filters
     const { searchParams } = new URL(request.url)
+    const boardId = searchParams.get("boardId")
     const jobId = searchParams.get("jobId")
     const ownerId = searchParams.get("ownerId")
     const status = searchParams.get("status") as TaskStatus | null
@@ -31,6 +32,14 @@ export async function GET(request: NextRequest) {
       organizationId,
       // Only show tasks that have a job (request-based tasks)
       jobId: { not: null }
+    }
+
+    // Filter by board (via job.boardId)
+    if (boardId) {
+      where.job = {
+        ...where.job,
+        boardId
+      }
     }
 
     if (jobId) {

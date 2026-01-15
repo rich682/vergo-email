@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     
     const status = searchParams.get("status") as JobStatus | null
     const clientId = searchParams.get("clientId")
+    const boardId = searchParams.get("boardId")  // Filter by board
     const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs
     const ownerId = searchParams.get("ownerId")
     const tagsParam = searchParams.get("tags")  // Comma-separated tags filter
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
     const result = await JobService.findByOrganization(organizationId, {
       status: status || undefined,
       clientId: clientId || undefined,
+      boardId: boardId || undefined,  // Filter by board
       // "My Jobs" filter: show jobs where user is owner or collaborator
       ownerId: myJobs ? userId : (ownerId || undefined),
       collaboratorId: myJobs ? userId : undefined,
@@ -93,7 +95,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, clientId, dueDate, labels, tags, ownerId, stakeholders } = body
+    const { name, description, clientId, dueDate, labels, tags, ownerId, stakeholders, boardId } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
@@ -128,6 +130,7 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       description: description?.trim() || undefined,
       clientId: clientId || undefined,
+      boardId: boardId || undefined,  // Optional board association
       dueDate: dueDate ? new Date(dueDate) : undefined,
       labels: Object.keys(finalLabels).length > 0 ? finalLabels : undefined,
       tags: tags || undefined  // Convenience: will be merged into labels.tags
