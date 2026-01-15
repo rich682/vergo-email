@@ -72,14 +72,14 @@ export async function POST(request: NextRequest) {
 
     // Calculate stats
     const now = new Date()
-    const completedItems = jobs.filter(j => j.status === "COMPLETED").length
-    const activeItems = jobs.filter(j => j.status === "ACTIVE" || j.status === "WAITING").length
+    const completedItems = jobs.filter(j => j.status === "COMPLETE").length
+    const activeItems = jobs.filter(j => j.status === "NOT_STARTED" || j.status === "IN_PROGRESS" || j.status === "BLOCKED").length
     
     // Identify at-risk items
     const atRiskItems: AtRiskItem[] = []
     
     for (const job of jobs) {
-      if (job.status === "COMPLETED" || job.status === "ARCHIVED") continue
+      if (job.status === "COMPLETE") continue
       
       const dueDate = job.dueDate ? new Date(job.dueDate) : null
       const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : null

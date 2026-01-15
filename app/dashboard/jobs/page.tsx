@@ -94,29 +94,45 @@ interface Board {
 // Status group configuration
 const STATUS_GROUPS = [
   { 
-    status: "ACTIVE", 
-    label: "To Do", 
+    status: "NOT_STARTED", 
+    label: "Not Started", 
     icon: Clock,
+    color: "text-gray-600",
+    bgColor: "bg-gray-50",
+    defaultExpanded: true 
+  },
+  { 
+    status: "IN_PROGRESS", 
+    label: "In Progress", 
+    icon: AlertCircle,
     color: "text-blue-600",
     bgColor: "bg-blue-50",
     defaultExpanded: true 
   },
   { 
-    status: "WAITING", 
-    label: "In Progress", 
+    status: "BLOCKED", 
+    label: "Blocked", 
     icon: AlertCircle,
-    color: "text-amber-600",
-    bgColor: "bg-amber-50",
+    color: "text-red-600",
+    bgColor: "bg-red-50",
     defaultExpanded: true 
   },
   { 
-    status: "COMPLETED", 
-    label: "Done", 
+    status: "COMPLETE", 
+    label: "Complete", 
     icon: CheckCircle,
     color: "text-green-600",
     bgColor: "bg-green-50",
     defaultExpanded: false 
   },
+]
+
+// Status options for dropdown
+const STATUS_OPTIONS = [
+  { value: "NOT_STARTED", label: "Not Started", color: "text-gray-600" },
+  { value: "IN_PROGRESS", label: "In Progress", color: "text-blue-600" },
+  { value: "BLOCKED", label: "Blocked", color: "text-red-600" },
+  { value: "COMPLETE", label: "Complete", color: "text-green-600" },
 ]
 
 // ============================================
@@ -140,8 +156,8 @@ function calculateRAGRating(job: Job): RAGRating {
   const dueDate = job.dueDate ? new Date(job.dueDate) : null
   const now = new Date()
   
-  if (job.status === "COMPLETED") return "green"
-  if (job.status === "ARCHIVED") return "gray"
+  if (job.status === "COMPLETE") return "green"
+  if (job.status === "BLOCKED") return "red"
   if (!dueDate) return "gray"
   
   const daysUntilDue = differenceInDays(dueDate, now)
@@ -196,7 +212,9 @@ function TaskRow({
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [loadingSubtasks, setLoadingSubtasks] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const statusMenuRef = useRef<HTMLDivElement>(null)
   
   const isExpanded = expandedSubtasks.has(job.id)
   const rag = calculateRAGRating(job)
@@ -210,11 +228,14 @@ function TaskRow({
     }
   }, [isExpanded])
 
-  // Close menu on outside click
+  // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false)
+      }
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setStatusMenuOpen(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -266,28 +287,10 @@ function TaskRow({
           )}
         </button>
 
-        {/* Task checkbox (status toggle) */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            const newStatus = job.status === "COMPLETED" ? "ACTIVE" : "COMPLETED"
-            onStatusChange(job.id, newStatus)
-          }}
-          className={`
-            w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0
-            ${job.status === "COMPLETED" 
-              ? "bg-green-500 border-green-500 text-white" 
-              : "border-gray-300 hover:border-gray-400"
-            }
-          `}
-        >
-          {job.status === "COMPLETED" && <CheckCircle className="w-3 h-3" />}
-        </button>
-
         {/* Task name */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`font-medium truncate ${job.status === "COMPLETED" ? "line-through text-gray-400" : "text-gray-900"}`}>
+            <span className={`font-medium truncate ${job.status === "COMPLETE" ? "line-through text-gray-400" : "text-gray-900"}`}>
               {job.name}
             </span>
             {subtaskCount > 0 && (
@@ -298,8 +301,54 @@ function TaskRow({
           </div>
         </div>
 
+        {/* Status Dropdown */}
+        <div className="w-28 flex-shrink-0 relative" ref={statusMenuRef}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setStatusMenuOpen(!statusMenuOpen)
+            }}
+            className={`
+              px-2 py-1 text-xs font-medium rounded-full border
+              ${job.status === "NOT_STARTED" ? "bg-gray-100 text-gray-600 border-gray-200" : ""}
+              ${job.status === "IN_PROGRESS" ? "bg-blue-100 text-blue-700 border-blue-200" : ""}
+              ${job.status === "BLOCKED" ? "bg-red-100 text-red-700 border-red-200" : ""}
+              ${job.status === "COMPLETE" ? "bg-green-100 text-green-700 border-green-200" : ""}
+              hover:opacity-80 transition-opacity
+            `}
+          >
+            {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
+          </button>
+          {statusMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 w-32 bg-white border rounded-lg shadow-lg z-20">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onStatusChange(job.id, option.value)
+                    setStatusMenuOpen(false)
+                  }}
+                  className={`
+                    w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2
+                    ${job.status === option.value ? "bg-gray-50 font-medium" : ""}
+                  `}
+                >
+                  <span className={`w-2 h-2 rounded-full ${
+                    option.value === "NOT_STARTED" ? "bg-gray-400" :
+                    option.value === "IN_PROGRESS" ? "bg-blue-500" :
+                    option.value === "BLOCKED" ? "bg-red-500" :
+                    "bg-green-500"
+                  }`} />
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Owner */}
-        <div className="w-32 flex-shrink-0">
+        <div className="w-24 flex-shrink-0">
           <div 
             className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600"
             title={job.owner.name || job.owner.email}
@@ -308,13 +357,8 @@ function TaskRow({
           </div>
         </div>
 
-        {/* RAG Status */}
-        <div className="w-16 flex-shrink-0 flex justify-center">
-          <RAGBadge rating={rag} />
-        </div>
-
         {/* Due Date */}
-        <div className="w-28 flex-shrink-0 text-sm text-gray-500">
+        <div className="w-24 flex-shrink-0 text-sm text-gray-500">
           {job.dueDate ? format(new Date(job.dueDate), "MMM d") : "—"}
         </div>
 
@@ -478,11 +522,10 @@ function StatusGroup({
               {/* Header Row */}
               <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase">
                 <div className="w-5" /> {/* Expand */}
-                <div className="w-5" /> {/* Checkbox */}
                 <div className="flex-1">Task</div>
-                <div className="w-32">Owner</div>
-                <div className="w-16 text-center">Status</div>
-                <div className="w-28">Due Date</div>
+                <div className="w-28">Status</div>
+                <div className="w-24">Owner</div>
+                <div className="w-24">Due Date</div>
                 <div className="w-10" /> {/* Actions */}
               </div>
               

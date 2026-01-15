@@ -205,7 +205,7 @@ interface StakeholderContact {
 type ItemMode = "setup" | "waiting" | "internal" | "complete"
 
 function getItemMode(job: Job, tasks: JobTask[], requests: JobRequest[]): ItemMode {
-  if (job.status === "COMPLETED" || job.status === "ARCHIVED") {
+  if (job.status === "COMPLETE") {
     return "complete"
   }
   if (requests.length === 0) {
@@ -969,7 +969,7 @@ export default function JobDetailPage() {
                                   <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
                                   <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
                                     <div className="py-1">
-                                      {["ACTIVE", "WAITING", "COMPLETED", "ARCHIVED"].map(status => (
+                                      {["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"].map(status => (
                                         <button
                                           key={status}
                                           onClick={() => handleStatusChange(status)}
@@ -978,20 +978,6 @@ export default function JobDetailPage() {
                                           <StatusBadge status={status} size="sm" />
                                         </button>
                                       ))}
-                                      <div className="border-t border-gray-100 mt-1 pt-1 px-2 pb-2">
-                                        <p className="text-xs text-gray-400 mb-1 px-1">Custom status</p>
-                                        <Input
-                                          placeholder="Type and press Enter"
-                                          value={customStatusInput}
-                                          onChange={(e) => setCustomStatusInput(e.target.value)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter" && customStatusInput.trim()) {
-                                              handleStatusChange(customStatusInput.trim())
-                                            }
-                                          }}
-                                          className="h-7 text-xs"
-                                        />
-                                      </div>
                                     </div>
                                   </div>
                                 </>

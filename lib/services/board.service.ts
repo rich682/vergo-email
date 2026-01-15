@@ -292,7 +292,7 @@ export class BoardService {
           name: job.name,
           description: job.description,
           ownerId: job.ownerId,
-          status: "ACTIVE", // Reset status for new board
+          status: "NOT_STARTED", // Reset status for new board
           dueDate: job.dueDate,
           labels: job.labels as any,
           sortOrder: job.sortOrder

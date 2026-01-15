@@ -110,7 +110,7 @@ async function main() {
     data: {
       name: 'Q1 Tax Documents Collection',
       description: 'Collect all required tax documents from clients for Q1 filing',
-      status: 'ACTIVE',
+      status: 'NOT_STARTED',
       dueDate,
       ownerId: adminUser.id,
       organizationId: org.id,
