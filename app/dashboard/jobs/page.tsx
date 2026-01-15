@@ -1436,6 +1436,7 @@ export default function JobsPage() {
                   <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Status</th>
                   <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">RAG</th>
                   <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">Contacts</th>
+                  <th className="px-2 py-3 text-center overflow-hidden text-ellipsis whitespace-nowrap">Requests</th>
                   <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Owner</th>
                   <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Collaborators</th>
                   <th className="px-2 py-3 text-left overflow-hidden text-ellipsis whitespace-nowrap">Due</th>
@@ -1524,6 +1525,15 @@ export default function JobsPage() {
                       <td className="px-2 py-3 text-center overflow-hidden">
                         {contactCount > 0 ? (
                           <span className="text-sm text-gray-600">{contactCount}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      
+                      {/* Requests Count */}
+                      <td className="px-2 py-3 text-center overflow-hidden">
+                        {job.taskCount > 0 ? (
+                          <span className="text-sm text-gray-600">{job.taskCount}</span>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
                         )}
