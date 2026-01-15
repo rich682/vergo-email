@@ -50,6 +50,9 @@ import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 // Collection components
 import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 
+// Request card with expandable recipient grid
+import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
+
 // ============================================
 // Types
 // ============================================
@@ -1295,46 +1298,14 @@ export default function JobDetailPage() {
                     }
                   />
                   {requestsExpanded && (
-                    <div className="space-y-2 mt-3">
+                    <div className="space-y-3 mt-3">
                       {requests.map(request => (
-                        <div 
-                          key={request.id} 
-                          className="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
-                          onClick={() => setSelectedRequest(request)}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-gray-900 truncate">
-                              {request.subjectTemplate || request.generatedSubject || request.suggestedCampaignName || "Request"}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                              <span className="flex items-center gap-1">
-                                <Users className="w-3 h-3" />
-                                {request.taskCount} recipient{request.taskCount !== 1 ? "s" : ""}
-                              </span>
-                              <span>·</span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {request.sentAt 
-                                  ? format(new Date(request.sentAt), "MMM d, yyyy 'at' h:mm a")
-                                  : format(new Date(request.createdAt), "MMM d, yyyy 'at' h:mm a")
-                                }
-                              </span>
-                              {request.reminderConfig?.enabled && (
-                                <>
-                                  <span>·</span>
-                                  <span className="flex items-center gap-1 text-blue-600">
-                                    <Bell className="w-3 h-3" />
-                                    {request.reminderConfig.frequencyHours && request.reminderConfig.frequencyHours >= 24
-                                      ? `Every ${Math.round(request.reminderConfig.frequencyHours / 24)}d`
-                                      : `Every ${request.reminderConfig.frequencyHours}h`
-                                    }
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <StatusBadge status={request.status} size="sm" />
-                        </div>
+                        <RequestCardExpandable
+                          key={request.id}
+                          request={request}
+                          onViewDetails={setSelectedRequest}
+                          onRefresh={fetchRequests}
+                        />
                       ))}
                     </div>
                   )}
