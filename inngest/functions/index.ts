@@ -4,6 +4,8 @@ import { runDueRemindersOnce } from "@/lib/services/reminder-runner.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 import { ReminderStateService } from "@/lib/services/reminder-state.service"
+import { EmailQueueService } from "@/lib/services/email-queue.service"
+import { EmailSendingService } from "@/lib/services/email-sending.service"
 import OpenAI from "openai"
 import { createHash } from "crypto"
 
@@ -627,6 +629,94 @@ Use plain language. Be concise.`
         }
       } catch (error: any) {
         console.error("[Quest Standing] Error in standing quest cron job:", error)
+        return {
+          success: false,
+          error: error.message
+        }
+      }
+    }
+  ),
+
+  // Process queued emails (rate-limited emails waiting to be sent)
+  // Runs every hour to check for emails that can now be sent
+  inngest.createFunction(
+    { 
+      id: "process-email-queue",
+      throttle: {
+        limit: 1,
+        period: "5m"  // Prevent concurrent runs
+      }
+    },
+    { cron: "0 * * * *" },  // Every hour on the hour
+    async () => {
+      console.log("[Email Queue] Starting queue processing...")
+      
+      try {
+        // Get pending emails that are ready to be sent
+        const pendingEmails = await EmailQueueService.getPendingEmails(50)
+        
+        if (pendingEmails.length === 0) {
+          console.log("[Email Queue] No pending emails to process")
+          return { success: true, processed: 0, sent: 0, failed: 0 }
+        }
+        
+        console.log(`[Email Queue] Found ${pendingEmails.length} pending emails`)
+        
+        let sent = 0
+        let failed = 0
+        
+        for (const email of pendingEmails) {
+          try {
+            // Try to claim the email for processing
+            const claimed = await EmailQueueService.markProcessing(email.id)
+            if (!claimed) {
+              console.log(`[Email Queue] Email ${email.id} already being processed by another worker`)
+              continue
+            }
+            
+            console.log(`[Email Queue] Processing email ${email.id} to ${email.toEmail}`)
+            
+            // Extract metadata
+            const metadata = email.metadata as Record<string, any> || {}
+            
+            // Send the email with skipRateLimit=true since we're processing from the queue
+            // The rate limit has already passed (that's why it's in the queue)
+            await EmailSendingService.sendEmail({
+              organizationId: email.organizationId,
+              jobId: email.jobId || undefined,
+              to: email.toEmail,
+              subject: email.subject,
+              body: email.body,
+              htmlBody: email.htmlBody || undefined,
+              campaignName: metadata.campaignName,
+              campaignType: metadata.campaignType,
+              accountId: email.accountId || undefined,
+              deadlineDate: metadata.deadlineDate ? new Date(metadata.deadlineDate) : null,
+              skipRateLimit: true,  // Important: skip rate limit check for queued emails
+              remindersConfig: metadata.remindersConfig
+            })
+            
+            await EmailQueueService.markSent(email.id)
+            sent++
+            console.log(`[Email Queue] Successfully sent email ${email.id}`)
+            
+          } catch (error: any) {
+            console.error(`[Email Queue] Failed to send email ${email.id}:`, error.message)
+            await EmailQueueService.markFailed(email.id, error.message)
+            failed++
+          }
+        }
+        
+        console.log(`[Email Queue] Completed: ${sent} sent, ${failed} failed out of ${pendingEmails.length} processed`)
+        
+        return {
+          success: true,
+          processed: pendingEmails.length,
+          sent,
+          failed
+        }
+      } catch (error: any) {
+        console.error("[Email Queue] Error processing queue:", error)
         return {
           success: false,
           error: error.message

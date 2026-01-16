@@ -112,6 +112,7 @@ model Organization {
   boards                 Board[]
   subtasks               Subtask[]
   attachments            Attachment[]
+  emailQueue             EmailQueue[]
 
   @@index([slug])
 }
@@ -738,6 +739,56 @@ enum EmailSendResult {
   FAILED
   BLOCKED
   RATE_LIMITED
+  QUEUED  // Email was queued for later due to rate limiting
+}
+
+// EmailQueue stores emails that were rate-limited and need to be sent later
+// A scheduled job processes this queue when rate limits allow
+enum EmailQueueStatus {
+  PENDING     // Waiting to be sent
+  PROCESSING  // Currently being processed
+  SENT        // Successfully sent
+  FAILED      // Failed after max retries
+  CANCELLED   // Manually cancelled
+}
+
+model EmailQueue {
+  id              String           @id @default(cuid())
+  organizationId  String
+  userId          String?          // User who initiated the send
+  jobId           String?          // Related job
+  taskId          String?          // Related task (if updating existing)
+  
+  // Email details (stored for retry)
+  toEmail         String
+  subject         String
+  body            String           @db.Text
+  htmlBody        String?          @db.Text
+  accountId       String?          // Email account to send from
+  
+  // Queue management
+  status          EmailQueueStatus @default(PENDING)
+  priority        Int              @default(0)  // Higher = more urgent
+  attempts        Int              @default(0)
+  maxAttempts     Int              @default(3)
+  lastAttemptAt   DateTime?
+  nextAttemptAt   DateTime         // When to try sending next
+  
+  // Error tracking
+  lastError       String?
+  
+  // Metadata for the original send request
+  metadata        Json?            // Original send parameters (deadlineDate, remindersConfig, etc.)
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@index([organizationId])
+  @@index([status, nextAttemptAt])  // For queue processing
+  @@index([toEmail])
+  @@index([createdAt])
 }
 
 model EmailSendAudit {

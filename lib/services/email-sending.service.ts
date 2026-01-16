@@ -11,6 +11,7 @@ import { EmailAccountService } from "./email-account.service"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 import { ReminderStateService } from "./reminder-state.service"
+import { EmailQueueService } from "./email-queue.service"
 import { prisma } from "@/lib/prisma"
 import { logger } from "@/lib/logger"
 
@@ -18,7 +19,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child({ service: "EmailSendingService" })
 
 // Rate limiting: max emails per recipient per 24-hour window
-// NOTE: This is a HARD BLOCK, not a queue. Rate-limited emails are rejected and must be re-sent manually.
+// Rate-limited emails are automatically queued for later sending
 const RATE_LIMIT_HOURS = 24
 const RATE_LIMIT_MAX_EMAILS = 5  // Max emails to same recipient within RATE_LIMIT_HOURS
 
@@ -282,7 +283,7 @@ export class EmailSendingService {
     messageId: string
   }> {
     // SAFETY CHECK: Per-recipient rate limit (max N emails per 24 hours)
-    // NOTE: This is a HARD BLOCK - emails are rejected, NOT queued for later
+    // Rate-limited emails are automatically queued for later sending
     if (!data.skipRateLimit) {
       const rateCheck = await isRecipientRateLimited(data.organizationId, data.to)
       if (rateCheck.rateLimited) {
@@ -290,7 +291,7 @@ export class EmailSendingService {
           ? Math.round((Date.now() - rateCheck.lastSentAt.getTime()) / (1000 * 60 * 60))
           : 0
         
-        log.warn("Recipient rate limited", {
+        log.info("Recipient rate limited - queueing email for later", {
           to: data.to,
           count: rateCheck.count,
           maxAllowed: RATE_LIMIT_MAX_EMAILS,
@@ -298,19 +299,43 @@ export class EmailSendingService {
           hoursAgo
         }, { organizationId: data.organizationId, operation: "sendEmail" })
         
-        // Audit log the rate-limited send
+        // Queue the email for later sending
+        const queueId = await EmailQueueService.enqueue({
+          organizationId: data.organizationId,
+          jobId: data.jobId,
+          toEmail: data.to,
+          subject: data.subject,
+          body: data.body,
+          htmlBody: data.htmlBody,
+          accountId: data.accountId,
+          metadata: {
+            campaignName: data.campaignName,
+            campaignType: data.campaignType,
+            deadlineDate: data.deadlineDate,
+            remindersConfig: data.remindersConfig,
+            rateLimitInfo: { count: rateCheck.count, maxAllowed: RATE_LIMIT_MAX_EMAILS, hoursAgo }
+          }
+        })
+        
+        // Audit log the queued send
         await logEmailSendAudit({
           organizationId: data.organizationId,
           jobId: data.jobId,
-          fromEmail: "rate-limited",
+          fromEmail: "queued",
           toEmail: data.to,
           subject: data.subject,
-          result: "RATE_LIMITED",
-          errorMessage: `Already sent ${rateCheck.count} emails to this recipient in the last ${RATE_LIMIT_HOURS}h (limit: ${RATE_LIMIT_MAX_EMAILS})`,
-          metadata: { count: rateCheck.count, maxAllowed: RATE_LIMIT_MAX_EMAILS, lastSentAt: rateCheck.lastSentAt, hoursAgo, limitHours: RATE_LIMIT_HOURS }
+          result: "QUEUED",
+          errorMessage: `Queued for later - already sent ${rateCheck.count} emails in the last ${RATE_LIMIT_HOURS}h (limit: ${RATE_LIMIT_MAX_EMAILS})`,
+          metadata: { queueId, count: rateCheck.count, maxAllowed: RATE_LIMIT_MAX_EMAILS, lastSentAt: rateCheck.lastSentAt, hoursAgo, limitHours: RATE_LIMIT_HOURS }
         })
         
-        throw new Error(`Cannot send to ${data.to} - already sent ${rateCheck.count} emails in the last ${RATE_LIMIT_HOURS} hours (limit: ${RATE_LIMIT_MAX_EMAILS}). Try again later.`)
+        // Return a placeholder response indicating the email was queued
+        // The actual taskId will be created when the email is sent from the queue
+        return {
+          taskId: `queued:${queueId}`,
+          threadId: `queued:${queueId}`,
+          messageId: `queued:${queueId}`
+        }
       }
     }
 
