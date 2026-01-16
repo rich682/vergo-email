@@ -248,7 +248,7 @@ export function EmailChainSidebar({
   })
   const stateColors = getStateBadgeColors(taskState)
   const isDone = effectiveStatus === "FULFILLED"
-  const completionLabel = isDone ? "Done" : "In progress"
+  const completionLabel = isDone ? "Complete" : "In Progress"
   const completionColors = isDone
     ? "bg-green-100 text-green-800"
     : "bg-blue-100 text-blue-800"
@@ -265,7 +265,7 @@ export function EmailChainSidebar({
 
   const handleMarkDone = async () => {
     if (!task || markingDone) return
-    const nextStatus = isDone ? "AWAITING_RESPONSE" : "FULFILLED"
+    const nextStatus = isDone ? "IN_PROGRESS" : "FULFILLED"
     setMarkingDone(true)
     try {
       const response = await fetch(`/api/tasks/${task.id}`, {
@@ -349,7 +349,7 @@ export function EmailChainSidebar({
               onClick={handleMarkDone}
               className="whitespace-nowrap"
             >
-              {markingDone ? "Updating..." : isDone ? "Mark Undone" : "Mark Done"}
+              {markingDone ? "Updating..." : isDone ? "Mark In Progress" : "Mark Complete"}
             </Button>
           </div>
         </div>

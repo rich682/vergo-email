@@ -38,7 +38,7 @@ export class TaskCreationService {
         entityId: entity.id,
         campaignName: data.campaignName || null,
         campaignType: data.campaignType as any || null,
-        status: "AWAITING_RESPONSE",
+        status: "IN_PROGRESS",
         threadId: data.threadId,
         replyToEmail: data.replyToEmail,
         deadlineDate: data.deadlineDate || null,

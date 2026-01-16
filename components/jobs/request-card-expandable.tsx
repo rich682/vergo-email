@@ -63,27 +63,24 @@ interface RequestCardExpandableProps {
   onRefresh: () => void
 }
 
-// Status options for recipient dropdown
+// Status options for recipient dropdown - simplified to 2 statuses
 const RECIPIENT_STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  { value: "FULFILLED", label: "Done", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  { value: "REJECTED", label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  { value: "ON_HOLD", label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
+  { value: "FULFILLED", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
 ]
 
-// All status display config
+// All status display config - map legacy statuses to simplified display
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
-  AWAITING_RESPONSE: { label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  AWAITING_RESPONSE: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   IN_PROGRESS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  HAS_ATTACHMENTS: { label: "Has Attachments", icon: Paperclip, bgColor: "bg-purple-100", textColor: "text-purple-700" },
-  VERIFYING: { label: "Verifying", icon: Clock, bgColor: "bg-yellow-100", textColor: "text-yellow-700" },
-  FULFILLED: { label: "Done", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  REJECTED: { label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  FLAGGED: { label: "Flagged", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  MANUAL_REVIEW: { label: "Review", icon: AlertCircle, bgColor: "bg-orange-100", textColor: "text-orange-700" },
-  ON_HOLD: { label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
+  REPLIED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  HAS_ATTACHMENTS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  VERIFYING: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  REJECTED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  FLAGGED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  MANUAL_REVIEW: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  ON_HOLD: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
 }
 
 // Mini status badge for the grid

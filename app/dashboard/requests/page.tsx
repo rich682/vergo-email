@@ -81,27 +81,24 @@ interface LabelOption {
   color: string | null
 }
 
-// Status options for the dropdown - cleaner set for user actions
+// Status options for the dropdown - simplified to just 2 statuses
 const STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   { value: "FULFILLED", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  { value: "REJECTED", label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  { value: "ON_HOLD", label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
 ]
 
-// All possible statuses including system-set ones
+// All possible statuses for display (including legacy ones for backward compatibility)
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
-  AWAITING_RESPONSE: { label: "Awaiting", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  AWAITING_RESPONSE: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   IN_PROGRESS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  HAS_ATTACHMENTS: { label: "Has Attachments", icon: Paperclip, bgColor: "bg-purple-100", textColor: "text-purple-700" },
-  VERIFYING: { label: "Verifying", icon: Clock, bgColor: "bg-yellow-100", textColor: "text-yellow-700" },
+  REPLIED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  HAS_ATTACHMENTS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  VERIFYING: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  REJECTED: { label: "Rejected", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  FLAGGED: { label: "Flagged", icon: AlertCircle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  MANUAL_REVIEW: { label: "Review", icon: AlertCircle, bgColor: "bg-orange-100", textColor: "text-orange-700" },
-  ON_HOLD: { label: "On Hold", icon: Pause, bgColor: "bg-gray-100", textColor: "text-gray-700" },
+  REJECTED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  FLAGGED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  MANUAL_REVIEW: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  ON_HOLD: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
 }
 
 // Status badge component - cleaner display
@@ -511,13 +508,8 @@ export default function RequestsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              {STATUS_OPTIONS.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-              <SelectItem value="REPLIED">Replied</SelectItem>
-              <SelectItem value="HAS_ATTACHMENTS">Has Attachments</SelectItem>
+              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+              <SelectItem value="FULFILLED">Complete</SelectItem>
             </SelectContent>
           </Select>
 

@@ -360,23 +360,17 @@ export class EmailReceptionService {
       }
     }
 
-    // Determine task status
-    let newStatus: TaskStatus = task.status
-    if (hasAttachments) {
-      newStatus = "HAS_ATTACHMENTS"
-    } else if (task.status === "AWAITING_RESPONSE") {
-      newStatus = "REPLIED"
-    }
-
-    // Update task
+    // Update task - DO NOT auto-change status, let user decide
+    // Only update hasAttachments and documentKey
     const updatedTask = await prisma.task.update({
       where: { id: task.id },
       data: {
-        status: newStatus,
         hasAttachments: hasAttachments || task.hasAttachments,
         documentKey: attachmentKeys.length > 0
           ? attachmentKeys[0]
-          : task.documentKey
+          : task.documentKey,
+        // Update readStatus to indicate a reply was received
+        readStatus: "replied"
       }
     })
 
