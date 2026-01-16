@@ -17,8 +17,8 @@ import { logger } from "@/lib/logger"
 // Create service-specific logger
 const log = logger.child({ service: "EmailSendingService" })
 
-// Safety configuration
-const MAX_EMAILS_PER_SEND = parseInt(process.env.MAX_EMAILS_PER_SEND || "50", 10)
+// Rate limit: max 1 email per recipient per 24 hours (configurable)
+const RATE_LIMIT_HOURS = 24
 
 /**
  * Log an email send to the audit table
@@ -71,21 +71,39 @@ async function logEmailSendAudit(data: {
 }
 
 /**
- * Check if email sending is enabled
- * Kill switch for emergency situations - set EMAIL_SENDING_ENABLED=false to disable all sends
+ * Check if we've already sent an email to this recipient within the rate limit window
+ * Returns true if rate limited (should NOT send), false if OK to send
  */
-function isEmailSendingEnabled(): boolean {
-  const enabled = process.env.EMAIL_SENDING_ENABLED
-  // Default to true if not set (backwards compatible)
-  // Only disable if explicitly set to "false"
-  return enabled !== "false"
-}
-
-/**
- * Check if we're in dry-run mode (log but don't send)
- */
-function isDryRunMode(): boolean {
-  return process.env.EMAIL_DRY_RUN === "true"
+async function isRecipientRateLimited(
+  organizationId: string,
+  toEmail: string
+): Promise<{ rateLimited: boolean; lastSentAt?: Date }> {
+  try {
+    const cutoffTime = new Date(Date.now() - RATE_LIMIT_HOURS * 60 * 60 * 1000)
+    
+    const recentSend = await prisma.emailSendAudit.findFirst({
+      where: {
+        organizationId,
+        toEmail: toEmail.toLowerCase(),
+        result: "SUCCESS",
+        createdAt: { gte: cutoffTime }
+      },
+      orderBy: { createdAt: "desc" }
+    })
+    
+    if (recentSend) {
+      return { rateLimited: true, lastSentAt: recentSend.createdAt }
+    }
+    
+    return { rateLimited: false }
+  } catch (error) {
+    // If rate limit check fails, allow the send (fail open)
+    log.warn("Rate limit check failed, allowing send", {
+      toEmail,
+      error: (error as Error).message
+    }, { organizationId, operation: "isRecipientRateLimited" })
+    return { rateLimited: false }
+  }
 }
 
 export class EmailSendingService {
@@ -237,6 +255,7 @@ export class EmailSendingService {
     campaignType?: string
     accountId?: string
     deadlineDate?: Date | null
+    skipRateLimit?: boolean  // Allow bypassing rate limit for reminders
     remindersConfig?: {
       enabled: boolean
       startDelayHours: number
@@ -249,53 +268,33 @@ export class EmailSendingService {
     threadId: string
     messageId: string
   }> {
-    // SAFETY CHECK: Kill switch
-    if (!isEmailSendingEnabled()) {
-      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false", {
-        to: data.to,
-        subject: data.subject.substring(0, 50)
-      }, { organizationId: data.organizationId, operation: "sendEmail" })
-      
-      // Audit log the blocked send
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        jobId: data.jobId,
-        fromEmail: "blocked",
-        toEmail: data.to,
-        subject: data.subject,
-        result: "BLOCKED",
-        errorMessage: "Email sending disabled via kill switch",
-        metadata: { reason: "EMAIL_SENDING_ENABLED=false" }
-      })
-      
-      throw new Error("Email sending is currently disabled. Contact your administrator.")
-    }
-
-    // SAFETY CHECK: Dry-run mode
-    if (isDryRunMode()) {
-      log.info("DRY RUN: Would send email", {
-        to: data.to,
-        subject: data.subject.substring(0, 50),
-        jobId: data.jobId
-      }, { organizationId: data.organizationId, operation: "sendEmail" })
-      
-      // Audit log the dry-run (don't block, just record)
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        jobId: data.jobId,
-        fromEmail: "dry-run",
-        toEmail: data.to,
-        subject: data.subject,
-        result: "BLOCKED",
-        errorMessage: "Dry-run mode enabled",
-        metadata: { reason: "EMAIL_DRY_RUN=true" }
-      })
-      
-      // Return mock result for dry-run
-      return {
-        taskId: `dry-run-${Date.now()}`,
-        threadId: `dry-run-thread-${Date.now()}`,
-        messageId: `dry-run-msg-${Date.now()}`
+    // SAFETY CHECK: Per-recipient rate limit (max 1 email per 24 hours)
+    if (!data.skipRateLimit) {
+      const rateCheck = await isRecipientRateLimited(data.organizationId, data.to)
+      if (rateCheck.rateLimited) {
+        const hoursAgo = rateCheck.lastSentAt 
+          ? Math.round((Date.now() - rateCheck.lastSentAt.getTime()) / (1000 * 60 * 60))
+          : 0
+        
+        log.warn("Recipient rate limited", {
+          to: data.to,
+          lastSentAt: rateCheck.lastSentAt,
+          hoursAgo
+        }, { organizationId: data.organizationId, operation: "sendEmail" })
+        
+        // Audit log the rate-limited send
+        await logEmailSendAudit({
+          organizationId: data.organizationId,
+          jobId: data.jobId,
+          fromEmail: "rate-limited",
+          toEmail: data.to,
+          subject: data.subject,
+          result: "RATE_LIMITED",
+          errorMessage: `Already sent to this recipient ${hoursAgo} hours ago (limit: ${RATE_LIMIT_HOURS}h)`,
+          metadata: { lastSentAt: rateCheck.lastSentAt, hoursAgo, limitHours: RATE_LIMIT_HOURS }
+        })
+        
+        throw new Error(`Cannot send to ${data.to} - already emailed within the last ${RATE_LIMIT_HOURS} hours. Last sent: ${hoursAgo} hours ago.`)
       }
     }
 
@@ -452,6 +451,7 @@ export class EmailSendingService {
   }
 
   // Send an outbound email that belongs to an existing task (used for reminders)
+  // Note: Reminders intentionally bypass rate limiting since they are scheduled follow-ups
   static async sendEmailForExistingTask(data: {
     taskId: string
     entityId: string
@@ -462,51 +462,9 @@ export class EmailSendingService {
     htmlBody?: string
     accountId?: string
   }): Promise<{ messageId: string }> {
-    // SAFETY CHECK: Kill switch
-    if (!isEmailSendingEnabled()) {
-      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false (reminder)", {
-        to: data.to,
-        taskId: data.taskId
-      }, { organizationId: data.organizationId, operation: "sendEmailForExistingTask" })
-      
-      // Audit log the blocked reminder
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        taskId: data.taskId,
-        fromEmail: "blocked",
-        toEmail: data.to,
-        subject: data.subject,
-        result: "BLOCKED",
-        errorMessage: "Email sending disabled via kill switch (reminder)",
-        metadata: { reason: "EMAIL_SENDING_ENABLED=false", type: "reminder" }
-      })
-      
-      throw new Error("Email sending is currently disabled. Contact your administrator.")
-    }
-
-    // SAFETY CHECK: Dry-run mode
-    if (isDryRunMode()) {
-      log.info("DRY RUN: Would send reminder email", {
-        to: data.to,
-        taskId: data.taskId,
-        subject: data.subject.substring(0, 50)
-      }, { organizationId: data.organizationId, operation: "sendEmailForExistingTask" })
-      
-      // Audit log the dry-run reminder
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        taskId: data.taskId,
-        fromEmail: "dry-run",
-        toEmail: data.to,
-        subject: data.subject,
-        result: "BLOCKED",
-        errorMessage: "Dry-run mode enabled (reminder)",
-        metadata: { reason: "EMAIL_DRY_RUN=true", type: "reminder" }
-      })
-      
-      return { messageId: `dry-run-msg-${Date.now()}` }
-    }
-
+    // Reminders bypass rate limiting - they are intentional scheduled follow-ups
+    // The reminder system already has its own frequency controls
+    
     // Resolve account (reuse same logic as sendEmail)
     let account: EmailAccount | ConnectedEmailAccount | null = null
 
@@ -638,58 +596,10 @@ export class EmailSendingService {
     messageId: string
     error?: string
   }>> {
-    // SAFETY CHECK: Kill switch (checked here to fail fast before any sends)
-    if (!isEmailSendingEnabled()) {
-      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false (bulk)", {
-        recipientCount: data.recipients.length,
-        jobId: data.jobId
-      }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
-      
-      // Audit log the blocked bulk send
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        jobId: data.jobId,
-        fromEmail: "blocked",
-        toEmail: data.recipients.map(r => r.email).join(", ").substring(0, 500),
-        subject: data.subject,
-        recipientCount: data.recipients.length,
-        result: "BLOCKED",
-        errorMessage: "Email sending disabled via kill switch (bulk)",
-        metadata: { reason: "EMAIL_SENDING_ENABLED=false", type: "bulk" }
-      })
-      
-      throw new Error("Email sending is currently disabled. Contact your administrator.")
-    }
-
-    // SAFETY CHECK: Max recipients cap
-    if (data.recipients.length > MAX_EMAILS_PER_SEND) {
-      log.warn("Recipient count exceeds MAX_EMAILS_PER_SEND", {
-        recipientCount: data.recipients.length,
-        maxAllowed: MAX_EMAILS_PER_SEND,
-        jobId: data.jobId
-      }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
-      
-      // Audit log the rate-limited bulk send
-      await logEmailSendAudit({
-        organizationId: data.organizationId,
-        jobId: data.jobId,
-        fromEmail: "rate-limited",
-        toEmail: data.recipients.map(r => r.email).join(", ").substring(0, 500),
-        subject: data.subject,
-        recipientCount: data.recipients.length,
-        result: "RATE_LIMITED",
-        errorMessage: `Recipient count (${data.recipients.length}) exceeds maximum (${MAX_EMAILS_PER_SEND})`,
-        metadata: { reason: "MAX_EMAILS_PER_SEND exceeded", type: "bulk", maxAllowed: MAX_EMAILS_PER_SEND }
-      })
-      
-      throw new Error(`Cannot send to more than ${MAX_EMAILS_PER_SEND} recipients at once. You have ${data.recipients.length} recipients.`)
-    }
-
     log.info("Starting bulk email send", {
       recipientCount: data.recipients.length,
       jobId: data.jobId,
-      campaignName: data.campaignName,
-      dryRun: isDryRunMode()
+      campaignName: data.campaignName
     }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
 
     const results = []
