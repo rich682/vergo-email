@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select"
 import { 
   Plus, 
-  ChevronDown, 
+  ChevronDown,
+  ChevronRight,
   Search, 
   MoreHorizontal,
   Trash2,
