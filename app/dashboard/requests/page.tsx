@@ -14,11 +14,13 @@ import {
 import { 
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
   CheckCircle, AlertCircle, MessageSquare, Bell,
-  Pause, PlayCircle, Search, X, Calendar, Tag, Paperclip
+  Pause, PlayCircle, Search, X, Calendar, Tag, Paperclip,
+  MailOpen, Eye, EyeOff
 } from "lucide-react"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 
 // Types
 interface BoardOption {
@@ -34,6 +36,11 @@ interface RequestTask {
   updatedAt: string
   remindersEnabled: boolean
   remindersFrequencyHours: number | null
+  readStatus: string | null // unread | read | replied
+  hasAttachments: boolean
+  _count?: {
+    messages: number
+  }
   entity?: {
     id: string
     firstName: string
@@ -212,10 +219,17 @@ export default function RequestsPage() {
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
   const [hasReminders, setHasReminders] = useState<string>("all")
+  const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
+  const [attachmentFilter, setAttachmentFilter] = useState<string>("all")
+
+  // Email thread modal
+  const [selectedRequest, setSelectedRequest] = useState<RequestTask | null>(null)
+  const [isThreadModalOpen, setIsThreadModalOpen] = useState(false)
 
   // Check if any filters are active
   const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
-    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all"
+    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all" ||
+    readStatusFilter !== "all" || attachmentFilter !== "all"
 
   // Fetch boards for filter
   useEffect(() => {
@@ -245,6 +259,8 @@ export default function RequestsPage() {
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       if (labelFilter !== "all") params.set("labelId", labelFilter)
+      if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
+      if (attachmentFilter !== "all") params.set("hasAttachments", attachmentFilter)
       
       const response = await fetch(
         `/api/requests?${params.toString()}`,
@@ -301,7 +317,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders])
+  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders, readStatusFilter, attachmentFilter])
 
   useEffect(() => {
     fetchRequests()
@@ -318,6 +334,48 @@ export default function RequestsPage() {
     setDateFrom("")
     setDateTo("")
     setHasReminders("all")
+    setReadStatusFilter("all")
+    setAttachmentFilter("all")
+  }
+
+  // Handle opening email thread
+  const handleOpenThread = (request: RequestTask) => {
+    setSelectedRequest(request)
+    setIsThreadModalOpen(true)
+  }
+
+  // Handle closing email thread
+  const handleCloseThread = () => {
+    setIsThreadModalOpen(false)
+    setSelectedRequest(null)
+  }
+
+  // Navigate between requests in the modal
+  const currentRequestIndex = selectedRequest 
+    ? requests.findIndex(r => r.id === selectedRequest.id) 
+    : -1
+
+  const handleNavigatePrev = () => {
+    if (currentRequestIndex > 0) {
+      setSelectedRequest(requests[currentRequestIndex - 1])
+    }
+  }
+
+  const handleNavigateNext = () => {
+    if (currentRequestIndex < requests.length - 1) {
+      setSelectedRequest(requests[currentRequestIndex + 1])
+    }
+  }
+
+  // Get read status display
+  const getReadStatusDisplay = (readStatus: string | null, messageCount: number) => {
+    if (readStatus === "replied" || messageCount > 1) {
+      return { icon: MessageSquare, label: "Replied", color: "text-green-600", bgColor: "bg-green-50" }
+    }
+    if (readStatus === "read") {
+      return { icon: MailOpen, label: "Read", color: "text-blue-600", bgColor: "bg-blue-50" }
+    }
+    return { icon: Mail, label: "Unread", color: "text-gray-400", bgColor: "bg-gray-50" }
   }
 
   // Calculate summary stats
@@ -487,6 +545,33 @@ export default function RequestsPage() {
             </Select>
           )}
 
+          {/* Read Status Filter */}
+          <Select value={readStatusFilter} onValueChange={setReadStatusFilter}>
+            <SelectTrigger className="w-[130px]">
+              <Eye className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="unread">Unread</SelectItem>
+              <SelectItem value="read">Read</SelectItem>
+              <SelectItem value="replied">Replied</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Attachment Filter */}
+          <Select value={attachmentFilter} onValueChange={setAttachmentFilter}>
+            <SelectTrigger className="w-[150px]">
+              <Paperclip className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="yes">Has Attachments</SelectItem>
+              <SelectItem value="no">No Attachments</SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Reminders Filter */}
           <Select value={hasReminders} onValueChange={setHasReminders}>
             <SelectTrigger className="w-[130px]">
@@ -569,6 +654,7 @@ export default function RequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-10"></th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
@@ -579,8 +665,34 @@ export default function RequestsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {requests.map(request => (
-                <tr key={request.id} className="hover:bg-gray-50">
+              {requests.map(request => {
+                const readDisplay = getReadStatusDisplay(request.readStatus, request._count?.messages || 0)
+                const ReadIcon = readDisplay.icon
+                return (
+                <tr 
+                  key={request.id} 
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleOpenThread(request)}
+                >
+                  {/* Indicators Column */}
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span 
+                        className={`p-1 rounded ${readDisplay.bgColor}`}
+                        title={readDisplay.label}
+                      >
+                        <ReadIcon className={`w-3.5 h-3.5 ${readDisplay.color}`} />
+                      </span>
+                      {request.hasAttachments && (
+                        <span 
+                          className="p-1 rounded bg-purple-50"
+                          title="Has attachments"
+                        >
+                          <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900 truncate max-w-[200px]">
                       {request.campaignName || "Untitled Request"}
@@ -672,9 +784,54 @@ export default function RequestsPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Email Thread Modal */}
+      {isThreadModalOpen && selectedRequest && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseThread()
+          }}
+        >
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-3xl h-[85vh] overflow-hidden">
+            {/* Close button */}
+            <button
+              onClick={handleCloseThread}
+              className="absolute right-4 top-4 z-20 p-1 rounded-full hover:bg-gray-100"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+            
+            <div className="h-full overflow-hidden">
+              <EmailChainSidebar
+                task={{
+                  id: selectedRequest.id,
+                  entity: selectedRequest.entity ? {
+                    firstName: selectedRequest.entity.firstName,
+                    email: selectedRequest.entity.email
+                  } : { firstName: null, email: null },
+                  campaignName: selectedRequest.campaignName,
+                  status: selectedRequest.status,
+                  hasAttachments: selectedRequest.hasAttachments,
+                  hasReplies: (selectedRequest._count?.messages || 0) > 1,
+                  messageCount: selectedRequest._count?.messages || 0
+                }}
+                isOpen={true}
+                onClose={handleCloseThread}
+                onTaskUpdated={fetchRequests}
+                onNavigatePrev={handleNavigatePrev}
+                onNavigateNext={handleNavigateNext}
+                currentIndex={currentRequestIndex}
+                totalCount={requests.length}
+                variant="modal"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

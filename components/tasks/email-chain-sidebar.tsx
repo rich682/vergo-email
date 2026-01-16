@@ -57,6 +57,8 @@ interface EmailChainSidebarProps {
   onNavigateNext?: () => void
   currentIndex?: number
   totalCount?: number
+  // Variant for different contexts
+  variant?: "sidebar" | "modal"
 }
 
 export function EmailChainSidebar({ 
@@ -66,7 +68,8 @@ export function EmailChainSidebar({
   onNavigatePrev,
   onNavigateNext,
   currentIndex,
-  totalCount
+  totalCount,
+  variant = "sidebar"
 }: EmailChainSidebarProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
@@ -281,8 +284,12 @@ export function EmailChainSidebar({
     }
   }
 
+  const containerClass = variant === "modal"
+    ? "h-full w-full bg-white flex flex-col"
+    : "absolute right-0 top-0 h-full w-full max-w-[700px] md:w-[42vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col"
+
   return (
-    <div className="absolute right-0 top-0 h-full w-full max-w-[700px] md:w-[42vw] md:max-w-[720px] bg-white border-l border-gray-200 shadow-xl z-10 flex flex-col">
+    <div className={containerClass}>
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <div className="flex items-start justify-between gap-3 p-4">
           <div className="flex flex-col gap-1 flex-1 min-w-0">

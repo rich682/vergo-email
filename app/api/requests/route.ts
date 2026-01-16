@@ -27,11 +27,29 @@ export async function GET(request: NextRequest) {
     const ownerId = searchParams.get("ownerId")
     const status = searchParams.get("status") as TaskStatus | null
     const labelId = searchParams.get("labelId")
+    const readStatus = searchParams.get("readStatus") // unread | read | replied
+    const hasAttachments = searchParams.get("hasAttachments") // yes | no
 
     const where: any = {
       organizationId,
       // Only show tasks that have a job (request-based tasks)
       jobId: { not: null }
+    }
+
+    // Filter by read status
+    if (readStatus === "unread") {
+      where.readStatus = { in: [null, "unread"] }
+    } else if (readStatus === "read") {
+      where.readStatus = "read"
+    } else if (readStatus === "replied") {
+      where.readStatus = "replied"
+    }
+
+    // Filter by attachments
+    if (hasAttachments === "yes") {
+      where.hasAttachments = true
+    } else if (hasAttachments === "no") {
+      where.hasAttachments = false
     }
 
     // Filter by board (via job.boardId)
@@ -90,6 +108,12 @@ export async function GET(request: NextRequest) {
                 color: true
               }
             }
+          }
+        },
+        // Include message count for reply indicator
+        _count: {
+          select: {
+            messages: true
           }
         }
       },
