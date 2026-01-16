@@ -26,14 +26,34 @@ function SettingsContent() {
       setTimeout(() => setMessage(null), 5000)
       window.history.replaceState({}, "", "/dashboard/settings")
     } else if (error) {
+      const customMessage = searchParams.get("message")
       const errorMessages: Record<string, string> = {
         oauth_failed: "OAuth authentication failed. Please try again.",
         no_tokens: "Failed to get access tokens. Please try again.",
         no_email: "Failed to get email address. Please try again.",
-        oauth_error: "An error occurred during OAuth. Please try again."
+        oauth_error: "An error occurred during OAuth. Please try again.",
+        // New detailed error messages
+        missing_code_or_state: "OAuth callback missing required parameters. Please try again.",
+        invalid_state: "OAuth state validation failed. Please try again.",
+        invalid_state_data: "OAuth state data is invalid. Please try again.",
+        session_mismatch: "Session mismatch - please ensure you're logged in and try again.",
+        missing_config: "Server configuration error. Please contact support.",
+        token_exchange_failed: "Failed to exchange authorization code for tokens.",
+        no_access_token: "No access token received from provider.",
+        no_refresh_token: "No refresh token received. The app may need offline_access permission.",
+        profile_fetch_failed: "Failed to fetch user profile from provider.",
+        no_email_in_profile: "No email address found in your account profile.",
+        unexpected_error: "An unexpected error occurred.",
+        // Microsoft-specific errors
+        ms_access_denied: "Access was denied. You may have declined the permissions.",
+        ms_consent_required: "Admin consent may be required for this application.",
       }
-      setMessage({ type: "error", text: errorMessages[error] || "An error occurred." })
-      setTimeout(() => setMessage(null), 5000)
+      let errorText = errorMessages[error] || `OAuth error: ${error}`
+      if (customMessage) {
+        errorText += ` Details: ${decodeURIComponent(customMessage)}`
+      }
+      setMessage({ type: "error", text: errorText })
+      setTimeout(() => setMessage(null), 10000) // Show longer for detailed errors
       window.history.replaceState({}, "", "/dashboard/settings")
     }
 
