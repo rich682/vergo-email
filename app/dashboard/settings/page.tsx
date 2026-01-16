@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Mail, Check, X } from "lucide-react"
+import { Mail, Check, X, RefreshCw, RotateCcw } from "lucide-react"
 
 function SettingsContent() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -154,6 +154,68 @@ function SettingsContent() {
     }
   }
 
+  const [syncing, setSyncing] = useState(false)
+  const [resetting, setResetting] = useState<string | null>(null)
+
+  const handleSyncEmails = async () => {
+    try {
+      setSyncing(true)
+      setMessage(null)
+      const res = await fetch("/api/admin/sync-emails", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Sync failed")
+      }
+      setMessage({ 
+        type: "success", 
+        text: `Email sync complete! Found ${data.total?.messagesFetched || 0} messages, ${data.total?.repliesPersisted || 0} replies linked.` 
+      })
+      setTimeout(() => setMessage(null), 8000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Sync failed" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleResetAndSync = async (accountId: string) => {
+    try {
+      setResetting(accountId)
+      setMessage(null)
+      
+      // First reset the sync cursor
+      const resetRes = await fetch("/api/admin/debug-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId })
+      })
+      if (!resetRes.ok) {
+        const data = await resetRes.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to reset sync")
+      }
+      
+      // Then trigger a sync
+      const syncRes = await fetch("/api/admin/sync-emails", { method: "POST" })
+      const syncData = await syncRes.json()
+      if (!syncRes.ok) {
+        throw new Error(syncData.error || "Sync failed")
+      }
+      
+      setMessage({ 
+        type: "success", 
+        text: `Reset & sync complete! Found ${syncData.total?.messagesFetched || 0} messages, ${syncData.total?.repliesPersisted || 0} replies linked.` 
+      })
+      setTimeout(() => setMessage(null), 8000)
+      fetchAccounts()
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Reset & sync failed" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setResetting(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <div className="px-8 py-4">
@@ -221,7 +283,7 @@ function SettingsContent() {
               <h2 className="text-sm font-medium text-gray-900">Email Accounts</h2>
             </div>
             <div className="p-4 space-y-4">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={handleConnectGmail}
                   className="
@@ -247,6 +309,20 @@ function SettingsContent() {
                 >
                   <Mail className="w-4 h-4" />
                   Connect Microsoft
+                </button>
+                <button
+                  onClick={handleSyncEmails}
+                  disabled={syncing}
+                  className="
+                    flex items-center gap-2 px-4 py-2
+                    border border-green-200 rounded-lg
+                    text-sm font-medium text-green-700
+                    hover:border-green-400 hover:bg-green-50
+                    transition-colors disabled:opacity-50
+                  "
+                >
+                  <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Syncing...' : 'Sync All Emails'}
                 </button>
               </div>
 
@@ -296,6 +372,20 @@ function SettingsContent() {
                           "
                         >
                           Sync contacts
+                        </button>
+                        <button
+                          onClick={() => handleResetAndSync(account.id)}
+                          disabled={resetting === account.id}
+                          className="
+                            flex items-center gap-1 px-3 py-1.5 text-sm font-medium
+                            border border-blue-200 rounded-lg
+                            text-blue-600 hover:bg-blue-50
+                            transition-colors disabled:opacity-50
+                          "
+                          title="Reset sync and fetch recent emails (use if replies aren't showing)"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${resetting === account.id ? 'animate-spin' : ''}`} />
+                          {resetting === account.id ? 'Syncing...' : 'Reset & Sync'}
                         </button>
                         <button
                           onClick={() => handleDisconnect(account.id)}
