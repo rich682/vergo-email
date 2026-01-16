@@ -93,6 +93,13 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             ownerId: true,
+            boardId: true,
+            board: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
             owner: {
               select: {
                 id: true,

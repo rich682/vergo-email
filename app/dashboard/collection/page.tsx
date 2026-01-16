@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -14,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { 
   Download, FileText, Filter, RefreshCw, FolderOpen,
   FileImage, FileSpreadsheet, File, Archive, ExternalLink,
-  Info, Search, X
+  Search, X
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import Link from "next/link"
@@ -42,6 +41,11 @@ interface CollectedItem {
     id: string
     name: string
     ownerId?: string
+    boardId?: string
+    board?: {
+      id: string
+      name: string
+    }
     owner?: {
       id: string
       name: string | null
@@ -69,11 +73,6 @@ interface JobOption {
   name: string
 }
 
-interface OwnerOption {
-  id: string
-  name: string | null
-  email: string
-}
 
 // Helper to get file icon based on mime type
 function getFileIcon(mimeType: string | null) {
@@ -108,20 +107,14 @@ export default function CollectionPage() {
   
   // State
   const [items, setItems] = useState<CollectedItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [pdfCount, setPdfCount] = useState(0)
   const [jobs, setJobs] = useState<JobOption[]>([])
-  const [owners, setOwners] = useState<OwnerOption[]>([])
   const [boards, setBoards] = useState<BoardOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Filters
+  // Filters - simplified
   const [boardFilter, setBoardFilter] = useState<string>(boardIdFromUrl || "all")
   const [jobFilter, setJobFilter] = useState<string>("all")
-  const [ownerFilter, setOwnerFilter] = useState<string>("all")
-  const [sourceFilter, setSourceFilter] = useState<string>("all")
-  const [fileTypeFilter, setFileTypeFilter] = useState<string>("pdf") // Default to PDF only
   const [submitterSearch, setSubmitterSearch] = useState<string>("")
   
   // Selection
@@ -131,7 +124,7 @@ export default function CollectionPage() {
   const [bulkLoading, setBulkLoading] = useState(false)
 
   // Check if any filters are active
-  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || sourceFilter !== "all" || fileTypeFilter !== "all" || submitterSearch !== ""
+  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || submitterSearch !== ""
 
   // Fetch boards for filter
   useEffect(() => {
@@ -158,9 +151,6 @@ export default function CollectionPage() {
       const params = new URLSearchParams()
       if (boardFilter !== "all") params.set("boardId", boardFilter)
       if (jobFilter !== "all") params.set("jobId", jobFilter)
-      if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
-      if (sourceFilter !== "all") params.set("source", sourceFilter)
-      if (fileTypeFilter !== "all") params.set("fileType", fileTypeFilter)
       if (submitterSearch) params.set("submitter", submitterSearch)
       
       const response = await fetch(
@@ -175,16 +165,13 @@ export default function CollectionPage() {
       
       const data = await response.json()
       setItems(data.items || [])
-      setTotal(data.total || 0)
-      setPdfCount(data.pdfCount || 0)
       setJobs(data.jobs || [])
-      setOwners(data.owners || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, sourceFilter, fileTypeFilter, submitterSearch])
+  }, [boardFilter, jobFilter, submitterSearch])
 
   useEffect(() => {
     fetchItems()
@@ -257,9 +244,6 @@ export default function CollectionPage() {
   const clearFilters = () => {
     setBoardFilter("all")
     setJobFilter("all")
-    setOwnerFilter("all")
-    setSourceFilter("all")
-    setFileTypeFilter("all")
     setSubmitterSearch("")
   }
 
@@ -290,32 +274,15 @@ export default function CollectionPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Collection</h1>
         <p className="text-gray-500 mt-1">
           All attachments received from email responses to your requests
         </p>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-gray-900">{total}</div>
-            <div className="text-sm text-gray-500">Total Attachments</div>
-          </CardContent>
-        </Card>
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-red-700">{pdfCount}</div>
-            <div className="text-sm text-red-600">PDF Documents</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Toolbar */}
-      <div className="space-y-3 mb-4">
-        {/* First row - Main filters */}
+      {/* Toolbar - Simplified */}
+      <div className="flex items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Board Filter */}
           {boards.length > 0 && (
@@ -338,7 +305,7 @@ export default function CollectionPage() {
           <Select value={jobFilter} onValueChange={setJobFilter}>
             <SelectTrigger className="w-[180px]">
               <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Filter by Task" />
+              <SelectValue placeholder="All Tasks" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Tasks</SelectItem>
@@ -350,52 +317,11 @@ export default function CollectionPage() {
             </SelectContent>
           </Select>
 
-          {/* Owner Filter */}
-          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Owner" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Owners</SelectItem>
-              {owners.map(owner => (
-                <SelectItem key={owner.id} value={owner.id}>
-                  {owner.name || owner.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* File Type Filter */}
-          <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="File Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pdf">PDF Only</SelectItem>
-              <SelectItem value="document">Documents</SelectItem>
-              <SelectItem value="spreadsheet">Spreadsheets</SelectItem>
-              <SelectItem value="image">Images</SelectItem>
-              <SelectItem value="all">All Types</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Source Filter */}
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Source" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="EMAIL_REPLY">Email Reply</SelectItem>
-              <SelectItem value="MANUAL_UPLOAD">Manual Upload</SelectItem>
-            </SelectContent>
-          </Select>
-
           {/* Submitter Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Search submitter..."
+              placeholder="Search by email..."
               value={submitterSearch}
               onChange={(e) => setSubmitterSearch(e.target.value)}
               className="pl-9 w-[180px]"
@@ -414,32 +340,21 @@ export default function CollectionPage() {
           )}
         </div>
 
-        {/* Second row - Bulk actions and download tip */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* Bulk Actions */}
-            {selectedIds.length > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-lg">
-                <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBulkDownload}
-                  disabled={bulkLoading}
-                >
-                  <Download className="w-4 h-4 mr-1" />
-                  Download
-                </Button>
-              </div>
-            )}
+        {/* Bulk Actions */}
+        {selectedIds.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-lg">
+            <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBulkDownload}
+              disabled={bulkLoading}
+            >
+              <Download className="w-4 h-4 mr-1" />
+              Download All
+            </Button>
           </div>
-
-          {/* Download location tip */}
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            <Info className="w-3.5 h-3.5" />
-            <span>Tip: Change your browser settings to &quot;Ask where to save&quot; for more control over downloads</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Items Table */}
@@ -475,10 +390,11 @@ export default function CollectionPage() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Owner</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date Received</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 <th className="w-20 px-4 py-3"></th>
               </tr>
             </thead>
@@ -497,7 +413,7 @@ export default function CollectionPage() {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className="font-medium text-gray-900 truncate max-w-[200px]">
+                        <div className="font-medium text-gray-900 truncate max-w-[180px]">
                           {item.filename}
                         </div>
                         <div className="text-xs text-gray-500">
@@ -505,6 +421,15 @@ export default function CollectionPage() {
                         </div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {item.job?.board ? (
+                      <span className="text-sm text-gray-900">
+                        {item.job.board.name}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {item.job ? (
@@ -516,24 +441,24 @@ export default function CollectionPage() {
                         <ExternalLink className="w-3 h-3" />
                       </Link>
                     ) : (
-                      <span className="text-sm text-gray-500">—</span>
+                      <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {item.job?.owner ? (
-                      <div className="text-sm text-gray-900">
-                        {item.job.owner.name || item.job.owner.email}
+                      <div className="text-sm text-gray-600">
+                        {item.job.owner.email}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-500">—</span>
+                      <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-sm text-gray-900">
-                      {item.submittedByName || item.submittedBy || "—"}
+                      {item.submittedBy || "—"}
                     </div>
-                    {item.submittedByName && item.submittedBy && (
-                      <div className="text-xs text-gray-500">{item.submittedBy}</div>
+                    {item.submittedByName && (
+                      <div className="text-xs text-gray-500">{item.submittedByName}</div>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -548,7 +473,10 @@ export default function CollectionPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDownload(item)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        handleDownload(item)
+                      }}
                       title="Download"
                     >
                       <Download className="w-4 h-4" />
