@@ -173,7 +173,8 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                 completionPercentage = 60
               }
 
-              // Update task with completion percentage and status if appropriate
+              // Update task with completion percentage only
+              // DO NOT auto-change status - user should decide when a request is complete
               const updateData: any = {
                 completionPercentage,
                 aiReasoning: typeof task.aiReasoning === 'object' && task.aiReasoning !== null
@@ -181,28 +182,15 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   : { completionAnalysis: reasoning }
               }
 
-              // If completion is 100% or high confidence 95%+, mark as FULFILLED
-              if (completionPercentage >= 100 || (completionPercentage >= 95 && confidence === "High")) {
-                updateData.status = "FULFILLED"
-                console.log(`Task ${taskId} marked as FULFILLED with ${completionPercentage}% completion (${confidence} confidence)`)
-              }
-
               await prisma.task.update({
                 where: { id: taskId },
                 data: updateData
               })
               
-              console.log(`[Message Classification] Task ${taskId} completion percentage updated to ${completionPercentage}% (${confidence} confidence): ${reasoning}`)
+              console.log(`[Message Classification] Task ${taskId} completion: ${completionPercentage}% (${confidence}) - "${reasoning.substring(0, 100)}" - status NOT auto-changed`)
 
-              // Execute automation rules after classification
-              const { AutomationEngineService } = await import("@/lib/services/automation-engine.service")
-              await AutomationEngineService.executeRules({
-                taskId: taskId,
-                organizationId: task.organizationId,
-                messageClassification: classification.classification as any,
-                hasAttachments: task.hasAttachments,
-                verified: task.aiVerified || false
-              })
+              // NOTE: AutomationEngineService disabled - user should decide status manually
+              // If automation rules are needed in the future, they should NOT auto-change status
 
               // Trigger risk recomputation after classification completes
               // Only recompute if no manual override exists (manual overrides take precedence)
