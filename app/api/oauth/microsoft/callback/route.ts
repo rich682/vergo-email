@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       grant_type: "authorization_code",
       code,
       redirect_uri: process.env.MS_REDIRECT_URI,
-      scope: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
+      scope: "offline_access User.Read Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
 
     console.log("Microsoft OAuth: Exchanging code for tokens...")
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
       tokenExpiresAt: new Date(Date.now() + expiresInMs),
-      scopes: "offline_access Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
+      scopes: "offline_access User.Read Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
 
     console.log("Microsoft OAuth: Successfully connected account:", email)
