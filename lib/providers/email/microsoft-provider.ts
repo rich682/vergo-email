@@ -50,6 +50,11 @@ export class MicrosoftProvider implements EmailProviderDriver {
 
   async sendEmail(params: EmailSendParams): Promise<{ messageId: string; providerData: any }> {
     const { token, refreshedAccount } = await this.getAccessToken(params.account)
+    
+    // Generate a unique Message-ID for tracking
+    const domain = refreshedAccount.email.split('@')[1] || 'outlook.com'
+    const generatedMessageId = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${domain}>`
+    
     const body = {
       message: {
         subject: params.subject,
@@ -60,9 +65,12 @@ export class MicrosoftProvider implements EmailProviderDriver {
         toRecipients: [{ emailAddress: { address: params.to } }],
         from: { emailAddress: { address: refreshedAccount.email } },
         replyTo: [{ emailAddress: { address: params.replyTo } }],
+        // Set custom internet message ID for reply tracking
+        internetMessageId: generatedMessageId,
       },
       saveToSentItems: true,
     }
+    
     const resp = await fetch(`${GRAPH_BASE}/me/sendMail`, {
       method: "POST",
       headers: {
@@ -71,11 +79,58 @@ export class MicrosoftProvider implements EmailProviderDriver {
       },
       body: JSON.stringify(body),
     })
+    
     if (!resp.ok) {
       const msg = await resp.text()
       throw new Error(`Microsoft sendMail failed: ${msg}`)
     }
-    return { messageId: "", providerData: await resp.json().catch(() => ({})) }
+    
+    // Try to get the actual sent message from Sent Items to get the real internetMessageId
+    let actualMessageId = generatedMessageId
+    try {
+      // Wait a moment for the message to appear in Sent Items
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Search for the recently sent message
+      const searchResp = await fetch(
+        `${GRAPH_BASE}/me/mailFolders/sentItems/messages?$filter=subject eq '${encodeURIComponent(params.subject)}'&$select=id,internetMessageId,conversationId&$top=1&$orderby=sentDateTime desc`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      
+      if (searchResp.ok) {
+        const searchData = await searchResp.json()
+        if (searchData.value && searchData.value.length > 0) {
+          const sentMessage = searchData.value[0]
+          actualMessageId = sentMessage.internetMessageId || generatedMessageId
+          console.log(`[Microsoft] Retrieved sent message ID: ${actualMessageId}, conversationId: ${sentMessage.conversationId}`)
+          
+          return {
+            messageId: sentMessage.id || "",
+            providerData: {
+              id: sentMessage.id,
+              internetMessageId: actualMessageId,
+              messageIdHeader: actualMessageId,
+              conversationId: sentMessage.conversationId,
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Microsoft] Could not fetch sent message to get actual Message-ID, using generated one:", e)
+    }
+    
+    return { 
+      messageId: "", 
+      providerData: {
+        messageIdHeader: actualMessageId,
+        internetMessageId: actualMessageId,
+      }
+    }
   }
 
   async syncContacts(account: EmailAccount): Promise<ContactSyncResult & { contacts?: Array<{ name: string; email: string }> }> {
