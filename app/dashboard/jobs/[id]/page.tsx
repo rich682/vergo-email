@@ -53,8 +53,6 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
-// Attachments components
-import { AttachmentsPanel } from "@/components/attachments/attachments-panel"
 
 // Task AI Summary
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
@@ -278,7 +276,6 @@ export default function JobDetailPage() {
 
   // UI state
   const [awaitingExpanded, setAwaitingExpanded] = useState(true)
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false)
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(false)
@@ -1336,24 +1333,6 @@ export default function JobDetailPage() {
               </Card>
             )}
 
-
-            {/* Attachments Section - Direct file uploads on this task */}
-            <Card>
-              <CardContent className="p-4">
-                <SectionHeader
-                  title="Attachments"
-                  icon={<FileText className="w-4 h-4 text-orange-500" />}
-                  collapsible
-                  expanded={attachmentsExpanded}
-                  onToggle={() => setAttachmentsExpanded(!attachmentsExpanded)}
-                />
-                {attachmentsExpanded && (
-                  <div className="mt-3">
-                    <AttachmentsPanel jobId={jobId} />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
 
             {/* Requests Section (collapsed by default unless in setup mode) */}
             {requests.length > 0 && (

@@ -375,11 +375,12 @@ export default function RequestsPage() {
     return { icon: Mail, label: "Unread", color: "text-gray-400", bgColor: "bg-gray-50" }
   }
 
-  // Calculate summary stats
-  const awaitingCount = statusSummary["AWAITING_RESPONSE"] || 0
-  const inProgressCount = statusSummary["IN_PROGRESS"] || 0
+  // Calculate summary stats - simplified to just In Progress and Complete
+  // Count all non-FULFILLED statuses as "In Progress"
+  const inProgressCount = Object.entries(statusSummary)
+    .filter(([status]) => status !== "FULFILLED")
+    .reduce((sum, [, count]) => sum + count, 0)
   const fulfilledCount = statusSummary["FULFILLED"] || 0
-  const onHoldCount = statusSummary["ON_HOLD"] || 0
 
   if (loading && requests.length === 0) {
     return (
@@ -415,18 +416,12 @@ export default function RequestsPage() {
         </p>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+      {/* Summary Cards - Simplified */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-gray-900">{total}</div>
             <div className="text-sm text-gray-500">Total Requests</div>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-amber-700">{awaitingCount}</div>
-            <div className="text-sm text-amber-600">Awaiting</div>
           </CardContent>
         </Card>
         <Card className="border-blue-200 bg-blue-50">
@@ -439,12 +434,6 @@ export default function RequestsPage() {
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-green-700">{fulfilledCount}</div>
             <div className="text-sm text-green-600">Complete</div>
-          </CardContent>
-        </Card>
-        <Card className="border-gray-200 bg-gray-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-gray-700">{onHoldCount}</div>
-            <div className="text-sm text-gray-600">On Hold</div>
           </CardContent>
         </Card>
       </div>
