@@ -25,9 +25,15 @@ const getFromEmail = () => {
 }
 
 const getBaseUrl = () => {
-  return process.env.NEXTAUTH_URL || process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : "http://localhost:3000"
+  // Priority: NEXTAUTH_URL > VERCEL_URL > localhost
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/$/, "") // Remove trailing slash
+  }
+  if (process.env.VERCEL_URL) {
+    // VERCEL_URL doesn't include protocol
+    return `https://${process.env.VERCEL_URL}`
+  }
+  return "http://localhost:3000"
 }
 
 interface EmailResult {
@@ -47,6 +53,11 @@ export class AuthEmailService {
   ): Promise<EmailResult> {
     const baseUrl = getBaseUrl()
     const verifyUrl = `${baseUrl}/auth/verify-email?token=${token}`
+    
+    console.log(`[AuthEmailService] Sending verification email:`)
+    console.log(`  To: ${email}`)
+    console.log(`  Base URL: ${baseUrl}`)
+    console.log(`  Verify URL: ${verifyUrl}`)
     
     const subject = "Verify your email address"
     const html = `
