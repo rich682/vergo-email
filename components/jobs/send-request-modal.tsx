@@ -43,6 +43,7 @@ import {
   Filter,
   FileSpreadsheet,
   UserCheck,
+  Bell,
 } from "lucide-react"
 
 // Data Personalization Flow
@@ -188,6 +189,17 @@ export function SendRequestModal({
   
   // Send confirmation state
   const [showSendConfirmation, setShowSendConfirmation] = useState(false)
+  
+  // Reminder preview state
+  const [showReminderPreview, setShowReminderPreview] = useState(false)
+  const [reminderPreviews, setReminderPreviews] = useState<Array<{
+    subject: string
+    body: string
+    reminderNumber: number
+    tone: string
+  }>>([])
+  const [loadingReminderPreviews, setLoadingReminderPreviews] = useState(false)
+  const [reminderPreviewIndex, setReminderPreviewIndex] = useState(0)
 
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
@@ -325,8 +337,51 @@ export function SendRequestModal({
       setAvailableLabels([])
       setSelectedLabelFilter(null)
       setShowLabelFilter(false)
+      setShowReminderPreview(false)
+      setReminderPreviews([])
+      setReminderPreviewIndex(0)
     }
   }, [open])
+
+  // Fetch reminder previews
+  const fetchReminderPreviews = async () => {
+    if (!subject.trim() || !body.trim()) {
+      setError("Please enter a subject and body before previewing reminders")
+      return
+    }
+    
+    setLoadingReminderPreviews(true)
+    setShowReminderPreview(true)
+    
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/request/reminder-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          subject: subject.trim(),
+          body: body.trim(),
+          recipientName: recipients.find(r => r.included)?.firstName || "{{First Name}}",
+          reminderDays
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to generate reminder previews")
+      }
+
+      const data = await response.json()
+      setReminderPreviews(data.drafts || [])
+      setReminderPreviewIndex(0)
+    } catch (err: any) {
+      console.error("Error fetching reminder previews:", err)
+      setError(err.message || "Failed to generate reminder previews")
+      setShowReminderPreview(false)
+    } finally {
+      setLoadingReminderPreviews(false)
+    }
+  }
 
   // Handle refinement
   const handleRefine = async () => {
@@ -1048,10 +1103,21 @@ export function SendRequestModal({
                     </select>
                     <span className="text-xs text-gray-500">until they reply or deadline passes</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    <Sparkles className="w-3 h-3 inline mr-1" />
-                    Each reminder will be uniquely AI-generated, not a copy of the original
-                  </p>
+                  <div className="flex items-center justify-between mt-3">
+                    <p className="text-xs text-gray-500">
+                      <Sparkles className="w-3 h-3 inline mr-1" />
+                      Each reminder will be uniquely AI-generated
+                    </p>
+                    <button
+                      type="button"
+                      onClick={fetchReminderPreviews}
+                      disabled={loadingReminderPreviews || !subject.trim() || !body.trim()}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-orange-600 bg-orange-50 rounded-md hover:bg-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      {loadingReminderPreviews ? "Loading..." : "Preview Reminders"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1155,6 +1221,106 @@ export function SendRequestModal({
             >
               <Send className="w-4 h-4 mr-2" />
               Yes, Send Now
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reminder Preview Dialog */}
+      <Dialog open={showReminderPreview} onOpenChange={setShowReminderPreview}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-orange-500" />
+              Reminder Email Previews
+            </DialogTitle>
+            <DialogDescription>
+              Preview what your reminder emails will look like. Each reminder is uniquely AI-generated.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {loadingReminderPreviews ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+              <p className="mt-3 text-sm text-gray-500">Generating reminder previews...</p>
+            </div>
+          ) : reminderPreviews.length > 0 ? (
+            <div className="space-y-4">
+              {/* Reminder Tabs */}
+              <div className="flex gap-2 border-b border-gray-200 pb-2">
+                {reminderPreviews.map((preview, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setReminderPreviewIndex(idx)}
+                    className={`
+                      px-3 py-1.5 text-sm font-medium rounded-t-md transition-colors
+                      ${reminderPreviewIndex === idx 
+                        ? "bg-orange-100 text-orange-700 border-b-2 border-orange-500" 
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                      }
+                    `}
+                  >
+                    Reminder #{preview.reminderNumber}
+                  </button>
+                ))}
+              </div>
+
+              {/* Selected Reminder Preview */}
+              {reminderPreviews[reminderPreviewIndex] && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500">Tone:</span>
+                    <span className={`
+                      px-2 py-0.5 rounded-full text-xs font-medium
+                      ${reminderPreviewIndex === 0 ? "bg-green-100 text-green-700" : 
+                        reminderPreviewIndex === 1 ? "bg-blue-100 text-blue-700" : 
+                        "bg-amber-100 text-amber-700"}
+                    `}>
+                      {reminderPreviews[reminderPreviewIndex].tone}
+                    </span>
+                    <span className="text-gray-400 text-xs ml-2">
+                      (Sent after {(reminderPreviewIndex + 1) * reminderDays} days if no reply)
+                    </span>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Subject</p>
+                      <p className="text-sm font-medium text-gray-900 mt-1">
+                        {reminderPreviews[reminderPreviewIndex].subject}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-white">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">Message</p>
+                      <div 
+                        className="text-sm text-gray-700 whitespace-pre-wrap"
+                        style={{ fontFamily: "Arial, sans-serif", lineHeight: "1.6" }}
+                      >
+                        {reminderPreviews[reminderPreviewIndex].body}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                    <AlertCircle className="w-3.5 h-3.5 inline mr-1" />
+                    Note: Actual reminder content may vary slightly as each is generated fresh when sent.
+                    Reminders stop automatically when the recipient replies.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No reminder previews available
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t border-gray-200">
+            <Button
+              variant="outline"
+              onClick={() => setShowReminderPreview(false)}
+            >
+              Close
             </Button>
           </div>
         </DialogContent>

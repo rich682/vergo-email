@@ -156,6 +156,14 @@ export function Sidebar({ className = "" }: SidebarProps) {
 
   // Handle board actions
   const handleArchiveBoard = async (boardId: string) => {
+    // Find the board name for the confirmation message
+    const board = boards.find(b => b.id === boardId)
+    const boardName = board?.name || "this board"
+    
+    if (!window.confirm(`Archive "${boardName}"? Archived boards are hidden from the sidebar but can be restored later.`)) {
+      return
+    }
+    
     try {
       const response = await fetch(`/api/boards/${boardId}`, {
         method: "PATCH",
