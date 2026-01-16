@@ -156,6 +156,24 @@ function SettingsContent() {
 
   const [syncing, setSyncing] = useState(false)
   const [resetting, setResetting] = useState<string | null>(null)
+  const [debugData, setDebugData] = useState<any>(null)
+  const [showDebug, setShowDebug] = useState(false)
+
+  const handleDebugMessages = async () => {
+    try {
+      setMessage(null)
+      const res = await fetch("/api/admin/debug-messages")
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch debug data")
+      }
+      setDebugData(data)
+      setShowDebug(true)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to fetch debug data" })
+      setTimeout(() => setMessage(null), 5000)
+    }
+  }
 
   const handleSyncEmails = async () => {
     try {
@@ -331,6 +349,18 @@ function SettingsContent() {
                   <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
                   {syncing ? 'Syncing...' : 'Sync All Emails'}
                 </button>
+                <button
+                  onClick={handleDebugMessages}
+                  className="
+                    flex items-center gap-2 px-4 py-2
+                    border border-purple-200 rounded-lg
+                    text-sm font-medium text-purple-700
+                    hover:border-purple-400 hover:bg-purple-50
+                    transition-colors
+                  "
+                >
+                  Debug Messages
+                </button>
               </div>
 
               {loading ? (
@@ -412,6 +442,85 @@ function SettingsContent() {
               )}
             </div>
           </div>
+
+          {/* Debug Panel */}
+          {showDebug && debugData && (
+            <div className="border border-purple-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-purple-50 border-b border-purple-200 flex justify-between items-center">
+                <h2 className="text-sm font-medium text-purple-900">Debug: Message Tracking</h2>
+                <button
+                  onClick={() => setShowDebug(false)}
+                  className="text-purple-600 hover:text-purple-800 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4 space-y-4 text-sm">
+                <div className="bg-gray-50 p-3 rounded">
+                  <h3 className="font-medium mb-2">Summary</h3>
+                  <ul className="space-y-1 text-gray-600">
+                    <li>Outbound messages: {debugData.summary?.outboundCount || 0}</li>
+                    <li>With Message-ID header: {debugData.summary?.outboundWithMessageIdHeader || 0}</li>
+                    <li>With Thread ID: {debugData.summary?.outboundWithThreadId || 0}</li>
+                    <li>Inbound messages: {debugData.summary?.inboundCount || 0}</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Recent Outbound Messages (for reply matching)</h3>
+                  {debugData.outboundMessages?.length === 0 ? (
+                    <p className="text-gray-500">No outbound messages found</p>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {debugData.outboundMessages?.map((msg: any) => (
+                        <div key={msg.id} className="bg-gray-50 p-2 rounded text-xs">
+                          <div><strong>To:</strong> {msg.toAddress}</div>
+                          <div><strong>Subject:</strong> {msg.subject?.substring(0, 50)}</div>
+                          <div><strong>Message-ID:</strong> <code className="bg-gray-200 px-1">{msg.messageIdHeader || 'MISSING!'}</code></div>
+                          <div><strong>Thread ID:</strong> <code className="bg-gray-200 px-1">{msg.threadId || 'N/A'}</code></div>
+                          <div><strong>Provider Data:</strong> <code className="bg-gray-200 px-1">{JSON.stringify(msg.providerData)}</code></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Recent Inbound Messages (replies)</h3>
+                  {debugData.inboundMessages?.length === 0 ? (
+                    <p className="text-gray-500">No inbound messages found - replies are not being captured!</p>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {debugData.inboundMessages?.map((msg: any) => (
+                        <div key={msg.id} className="bg-green-50 p-2 rounded text-xs">
+                          <div><strong>From:</strong> {msg.fromAddress}</div>
+                          <div><strong>Subject:</strong> {msg.subject?.substring(0, 50)}</div>
+                          <div><strong>In-Reply-To:</strong> <code className="bg-gray-200 px-1">{msg.providerData?.inReplyTo || 'N/A'}</code></div>
+                          <div><strong>Thread ID:</strong> <code className="bg-gray-200 px-1">{msg.providerData?.threadId || 'N/A'}</code></div>
+                          <div><strong>Task ID:</strong> {msg.taskId || 'ORPHANED'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Connected Accounts</h3>
+                  <div className="space-y-2">
+                    {debugData.accounts?.map((acc: any) => (
+                      <div key={acc.id} className="bg-gray-50 p-2 rounded text-xs">
+                        <div><strong>Email:</strong> {acc.email}</div>
+                        <div><strong>Provider:</strong> {acc.provider}</div>
+                        <div><strong>Active:</strong> {acc.isActive ? 'Yes' : 'No'}</div>
+                        <div><strong>Last Sync:</strong> {acc.lastSyncAt ? new Date(acc.lastSyncAt).toLocaleString() : 'Never'}</div>
+                        <div><strong>Has Cursor:</strong> {acc.syncCursor ? 'Yes' : 'No (will bootstrap)'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
