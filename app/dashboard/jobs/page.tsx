@@ -1053,21 +1053,31 @@ export default function JobsPage() {
                         ))}
                       </div>
                     )}
+                    
+                    {/* No contacts message */}
+                    {availableContactTypes.length === 0 && availableGroups.length === 0 && (
+                      <p className="text-xs text-gray-500">
+                        No contacts yet. <a href="/dashboard/contacts" className="text-blue-600 hover:underline">Add contacts</a> or use "Internal task" below.
+                      </p>
+                    )}
                   </div>
 
                   {/* Search for individual contacts */}
                   <Input
-                    placeholder="Search contacts..."
+                    placeholder="Search contacts by name or email..."
                     value={stakeholderSearchQuery}
                     onChange={(e) => setStakeholderSearchQuery(e.target.value)}
                   />
+                  {stakeholderSearchQuery.trim() && stakeholderSearchResults.length === 0 && (
+                    <p className="mt-1 text-xs text-gray-500">No contacts found matching "{stakeholderSearchQuery}"</p>
+                  )}
                   {stakeholderSearchResults.length > 0 && (
-                    <div className="mt-1 border rounded-md max-h-32 overflow-y-auto">
+                    <div className="mt-1 border rounded-md max-h-32 overflow-y-auto bg-white shadow-sm">
                       {stakeholderSearchResults.map((contact) => (
                         <button
                           key={contact.id}
                           onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b last:border-b-0"
                         >
                           {contact.firstName} {contact.lastName}
                           {contact.email && <span className="text-gray-400 ml-2">{contact.email}</span>}
