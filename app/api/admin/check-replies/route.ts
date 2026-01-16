@@ -113,8 +113,8 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Also get ALL connected accounts in the system for debugging
-    const allAccounts = await prisma.connectedEmailAccount.findMany({
+    // Also get ALL connected accounts in the system for debugging (ConnectedEmailAccount table)
+    const allConnectedAccounts = await prisma.connectedEmailAccount.findMany({
       select: {
         id: true,
         email: true,
@@ -122,6 +122,19 @@ export async function GET(request: NextRequest) {
         isActive: true,
         lastSyncAt: true,
         organizationId: true
+      }
+    })
+
+    // Also check the EmailAccount table (newer table)
+    const allEmailAccounts = await prisma.emailAccount.findMany({
+      select: {
+        id: true,
+        email: true,
+        provider: true,
+        isActive: true,
+        lastSyncedAt: true,
+        organizationId: true,
+        userId: true
       }
     })
 
@@ -203,8 +216,11 @@ export async function GET(request: NextRequest) {
         ...a,
         hasCursor: !!a.syncCursor
       })),
-      allAccountsInSystem: allAccounts,
-      yourOrganizationId: session.user.organizationId
+      allConnectedEmailAccounts: allConnectedAccounts,
+      allEmailAccounts: allEmailAccounts,
+      yourOrganizationId: session.user.organizationId,
+      yourUserId: session.user.id,
+      note: "ConnectedEmailAccount is used for sync. EmailAccount is newer but sync doesn't use it yet."
     })
   } catch (error: any) {
     console.error("[Check Replies] Error:", error)
