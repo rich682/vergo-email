@@ -32,6 +32,7 @@ import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
+import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 
 // ============================================
 // Types
@@ -1076,6 +1077,11 @@ export default function JobsPage() {
             />
           </div>
         </div>
+
+        {/* AI Summary Panel */}
+        {filteredJobs.length > 0 && (
+          <AISummaryPanel boardId={boardId} />
+        )}
 
         {/* Status Groups */}
         {filteredJobs.length === 0 && !searchQuery ? (

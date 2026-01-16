@@ -50,10 +50,20 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+    
+    // Parse request body for optional boardId
+    let boardId: string | undefined
+    try {
+      const body = await request.json()
+      boardId = body.boardId
+    } catch {
+      // No body or invalid JSON - that's fine, boardId is optional
+    }
 
-    // Fetch all jobs for the organization
+    // Fetch jobs for the organization (optionally filtered by board)
     const { jobs, total } = await JobService.findByOrganization(organizationId, {
-      limit: 100 // Get up to 100 jobs for analysis
+      limit: 100, // Get up to 100 jobs for analysis
+      boardId
     })
 
     if (jobs.length === 0) {

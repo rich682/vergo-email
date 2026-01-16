@@ -21,7 +21,11 @@ interface AISummary {
   activeItems: number
 }
 
-export function AISummaryPanel() {
+interface AISummaryPanelProps {
+  boardId?: string | null
+}
+
+export function AISummaryPanel({ boardId }: AISummaryPanelProps) {
   const router = useRouter()
   const [isExpanded, setIsExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -36,7 +40,9 @@ export function AISummaryPanel() {
     try {
       const response = await fetch("/api/jobs/ai-summary", {
         method: "POST",
-        credentials: "include"
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ boardId: boardId || undefined })
       })
       
       if (!response.ok) {
@@ -54,10 +60,10 @@ export function AISummaryPanel() {
     }
   }
 
-  // Load summary on mount
+  // Load summary on mount and when boardId changes
   useEffect(() => {
     fetchSummary()
-  }, [])
+  }, [boardId])
 
   const handleItemClick = (itemId: string) => {
     router.push(`/dashboard/jobs/${itemId}`)
