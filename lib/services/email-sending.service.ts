@@ -17,8 +17,10 @@ import { logger } from "@/lib/logger"
 // Create service-specific logger
 const log = logger.child({ service: "EmailSendingService" })
 
-// Rate limit: max 1 email per recipient per 24 hours (configurable)
+// Rate limiting: max emails per recipient per 24-hour window
+// NOTE: This is a HARD BLOCK, not a queue. Rate-limited emails are rejected and must be re-sent manually.
 const RATE_LIMIT_HOURS = 24
+const RATE_LIMIT_MAX_EMAILS = 5  // Max emails to same recipient within RATE_LIMIT_HOURS
 
 /**
  * Log an email send to the audit table
@@ -71,38 +73,49 @@ async function logEmailSendAudit(data: {
 }
 
 /**
- * Check if we've already sent an email to this recipient within the rate limit window
+ * Check if we've already sent too many emails to this recipient within the rate limit window
  * Returns true if rate limited (should NOT send), false if OK to send
+ * 
+ * NOTE: This is a HARD BLOCK - rate-limited emails are rejected, NOT queued.
+ * If you need queuing, implement a separate job queue system.
  */
 async function isRecipientRateLimited(
   organizationId: string,
   toEmail: string
-): Promise<{ rateLimited: boolean; lastSentAt?: Date }> {
+): Promise<{ rateLimited: boolean; count: number; lastSentAt?: Date }> {
   try {
     const cutoffTime = new Date(Date.now() - RATE_LIMIT_HOURS * 60 * 60 * 1000)
     
-    const recentSend = await prisma.emailSendAudit.findFirst({
+    // Count successful sends to this recipient in the rate limit window
+    const recentSends = await prisma.emailSendAudit.findMany({
       where: {
         organizationId,
         toEmail: toEmail.toLowerCase(),
         result: "SUCCESS",
         createdAt: { gte: cutoffTime }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: RATE_LIMIT_MAX_EMAILS + 1  // Only need to know if we've hit the limit
     })
     
-    if (recentSend) {
-      return { rateLimited: true, lastSentAt: recentSend.createdAt }
+    const count = recentSends.length
+    
+    if (count >= RATE_LIMIT_MAX_EMAILS) {
+      return { 
+        rateLimited: true, 
+        count,
+        lastSentAt: recentSends[0]?.createdAt 
+      }
     }
     
-    return { rateLimited: false }
+    return { rateLimited: false, count }
   } catch (error) {
     // If rate limit check fails, allow the send (fail open)
     log.warn("Rate limit check failed, allowing send", {
       toEmail,
       error: (error as Error).message
     }, { organizationId, operation: "isRecipientRateLimited" })
-    return { rateLimited: false }
+    return { rateLimited: false, count: 0 }
   }
 }
 
@@ -268,7 +281,8 @@ export class EmailSendingService {
     threadId: string
     messageId: string
   }> {
-    // SAFETY CHECK: Per-recipient rate limit (max 1 email per 24 hours)
+    // SAFETY CHECK: Per-recipient rate limit (max N emails per 24 hours)
+    // NOTE: This is a HARD BLOCK - emails are rejected, NOT queued for later
     if (!data.skipRateLimit) {
       const rateCheck = await isRecipientRateLimited(data.organizationId, data.to)
       if (rateCheck.rateLimited) {
@@ -278,6 +292,8 @@ export class EmailSendingService {
         
         log.warn("Recipient rate limited", {
           to: data.to,
+          count: rateCheck.count,
+          maxAllowed: RATE_LIMIT_MAX_EMAILS,
           lastSentAt: rateCheck.lastSentAt,
           hoursAgo
         }, { organizationId: data.organizationId, operation: "sendEmail" })
@@ -290,11 +306,11 @@ export class EmailSendingService {
           toEmail: data.to,
           subject: data.subject,
           result: "RATE_LIMITED",
-          errorMessage: `Already sent to this recipient ${hoursAgo} hours ago (limit: ${RATE_LIMIT_HOURS}h)`,
-          metadata: { lastSentAt: rateCheck.lastSentAt, hoursAgo, limitHours: RATE_LIMIT_HOURS }
+          errorMessage: `Already sent ${rateCheck.count} emails to this recipient in the last ${RATE_LIMIT_HOURS}h (limit: ${RATE_LIMIT_MAX_EMAILS})`,
+          metadata: { count: rateCheck.count, maxAllowed: RATE_LIMIT_MAX_EMAILS, lastSentAt: rateCheck.lastSentAt, hoursAgo, limitHours: RATE_LIMIT_HOURS }
         })
         
-        throw new Error(`Cannot send to ${data.to} - already emailed within the last ${RATE_LIMIT_HOURS} hours. Last sent: ${hoursAgo} hours ago.`)
+        throw new Error(`Cannot send to ${data.to} - already sent ${rateCheck.count} emails in the last ${RATE_LIMIT_HOURS} hours (limit: ${RATE_LIMIT_MAX_EMAILS}). Try again later.`)
       }
     }
 
