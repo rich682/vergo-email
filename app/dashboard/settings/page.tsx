@@ -199,7 +199,12 @@ function SettingsContent() {
       const syncRes = await fetch("/api/admin/sync-emails", { method: "POST" })
       const syncData = await syncRes.json()
       if (!syncRes.ok) {
-        throw new Error(syncData.error || "Sync failed")
+        // Check for specific error types
+        const errorMsg = syncData.message || syncData.error || "Sync failed"
+        if (errorMsg.includes("reconnect") || errorMsg.includes("invalid_grant") || errorMsg.includes("AADSTS")) {
+          throw new Error("This account needs to be reconnected. Please click 'Disconnect' and then reconnect the account.")
+        }
+        throw new Error(errorMsg)
       }
       
       setMessage({ 
@@ -209,8 +214,10 @@ function SettingsContent() {
       setTimeout(() => setMessage(null), 8000)
       fetchAccounts()
     } catch (err: any) {
-      setMessage({ type: "error", text: err?.message || "Reset & sync failed" })
-      setTimeout(() => setMessage(null), 5000)
+      const errorText = err?.message || "Reset & sync failed"
+      setMessage({ type: "error", text: errorText })
+      // Keep error visible longer for important messages
+      setTimeout(() => setMessage(null), errorText.includes("reconnect") ? 15000 : 5000)
     } finally {
       setResetting(null)
     }

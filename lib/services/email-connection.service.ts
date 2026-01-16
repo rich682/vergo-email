@@ -312,6 +312,18 @@ export class EmailConnectionService {
 
     if (!response.ok) {
       const errorText = await response.text()
+      console.error(`[Microsoft Token Refresh] Failed for account ${accountId}:`, errorText)
+      
+      // Check if this is an invalid_grant error (refresh token expired/revoked)
+      if (errorText.includes("invalid_grant") || errorText.includes("AADSTS")) {
+        // Mark account as needing re-authorization
+        await prisma.connectedEmailAccount.update({
+          where: { id: accountId },
+          data: { isActive: false }
+        })
+        throw new Error(`Microsoft account needs to be reconnected. Please disconnect and reconnect the account in Settings. Error: ${errorText}`)
+      }
+      
       throw new Error(`Failed to refresh Microsoft token: ${errorText}`)
     }
 
