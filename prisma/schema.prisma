@@ -730,3 +730,52 @@ model Attachment {
   @@index([jobId])
   @@index([subtaskId])
 }
+
+// EmailSendAudit provides a persistent audit trail for all email sends
+// Critical for debugging, compliance, and customer support
+enum EmailSendResult {
+  SUCCESS
+  FAILED
+  BLOCKED
+  RATE_LIMITED
+}
+
+model EmailSendAudit {
+  id              String          @id @default(cuid())
+  organizationId  String
+  userId          String?         // User who initiated the send (null for system sends)
+  jobId           String?         // Related job if applicable
+  taskId          String?         // Related task if applicable
+  emailDraftId    String?         // Related email draft if applicable
+  
+  // Send details
+  fromEmail       String
+  toEmail         String          // Single recipient (one row per recipient for bulk)
+  subject         String
+  recipientCount  Int             @default(1) // For bulk sends, total recipients in batch
+  
+  // Result tracking
+  result          EmailSendResult
+  errorMessage    String?         // Error details if failed
+  errorCode       String?         // Provider error code if available
+  
+  // Provider details
+  provider        EmailProvider?  // GMAIL, MICROSOFT, GENERIC_SMTP
+  providerId      String?         // Message ID from provider
+  
+  // Metadata
+  ipAddress       String?         // Request IP for audit
+  userAgent       String?         // Request user agent
+  metadata        Json?           // Additional context (e.g., personalization mode, reminder number)
+  
+  createdAt       DateTime        @default(now())
+  
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([userId])
+  @@index([jobId])
+  @@index([taskId])
+  @@index([toEmail])
+  @@index([result])
+  @@index([createdAt])
+}

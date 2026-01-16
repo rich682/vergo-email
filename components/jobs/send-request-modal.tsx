@@ -185,6 +185,9 @@ export function SendRequestModal({
   // Preview state
   const [showPreview, setShowPreview] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
+  
+  // Send confirmation state
+  const [showSendConfirmation, setShowSendConfirmation] = useState(false)
 
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
@@ -370,8 +373,8 @@ export function SendRequestModal({
     )
   }
 
-  // Handle send
-  const handleSend = async () => {
+  // Handle send button click - show confirmation first
+  const handleSendClick = () => {
     const includedRecipients = recipients.filter(r => r.included)
     
     if (includedRecipients.length === 0) {
@@ -383,6 +386,15 @@ export function SendRequestModal({
       setError("Subject and body are required")
       return
     }
+
+    // Show confirmation dialog
+    setShowSendConfirmation(true)
+  }
+
+  // Handle confirmed send
+  const handleSendConfirmed = async () => {
+    setShowSendConfirmation(false)
+    const includedRecipients = recipients.filter(r => r.included)
 
     setState("sending")
     setError(null)
@@ -1054,7 +1066,7 @@ export function SendRequestModal({
                 Cancel
               </Button>
               <Button
-                onClick={handleSend}
+                onClick={handleSendClick}
                 disabled={
                   state === "sending" ||
                   state === "refining" ||
@@ -1093,6 +1105,60 @@ export function SendRequestModal({
           </div>
         )}
       </DialogContent>
+
+      {/* Send Confirmation Dialog */}
+      <Dialog open={showSendConfirmation} onOpenChange={setShowSendConfirmation}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              Confirm Send
+            </DialogTitle>
+            <DialogDescription>
+              You are about to send emails to real recipients. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-3">
+            <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Recipients:</span>
+                <span className="font-medium">{includedCount} contact{includedCount !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Subject:</span>
+                <span className="font-medium truncate max-w-[200px]">{subject}</span>
+              </div>
+              {remindersEnabled && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Reminders:</span>
+                  <span className="font-medium">Every {reminderDays} day{reminderDays !== 1 ? "s" : ""}</span>
+                </div>
+              )}
+            </div>
+            
+            <p className="text-sm text-gray-600">
+              Are you sure you want to send this request?
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowSendConfirmation(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendConfirmed}
+              className="bg-gray-900 hover:bg-gray-800"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Yes, Send Now
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

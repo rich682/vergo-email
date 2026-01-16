@@ -7,6 +7,61 @@ import { CollectedItemStatus, CollectedItemSource } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
 
+const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
+
+// Allowed MIME types for collection uploads (security: prevent executable uploads)
+const ALLOWED_MIME_TYPES = new Set([
+  // Documents
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+  "application/rtf",
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
+  // Archives
+  "application/zip",
+  "application/x-zip-compressed",
+])
+
+// Blocked file extensions
+const BLOCKED_EXTENSIONS = new Set([
+  ".exe", ".bat", ".cmd", ".com", ".msi", ".scr",
+  ".js", ".vbs", ".vbe", ".jse", ".ws", ".wsf", ".wsc", ".wsh",
+  ".ps1", ".psm1", ".psd1",
+  ".sh", ".bash",
+  ".dll", ".sys",
+  ".app", ".dmg", ".pkg",
+  ".jar", ".class",
+  ".py", ".pyc", ".pyo",
+  ".rb", ".php", ".pl", ".cgi",
+])
+
+function isAllowedFile(filename: string, mimeType: string | undefined): { allowed: boolean; reason?: string } {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf("."))
+  if (BLOCKED_EXTENSIONS.has(ext)) {
+    return { allowed: false, reason: `File type "${ext}" is not allowed for security reasons` }
+  }
+  if (mimeType && !ALLOWED_MIME_TYPES.has(mimeType)) {
+    const safeExtensions = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".rtf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tiff", ".zip"])
+    if (!safeExtensions.has(ext)) {
+      return { allowed: false, reason: `File type "${mimeType}" is not allowed` }
+    }
+  }
+  return { allowed: true }
+}
+
 /**
  * GET /api/jobs/[id]/collection
  * List all collected items for a job
@@ -107,6 +162,23 @@ export async function POST(
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File size exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type (security)
+    const fileValidation = isAllowedFile(file.name, file.type || undefined)
+    if (!fileValidation.allowed) {
+      return NextResponse.json(
+        { error: fileValidation.reason || "File type not allowed" },
+        { status: 400 }
+      )
     }
 
     // Convert File to Buffer

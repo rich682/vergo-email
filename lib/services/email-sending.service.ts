@@ -4,7 +4,7 @@ import { EmailConnectionService } from "./email-connection.service"
 import { TokenRefreshService } from "./token-refresh.service"
 import { TaskCreationService } from "./task-creation.service"
 import { TrackingPixelService } from "./tracking-pixel.service"
-import { ConnectedEmailAccount, EmailAccount, EmailProvider } from "@prisma/client"
+import { ConnectedEmailAccount, EmailAccount, EmailProvider, EmailSendResult } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid"
 import { decrypt } from "@/lib/encryption"
 import { EmailAccountService } from "./email-account.service"
@@ -16,6 +16,77 @@ import { logger } from "@/lib/logger"
 
 // Create service-specific logger
 const log = logger.child({ service: "EmailSendingService" })
+
+// Safety configuration
+const MAX_EMAILS_PER_SEND = parseInt(process.env.MAX_EMAILS_PER_SEND || "50", 10)
+
+/**
+ * Log an email send to the audit table
+ * This is a fire-and-forget operation - failures are logged but don't block the send
+ */
+async function logEmailSendAudit(data: {
+  organizationId: string
+  userId?: string | null
+  jobId?: string | null
+  taskId?: string | null
+  emailDraftId?: string | null
+  fromEmail: string
+  toEmail: string
+  subject: string
+  recipientCount?: number
+  result: EmailSendResult
+  errorMessage?: string | null
+  errorCode?: string | null
+  provider?: EmailProvider | null
+  providerId?: string | null
+  metadata?: Record<string, any> | null
+}): Promise<void> {
+  try {
+    await prisma.emailSendAudit.create({
+      data: {
+        organizationId: data.organizationId,
+        userId: data.userId || null,
+        jobId: data.jobId || null,
+        taskId: data.taskId || null,
+        emailDraftId: data.emailDraftId || null,
+        fromEmail: data.fromEmail,
+        toEmail: data.toEmail,
+        subject: data.subject.substring(0, 500), // Truncate long subjects
+        recipientCount: data.recipientCount || 1,
+        result: data.result,
+        errorMessage: data.errorMessage || null,
+        errorCode: data.errorCode || null,
+        provider: data.provider || null,
+        providerId: data.providerId || null,
+        metadata: data.metadata || null
+      }
+    })
+  } catch (error) {
+    // Log but don't throw - audit failures shouldn't block email sends
+    log.error("Failed to log email send audit", error as Error, {
+      toEmail: data.toEmail,
+      result: data.result
+    }, { organizationId: data.organizationId, operation: "logEmailSendAudit" })
+  }
+}
+
+/**
+ * Check if email sending is enabled
+ * Kill switch for emergency situations - set EMAIL_SENDING_ENABLED=false to disable all sends
+ */
+function isEmailSendingEnabled(): boolean {
+  const enabled = process.env.EMAIL_SENDING_ENABLED
+  // Default to true if not set (backwards compatible)
+  // Only disable if explicitly set to "false"
+  return enabled !== "false"
+}
+
+/**
+ * Check if we're in dry-run mode (log but don't send)
+ */
+function isDryRunMode(): boolean {
+  return process.env.EMAIL_DRY_RUN === "true"
+}
 
 export class EmailSendingService {
   static generateThreadId(): string {
@@ -178,6 +249,56 @@ export class EmailSendingService {
     threadId: string
     messageId: string
   }> {
+    // SAFETY CHECK: Kill switch
+    if (!isEmailSendingEnabled()) {
+      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false", {
+        to: data.to,
+        subject: data.subject.substring(0, 50)
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
+      
+      // Audit log the blocked send
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        jobId: data.jobId,
+        fromEmail: "blocked",
+        toEmail: data.to,
+        subject: data.subject,
+        result: "BLOCKED",
+        errorMessage: "Email sending disabled via kill switch",
+        metadata: { reason: "EMAIL_SENDING_ENABLED=false" }
+      })
+      
+      throw new Error("Email sending is currently disabled. Contact your administrator.")
+    }
+
+    // SAFETY CHECK: Dry-run mode
+    if (isDryRunMode()) {
+      log.info("DRY RUN: Would send email", {
+        to: data.to,
+        subject: data.subject.substring(0, 50),
+        jobId: data.jobId
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
+      
+      // Audit log the dry-run (don't block, just record)
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        jobId: data.jobId,
+        fromEmail: "dry-run",
+        toEmail: data.to,
+        subject: data.subject,
+        result: "BLOCKED",
+        errorMessage: "Dry-run mode enabled",
+        metadata: { reason: "EMAIL_DRY_RUN=true" }
+      })
+      
+      // Return mock result for dry-run
+      return {
+        taskId: `dry-run-${Date.now()}`,
+        threadId: `dry-run-thread-${Date.now()}`,
+        messageId: `dry-run-msg-${Date.now()}`
+      }
+    }
+
     // Resolve EmailAccount first (multi-inbox), fallback to legacy ConnectedEmailAccount
     let account: EmailAccount | ConnectedEmailAccount | null = null
 
@@ -305,6 +426,24 @@ export class EmailSendingService {
       to: data.to
     }, { organizationId: data.organizationId, operation: "sendEmail" })
 
+    // Audit log the successful send
+    await logEmailSendAudit({
+      organizationId: data.organizationId,
+      jobId: data.jobId,
+      taskId: task.id,
+      fromEmail: account.email,
+      toEmail: data.to,
+      subject: data.subject,
+      result: "SUCCESS",
+      provider: "provider" in account ? (account as EmailAccount).provider : EmailProvider.GENERIC_SMTP,
+      providerId: sendResult.messageId,
+      metadata: {
+        campaignName: data.campaignName,
+        campaignType: data.campaignType,
+        hasReminders: data.remindersConfig?.enabled || false
+      }
+    })
+
     return {
       taskId: task.id,
       threadId,
@@ -323,6 +462,51 @@ export class EmailSendingService {
     htmlBody?: string
     accountId?: string
   }): Promise<{ messageId: string }> {
+    // SAFETY CHECK: Kill switch
+    if (!isEmailSendingEnabled()) {
+      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false (reminder)", {
+        to: data.to,
+        taskId: data.taskId
+      }, { organizationId: data.organizationId, operation: "sendEmailForExistingTask" })
+      
+      // Audit log the blocked reminder
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        taskId: data.taskId,
+        fromEmail: "blocked",
+        toEmail: data.to,
+        subject: data.subject,
+        result: "BLOCKED",
+        errorMessage: "Email sending disabled via kill switch (reminder)",
+        metadata: { reason: "EMAIL_SENDING_ENABLED=false", type: "reminder" }
+      })
+      
+      throw new Error("Email sending is currently disabled. Contact your administrator.")
+    }
+
+    // SAFETY CHECK: Dry-run mode
+    if (isDryRunMode()) {
+      log.info("DRY RUN: Would send reminder email", {
+        to: data.to,
+        taskId: data.taskId,
+        subject: data.subject.substring(0, 50)
+      }, { organizationId: data.organizationId, operation: "sendEmailForExistingTask" })
+      
+      // Audit log the dry-run reminder
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        taskId: data.taskId,
+        fromEmail: "dry-run",
+        toEmail: data.to,
+        subject: data.subject,
+        result: "BLOCKED",
+        errorMessage: "Dry-run mode enabled (reminder)",
+        metadata: { reason: "EMAIL_DRY_RUN=true", type: "reminder" }
+      })
+      
+      return { messageId: `dry-run-msg-${Date.now()}` }
+    }
+
     // Resolve account (reuse same logic as sendEmail)
     let account: EmailAccount | ConnectedEmailAccount | null = null
 
@@ -412,6 +596,19 @@ export class EmailSendingService {
       trackingToken
     })
 
+    // Audit log the successful reminder send
+    await logEmailSendAudit({
+      organizationId: data.organizationId,
+      taskId: data.taskId,
+      fromEmail: account.email,
+      toEmail: data.to,
+      subject: data.subject,
+      result: "SUCCESS",
+      provider: "provider" in account ? (account as EmailAccount).provider : EmailProvider.GENERIC_SMTP,
+      providerId: sendResult.messageId,
+      metadata: { type: "reminder" }
+    })
+
     return { messageId: sendResult.messageId }
   }
 
@@ -441,6 +638,60 @@ export class EmailSendingService {
     messageId: string
     error?: string
   }>> {
+    // SAFETY CHECK: Kill switch (checked here to fail fast before any sends)
+    if (!isEmailSendingEnabled()) {
+      log.warn("Email sending is disabled via EMAIL_SENDING_ENABLED=false (bulk)", {
+        recipientCount: data.recipients.length,
+        jobId: data.jobId
+      }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
+      
+      // Audit log the blocked bulk send
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        jobId: data.jobId,
+        fromEmail: "blocked",
+        toEmail: data.recipients.map(r => r.email).join(", ").substring(0, 500),
+        subject: data.subject,
+        recipientCount: data.recipients.length,
+        result: "BLOCKED",
+        errorMessage: "Email sending disabled via kill switch (bulk)",
+        metadata: { reason: "EMAIL_SENDING_ENABLED=false", type: "bulk" }
+      })
+      
+      throw new Error("Email sending is currently disabled. Contact your administrator.")
+    }
+
+    // SAFETY CHECK: Max recipients cap
+    if (data.recipients.length > MAX_EMAILS_PER_SEND) {
+      log.warn("Recipient count exceeds MAX_EMAILS_PER_SEND", {
+        recipientCount: data.recipients.length,
+        maxAllowed: MAX_EMAILS_PER_SEND,
+        jobId: data.jobId
+      }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
+      
+      // Audit log the rate-limited bulk send
+      await logEmailSendAudit({
+        organizationId: data.organizationId,
+        jobId: data.jobId,
+        fromEmail: "rate-limited",
+        toEmail: data.recipients.map(r => r.email).join(", ").substring(0, 500),
+        subject: data.subject,
+        recipientCount: data.recipients.length,
+        result: "RATE_LIMITED",
+        errorMessage: `Recipient count (${data.recipients.length}) exceeds maximum (${MAX_EMAILS_PER_SEND})`,
+        metadata: { reason: "MAX_EMAILS_PER_SEND exceeded", type: "bulk", maxAllowed: MAX_EMAILS_PER_SEND }
+      })
+      
+      throw new Error(`Cannot send to more than ${MAX_EMAILS_PER_SEND} recipients at once. You have ${data.recipients.length} recipients.`)
+    }
+
+    log.info("Starting bulk email send", {
+      recipientCount: data.recipients.length,
+      jobId: data.jobId,
+      campaignName: data.campaignName,
+      dryRun: isDryRunMode()
+    }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
+
     const results = []
 
     // Use deadlineDate directly from data (set by user via date picker)

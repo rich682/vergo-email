@@ -254,7 +254,12 @@ function SubtaskItem({
             <button
               onClick={() => {
                 setActionsMenuOpen(false)
-                if (window.confirm("Delete this subtask?")) {
+                // Enhanced confirmation with attachment warning
+                const hasAttachments = subtask.attachmentCount > 0
+                const message = hasAttachments
+                  ? `Delete this subtask?\n\n⚠️ Warning: This subtask has ${subtask.attachmentCount} attachment${subtask.attachmentCount !== 1 ? 's' : ''} that will also be permanently deleted.`
+                  : "Delete this subtask?"
+                if (window.confirm(message)) {
                   onDelete(subtask.id)
                 }
               }}

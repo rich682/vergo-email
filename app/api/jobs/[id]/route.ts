@@ -231,6 +231,15 @@ export async function DELETE(
     
     const hard = searchParams.get("hard") === "true"
 
+    // SAFETY: Hard delete is restricted to ADMIN users only
+    // This prevents accidental permanent data loss
+    if (hard && userRole !== UserRole.ADMIN) {
+      return NextResponse.json(
+        { error: "Access denied - only administrators can permanently delete jobs" },
+        { status: 403 }
+      )
+    }
+
     // Get job to check permissions
     const existingJob = await JobService.findById(id, organizationId)
     if (!existingJob) {
