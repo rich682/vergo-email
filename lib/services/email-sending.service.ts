@@ -338,7 +338,7 @@ export class EmailSendingService {
       }
     }
 
-    // Resolve EmailAccount first (multi-inbox), fallback to legacy ConnectedEmailAccount
+    // Resolve email account for sending
     let account: ConnectedEmailAccount | null = null
 
     if (data.accountId) {
@@ -386,32 +386,23 @@ export class EmailSendingService {
       htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(data.htmlBody, trackingUrl)
     }
 
-    // Send email
+    // Send email based on provider
     let sendResult: { messageId: string; providerData: any }
     
-    if ("provider" in account && (account as EmailAccount).provider === EmailProvider.GMAIL && "tokenExpiresAt" in account) {
+    if (account.provider === EmailProvider.GMAIL) {
       const provider = new GmailProvider()
       sendResult = await provider.sendEmail({
-        account: account as EmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
         replyTo
       })
-    } else if ("provider" in account && (account as EmailAccount).provider === EmailProvider.MICROSOFT) {
+    } else if (account.provider === EmailProvider.MICROSOFT) {
       const provider = new MicrosoftProvider()
       sendResult = await provider.sendEmail({
-        account: account as EmailAccount,
-        to: data.to,
-        subject: data.subject,
-        body: data.body,
-        htmlBody: htmlBodyWithTracking,
-        replyTo
-      })
-    } else if ((account as ConnectedEmailAccount).provider === "GMAIL") {
-      sendResult = await this.sendViaGmail({
-        account: account as ConnectedEmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
@@ -419,8 +410,9 @@ export class EmailSendingService {
         replyTo
       })
     } else {
+      // GENERIC_SMTP or fallback
       sendResult = await this.sendViaSMTP({
-        account: account as ConnectedEmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
@@ -474,7 +466,7 @@ export class EmailSendingService {
       toEmail: data.to,
       subject: data.subject,
       result: "SUCCESS",
-      provider: "provider" in account ? (account as EmailAccount).provider : EmailProvider.GENERIC_SMTP,
+      provider: account.provider,
       providerId: sendResult.messageId,
       metadata: {
         campaignName: data.campaignName,
@@ -538,31 +530,23 @@ export class EmailSendingService {
       htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(data.htmlBody, trackingUrl)
     }
 
+    // Send email based on provider
     let sendResult: { messageId: string; providerData: any }
 
-    if ("provider" in account && (account as EmailAccount).provider === EmailProvider.GMAIL && "tokenExpiresAt" in account) {
+    if (account.provider === EmailProvider.GMAIL) {
       const provider = new GmailProvider()
       sendResult = await provider.sendEmail({
-        account: account as EmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
         replyTo
       })
-    } else if ("provider" in account && (account as EmailAccount).provider === EmailProvider.MICROSOFT) {
+    } else if (account.provider === EmailProvider.MICROSOFT) {
       const provider = new MicrosoftProvider()
       sendResult = await provider.sendEmail({
-        account: account as EmailAccount,
-        to: data.to,
-        subject: data.subject,
-        body: data.body,
-        htmlBody: htmlBodyWithTracking,
-        replyTo
-      })
-    } else if ((account as ConnectedEmailAccount).provider === "GMAIL") {
-      sendResult = await this.sendViaGmail({
-        account: account as ConnectedEmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
@@ -570,8 +554,9 @@ export class EmailSendingService {
         replyTo
       })
     } else {
+      // GENERIC_SMTP or fallback
       sendResult = await this.sendViaSMTP({
-        account: account as ConnectedEmailAccount,
+        account,
         to: data.to,
         subject: data.subject,
         body: data.body,
@@ -602,7 +587,7 @@ export class EmailSendingService {
       toEmail: data.to,
       subject: data.subject,
       result: "SUCCESS",
-      provider: "provider" in account ? (account as EmailAccount).provider : EmailProvider.GENERIC_SMTP,
+      provider: account.provider,
       providerId: sendResult.messageId,
       metadata: { type: "reminder" }
     })
