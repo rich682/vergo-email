@@ -73,6 +73,44 @@ export class AttachmentService {
   }
 
   /**
+   * Create attachment from inbound email (no uploadedById required)
+   * Used when processing email replies with attachments
+   */
+  static async createFromInboundEmail(data: {
+    organizationId: string
+    jobId: string
+    file: Buffer
+    filename: string
+    mimeType?: string
+    fileKey: string // Pre-generated storage key
+  }): Promise<Attachment> {
+    // Get a system user or the job owner to attribute the upload
+    const job = await prisma.job.findUnique({
+      where: { id: data.jobId },
+      select: { ownerId: true }
+    })
+
+    if (!job) {
+      throw new Error("Job not found")
+    }
+
+    // Create attachment record (file already uploaded to storage)
+    const attachment = await prisma.attachment.create({
+      data: {
+        organizationId: data.organizationId,
+        jobId: data.jobId,
+        filename: data.filename,
+        fileKey: data.fileKey,
+        fileSize: data.file.length,
+        mimeType: data.mimeType,
+        uploadedById: job.ownerId // Attribute to job owner
+      }
+    })
+
+    return attachment
+  }
+
+  /**
    * Get all attachments for a job
    */
   static async getByJobId(

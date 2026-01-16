@@ -6,6 +6,7 @@ import { inngest } from "@/inngest/client"
 import { createHash } from "crypto"
 import { ReminderStateService } from "./reminder-state.service"
 import { CollectionService } from "./collection.service"
+import { AttachmentService } from "./attachment.service"
 
 export interface InboundEmailData {
   from: string
@@ -344,6 +345,7 @@ export class EmailReceptionService {
     // Process attachments
     let hasAttachments = false
     const attachmentKeys: string[] = []
+    const attachmentData: Array<{ key: string; filename: string; content: Buffer; contentType: string }> = []
 
     if (data.attachments && data.attachments.length > 0) {
       hasAttachments = true
@@ -357,6 +359,12 @@ export class EmailReceptionService {
           attachment.contentType
         )
         attachmentKeys.push(key)
+        attachmentData.push({
+          key,
+          filename: attachment.filename,
+          content: attachment.content,
+          contentType: attachment.contentType
+        })
       }
     }
 
@@ -401,35 +409,48 @@ export class EmailReceptionService {
       }
     })
 
-    // Create CollectedItem records for attachments if task has a jobId
-    // This enables the Collection feature - request-scoped evidence intake
-    // Skip auto-replies to avoid polluting the collection with bounce/OOO attachments
-    if (hasAttachments && task.jobId && data.attachments && !isAutoReply) {
+    // Create CollectedItem records AND Attachment records for attachments if task has a jobId
+    // This enables both the Collection feature and the Task Attachments panel
+    // Skip auto-replies to avoid polluting with bounce/OOO attachments
+    if (hasAttachments && task.jobId && attachmentData.length > 0 && !isAutoReply) {
       const submitterName = this.extractNameFromEmail(data.from)
       
-      for (let i = 0; i < data.attachments.length; i++) {
+      for (let i = 0; i < attachmentData.length; i++) {
+        const att = attachmentData[i]
         try {
+          // Create CollectedItem for the Collection tab
           await CollectionService.createFromEmailAttachment({
             organizationId: task.organizationId,
             jobId: task.jobId,
             taskId: task.id,
             messageId: message.id,
-            filename: data.attachments[i].filename,
-            fileKey: attachmentKeys[i],
-            fileSize: data.attachments[i].content.length,
-            mimeType: data.attachments[i].contentType,
+            filename: att.filename,
+            fileKey: att.key,
+            fileSize: att.content.length,
+            mimeType: att.contentType,
             submittedBy: data.from,
             submittedByName: submitterName,
             receivedAt: new Date()
           })
-          console.log(`[Collection] Created CollectedItem for attachment: ${data.attachments[i].filename} (Task: ${task.id}, Job: ${task.jobId})`)
+          console.log(`[Collection] Created CollectedItem for attachment: ${att.filename} (Task: ${task.id}, Job: ${task.jobId})`)
+
+          // Also create Attachment record for the Task Attachments panel
+          await AttachmentService.createFromInboundEmail({
+            organizationId: task.organizationId,
+            jobId: task.jobId,
+            file: att.content,
+            filename: att.filename,
+            mimeType: att.contentType,
+            fileKey: att.key
+          })
+          console.log(`[Attachment] Created Attachment for: ${att.filename} (Job: ${task.jobId})`)
         } catch (error) {
-          console.error(`[Collection] Error creating CollectedItem for attachment ${data.attachments[i].filename}:`, error)
-          // Don't fail the entire email processing if collection fails
+          console.error(`[Email Reception] Error creating records for attachment ${att.filename}:`, error)
+          // Don't fail the entire email processing if collection/attachment creation fails
         }
       }
     } else if (hasAttachments && isAutoReply) {
-      console.log(`[Collection] Skipping CollectedItem creation for auto-reply attachments from ${data.from}`)
+      console.log(`[Collection] Skipping CollectedItem/Attachment creation for auto-reply attachments from ${data.from}`)
     }
 
     // Trigger AI processing
