@@ -157,8 +157,11 @@ function calculateRAGRating(job: Job): RAGRating {
   const dueDate = job.dueDate ? new Date(job.dueDate) : null
   const now = new Date()
   
-  if (job.status === "COMPLETE") return "green"
-  if (job.status === "BLOCKED") return "red"
+  // Map legacy statuses for comparison
+  const status = job.status === "COMPLETED" || job.status === "ARCHIVED" ? "COMPLETE" : job.status
+  
+  if (status === "COMPLETE") return "green"
+  if (status === "BLOCKED") return "red"
   if (!dueDate) return "gray"
   
   const daysUntilDue = differenceInDays(dueDate, now)
@@ -192,6 +195,17 @@ function RAGBadge({ rating }: { rating: RAGRating }) {
 // Task Row Component (with inline subtasks)
 // ============================================
 
+// Map legacy statuses to new ones for display
+const mapStatusForDisplay = (status: string): string => {
+  switch (status) {
+    case "ACTIVE": return "NOT_STARTED"
+    case "WAITING": return "IN_PROGRESS"
+    case "COMPLETED": return "COMPLETE"
+    case "ARCHIVED": return "COMPLETE"
+    default: return status
+  }
+}
+
 function TaskRow({ 
   job, 
   teamMembers,
@@ -221,6 +235,9 @@ function TaskRow({
   const rag = calculateRAGRating(job)
   const subtaskCount = job.subtaskCount || 0
   const subtaskCompletedCount = job.subtaskCompletedCount || 0
+  
+  // Map legacy status to new status for display
+  const displayStatus = mapStatusForDisplay(job.status)
 
   // Fetch subtasks when expanded
   useEffect(() => {
@@ -291,7 +308,7 @@ function TaskRow({
         {/* Task name */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`font-medium truncate ${job.status === "COMPLETE" ? "line-through text-gray-400" : "text-gray-900"}`}>
+            <span className={`font-medium truncate ${displayStatus === "COMPLETE" ? "line-through text-gray-400" : "text-gray-900"}`}>
               {job.name}
             </span>
             {subtaskCount > 0 && (
@@ -311,14 +328,14 @@ function TaskRow({
             }}
             className={`
               px-2 py-1 text-xs font-medium rounded-full border
-              ${job.status === "NOT_STARTED" ? "bg-gray-100 text-gray-600 border-gray-200" : ""}
-              ${job.status === "IN_PROGRESS" ? "bg-blue-100 text-blue-700 border-blue-200" : ""}
-              ${job.status === "BLOCKED" ? "bg-red-100 text-red-700 border-red-200" : ""}
-              ${job.status === "COMPLETE" ? "bg-green-100 text-green-700 border-green-200" : ""}
+              ${displayStatus === "NOT_STARTED" ? "bg-gray-100 text-gray-600 border-gray-200" : ""}
+              ${displayStatus === "IN_PROGRESS" ? "bg-blue-100 text-blue-700 border-blue-200" : ""}
+              ${displayStatus === "BLOCKED" ? "bg-red-100 text-red-700 border-red-200" : ""}
+              ${displayStatus === "COMPLETE" ? "bg-green-100 text-green-700 border-green-200" : ""}
               hover:opacity-80 transition-opacity
             `}
           >
-            {STATUS_OPTIONS.find(s => s.value === job.status)?.label || job.status}
+            {STATUS_OPTIONS.find(s => s.value === displayStatus)?.label || displayStatus}
           </button>
           {statusMenuOpen && (
             <div className="absolute left-0 top-full mt-1 w-32 bg-white border rounded-lg shadow-lg z-20">
@@ -332,7 +349,7 @@ function TaskRow({
                   }}
                   className={`
                     w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2
-                    ${job.status === option.value ? "bg-gray-50 font-medium" : ""}
+                    ${displayStatus === option.value ? "bg-gray-50 font-medium" : ""}
                   `}
                 >
                   <span className={`w-2 h-2 rounded-full ${
@@ -853,7 +870,7 @@ export default function JobsPage() {
   })
 
   const jobsByStatus = STATUS_GROUPS.reduce((acc, group) => {
-    acc[group.status] = filteredJobs.filter(j => j.status === group.status)
+    acc[group.status] = filteredJobs.filter(j => mapStatusForDisplay(j.status) === group.status)
     return acc
   }, {} as Record<string, Job[]>)
 

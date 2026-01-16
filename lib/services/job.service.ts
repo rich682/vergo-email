@@ -215,7 +215,7 @@ export class JobService {
         boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels,
-        status: JobStatus.ACTIVE
+        status: JobStatus.NOT_STARTED  // New jobs start as "Not Started"
       },
       include: {
         owner: {
