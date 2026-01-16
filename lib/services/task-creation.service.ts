@@ -66,11 +66,26 @@ export class TaskCreationService {
     // Extract messageIdHeader and threadId from providerData for efficient reply matching
     const providerData = data.providerData || {}
     const messageIdHeader = typeof providerData === 'object' && providerData !== null
-      ? (providerData.messageIdHeader || null)
+      ? (providerData.messageIdHeader || providerData.internetMessageId || null)
       : null
     const threadId = typeof providerData === 'object' && providerData !== null
-      ? (providerData.threadId || null)
+      ? (providerData.threadId || providerData.conversationId || null)
       : null
+
+    // Log for debugging reply matching
+    console.log(`[TaskCreation] Logging outbound message:`, {
+      taskId: data.taskId,
+      toAddress: data.toAddress,
+      subject: data.subject?.substring(0, 50),
+      messageIdHeader: messageIdHeader || 'MISSING!',
+      threadId: threadId || 'N/A',
+      providerDataKeys: Object.keys(providerData)
+    })
+
+    if (!messageIdHeader) {
+      console.warn(`[TaskCreation] WARNING: No messageIdHeader found in providerData! Reply matching may fail.`)
+      console.warn(`[TaskCreation] providerData:`, JSON.stringify(providerData))
+    }
 
     await prisma.message.create({
       data: {

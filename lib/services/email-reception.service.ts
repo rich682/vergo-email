@@ -158,6 +158,18 @@ export class EmailReceptionService {
   static async processInboundEmail(
     data: InboundEmailData
   ): Promise<{ taskId: string | null; messageId: string }> {
+    // Log incoming email for debugging
+    console.log(`[EmailReception] Processing inbound email:`, {
+      from: data.from,
+      to: data.to,
+      subject: data.subject?.substring(0, 50),
+      hasAttachments: !!data.attachments?.length,
+      inReplyTo: data.providerData?.inReplyTo || 'N/A',
+      threadId: data.providerData?.threadId || 'N/A',
+      conversationId: data.providerData?.conversationId || 'N/A',
+      provider: data.providerData?.provider || 'unknown'
+    })
+
     // Try to match reply to original message using multiple strategies:
     // 1. Gmail In-Reply-To header (most reliable - contains original message ID)
     // 2. Gmail thread ID from providerData
@@ -204,15 +216,16 @@ export class EmailReceptionService {
       }
     }
     
-    // Strategy 2: Match by Gmail thread ID (efficient indexed query)
-    if (!task && data.providerData?.threadId) {
-      const gmailThreadId = String(data.providerData.threadId)
+    // Strategy 2: Match by thread ID (Gmail threadId or Microsoft conversationId)
+    const threadIdToMatch = data.providerData?.threadId || data.providerData?.conversationId
+    if (!task && threadIdToMatch) {
+      const threadId = String(threadIdToMatch)
       
       // Query directly using indexed threadId column (efficient)
       const matchingMessage = await prisma.message.findFirst({
         where: {
           direction: "OUTBOUND",
-          threadId: gmailThreadId
+          threadId: threadId
         },
         include: {
           task: {
@@ -230,9 +243,11 @@ export class EmailReceptionService {
           recipientHash,
           timestampMs: Date.now(),
           method: 'thread_id',
-          threadId: gmailThreadId
+          threadId: threadId
         }))
-        console.log(`[Email Reception] Matched reply by Gmail thread ID: ${gmailThreadId} -> Task ${task.id}`)
+        console.log(`[Email Reception] Matched reply by thread ID: ${threadId} -> Task ${task.id}`)
+      } else {
+        console.log(`[EmailReception] No match found for threadId: ${threadId}`)
       }
     }
     
