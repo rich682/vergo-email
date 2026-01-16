@@ -12,6 +12,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { 
   Plus, 
   ChevronDown, 
@@ -479,6 +486,7 @@ export default function JobsPage() {
   const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
   const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
   const [stakeholderSearchResults, setStakeholderSearchResults] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null }[]>([])
+  const [stakeholderType, setStakeholderType] = useState<"contact_type" | "group" | "individual">("contact_type")
   
   // Bulk upload modal
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
@@ -859,7 +867,7 @@ export default function JobsPage() {
                   
                   {/* Selected stakeholders */}
                   {newJobStakeholders.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
+                    <div className="flex flex-wrap gap-2 mb-3">
                       {newJobStakeholders.map((s) => (
                         <span
                           key={`${s.type}-${s.id}`}
@@ -877,83 +885,143 @@ export default function JobsPage() {
                     </div>
                   )}
 
-                  {/* Quick add options */}
-                  <div className="space-y-2 mb-2">
-                    {/* Contact types */}
-                    {availableContactTypes.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {availableContactTypes.map((type) => (
-                          <button
-                            key={type.value}
-                            onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
-                            disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}
-                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {type.label} ({type.count})
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Groups */}
-                    {availableGroups.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {availableGroups.map((group) => (
-                          <button
-                            key={group.id}
-                            onClick={() => handleAddStakeholder("group", group.id, group.name)}
-                            disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}
-                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            <Users className="w-3 h-3 inline mr-1" />
-                            {group.name} ({group.memberCount})
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* No contacts message */}
-                    {availableContactTypes.length === 0 && availableGroups.length === 0 && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
-                        <p className="text-sm text-amber-800 mb-1">
-                          No contacts found. Add contacts first to assign stakeholders.
-                        </p>
-                        <a 
-                          href="/dashboard/contacts" 
-                          className="text-sm font-medium text-amber-700 hover:text-amber-900"
-                        >
-                          Go to Contacts →
-                        </a>
-                        <p className="text-xs text-amber-600 mt-2">
-                          Or create an internal task (no stakeholders) below.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Search for individual contacts */}
-                  <Input
-                    placeholder="Search contacts by name or email..."
-                    value={stakeholderSearchQuery}
-                    onChange={(e) => setStakeholderSearchQuery(e.target.value)}
-                  />
-                  {stakeholderSearchQuery.trim() && stakeholderSearchResults.length === 0 && (
-                    <p className="mt-1 text-xs text-gray-500">No contacts found matching "{stakeholderSearchQuery}"</p>
-                  )}
-                  {stakeholderSearchResults.length > 0 && (
-                    <div className="mt-1 border rounded-md max-h-32 overflow-y-auto bg-white shadow-sm">
-                      {stakeholderSearchResults.map((contact) => (
-                        <button
-                          key={contact.id}
-                          onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b last:border-b-0"
-                        >
-                          {contact.firstName} {contact.lastName}
-                          {contact.email && <span className="text-gray-400 ml-2">{contact.email}</span>}
-                        </button>
-                      ))}
+                  {/* Two-step stakeholder selection */}
+                  <div className="space-y-3 border rounded-lg p-3 bg-gray-50">
+                    {/* Step 1: Select Type */}
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">Step 1: Select Type</Label>
+                      <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="contact_type">Contact Type</SelectItem>
+                          <SelectItem value="group">Group</SelectItem>
+                          <SelectItem value="individual">Individual</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
+                    
+                    {/* Step 2: Select specific item based on type */}
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-1 block">
+                        Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
+                      </Label>
+                      
+                      {stakeholderType === "contact_type" && (
+                        <>
+                          {availableContactTypes.length > 0 ? (
+                            <Select onValueChange={(v) => {
+                              const type = availableContactTypes.find(t => t.value === v)
+                              if (type && !newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)) {
+                                handleAddStakeholder("contact_type", type.value, type.label)
+                              }
+                            }}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a contact type..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableContactTypes.map(type => (
+                                  <SelectItem 
+                                    key={type.value} 
+                                    value={type.value}
+                                    disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}
+                                  >
+                                    {type.label} ({type.count} contacts)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                              <p className="text-sm text-amber-800 mb-1">
+                                No contact types found. Add contacts with types first.
+                              </p>
+                              <a 
+                                href="/dashboard/contacts" 
+                                className="text-sm font-medium text-amber-700 hover:text-amber-900"
+                              >
+                                Go to Contacts →
+                              </a>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {stakeholderType === "group" && (
+                        <>
+                          {availableGroups.length > 0 ? (
+                            <Select onValueChange={(v) => {
+                              const group = availableGroups.find(g => g.id === v)
+                              if (group && !newJobStakeholders.some(s => s.type === "group" && s.id === group.id)) {
+                                handleAddStakeholder("group", group.id, group.name)
+                              }
+                            }}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a group..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableGroups.map(group => (
+                                  <SelectItem 
+                                    key={group.id} 
+                                    value={group.id}
+                                    disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}
+                                  >
+                                    {group.name} ({group.memberCount} members)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                              <p className="text-sm text-amber-800 mb-1">
+                                No groups found. Create groups in the Contacts page first.
+                              </p>
+                              <a 
+                                href="/dashboard/contacts" 
+                                className="text-sm font-medium text-amber-700 hover:text-amber-900"
+                              >
+                                Go to Contacts →
+                              </a>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {stakeholderType === "individual" && (
+                        <div>
+                          <Input
+                            placeholder="Search by name or email..."
+                            value={stakeholderSearchQuery}
+                            onChange={(e) => setStakeholderSearchQuery(e.target.value)}
+                          />
+                          <div className="max-h-32 overflow-y-auto mt-2">
+                            {stakeholderSearchQuery.length >= 2 ? (
+                              stakeholderSearchResults.length > 0 ? (
+                                <div className="border rounded-md bg-white">
+                                  {stakeholderSearchResults.map((contact) => (
+                                    <button
+                                      key={contact.id}
+                                      onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
+                                      disabled={newJobStakeholders.some(s => s.type === "individual" && s.id === contact.id)}
+                                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
+                                    >
+                                      <div className="font-medium">{contact.firstName} {contact.lastName}</div>
+                                      {contact.email && <div className="text-xs text-gray-500">{contact.email}</div>}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-500 text-center py-2">No contacts found matching "{stakeholderSearchQuery}"</p>
+                              )
+                            ) : (
+                              <p className="text-sm text-gray-500 text-center py-2">Type at least 2 characters to search</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   
                   {/* No stakeholders option */}
                   <button
