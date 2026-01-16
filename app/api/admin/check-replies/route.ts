@@ -108,7 +108,20 @@ export async function GET(request: NextRequest) {
         provider: true,
         isActive: true,
         lastSyncAt: true,
-        syncCursor: true
+        syncCursor: true,
+        organizationId: true
+      }
+    })
+
+    // Also get ALL connected accounts in the system for debugging
+    const allAccounts = await prisma.connectedEmailAccount.findMany({
+      select: {
+        id: true,
+        email: true,
+        provider: true,
+        isActive: true,
+        lastSyncAt: true,
+        organizationId: true
       }
     })
 
@@ -189,7 +202,9 @@ export async function GET(request: NextRequest) {
       accounts: accounts.map(a => ({
         ...a,
         hasCursor: !!a.syncCursor
-      }))
+      })),
+      allAccountsInSystem: allAccounts,
+      yourOrganizationId: session.user.organizationId
     })
   } catch (error: any) {
     console.error("[Check Replies] Error:", error)
