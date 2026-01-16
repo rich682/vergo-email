@@ -991,11 +991,17 @@ export default function JobsPage() {
         setAvailableContactTypes(types)
       }
       
-      // Fetch groups
+      // Fetch groups - API returns array directly
       const groupsResponse = await fetch("/api/groups", { credentials: "include" })
       if (groupsResponse.ok) {
         const data = await groupsResponse.json()
-        setAvailableGroups(data.groups || [])
+        // API returns array directly, not { groups: [...] }
+        const groupsArray = Array.isArray(data) ? data : (data.groups || [])
+        setAvailableGroups(groupsArray.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          memberCount: g.entityCount || g._count?.entities || 0
+        })))
       }
     } catch (error) {
       console.error("Error fetching stakeholder options:", error)
@@ -1328,9 +1334,20 @@ export default function JobsPage() {
                     
                     {/* No contacts message */}
                     {availableContactTypes.length === 0 && availableGroups.length === 0 && (
-                      <p className="text-xs text-gray-500">
-                        No contacts yet. <a href="/dashboard/contacts" className="text-blue-600 hover:underline">Add contacts</a> or use "Internal task" below.
-                      </p>
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                        <p className="text-sm text-amber-800 mb-1">
+                          No contacts found. Add contacts first to assign stakeholders.
+                        </p>
+                        <a 
+                          href="/dashboard/contacts" 
+                          className="text-sm font-medium text-amber-700 hover:text-amber-900"
+                        >
+                          Go to Contacts →
+                        </a>
+                        <p className="text-xs text-amber-600 mt-2">
+                          Or create an internal task (no stakeholders) below.
+                        </p>
+                      </div>
                     )}
                   </div>
 
