@@ -1,12 +1,12 @@
-import { EmailAccount } from "@prisma/client"
+import { ConnectedEmailAccount } from "@prisma/client"
 import { EmailProviderDriver, EmailSendParams, ContactSyncResult } from "./email-provider"
-import { EmailAccountService } from "@/lib/services/email-account.service"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { decrypt } from "@/lib/encryption"
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 export class MicrosoftProvider implements EmailProviderDriver {
-  private async getAccessToken(account: EmailAccount): Promise<{ token: string; refreshedAccount: EmailAccount }> {
+  private async getAccessToken(account: ConnectedEmailAccount): Promise<{ token: string; refreshedAccount: ConnectedEmailAccount }> {
     let current = account
     const now = Date.now()
     const expiry = current.tokenExpiresAt?.getTime() || 0
@@ -17,7 +17,7 @@ export class MicrosoftProvider implements EmailProviderDriver {
     return { token, refreshedAccount: current }
   }
 
-  async refreshToken(account: EmailAccount): Promise<EmailAccount> {
+  async refreshToken(account: ConnectedEmailAccount): Promise<ConnectedEmailAccount> {
     if (!account.refreshToken) {
       throw new Error("No refresh token available for Microsoft account")
     }
@@ -41,7 +41,7 @@ export class MicrosoftProvider implements EmailProviderDriver {
     }
     const data = await resp.json()
     const expiresInMs = data.expires_in ? Number(data.expires_in) * 1000 : 3600 * 1000
-    return EmailAccountService.updateTokens(account.id, {
+    return EmailConnectionService.updateTokens(account.id, {
       accessToken: data.access_token,
       refreshToken: data.refresh_token || decrypt(account.refreshToken),
       tokenExpiresAt: new Date(Date.now() + expiresInMs),

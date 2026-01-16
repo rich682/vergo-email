@@ -25,17 +25,13 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/services/email-connection.service', () => ({
   EmailConnectionService: {
     getPrimaryAccount: vi.fn(),
+    getById: vi.fn(),
+    getFirstActive: vi.fn(),
     getGmailClient: vi.fn(),
     getDecryptedCredentials: vi.fn()
   }
 }))
 
-vi.mock('@/lib/services/email-account.service', () => ({
-  EmailAccountService: {
-    getById: vi.fn(),
-    getFirstActive: vi.fn()
-  }
-}))
 
 vi.mock('@/lib/services/task-creation.service', () => ({
   TaskCreationService: {

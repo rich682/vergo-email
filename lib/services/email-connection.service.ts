@@ -117,6 +117,38 @@ export class EmailConnectionService {
     })
   }
 
+  static async getById(
+    id: string,
+    organizationId: string
+  ): Promise<ConnectedEmailAccount | null> {
+    return prisma.connectedEmailAccount.findFirst({
+      where: { id, organizationId, isActive: true }
+    })
+  }
+
+  static async getFirstActive(
+    organizationId: string
+  ): Promise<ConnectedEmailAccount | null> {
+    return prisma.connectedEmailAccount.findFirst({
+      where: { organizationId, isActive: true },
+      orderBy: [{ createdAt: "asc" }]
+    })
+  }
+
+  static async updateTokens(
+    id: string,
+    data: { accessToken?: string; refreshToken?: string; tokenExpiresAt?: Date | null }
+  ): Promise<ConnectedEmailAccount> {
+    return prisma.connectedEmailAccount.update({
+      where: { id },
+      data: {
+        accessToken: data.accessToken ? encrypt(data.accessToken) : undefined,
+        refreshToken: data.refreshToken ? encrypt(data.refreshToken) : undefined,
+        tokenExpiresAt: data.tokenExpiresAt ?? undefined
+      }
+    })
+  }
+
   static async getGmailClient(
     accountId: string
   ): Promise<OAuth2Client | null> {

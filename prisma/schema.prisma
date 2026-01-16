@@ -20,16 +20,18 @@ enum UserRole {
 }
 
 enum TaskStatus {
-  AWAITING_RESPONSE
-  IN_PROGRESS
-  REPLIED
-  HAS_ATTACHMENTS
-  VERIFYING
-  FULFILLED
-  REJECTED
-  FLAGGED
-  MANUAL_REVIEW
-  ON_HOLD
+  // Active statuses
+  IN_PROGRESS       // Request sent, awaiting response (default)
+  FULFILLED         // Request completed
+  // Legacy statuses (kept for backward compatibility with existing data)
+  AWAITING_RESPONSE // @deprecated - use IN_PROGRESS
+  REPLIED           // @deprecated - use IN_PROGRESS
+  HAS_ATTACHMENTS   // @deprecated - use IN_PROGRESS
+  VERIFYING         // @deprecated - use IN_PROGRESS
+  REJECTED          // @deprecated - use FULFILLED
+  FLAGGED           // @deprecated - use IN_PROGRESS
+  MANUAL_REVIEW     // @deprecated - use IN_PROGRESS
+  ON_HOLD           // @deprecated - use IN_PROGRESS
 }
 
 enum MessageDirection {
@@ -481,29 +483,6 @@ model ConnectedEmailAccount {
   @@index([organizationId])
   @@index([email])
   @@index([organizationId, isPrimary])
-}
-
-model EmailAccount {
-  id             String        @id @default(cuid())
-  userId         String
-  organizationId String
-  provider       EmailProvider
-  email          String
-  accessToken    String? // Encrypted
-  refreshToken   String? // Encrypted
-  tokenExpiresAt DateTime?
-  scopes         String?
-  isPrimary      Boolean       @default(false)
-  isActive       Boolean       @default(true)
-  lastSyncedAt   DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  @@index([organizationId])
-  @@index([userId])
-  @@index([email])
-  @@index([organizationId, isPrimary])
-  @@index([organizationId, createdAt])
 }
 
 model AutomationRule {

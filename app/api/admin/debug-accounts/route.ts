@@ -35,23 +35,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Also get EmailAccount entries (new multi-inbox)
-    const emailAccounts = await prisma.emailAccount.findMany({
-      where: {
-        organizationId: session.user.organizationId
-      },
-      select: {
-        id: true,
-        email: true,
-        provider: true,
-        isActive: true,
-        isPrimary: true,
-        lastSyncAt: true,
-        syncCursor: true,
-        createdAt: true
-      }
-    })
-
     return NextResponse.json({
       success: true,
       connectedEmailAccounts: accounts.map(a => ({
@@ -59,17 +42,6 @@ export async function GET(request: NextRequest) {
         email: a.email,
         provider: a.provider,
         isActive: a.isActive,
-        lastSyncAt: a.lastSyncAt,
-        hasCursor: !!a.syncCursor,
-        cursorType: a.syncCursor ? Object.keys(a.syncCursor as object) : [],
-        createdAt: a.createdAt
-      })),
-      emailAccounts: emailAccounts.map(a => ({
-        id: a.id,
-        email: a.email,
-        provider: a.provider,
-        isActive: a.isActive,
-        isPrimary: a.isPrimary,
         lastSyncAt: a.lastSyncAt,
         hasCursor: !!a.syncCursor,
         cursorType: a.syncCursor ? Object.keys(a.syncCursor as object) : [],

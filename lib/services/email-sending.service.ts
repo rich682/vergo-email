@@ -4,10 +4,9 @@ import { EmailConnectionService } from "./email-connection.service"
 import { TokenRefreshService } from "./token-refresh.service"
 import { TaskCreationService } from "./task-creation.service"
 import { TrackingPixelService } from "./tracking-pixel.service"
-import { ConnectedEmailAccount, EmailAccount, EmailProvider, EmailSendResult } from "@prisma/client"
+import { ConnectedEmailAccount, EmailProvider, EmailSendResult } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid"
 import { decrypt } from "@/lib/encryption"
-import { EmailAccountService } from "./email-account.service"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 import { ReminderStateService } from "./reminder-state.service"
@@ -340,10 +339,10 @@ export class EmailSendingService {
     }
 
     // Resolve EmailAccount first (multi-inbox), fallback to legacy ConnectedEmailAccount
-    let account: EmailAccount | ConnectedEmailAccount | null = null
+    let account: ConnectedEmailAccount | null = null
 
     if (data.accountId) {
-      account = await EmailAccountService.getById(data.accountId, data.organizationId)
+      account = await EmailConnectionService.getById(data.accountId, data.organizationId)
       if (!account) {
         const { prisma } = await import("@/lib/prisma")
         account = await prisma.connectedEmailAccount.findFirst({
@@ -355,7 +354,7 @@ export class EmailSendingService {
         })
       }
     } else {
-      account = await EmailAccountService.getFirstActive(data.organizationId)
+      account = await EmailConnectionService.getFirstActive(data.organizationId)
       if (!account) {
         account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
       }
@@ -507,10 +506,10 @@ export class EmailSendingService {
     // The reminder system already has its own frequency controls
     
     // Resolve account (reuse same logic as sendEmail)
-    let account: EmailAccount | ConnectedEmailAccount | null = null
+    let account: ConnectedEmailAccount | null = null
 
     if (data.accountId) {
-      account = await EmailAccountService.getById(data.accountId, data.organizationId)
+      account = await EmailConnectionService.getById(data.accountId, data.organizationId)
       if (!account) {
         account = await prisma.connectedEmailAccount.findFirst({
           where: {
@@ -521,7 +520,7 @@ export class EmailSendingService {
         })
       }
     } else {
-      account = await EmailAccountService.getFirstActive(data.organizationId)
+      account = await EmailConnectionService.getFirstActive(data.organizationId)
       if (!account) {
         account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
       }

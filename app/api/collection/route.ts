@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
 
-    // Parse query params for filters
+    // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
     const boardId = searchParams.get("boardId")
     const source = searchParams.get("source") as CollectedItemSource | null
@@ -28,6 +28,11 @@ export async function GET(request: NextRequest) {
     const fileType = searchParams.get("fileType") // "pdf", "image", "spreadsheet", "all"
     const ownerId = searchParams.get("ownerId")
     const submitter = searchParams.get("submitter")
+    
+    // Pagination params
+    const page = parseInt(searchParams.get("page") || "1", 10)
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
+    const skip = (page - 1) * limit
 
     const where: any = {
       organizationId
@@ -85,6 +90,9 @@ export async function GET(request: NextRequest) {
       where.submittedBy = { contains: submitter, mode: "insensitive" }
     }
 
+    // Get total count for pagination (with filters)
+    const filteredCount = await prisma.collectedItem.count({ where })
+
     let items = await prisma.collectedItem.findMany({
       where,
       include: {
@@ -130,7 +138,9 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: { receivedAt: "desc" }
+      orderBy: { receivedAt: "desc" },
+      skip,
+      take: limit
     })
 
     // Filter by owner if specified (owner is on the job)
@@ -164,16 +174,14 @@ export async function GET(request: NextRequest) {
       orderBy: { name: "asc" }
     })
 
-    // Get file type counts for summary
-    const pdfCount = await prisma.collectedItem.count({
-      where: { organizationId, mimeType: { contains: "pdf" } }
-    })
-
     return NextResponse.json({
       success: true,
       items,
       total,
-      pdfCount,
+      filteredTotal: ownerId ? items.length : filteredCount,
+      page,
+      limit,
+      totalPages: Math.ceil((ownerId ? items.length : filteredCount) / limit),
       jobs,
       owners
     })

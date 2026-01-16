@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
 
-    // Parse query params for filters
+    // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
     const boardId = searchParams.get("boardId")
     const jobId = searchParams.get("jobId")
@@ -29,6 +29,11 @@ export async function GET(request: NextRequest) {
     const labelId = searchParams.get("labelId")
     const readStatus = searchParams.get("readStatus") // unread | read | replied
     const hasAttachments = searchParams.get("hasAttachments") // yes | no
+    
+    // Pagination params
+    const page = parseInt(searchParams.get("page") || "1", 10)
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
+    const skip = (page - 1) * limit
 
     const where: any = {
       organizationId,
@@ -77,7 +82,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build the query
+    // Get total count for pagination
+    const totalCount = await prisma.task.count({ where })
+
+    // Build the query with pagination
     const tasks = await prisma.task.findMany({
       where,
       include: {
@@ -117,7 +125,9 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit
     })
 
     // Filter by owner if specified (owner is on the job, not the task)
@@ -189,7 +199,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       requests: filteredTasks,
-      total: filteredTasks.length,
+      total: ownerId ? filteredTasks.length : totalCount, // Use filtered count if owner filter applied client-side
+      page,
+      limit,
+      totalPages: Math.ceil((ownerId ? filteredTasks.length : totalCount) / limit),
       jobs: jobsWithRequests, // Only jobs with requests
       owners,
       labels: labelsFromJobs, // Labels for filtering

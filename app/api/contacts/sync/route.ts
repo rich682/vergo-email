@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { EmailAccountService } from "@/lib/services/email-account.service"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { EmailProvider } from "@prisma/client"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "emailAccountId is required" }, { status: 400 })
   }
 
-  const account = await EmailAccountService.getById(emailAccountId, session.user.organizationId)
+  const account = await EmailConnectionService.getById(emailAccountId, session.user.organizationId)
   if (!account) {
     return NextResponse.json({ error: "Email account not found" }, { status: 404 })
   }

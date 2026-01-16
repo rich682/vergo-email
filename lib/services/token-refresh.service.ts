@@ -1,6 +1,5 @@
 import { EmailConnectionService } from "./email-connection.service"
-import { EmailAccountService } from "./email-account.service"
-import { ConnectedEmailAccount, EmailAccount, EmailProvider } from "@prisma/client"
+import { ConnectedEmailAccount, EmailProvider } from "@prisma/client"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 
@@ -8,10 +7,6 @@ export class TokenRefreshService {
   static async ensureValidToken(
     account: ConnectedEmailAccount
   ): Promise<ConnectedEmailAccount> {
-    if (account.provider !== "GMAIL") {
-      return account
-    }
-
     // Check if token is expired or will expire in the next 5 minutes
     const now = new Date()
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
@@ -21,7 +16,11 @@ export class TokenRefreshService {
       account.tokenExpiresAt <= fiveMinutesFromNow
     ) {
       // Token is expired or about to expire, refresh it
-      return await EmailConnectionService.refreshGmailToken(account.id)
+      if (account.provider === "GMAIL") {
+        return await EmailConnectionService.refreshGmailToken(account.id)
+      } else if (account.provider === "MICROSOFT") {
+        return await EmailConnectionService.refreshMicrosoftToken(account.id)
+      }
     }
 
     return account
@@ -42,9 +41,9 @@ export class TokenRefreshService {
     return this.ensureValidToken(account)
   }
 
-  static async ensureValidEmailAccount(
-    account: EmailAccount
-  ): Promise<EmailAccount> {
+  static async ensureValidConnectedAccount(
+    account: ConnectedEmailAccount
+  ): Promise<ConnectedEmailAccount> {
     if (account.provider === EmailProvider.GMAIL) {
       const provider = new GmailProvider()
       return provider.refreshToken(account)
@@ -56,15 +55,15 @@ export class TokenRefreshService {
     return account
   }
 
-  static async refreshEmailAccountIfNeeded(
+  static async refreshConnectedAccountIfNeeded(
     accountId: string
-  ): Promise<EmailAccount> {
+  ): Promise<ConnectedEmailAccount> {
     const { prisma } = await import("@/lib/prisma")
-    const account = await prisma.emailAccount.findUnique({ where: { id: accountId } })
+    const account = await prisma.connectedEmailAccount.findUnique({ where: { id: accountId } })
     if (!account) {
-      throw new Error("EmailAccount not found")
+      throw new Error("ConnectedEmailAccount not found")
     }
-    return this.ensureValidEmailAccount(account)
+    return this.ensureValidConnectedAccount(account)
   }
 }
 

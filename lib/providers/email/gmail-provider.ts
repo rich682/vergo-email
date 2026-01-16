@@ -1,12 +1,12 @@
 import { google } from "googleapis"
 import { OAuth2Client } from "google-auth-library"
-import { EmailAccount } from "@prisma/client"
+import { ConnectedEmailAccount } from "@prisma/client"
 import { EmailProviderDriver, EmailSendParams, ContactSyncResult } from "./email-provider"
-import { EmailAccountService } from "@/lib/services/email-account.service"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { decrypt } from "@/lib/encryption"
 
 export class GmailProvider implements EmailProviderDriver {
-  private getClient(account: EmailAccount): OAuth2Client {
+  private getClient(account: ConnectedEmailAccount): OAuth2Client {
     const client = new OAuth2Client(
       process.env.GMAIL_CLIENT_ID,
       process.env.GMAIL_CLIENT_SECRET,
@@ -21,7 +21,7 @@ export class GmailProvider implements EmailProviderDriver {
     return client
   }
 
-  async refreshToken(account: EmailAccount): Promise<EmailAccount> {
+  async refreshToken(account: ConnectedEmailAccount): Promise<ConnectedEmailAccount> {
     if (!account.refreshToken) {
       throw new Error("No refresh token available")
     }
@@ -34,14 +34,14 @@ export class GmailProvider implements EmailProviderDriver {
       refresh_token: decrypt(account.refreshToken),
     })
     const { credentials } = await client.refreshAccessToken()
-    return EmailAccountService.updateTokens(account.id, {
+    return EmailConnectionService.updateTokens(account.id, {
       accessToken: credentials.access_token || undefined,
       refreshToken: credentials.refresh_token || undefined,
       tokenExpiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
     })
   }
 
-  async ensureValidToken(account: EmailAccount): Promise<EmailAccount> {
+  async ensureValidToken(account: ConnectedEmailAccount): Promise<ConnectedEmailAccount> {
     const now = Date.now()
     const expiry = account.tokenExpiresAt?.getTime() || 0
     if (!expiry || expiry < now + 5 * 60 * 1000) {

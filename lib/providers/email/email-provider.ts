@@ -1,7 +1,7 @@
-import { EmailAccount } from "@prisma/client"
+import { ConnectedEmailAccount } from "@prisma/client"
 
 export interface EmailSendParams {
-  account: EmailAccount
+  account: ConnectedEmailAccount
   to: string
   subject: string
   body: string
@@ -17,8 +17,8 @@ export interface ContactSyncResult {
 
 export interface EmailProviderDriver {
   sendEmail(params: EmailSendParams): Promise<{ messageId: string; providerData: any }>
-  syncContacts?(account: EmailAccount): Promise<ContactSyncResult>
-  refreshToken(account: EmailAccount): Promise<EmailAccount>
+  syncContacts?(account: ConnectedEmailAccount): Promise<ContactSyncResult>
+  refreshToken(account: ConnectedEmailAccount): Promise<ConnectedEmailAccount>
 }
 
 
