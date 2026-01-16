@@ -99,8 +99,9 @@ export async function GET(request: Request) {
     }
 
     // Get user email from Graph /me
+    // Request specific fields to ensure we get the actual email address
     console.log("Microsoft OAuth: Fetching user profile...")
-    const meResp = await fetch("https://graph.microsoft.com/v1.0/me", {
+    const meResp = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName,otherMails,proxyAddresses", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     })
     
@@ -111,9 +112,44 @@ export async function GET(request: Request) {
     }
     
     const me = await meResp.json()
-    const email = me.mail || me.userPrincipalName
+    console.log("Microsoft OAuth: User profile response:", JSON.stringify({
+      id: me.id,
+      displayName: me.displayName,
+      mail: me.mail,
+      userPrincipalName: me.userPrincipalName,
+      otherMails: me.otherMails,
+      proxyAddresses: me.proxyAddresses
+    }))
+    
+    // Determine the best email to use:
+    // 1. Primary SMTP from proxyAddresses (marked with uppercase "SMTP:")
+    // 2. mail field (if present)
+    // 3. userPrincipalName (fallback, but only if it looks like an email)
+    let email: string | null = null
+    
+    // Try to get primary SMTP from proxyAddresses
+    if (me.proxyAddresses && Array.isArray(me.proxyAddresses)) {
+      const primarySmtp = me.proxyAddresses.find((addr: string) => addr.startsWith("SMTP:"))
+      if (primarySmtp) {
+        email = primarySmtp.replace("SMTP:", "")
+        console.log("Microsoft OAuth: Using primary SMTP from proxyAddresses:", email)
+      }
+    }
+    
+    // Fall back to mail field
+    if (!email && me.mail) {
+      email = me.mail
+      console.log("Microsoft OAuth: Using mail field:", email)
+    }
+    
+    // Fall back to userPrincipalName only if it looks like an email
+    if (!email && me.userPrincipalName && me.userPrincipalName.includes("@")) {
+      email = me.userPrincipalName
+      console.log("Microsoft OAuth: Using userPrincipalName:", email)
+    }
+    
     if (!email) {
-      console.error("Microsoft OAuth: No email in user profile:", me)
+      console.error("Microsoft OAuth: No email found in user profile:", me)
       return NextResponse.redirect(new URL("/dashboard/settings?error=no_email_in_profile", request.url))
     }
 
