@@ -75,28 +75,36 @@ export class MicrosoftIngestProvider implements EmailIngestProvider {
     account: ConnectedEmailAccount,
     cursor: ProviderCursor | null
   ): Promise<FetchInboundResult> {
+    console.log(`[MicrosoftIngest] Starting sync for account ${account.id} (${account.email})`)
+    
     const tokenResult = await EmailConnectionService.getMicrosoftAccessToken(account.id)
     if (!tokenResult) {
-      throw new Error("Failed to obtain Microsoft access token for account")
+      console.error(`[MicrosoftIngest] Failed to get access token for account ${account.id}`)
+      throw new Error("Failed to obtain Microsoft access token for account - may need to reconnect")
     }
 
     const { token } = tokenResult
     const deltaLink = cursor?.microsoft?.deltaLink || null
+    
+    console.log(`[MicrosoftIngest] Has delta link: ${!!deltaLink}`)
 
     try {
       if (!deltaLink) {
         // No cursor - bootstrap with recent messages
+        console.log(`[MicrosoftIngest] No delta link, performing bootstrap scan`)
         return await this.bootstrapAndScanRecent(token, account)
       }
 
       // Use delta link for incremental sync
+      console.log(`[MicrosoftIngest] Using delta link for incremental sync`)
       return await this.fetchFromDelta(token, account, deltaLink)
     } catch (error: any) {
+      console.error(`[MicrosoftIngest] Sync error:`, error?.message)
+      
       // If delta link is invalid or expired, bootstrap
       if (this.isDeltaExpiredError(error)) {
         console.warn(
-          "[MicrosoftIngest] Delta link expired or invalid; bootstrapping",
-          error?.message
+          "[MicrosoftIngest] Delta link expired or invalid; bootstrapping"
         )
         return await this.bootstrapAndScanRecent(token, account)
       }
@@ -313,6 +321,7 @@ export class MicrosoftIngestProvider implements EmailIngestProvider {
 
   /**
    * Bootstrap by scanning recent inbox messages.
+   * Uses simple message list query instead of delta (more reliable).
    */
   private async bootstrapAndScanRecent(
     token: string,
@@ -324,64 +333,76 @@ export class MicrosoftIngestProvider implements EmailIngestProvider {
     const afterDate = new Date(Date.now() - MAX_BOOTSTRAP_HOURS * 60 * 60 * 1000)
     const afterFilter = afterDate.toISOString()
 
-    // Initial delta request with time filter
-    let url = `${GRAPH_BASE}/me/mailFolders/inbox/messages/delta?$filter=receivedDateTime ge ${afterFilter}&$select=id,subject,from,toRecipients,replyTo,receivedDateTime,body,conversationId,internetMessageId,hasAttachments,internetMessageHeaders&$expand=attachments&$top=50`
+    console.log(`[MicrosoftIngest] Bootstrap scan for account ${account.id}, looking back ${MAX_BOOTSTRAP_HOURS} hours`)
+
+    // Use simple messages endpoint instead of delta (more reliable)
+    // Filter by receivedDateTime and order by most recent first
+    let url = `${GRAPH_BASE}/me/mailFolders/inbox/messages?$filter=receivedDateTime ge ${afterFilter}&$select=id,subject,from,toRecipients,replyTo,receivedDateTime,body,conversationId,internetMessageId,hasAttachments,internetMessageHeaders&$expand=attachments&$top=50&$orderby=receivedDateTime desc`
     
-    let deltaLink: string | null = null
     let pageCount = 0
 
     while (url) {
+      console.log(`[MicrosoftIngest] Fetching page ${pageCount + 1}...`)
       const response = await this.graphFetch(url, token)
       
       if (!response.ok) {
-        // If filter fails, try without it
-        if (pageCount === 0) {
-          url = `${GRAPH_BASE}/me/mailFolders/inbox/messages/delta?$select=id,subject,from,toRecipients,replyTo,receivedDateTime,body,conversationId,internetMessageId,hasAttachments,internetMessageHeaders&$expand=attachments&$top=50`
+        const errorText = await response.text()
+        console.error(`[MicrosoftIngest] Graph API error:`, errorText)
+        
+        // If filter fails, try without filter (just get recent messages)
+        if (pageCount === 0 && errorText.includes("filter")) {
+          console.log(`[MicrosoftIngest] Filter failed, trying without filter...`)
+          url = `${GRAPH_BASE}/me/mailFolders/inbox/messages?$select=id,subject,from,toRecipients,replyTo,receivedDateTime,body,conversationId,internetMessageId,hasAttachments,internetMessageHeaders&$expand=attachments&$top=50&$orderby=receivedDateTime desc`
           continue
         }
-        const errorText = await response.text()
         throw new Error(`Microsoft Graph bootstrap failed: ${errorText}`)
       }
 
-      const data: GraphDeltaResponse = await response.json()
+      const data = await response.json()
       pageCount++
+      
+      const messageList = data.value || []
+      console.log(`[MicrosoftIngest] Page ${pageCount}: found ${messageList.length} messages`)
 
       // Process messages
-      for (const msg of data.value || []) {
+      for (const msg of messageList) {
         // Check if message is within our time window
         if (msg.receivedDateTime) {
           const receivedDate = new Date(msg.receivedDateTime)
           if (receivedDate < afterDate) {
+            console.log(`[MicrosoftIngest] Skipping old message from ${msg.receivedDateTime}`)
             continue
           }
         }
 
         const normalized = await this.normalizeRawMessage(account, msg)
         if (normalized) {
+          console.log(`[MicrosoftIngest] Normalized message from ${normalized.from}, subject: ${normalized.subject?.substring(0, 50)}`)
           messages.push(normalized)
         }
       }
 
-      // Check for next page or delta link
-      if (data["@odata.deltaLink"]) {
-        deltaLink = data["@odata.deltaLink"]
-        url = ""
-      } else if (data["@odata.nextLink"]) {
+      // Check for next page
+      if (data["@odata.nextLink"]) {
         url = data["@odata.nextLink"]
       } else {
         url = ""
       }
 
-      // Limit bootstrap to reasonable number of pages
-      if (pageCount >= 10) {
+      // Limit to reasonable number of pages
+      if (pageCount >= 5) {
+        console.log(`[MicrosoftIngest] Reached page limit, stopping`)
         break
       }
     }
 
-    // If we didn't get a delta link, get one now
-    if (!deltaLink) {
+    // Get a delta link for future incremental syncs
+    let deltaLink: string | null = null
+    try {
       const cursorResult = await this.bootstrapCursor(account)
       deltaLink = cursorResult?.microsoft?.deltaLink || null
+    } catch (e) {
+      console.warn(`[MicrosoftIngest] Could not get delta link:`, e)
     }
 
     console.log(
