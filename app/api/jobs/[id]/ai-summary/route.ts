@@ -94,8 +94,9 @@ export async function POST(
     // Calculate stats
     const now = new Date()
     const totalRecipients = requests.reduce((sum, r) => sum + r.recipients.length, 0)
+    // Count recipients who have replied (using hasReplied flag or readStatus === 'replied')
     const repliedRecipients = requests.reduce((sum, r) => 
-      sum + r.recipients.filter(rec => rec.status === "REPLIED" || rec.status === "COMPLETED").length, 0
+      sum + r.recipients.filter(rec => rec.hasReplied || rec.readStatus === "replied").length, 0
     )
     const pendingRecipients = totalRecipients - repliedRecipients
     const responseRate = totalRecipients > 0 ? Math.round((repliedRecipients / totalRecipients) * 100) : 0
@@ -127,7 +128,8 @@ export async function POST(
     // Build context for AI
     const requestsContext = requests.map(r => {
       const sentDate = r.sentAt ? format(new Date(r.sentAt), "MMM d, yyyy") : "Not sent"
-      const replied = r.recipients.filter(rec => rec.status === "REPLIED" || rec.status === "COMPLETED").length
+      // Count recipients who have replied (using hasReplied flag or readStatus)
+      const replied = r.recipients.filter(rec => rec.hasReplied || rec.readStatus === "replied").length
       const pending = r.recipients.length - replied
       const hasReminders = r.reminderConfig?.enabled
       
@@ -139,7 +141,8 @@ export async function POST(
         hasReminders,
         recipients: r.recipients.map(rec => ({
           name: rec.name,
-          status: rec.status
+          status: rec.status,
+          hasReplied: rec.hasReplied || rec.readStatus === "replied"
         }))
       }
     })

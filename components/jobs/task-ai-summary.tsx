@@ -7,6 +7,7 @@ interface RequestRecipient {
   name: string
   email: string
   status: string
+  readStatus?: string // 'unread' | 'read' | 'replied'
   hasReplied?: boolean
 }
 
@@ -102,8 +103,9 @@ export function TaskAISummary({
 
   // Calculate quick stats
   const totalRecipients = requests.reduce((sum, r) => sum + r.recipients.length, 0)
+  // Count recipients who have replied (using hasReplied flag or readStatus === 'replied')
   const repliedRecipients = requests.reduce((sum, r) => 
-    sum + r.recipients.filter(rec => rec.status === "REPLIED" || rec.status === "COMPLETED").length, 0
+    sum + r.recipients.filter(rec => rec.hasReplied || rec.readStatus === "replied").length, 0
   )
   const pendingRecipients = totalRecipients - repliedRecipients
   const responseRate = totalRecipients > 0 ? Math.round((repliedRecipients / totalRecipients) * 100) : 0

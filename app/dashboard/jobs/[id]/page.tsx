@@ -151,6 +151,8 @@ interface RequestRecipient {
   name: string
   email: string
   status: string
+  readStatus?: string // 'unread' | 'read' | 'replied'
+  hasReplied?: boolean
   sentMessage: {
     subject: string
     body: string
@@ -1216,7 +1218,9 @@ export default function JobDetailPage() {
                   recipients: r.recipients.map(rec => ({
                     name: rec.name,
                     email: rec.email,
-                    status: rec.status
+                    status: rec.status,
+                    readStatus: rec.readStatus,
+                    hasReplied: rec.hasReplied
                   })),
                   reminderConfig: r.reminderConfig
                 }))}

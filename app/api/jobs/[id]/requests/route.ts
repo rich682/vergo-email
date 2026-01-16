@@ -92,6 +92,7 @@ export async function GET(
       select: {
         id: true,
         status: true,
+        readStatus: true, // Track if recipient has replied
         remindersEnabled: true,
         remindersFrequencyHours: true,
         remindersMaxCount: true,
@@ -150,6 +151,8 @@ export async function GET(
           name: task.entity ? `${task.entity.firstName}${task.entity.lastName ? ` ${task.entity.lastName}` : ''}` : 'Unknown',
           email: task.entity?.email || 'Unknown',
           status: task.status,
+          readStatus: task.readStatus, // 'unread' | 'read' | 'replied'
+          hasReplied: task.readStatus === 'replied', // Convenience flag for AI summary
           sentMessage: task.messages[0] ? {
             subject: task.messages[0].subject,
             body: task.messages[0].body,
