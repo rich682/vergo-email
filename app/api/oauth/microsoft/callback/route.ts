@@ -122,30 +122,43 @@ export async function GET(request: Request) {
     }))
     
     // Determine the best email to use:
-    // 1. Primary SMTP from proxyAddresses (marked with uppercase "SMTP:")
-    // 2. mail field (if present)
-    // 3. userPrincipalName (fallback, but only if it looks like an email)
+    // For personal Microsoft accounts (outlook.com, hotmail.com, live.com), userPrincipalName IS the email
+    // For work/school accounts, mail or proxyAddresses is more reliable
     let email: string | null = null
     
-    // Try to get primary SMTP from proxyAddresses
-    if (me.proxyAddresses && Array.isArray(me.proxyAddresses)) {
-      const primarySmtp = me.proxyAddresses.find((addr: string) => addr.startsWith("SMTP:"))
-      if (primarySmtp) {
-        email = primarySmtp.replace("SMTP:", "")
-        console.log("Microsoft OAuth: Using primary SMTP from proxyAddresses:", email)
+    const upn = me.userPrincipalName || ""
+    const isPersonalAccount = upn.includes("@outlook.com") || 
+                              upn.includes("@hotmail.com") || 
+                              upn.includes("@live.com") ||
+                              upn.includes("@msn.com")
+    
+    if (isPersonalAccount) {
+      // For personal accounts, userPrincipalName IS the email address
+      email = upn
+      console.log("Microsoft OAuth: Personal account detected, using userPrincipalName:", email)
+    } else {
+      // For work/school accounts, try proxyAddresses first, then mail, then UPN
+      
+      // Try to get primary SMTP from proxyAddresses
+      if (me.proxyAddresses && Array.isArray(me.proxyAddresses)) {
+        const primarySmtp = me.proxyAddresses.find((addr: string) => addr.startsWith("SMTP:"))
+        if (primarySmtp) {
+          email = primarySmtp.replace("SMTP:", "")
+          console.log("Microsoft OAuth: Using primary SMTP from proxyAddresses:", email)
+        }
       }
-    }
-    
-    // Fall back to mail field
-    if (!email && me.mail) {
-      email = me.mail
-      console.log("Microsoft OAuth: Using mail field:", email)
-    }
-    
-    // Fall back to userPrincipalName only if it looks like an email
-    if (!email && me.userPrincipalName && me.userPrincipalName.includes("@")) {
-      email = me.userPrincipalName
-      console.log("Microsoft OAuth: Using userPrincipalName:", email)
+      
+      // Fall back to mail field
+      if (!email && me.mail) {
+        email = me.mail
+        console.log("Microsoft OAuth: Using mail field:", email)
+      }
+      
+      // Fall back to userPrincipalName only if it looks like an email
+      if (!email && upn && upn.includes("@")) {
+        email = upn
+        console.log("Microsoft OAuth: Using userPrincipalName:", email)
+      }
     }
     
     if (!email) {
