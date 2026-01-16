@@ -53,8 +53,7 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
-// Subtasks and Attachments components
-import { SubtasksTable } from "@/components/jobs/subtasks-table"
+// Attachments components
 import { AttachmentsPanel } from "@/components/attachments/attachments-panel"
 
 // Task AI Summary
@@ -284,8 +283,6 @@ export default function JobDetailPage() {
   const [timelineExpanded, setTimelineExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(false)
   
-  // Subtask attachments drawer state
-  const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null)
 
   // Stakeholder dialog
   const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
@@ -1339,14 +1336,6 @@ export default function JobDetailPage() {
               </Card>
             )}
 
-            {/* Subtasks - nested tasks under this task */}
-            <div className="border rounded-lg bg-white overflow-hidden">
-              <SubtasksTable
-                jobId={jobId}
-                teamMembers={teamMembers.map(m => ({ id: m.id, name: m.name, email: m.email }))}
-                onViewAttachments={(subtaskId) => setSelectedSubtaskId(subtaskId)}
-              />
-            </div>
 
             {/* Attachments Section - Direct file uploads on this task */}
             <Card>
@@ -1782,17 +1771,6 @@ export default function JobDetailPage() {
         />
       )}
 
-      {/* Subtask Attachments Dialog */}
-      <Dialog open={!!selectedSubtaskId} onOpenChange={(open) => !open && setSelectedSubtaskId(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Subtask Attachments</DialogTitle>
-          </DialogHeader>
-          {selectedSubtaskId && (
-            <AttachmentsPanel subtaskId={selectedSubtaskId} />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
