@@ -142,6 +142,16 @@ export class EmailSyncService {
 
     const fetchResult = await adapter.fetchInboundSinceCursor(account, cursor)
     const inboundMessages = fetchResult.messages || []
+    
+    console.log(`[EmailSync] Account ${accountHash} (${account.provider}): fetched ${inboundMessages.length} messages, bootstrap: ${fetchResult.bootstrapPerformed}`)
+    if (inboundMessages.length > 0) {
+      console.log(`[EmailSync] Messages:`, inboundMessages.map(m => ({
+        from: m.from,
+        subject: m.subject?.substring(0, 50),
+        hasAttachments: !!m.attachments?.length,
+        inReplyTo: m.inReplyTo
+      })))
+    }
 
     const deduped = await this.persistInboundMessages(account, inboundMessages)
     const nextCursor = fetchResult.nextCursor || cursor || null

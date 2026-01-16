@@ -160,8 +160,12 @@ export class MicrosoftIngestProvider implements EmailIngestProvider {
       account.email &&
       fromAddress.toLowerCase() === account.email.toLowerCase()
     ) {
+      console.log(`[MicrosoftIngest] Skipping outbound message from self: ${fromAddress}`)
       return null
     }
+    
+    console.log(`[MicrosoftIngest] Processing inbound message from: ${fromAddress}, to: ${toAddress}, subject: ${rawMessage.subject?.substring(0, 50)}`)
+    console.log(`[MicrosoftIngest] Message details - hasAttachments: ${rawMessage.hasAttachments}, internetMessageId: ${rawMessage.internetMessageId}`)
 
     // Extract headers for threading
     const headers = rawMessage.internetMessageHeaders || []
