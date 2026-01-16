@@ -57,6 +57,9 @@ import { RequestCardExpandable } from "@/components/jobs/request-card-expandable
 import { SubtasksTable } from "@/components/jobs/subtasks-table"
 import { AttachmentsPanel } from "@/components/attachments/attachments-panel"
 
+// Task AI Summary
+import { TaskAISummary } from "@/components/jobs/task-ai-summary"
+
 // ============================================
 // Types
 // ============================================
@@ -1150,6 +1153,32 @@ export default function JobDetailPage() {
                   </>
                 )}
             </div>
+
+            {/* Task AI Summary - shows when requests exist */}
+            {requests.length > 0 && (
+              <TaskAISummary
+                jobId={jobId}
+                jobName={job.name}
+                jobStatus={job.status}
+                dueDate={job.dueDate}
+                requests={requests.map(r => ({
+                  id: r.id,
+                  status: r.status,
+                  sentAt: r.sentAt,
+                  taskCount: r.taskCount,
+                  recipients: r.recipients.map(rec => ({
+                    name: rec.name,
+                    email: rec.email,
+                    status: rec.status
+                  })),
+                  reminderConfig: r.reminderConfig
+                }))}
+                stakeholderCount={stakeholders.length}
+                taskCount={job.taskCount}
+                respondedCount={job.respondedCount}
+                completedCount={job.completedCount}
+              />
+            )}
 
             {/* Conditional Primary Section based on Mode */}
             {itemMode === "setup" && (
