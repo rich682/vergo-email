@@ -97,13 +97,10 @@ export async function GET(request: NextRequest) {
       take: 20
     })
 
-    // Get connected accounts
+    // Get connected accounts for this organization
     const accounts = await prisma.connectedEmailAccount.findMany({
       where: {
-        OR: [
-          { userId: session.user.id },
-          { organization: { id: session.user.organizationId } }
-        ]
+        organizationId: session.user.organizationId
       },
       select: {
         id: true,
