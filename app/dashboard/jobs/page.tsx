@@ -679,15 +679,43 @@ export default function JobsPage() {
 
   const fetchStakeholderOptions = useCallback(async () => {
     try {
-      // Fetch contact types
-      const typesResponse = await fetch("/api/contacts?groupBy=type", { credentials: "include" })
+      // Fetch contact type counts
+      const typesResponse = await fetch("/api/contacts/type-counts", { credentials: "include" })
       if (typesResponse.ok) {
         const data = await typesResponse.json()
-        const types = Object.entries(data.byType || {}).map(([type, contacts]: [string, any]) => ({
-          value: type,
-          label: type.charAt(0).toUpperCase() + type.slice(1) + "s",
-          count: contacts.length
-        }))
+        const types: { value: string; label: string; count: number }[] = []
+        
+        // Add built-in types
+        const builtInCounts = data.builtInCounts || {}
+        const typeLabels: Record<string, string> = {
+          "VENDOR": "Vendors",
+          "CLIENT": "Clients",
+          "EMPLOYEE": "Employees",
+          "CONTRACTOR": "Contractors",
+          "PARTNER": "Partners",
+          "OTHER": "Other"
+        }
+        
+        Object.entries(builtInCounts).forEach(([type, count]) => {
+          if (count && (count as number) > 0) {
+            types.push({
+              value: type,
+              label: typeLabels[type] || type,
+              count: count as number
+            })
+          }
+        })
+        
+        // Add custom types
+        const customTypes = data.customTypes || []
+        customTypes.forEach((ct: { label: string; count: number }) => {
+          types.push({
+            value: `CUSTOM:${ct.label}`,
+            label: ct.label,
+            count: ct.count
+          })
+        })
+        
         setAvailableContactTypes(types)
       }
       
@@ -711,7 +739,7 @@ export default function JobsPage() {
     }
   }, [isCreateOpen, fetchTeamMembers, fetchStakeholderOptions])
 
-  // Search stakeholders
+  // Search stakeholders (contacts/entities)
   useEffect(() => {
     if (!stakeholderSearchQuery.trim()) {
       setStakeholderSearchResults([])
@@ -719,10 +747,17 @@ export default function JobsPage() {
     }
     const searchContacts = async () => {
       try {
-        const response = await fetch(`/api/contacts?search=${encodeURIComponent(stakeholderSearchQuery)}`, { credentials: "include" })
+        const response = await fetch(`/api/entities?search=${encodeURIComponent(stakeholderSearchQuery)}`, { credentials: "include" })
         if (response.ok) {
           const data = await response.json()
-          setStakeholderSearchResults(data.contacts?.slice(0, 5) || [])
+          // The entities endpoint returns an array directly
+          const entities = Array.isArray(data) ? data : (data.entities || [])
+          setStakeholderSearchResults(entities.slice(0, 5).map((e: any) => ({
+            id: e.id,
+            firstName: e.firstName,
+            lastName: e.lastName,
+            email: e.email
+          })))
         }
       } catch (error) {
         console.error("Error searching contacts:", error)
