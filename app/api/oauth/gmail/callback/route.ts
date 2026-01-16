@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
-import { EmailAccountService } from "@/lib/services/email-account.service"
-import { EmailProvider } from "@prisma/client"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
@@ -75,7 +73,7 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/dashboard/settings?error=oauth_failed", request.url))
     }
 
-    // Create legacy connection (backward compatible)
+    // Create connection in ConnectedEmailAccount (used by email sync)
     const connectedAccount = await EmailConnectionService.createGmailConnection({
       organizationId,
       email: userInfo.data.email,
@@ -85,20 +83,8 @@ export async function GET(request: Request) {
         ? new Date(tokens.expiry_date)
         : new Date(Date.now() + 3600 * 1000)
     })
-
-    // Create new EmailAccount entry
-    if (userId) {
-      await EmailAccountService.createAccount({
-        userId,
-        organizationId,
-        provider: EmailProvider.GMAIL,
-        email: userInfo.data.email,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        tokenExpiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-        scopes: (tokens.scope as string) || undefined,
-      })
-    }
+    
+    console.log(`[Gmail OAuth] Created ConnectedEmailAccount: ${connectedAccount.id} for ${userInfo.data.email}`)
 
     // Attempt to set up Gmail watch for push notifications (optional - won't fail if not configured)
     try {

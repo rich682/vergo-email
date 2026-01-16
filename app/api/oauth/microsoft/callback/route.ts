@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { EmailAccountService } from "@/lib/services/email-account.service"
-import { EmailProvider } from "@prisma/client"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
@@ -169,18 +168,16 @@ export async function GET(request: Request) {
     console.log("Microsoft OAuth: Creating email account for:", email)
     const expiresInMs = tokenData.expires_in ? Number(tokenData.expires_in) * 1000 : 3600 * 1000
 
-    await EmailAccountService.createAccount({
-      userId,
+    // Create connection in ConnectedEmailAccount (used by email sync)
+    const connectedAccount = await EmailConnectionService.createMicrosoftConnection({
       organizationId,
-      provider: EmailProvider.MICROSOFT,
       email,
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
       tokenExpiresAt: new Date(Date.now() + expiresInMs),
-      scopes: "offline_access User.Read Mail.Send Mail.Read Mail.ReadBasic Contacts.Read",
     })
 
-    console.log("Microsoft OAuth: Successfully connected account:", email)
+    console.log(`[Microsoft OAuth] Created ConnectedEmailAccount: ${connectedAccount.id} for ${email}`)
     return NextResponse.redirect(new URL("/dashboard/settings?success=microsoft_connected", request.url))
   } catch (error: any) {
     console.error("Microsoft OAuth unexpected error:", error)

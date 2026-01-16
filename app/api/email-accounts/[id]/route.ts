@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { EmailAccountService } from "@/lib/services/email-account.service"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 
 export async function DELETE(
@@ -15,20 +14,13 @@ export async function DELETE(
   }
 
   const orgId = session.user.organizationId
-  const emailAccount = await EmailAccountService.getById(params.id, orgId)
-  if (emailAccount) {
-    await EmailAccountService.deactivate(params.id, orgId)
-    return NextResponse.json({ success: true })
-  }
 
-  // Fallback to legacy connected account
   try {
+    // Delete from ConnectedEmailAccount - this is the table used by email sync
     await EmailConnectionService.delete(params.id, orgId)
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "Account not found" }, { status: 404 })
+  } catch (error: any) {
+    console.error("Error disconnecting email account:", error)
+    return NextResponse.json({ error: "Account not found or could not be deleted" }, { status: 404 })
   }
 }
-
-
-
