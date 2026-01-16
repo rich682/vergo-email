@@ -1067,102 +1067,137 @@ export default function JobDetailPage() {
                               <DialogTitle>Add Stakeholder</DialogTitle>
                             </DialogHeader>
                             <div className="space-y-4 pt-4">
-                              {/* Show helpful message if no contacts exist */}
-                              {availableTypes.length === 0 && availableGroups.length === 0 && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-                                  <p className="text-sm text-amber-800 mb-2">
-                                    No contacts found. Add contacts first to assign stakeholders.
-                                  </p>
-                                  <a 
-                                    href="/dashboard/contacts" 
-                                    className="inline-flex items-center gap-1 text-sm font-medium text-amber-700 hover:text-amber-900"
-                                  >
-                                    Go to Contacts →
-                                  </a>
-                                </div>
-                              )}
+                              {/* Step 1: Select Type */}
+                              <div>
+                                <Label>Step 1: Select Type</Label>
+                                <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="contact_type">Contact Type</SelectItem>
+                                    <SelectItem value="group">Group</SelectItem>
+                                    <SelectItem value="individual">Individual</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                               
-                              {/* Only show type selector if there are contacts */}
-                              {(availableTypes.length > 0 || availableGroups.length > 0) && (
-                                <>
-                                  <div>
-                                    <Label>Type</Label>
-                                    <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                                      <SelectTrigger className="mt-1">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {availableTypes.length > 0 && (
-                                          <SelectItem value="contact_type">Contact Type</SelectItem>
-                                        )}
-                                        {availableGroups.length > 0 && (
-                                          <SelectItem value="group">Group</SelectItem>
-                                        )}
-                                        <SelectItem value="individual">Individual</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {stakeholderType === "contact_type" && availableTypes.length > 0 && (
-                                    <div className="max-h-48 overflow-y-auto space-y-1">
-                                      {availableTypes.map(type => (
-                                        <button
-                                          key={type.value}
-                                          onClick={() => handleAddStakeholder("contact_type", type.value, type.label)}
-                                          className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                              {/* Step 2: Select specific item based on type */}
+                              <div>
+                                <Label>
+                                  Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
+                                </Label>
+                                
+                                {stakeholderType === "contact_type" && (
+                                  <div className="mt-2">
+                                    {availableTypes.length > 0 ? (
+                                      <Select onValueChange={(v) => {
+                                        const type = availableTypes.find(t => t.value === v)
+                                        if (type) handleAddStakeholder("contact_type", type.value, type.label)
+                                      }}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select a contact type..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {availableTypes.map(type => (
+                                            <SelectItem key={type.value} value={type.value}>
+                                              {type.label} ({type.count} contacts)
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
+                                        <p className="text-sm text-gray-600 mb-2">
+                                          No contact types found. Add contacts with types first.
+                                        </p>
+                                        <a 
+                                          href="/dashboard/contacts" 
+                                          className="text-sm font-medium text-blue-600 hover:text-blue-800"
                                         >
-                                          <span>{type.label}</span>
-                                          <span className="text-xs text-gray-500">{type.count} contacts</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {stakeholderType === "group" && availableGroups.length > 0 && (
-                                    <div className="max-h-48 overflow-y-auto space-y-1">
-                                      {availableGroups.map(group => (
-                                        <button
-                                          key={group.id}
-                                          onClick={() => handleAddStakeholder("group", group.id, group.name)}
-                                          className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
-                                        >
-                                          <span>{group.name}</span>
-                                          <span className="text-xs text-gray-500">{group.memberCount} members</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {stakeholderType === "individual" && (
-                                    <div>
-                                      <Input
-                                        placeholder="Search by name or email..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                      />
-                                      <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
-                                        {searchingEntities ? (
-                                          <div className="flex justify-center py-4">
-                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
-                                          </div>
-                                        ) : searchResults.length > 0 ? (
-                                          searchResults.map(entity => (
-                                            <button
-                                              key={entity.id}
-                                              onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
-                                              className="w-full text-left px-3 py-2 rounded hover:bg-gray-100"
-                                            >
-                                              <div className="font-medium text-sm">{entity.firstName} {entity.lastName || ""}</div>
-                                              {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
-                                            </button>
-                                          ))
-                                        ) : searchQuery.length >= 2 ? (
-                                          <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>
-                                        ) : (
-                                          <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
-                                        )}
+                                          Go to Contacts →
+                                        </a>
                                       </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {stakeholderType === "group" && (
+                                  <div className="mt-2">
+                                    {availableGroups.length > 0 ? (
+                                      <Select onValueChange={(v) => {
+                                        const group = availableGroups.find(g => g.id === v)
+                                        if (group) handleAddStakeholder("group", group.id, group.name)
+                                      }}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select a group..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {availableGroups.map(group => (
+                                            <SelectItem key={group.id} value={group.id}>
+                                              {group.name} ({group.memberCount} members)
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
+                                        <p className="text-sm text-gray-600 mb-2">
+                                          No groups found. Create groups in the Contacts page first.
+                                        </p>
+                                        <a 
+                                          href="/dashboard/contacts" 
+                                          className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                                        >
+                                          Go to Contacts →
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {stakeholderType === "individual" && (
+                                  <div className="mt-2">
+                                    <Input
+                                      placeholder="Search by name or email..."
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                    <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
+                                      {searchingEntities ? (
+                                        <div className="flex justify-center py-4">
+                                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
+                                        </div>
+                                      ) : searchResults.length > 0 ? (
+                                        searchResults.map(entity => (
+                                          <button
+                                            key={entity.id}
+                                            onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
+                                            className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 border"
+                                          >
+                                            <div className="font-medium text-sm">{entity.firstName} {entity.lastName || ""}</div>
+                                            {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
+                                          </button>
+                                        ))
+                                      ) : searchQuery.length >= 2 ? (
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                                          <p className="text-sm text-gray-600 mb-2">
+                                            No contacts found matching "{searchQuery}"
+                                          </p>
+                                          <a 
+                                            href="/dashboard/contacts" 
+                                            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                                          >
+                                            Add contacts →
+                                          </a>
+                                        </div>
+                                      ) : (
+                                        <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
+                                      )}
                                     </div>
-                                  )}
-                                </>
-                              )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </DialogContent>
                         </Dialog>
