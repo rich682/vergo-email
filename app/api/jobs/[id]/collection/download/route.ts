@@ -10,10 +10,13 @@ export const dynamic = "force-dynamic"
 /**
  * GET /api/jobs/[id]/collection/download?itemId=xxx
  * Download a single collected item
+ * 
+ * For Vercel Blob storage, redirects to the public URL for efficient download.
+ * For local storage, streams the file through the server.
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -22,7 +25,7 @@ export async function GET(
     }
 
     const organizationId = session.user.organizationId
-    const jobId = params.id
+    const { id: jobId } = await params
 
     // Get itemId from query params
     const { searchParams } = new URL(request.url)
@@ -48,8 +51,17 @@ export async function GET(
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
-    // Download file from storage
     const storage = getStorageService()
+
+    // If we have a stored fileUrl (from Vercel Blob), redirect to it for efficient download
+    if (item.fileUrl) {
+      // Add download query param to force download instead of preview
+      const downloadUrl = new URL(item.fileUrl)
+      downloadUrl.searchParams.set("download", "1")
+      return NextResponse.redirect(downloadUrl.toString())
+    }
+
+    // Fallback: download file from storage and stream it
     const fileBuffer = await storage.download(item.fileKey)
 
     // Return as downloadable file

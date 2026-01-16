@@ -1,4 +1,4 @@
-import { put, del, head } from "@vercel/blob"
+import { put, del, head, list } from "@vercel/blob"
 import { StorageService } from "./storage.service"
 
 // Vercel Blob-backed storage for uploads/attachments.
@@ -18,7 +18,9 @@ export class BlobStorageService implements StorageService {
   }
 
   async download(key: string): Promise<Buffer> {
-    const res = await fetch(this.buildUrl(key))
+    // Get the actual URL for this blob
+    const url = await this.getUrl(key)
+    const res = await fetch(url)
     if (!res.ok) {
       throw new Error(`Failed to download blob: ${res.statusText}`)
     }
@@ -27,20 +29,26 @@ export class BlobStorageService implements StorageService {
   }
 
   async delete(key: string): Promise<void> {
-    await del(this.buildUrl(key), {
+    const url = await this.getUrl(key)
+    await del(url, {
       token: process.env.BLOB_READ_WRITE_TOKEN,
     })
   }
 
   async getUrl(key: string): Promise<string> {
-    // Ensure the blob exists; head will throw if missing
-    await head(key, { token: process.env.BLOB_READ_WRITE_TOKEN })
-    return this.buildUrl(key)
-  }
-
-  private buildUrl(key: string): string {
-    // Vercel Blob serves at a predictable URL when using public access.
-    return `https://vercel.blob/${key}`
+    // Use list to find the blob by its pathname (key)
+    // This returns the actual URL from Vercel Blob storage
+    const { blobs } = await list({
+      prefix: key,
+      limit: 1,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    })
+    
+    if (blobs.length === 0) {
+      throw new Error(`Blob not found: ${key}`)
+    }
+    
+    return blobs[0].url
   }
 }
 
