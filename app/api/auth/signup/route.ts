@@ -12,12 +12,27 @@ import { AuthEmailService } from "@/lib/services/auth-email.service"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { companyName, email, password, name } = body
+    const { companyName, email, password, firstName, lastName, name } = body
 
     // Validate required fields
     if (!companyName || typeof companyName !== "string" || companyName.trim().length < 2) {
       return NextResponse.json(
         { error: "Company name must be at least 2 characters" },
+        { status: 400 }
+      )
+    }
+
+    // Validate first and last name (required for clean data)
+    if (!firstName || typeof firstName !== "string" || firstName.trim().length < 1) {
+      return NextResponse.json(
+        { error: "First name is required" },
+        { status: 400 }
+      )
+    }
+
+    if (!lastName || typeof lastName !== "string" || lastName.trim().length < 1) {
+      return NextResponse.json(
+        { error: "Last name is required" },
         { status: 400 }
       )
     }
@@ -35,6 +50,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Combine first and last name for storage
+    const fullName = `${firstName.trim()} ${lastName.trim()}`
 
     const normalizedEmail = email.toLowerCase().trim()
     const trimmedCompanyName = companyName.trim()
@@ -88,7 +106,7 @@ export async function POST(request: NextRequest) {
         data: {
           email: normalizedEmail,
           passwordHash,
-          name: name?.trim() || null,
+          name: fullName,
           role: "ADMIN",
           organizationId: organization.id,
           emailVerified: false,
@@ -100,11 +118,11 @@ export async function POST(request: NextRequest) {
       return { organization, user }
     })
 
-    // Send verification email
+    // Send verification email (use first name for friendly greeting)
     const emailResult = await AuthEmailService.sendVerificationEmail(
       normalizedEmail,
       verificationToken,
-      name?.trim() || undefined
+      firstName.trim()
     )
 
     if (!emailResult.success) {
