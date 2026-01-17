@@ -87,50 +87,56 @@ If you didn't create an account, you can safely ignore this email.
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Verify your email</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #333333; background-color: #f4f4f4;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f4;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
     <tr>
-      <td style="padding: 20px 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
-          <!-- Header -->
+      <td style="padding: 40px 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <!-- Logo Header -->
           <tr>
-            <td style="background-color: #4f46e5; padding: 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Welcome to Vergo</h1>
+            <td style="padding: 32px 40px 24px 40px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+              <img src="${baseUrl}/logo.svg" alt="Vergo" width="100" height="32" style="display: block; margin: 0 auto;" />
             </td>
           </tr>
           <!-- Body -->
           <tr>
-            <td style="padding: 40px 30px;">
-              <p style="margin: 0 0 20px 0;">Hi${userName ? ` ${userName}` : ""},</p>
-              <p style="margin: 0 0 30px 0;">Thanks for signing up! Please verify your email address to get started.</p>
+            <td style="padding: 40px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #111827; text-align: center;">Welcome to Vergo</h1>
+              <p style="margin: 0 0 32px 0; color: #6b7280; text-align: center;">Verify your email to get started</p>
+              
+              <p style="margin: 0 0 24px 0; color: #374151;">Hi${userName ? ` ${userName}` : ""},</p>
+              <p style="margin: 0 0 32px 0; color: #374151;">Thanks for signing up! Click the button below to verify your email address and start using Vergo.</p>
               
               <!-- Button -->
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
-                  <td style="border-radius: 6px; background-color: #4f46e5;">
-                    <a href="${verifyUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 6px;">
+                  <td style="text-align: center;">
+                    <a href="${verifyUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);">
                       Verify Email Address
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <p style="margin: 30px 0 10px 0; color: #666666; font-size: 14px;">This link will expire in 24 hours.</p>
-              <p style="margin: 0 0 20px 0; color: #666666; font-size: 14px;">If you didn't create an account, you can safely ignore this email.</p>
-              
-              <!-- Divider -->
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
-              
-              <!-- Fallback link -->
-              <p style="margin: 0; color: #999999; font-size: 12px;">
-                If the button doesn't work, copy and paste this link into your browser:
+              <p style="margin: 32px 0 0 0; color: #9ca3af; font-size: 14px; text-align: center;">This link will expire in 24 hours.</p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; background-color: #f9fafb; border-top: 1px solid #f3f4f6;">
+              <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                If the button doesn't work, copy and paste this link:
               </p>
-              <p style="margin: 10px 0 0 0; word-break: break-all;">
-                <a href="${verifyUrl}" style="color: #4f46e5; font-size: 12px;">${verifyUrl}</a>
+              <p style="margin: 0; word-break: break-all; text-align: center;">
+                <a href="${verifyUrl}" style="color: #f97316; font-size: 12px;">${verifyUrl}</a>
               </p>
             </td>
           </tr>
         </table>
+        <!-- Bottom text -->
+        <p style="margin: 24px 0 0 0; color: #9ca3af; font-size: 12px; text-align: center;">
+          If you didn't create an account, you can safely ignore this email.
+        </p>
       </td>
     </tr>
   </table>
@@ -178,45 +184,56 @@ If you didn't request a password reset, you can safely ignore this email. Your p
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Reset your password</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #333333; background-color: #f4f4f4;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f4;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
     <tr>
-      <td style="padding: 20px 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+      <td style="padding: 40px 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <!-- Logo Header -->
           <tr>
-            <td style="background-color: #4f46e5; padding: 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Password Reset</h1>
+            <td style="padding: 32px 40px 24px 40px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+              <img src="${baseUrl}/logo.svg" alt="Vergo" width="100" height="32" style="display: block; margin: 0 auto;" />
             </td>
           </tr>
+          <!-- Body -->
           <tr>
-            <td style="padding: 40px 30px;">
-              <p style="margin: 0 0 20px 0;">Hi${userName ? ` ${userName}` : ""},</p>
-              <p style="margin: 0 0 30px 0;">We received a request to reset your password. Click the button below to choose a new password.</p>
+            <td style="padding: 40px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #111827; text-align: center;">Reset Your Password</h1>
+              <p style="margin: 0 0 32px 0; color: #6b7280; text-align: center;">Choose a new password for your account</p>
               
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+              <p style="margin: 0 0 24px 0; color: #374151;">Hi${userName ? ` ${userName}` : ""},</p>
+              <p style="margin: 0 0 32px 0; color: #374151;">We received a request to reset your password. Click the button below to choose a new password.</p>
+              
+              <!-- Button -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
-                  <td style="border-radius: 6px; background-color: #4f46e5;">
-                    <a href="${resetUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 6px;">
+                  <td style="text-align: center;">
+                    <a href="${resetUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);">
                       Reset Password
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <p style="margin: 30px 0 10px 0; color: #666666; font-size: 14px;">This link will expire in 1 hour.</p>
-              <p style="margin: 0 0 20px 0; color: #666666; font-size: 14px;">If you didn't request a password reset, you can safely ignore this email.</p>
-              
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
-              
-              <p style="margin: 0; color: #999999; font-size: 12px;">
-                If the button doesn't work, copy and paste this link into your browser:
+              <p style="margin: 32px 0 0 0; color: #9ca3af; font-size: 14px; text-align: center;">This link will expire in 1 hour.</p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; background-color: #f9fafb; border-top: 1px solid #f3f4f6;">
+              <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                If the button doesn't work, copy and paste this link:
               </p>
-              <p style="margin: 10px 0 0 0; word-break: break-all;">
-                <a href="${resetUrl}" style="color: #4f46e5; font-size: 12px;">${resetUrl}</a>
+              <p style="margin: 0; word-break: break-all; text-align: center;">
+                <a href="${resetUrl}" style="color: #f97316; font-size: 12px;">${resetUrl}</a>
               </p>
             </td>
           </tr>
         </table>
+        <!-- Bottom text -->
+        <p style="margin: 24px 0 0 0; color: #9ca3af; font-size: 12px; text-align: center;">
+          If you didn't request a password reset, you can safely ignore this email.
+        </p>
       </td>
     </tr>
   </table>
@@ -252,7 +269,7 @@ Hi there,
 
 ${inviterText} invited you to join ${orgName} on Vergo${roleText}.
 
-Vergo helps accounting teams automate document collection and follow-ups.
+Vergo helps teams send requests, track responses, and close tasks faster.
 
 Accept your invitation by clicking the link below:
 
@@ -271,41 +288,49 @@ This invitation will expire in 7 days.
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>You're Invited</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #333333; background-color: #f4f4f4;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f4;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #1f2937; background-color: #f9fafb;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
     <tr>
-      <td style="padding: 20px 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+      <td style="padding: 40px 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+          <!-- Logo Header -->
           <tr>
-            <td style="background-color: #4f46e5; padding: 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">You're Invited!</h1>
+            <td style="padding: 32px 40px 24px 40px; text-align: center; border-bottom: 1px solid #f3f4f6;">
+              <img src="${baseUrl}/logo.svg" alt="Vergo" width="100" height="32" style="display: block; margin: 0 auto;" />
             </td>
           </tr>
+          <!-- Body -->
           <tr>
-            <td style="padding: 40px 30px;">
-              <p style="margin: 0 0 20px 0;">Hi there,</p>
-              <p style="margin: 0 0 15px 0;">${inviterText} invited you to join <strong>${orgName}</strong> on Vergo${roleText}.</p>
-              <p style="margin: 0 0 30px 0;">Vergo helps accounting teams automate document collection and follow-ups.</p>
+            <td style="padding: 40px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #111827; text-align: center;">You're Invited!</h1>
+              <p style="margin: 0 0 32px 0; color: #6b7280; text-align: center;">Join your team on Vergo</p>
               
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+              <p style="margin: 0 0 24px 0; color: #374151;">Hi there,</p>
+              <p style="margin: 0 0 16px 0; color: #374151;">${inviterText} invited you to join <strong style="color: #111827;">${orgName}</strong> on Vergo${roleText}.</p>
+              <p style="margin: 0 0 32px 0; color: #6b7280;">Vergo helps teams send requests, track responses, and close tasks faster with AI-powered follow-ups.</p>
+              
+              <!-- Button -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
-                  <td style="border-radius: 6px; background-color: #4f46e5;">
-                    <a href="${inviteUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 6px;">
+                  <td style="text-align: center;">
+                    <a href="${inviteUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);">
                       Accept Invitation
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <p style="margin: 30px 0 20px 0; color: #666666; font-size: 14px;">This invitation will expire in 7 days.</p>
-              
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
-              
-              <p style="margin: 0; color: #999999; font-size: 12px;">
-                If the button doesn't work, copy and paste this link into your browser:
+              <p style="margin: 32px 0 0 0; color: #9ca3af; font-size: 14px; text-align: center;">This invitation will expire in 7 days.</p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; background-color: #f9fafb; border-top: 1px solid #f3f4f6;">
+              <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; text-align: center;">
+                If the button doesn't work, copy and paste this link:
               </p>
-              <p style="margin: 10px 0 0 0; word-break: break-all;">
-                <a href="${inviteUrl}" style="color: #4f46e5; font-size: 12px;">${inviteUrl}</a>
+              <p style="margin: 0; word-break: break-all; text-align: center;">
+                <a href="${inviteUrl}" style="color: #f97316; font-size: 12px;">${inviteUrl}</a>
               </p>
             </td>
           </tr>
