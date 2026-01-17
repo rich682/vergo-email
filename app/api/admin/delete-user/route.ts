@@ -11,7 +11,16 @@ import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
+// Support both GET and DELETE for easier access
+export async function GET(request: NextRequest) {
+  return handleDelete(request)
+}
+
 export async function DELETE(request: NextRequest) {
+  return handleDelete(request)
+}
+
+async function handleDelete(request: NextRequest) {
   try {
     // Check for admin secret or authentication
     const { searchParams } = new URL(request.url)
