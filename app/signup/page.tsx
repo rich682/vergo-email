@@ -316,13 +316,13 @@ export default function SignupPage() {
 
             <p className="text-center text-xs text-gray-400">
               By creating an account, you agree to our{" "}
-              <a href="#" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
+              <Link href="/terms" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
                 Terms of Service
-              </a>{" "}
+              </Link>{" "}
               and{" "}
-              <a href="#" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
+              <Link href="/privacy" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
                 Privacy Policy
-              </a>
+              </Link>
             </p>
           </form>
 
