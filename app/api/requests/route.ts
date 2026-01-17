@@ -69,8 +69,22 @@ export async function GET(request: NextRequest) {
       where.jobId = jobId
     }
 
-    if (status && Object.values(TaskStatus).includes(status)) {
-      where.status = status
+    // Handle status filter with legacy status mapping
+    if (status) {
+      // Map new status values to include legacy equivalents
+      const statusMapping: Record<string, TaskStatus[]> = {
+        NO_REPLY: [TaskStatus.NO_REPLY, TaskStatus.IN_PROGRESS, TaskStatus.AWAITING_RESPONSE, TaskStatus.FLAGGED, TaskStatus.MANUAL_REVIEW, TaskStatus.ON_HOLD],
+        REPLIED: [TaskStatus.REPLIED, TaskStatus.HAS_ATTACHMENTS, TaskStatus.VERIFYING],
+        COMPLETE: [TaskStatus.COMPLETE, TaskStatus.FULFILLED, TaskStatus.REJECTED],
+      }
+      
+      const mappedStatuses = statusMapping[status]
+      if (mappedStatuses) {
+        where.status = { in: mappedStatuses }
+      } else if (Object.values(TaskStatus).includes(status as TaskStatus)) {
+        // Direct status match for legacy statuses
+        where.status = status
+      }
     }
 
     // Filter by label (label is on the job)

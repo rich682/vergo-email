@@ -375,8 +375,8 @@ export class EmailReceptionService {
     }
 
     // Determine if we should auto-update status to REPLIED
-    // Only update if: not an auto-reply AND current status is not already FULFILLED (Complete)
-    const shouldUpdateStatus = !isAutoReply && task.status !== "FULFILLED"
+    // Only update if: not an auto-reply AND current status is not already COMPLETE
+    const shouldUpdateStatus = !isAutoReply && task.status !== "COMPLETE" && task.status !== "FULFILLED"
 
     // Update task - auto-change status to REPLIED when a real reply is received
     const updatedTask = await prisma.task.update({

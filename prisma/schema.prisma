@@ -20,18 +20,20 @@ enum UserRole {
 }
 
 enum TaskStatus {
-  // Active statuses
-  IN_PROGRESS       // Request sent, awaiting response (default)
-  FULFILLED         // Request completed
+  // Current active statuses
+  NO_REPLY          // No reply received yet (default for new requests)
+  REPLIED           // Reply received from contact
+  COMPLETE          // Task marked as complete (manual action)
   // Legacy statuses (kept for backward compatibility with existing data)
-  AWAITING_RESPONSE // @deprecated - use IN_PROGRESS
-  REPLIED           // @deprecated - use IN_PROGRESS
-  HAS_ATTACHMENTS   // @deprecated - use IN_PROGRESS
-  VERIFYING         // @deprecated - use IN_PROGRESS
-  REJECTED          // @deprecated - use FULFILLED
-  FLAGGED           // @deprecated - use IN_PROGRESS
-  MANUAL_REVIEW     // @deprecated - use IN_PROGRESS
-  ON_HOLD           // @deprecated - use IN_PROGRESS
+  IN_PROGRESS       // @deprecated - maps to NO_REPLY
+  FULFILLED         // @deprecated - maps to COMPLETE
+  AWAITING_RESPONSE // @deprecated - maps to NO_REPLY
+  HAS_ATTACHMENTS   // @deprecated - maps to REPLIED
+  VERIFYING         // @deprecated - maps to REPLIED
+  REJECTED          // @deprecated - maps to COMPLETE
+  FLAGGED           // @deprecated - maps to NO_REPLY
+  MANUAL_REVIEW     // @deprecated - maps to NO_REPLY
+  ON_HOLD           // @deprecated - maps to NO_REPLY
 }
 
 enum MessageDirection {

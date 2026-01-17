@@ -95,13 +95,13 @@ export class AutomationEngineService {
         await prisma.task.update({
           where: { id: data.taskId },
           data: {
-            status: "FULFILLED",
+            status: "COMPLETE",
             aiVerified: true,
             verifiedAt: new Date()
           }
         })
         statusUpdated = true
-        newStatus = "FULFILLED"
+        newStatus = "COMPLETE"
       }
 
       if (actions.autoReply && !autoReplied) {

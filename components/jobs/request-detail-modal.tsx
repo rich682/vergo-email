@@ -63,13 +63,28 @@ interface RequestDetailModalProps {
 
 // Status options for recipient tasks - No reply, Replied, Complete
 const RECIPIENT_STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "No reply", icon: Clock, color: "amber" },
+  { value: "NO_REPLY", label: "No reply", icon: Clock, color: "amber" },
   { value: "REPLIED", label: "Replied", icon: MessageSquare, color: "blue" },
-  { value: "FULFILLED", label: "Complete", icon: Check, color: "green" },
+  { value: "COMPLETE", label: "Complete", icon: Check, color: "green" },
 ]
 
+// Map legacy statuses to new status display
+const LEGACY_STATUS_MAP: Record<string, string> = {
+  AWAITING_RESPONSE: "NO_REPLY",
+  IN_PROGRESS: "NO_REPLY",
+  HAS_ATTACHMENTS: "REPLIED",
+  VERIFYING: "REPLIED",
+  FULFILLED: "COMPLETE",
+  REJECTED: "COMPLETE",
+  FLAGGED: "NO_REPLY",
+  MANUAL_REVIEW: "NO_REPLY",
+  ON_HOLD: "NO_REPLY",
+}
+
 function RecipientStatusBadge({ status }: { status: string }) {
-  const statusConfig = RECIPIENT_STATUS_OPTIONS.find(s => s.value === status)
+  // Map legacy status to new status if needed
+  const mappedStatus = LEGACY_STATUS_MAP[status] || status
+  const statusConfig = RECIPIENT_STATUS_OPTIONS.find(s => s.value === mappedStatus)
   
   const colorClasses: Record<string, string> = {
     amber: "bg-amber-100 text-amber-700",

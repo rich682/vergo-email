@@ -298,11 +298,13 @@ export class JobService {
     const taskCount = job.tasks.length
     const respondedCount = job.tasks.filter(t => 
       t.status === TaskStatus.REPLIED || 
-      t.status === TaskStatus.FULFILLED ||
-      t.status === TaskStatus.HAS_ATTACHMENTS
+      t.status === TaskStatus.COMPLETE ||
+      t.status === TaskStatus.FULFILLED ||  // legacy
+      t.status === TaskStatus.HAS_ATTACHMENTS  // legacy
     ).length
     const completedCount = job.tasks.filter(t => 
-      t.status === TaskStatus.FULFILLED
+      t.status === TaskStatus.COMPLETE ||
+      t.status === TaskStatus.FULFILLED  // legacy
     ).length
 
     return {
@@ -430,11 +432,13 @@ export class JobService {
         const taskCount = job.tasks.length
         const respondedCount = job.tasks.filter(t => 
           t.status === TaskStatus.REPLIED || 
-          t.status === TaskStatus.FULFILLED ||
-          t.status === TaskStatus.HAS_ATTACHMENTS
+          t.status === TaskStatus.COMPLETE ||
+          t.status === TaskStatus.FULFILLED ||  // legacy
+          t.status === TaskStatus.HAS_ATTACHMENTS  // legacy
         ).length
         const completedCount = job.tasks.filter(t => 
-          t.status === TaskStatus.FULFILLED
+          t.status === TaskStatus.COMPLETE ||
+          t.status === TaskStatus.FULFILLED  // legacy
         ).length
 
         // Resolve stakeholder count from labels
@@ -536,11 +540,13 @@ export class JobService {
     const taskCount = job.tasks.length
     const respondedCount = job.tasks.filter(t => 
       t.status === TaskStatus.REPLIED || 
-      t.status === TaskStatus.FULFILLED ||
-      t.status === TaskStatus.HAS_ATTACHMENTS
+      t.status === TaskStatus.COMPLETE ||
+      t.status === TaskStatus.FULFILLED ||  // legacy
+      t.status === TaskStatus.HAS_ATTACHMENTS  // legacy
     ).length
     const completedCount = job.tasks.filter(t => 
-      t.status === TaskStatus.FULFILLED
+      t.status === TaskStatus.COMPLETE ||
+      t.status === TaskStatus.FULFILLED  // legacy
     ).length
 
     return {
@@ -601,10 +607,17 @@ export class JobService {
   static computeDerivedStatus(tasks: Array<{ status: TaskStatus }>): JobStatus {
     if (tasks.length === 0) return JobStatus.ACTIVE
 
-    const allFulfilled = tasks.every(t => t.status === TaskStatus.FULFILLED)
-    if (allFulfilled) return JobStatus.COMPLETED
+    const allComplete = tasks.every(t => 
+      t.status === TaskStatus.COMPLETE || 
+      t.status === TaskStatus.FULFILLED  // legacy
+    )
+    if (allComplete) return JobStatus.COMPLETED
 
-    const anyAwaiting = tasks.some(t => t.status === TaskStatus.AWAITING_RESPONSE)
+    const anyAwaiting = tasks.some(t => 
+      t.status === TaskStatus.NO_REPLY ||
+      t.status === TaskStatus.AWAITING_RESPONSE ||  // legacy
+      t.status === TaskStatus.IN_PROGRESS  // legacy
+    )
     if (anyAwaiting) return JobStatus.WAITING
 
     return JobStatus.ACTIVE

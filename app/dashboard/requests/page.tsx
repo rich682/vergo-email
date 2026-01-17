@@ -83,22 +83,26 @@ interface LabelOption {
 
 // Status options for the dropdown - No reply, Replied, Complete
 const STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  { value: "NO_REPLY", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   { value: "REPLIED", label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  { value: "FULFILLED", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  { value: "COMPLETE", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
 ]
 
 // All possible statuses for display (including legacy ones for backward compatibility)
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
+  // New statuses
+  NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  // Legacy statuses (mapped to new display)
   AWAITING_RESPONSE: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   IN_PROGRESS: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
-  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   HAS_ATTACHMENTS: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   VERIFYING: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   REJECTED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
-  MANUAL_REVIEW: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  MANUAL_REVIEW: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
 }
 
@@ -376,12 +380,20 @@ export default function RequestsPage() {
     return { icon: Mail, label: "Unread", color: "text-gray-400", bgColor: "bg-gray-50" }
   }
 
-  // Calculate summary stats - simplified to just In Progress and Complete
-  // Count all non-FULFILLED statuses as "In Progress"
-  const inProgressCount = Object.entries(statusSummary)
-    .filter(([status]) => status !== "FULFILLED")
+  // Calculate summary stats - No reply, Replied, Complete
+  const noReplyStatuses = ["NO_REPLY", "AWAITING_RESPONSE", "IN_PROGRESS", "FLAGGED", "MANUAL_REVIEW", "ON_HOLD"]
+  const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
+  const completeStatuses = ["COMPLETE", "FULFILLED", "REJECTED"]
+  
+  const noReplyCount = Object.entries(statusSummary)
+    .filter(([status]) => noReplyStatuses.includes(status))
     .reduce((sum, [, count]) => sum + count, 0)
-  const fulfilledCount = statusSummary["FULFILLED"] || 0
+  const repliedCount = Object.entries(statusSummary)
+    .filter(([status]) => repliedStatuses.includes(status))
+    .reduce((sum, [, count]) => sum + count, 0)
+  const completeCount = Object.entries(statusSummary)
+    .filter(([status]) => completeStatuses.includes(status))
+    .reduce((sum, [, count]) => sum + count, 0)
 
   if (loading && requests.length === 0) {
     return (
@@ -417,23 +429,29 @@ export default function RequestsPage() {
         </p>
       </div>
 
-      {/* Summary Cards - Simplified */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-gray-900">{total}</div>
             <div className="text-sm text-gray-500">Total Requests</div>
           </CardContent>
         </Card>
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-amber-700">{noReplyCount}</div>
+            <div className="text-sm text-amber-600">No reply</div>
+          </CardContent>
+        </Card>
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-700">{inProgressCount}</div>
-            <div className="text-sm text-blue-600">In Progress</div>
+            <div className="text-2xl font-bold text-blue-700">{repliedCount}</div>
+            <div className="text-sm text-blue-600">Replied</div>
           </CardContent>
         </Card>
         <Card className="border-green-200 bg-green-50">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-700">{fulfilledCount}</div>
+            <div className="text-2xl font-bold text-green-700">{completeCount}</div>
             <div className="text-sm text-green-600">Complete</div>
           </CardContent>
         </Card>
@@ -498,8 +516,9 @@ export default function RequestsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-              <SelectItem value="FULFILLED">Complete</SelectItem>
+              <SelectItem value="NO_REPLY">No reply</SelectItem>
+              <SelectItem value="REPLIED">Replied</SelectItem>
+              <SelectItem value="COMPLETE">Complete</SelectItem>
             </SelectContent>
           </Select>
 
