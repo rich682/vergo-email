@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BulkActionToolbar } from "./bulk-action-toolbar"
-import { X } from "lucide-react"
+import { X, Check } from "lucide-react"
 
 interface Group {
   id: string
