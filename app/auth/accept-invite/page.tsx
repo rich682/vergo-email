@@ -3,11 +3,8 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { UserPlus, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import Image from "next/image"
+import { UserPlus, CheckCircle, AlertCircle, Loader2, Lock, ArrowRight } from "lucide-react"
 
 function AcceptInviteContent() {
   const searchParams = useSearchParams()
@@ -105,13 +102,11 @@ function AcceptInviteContent() {
   // Loading state
   if (validating) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardContent className="py-12 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-4" />
-            <p className="text-gray-600">Validating invitation...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-orange-500 mb-4" />
+          <p className="text-gray-600">Validating invitation...</p>
+        </div>
       </div>
     )
   }
@@ -119,28 +114,41 @@ function AcceptInviteContent() {
   // Invalid token state
   if (!tokenValid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-              <AlertCircle className="w-6 h-6 text-red-600" />
-            </div>
-            <CardTitle className="text-xl">Invalid Invitation</CardTitle>
-            <CardDescription className="mt-2">
-              {tokenError || "This invitation link is invalid or has expired."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-500 text-center">
-              Please contact your team administrator to request a new invitation.
-            </p>
-            <Link href="/auth/signin" className="block">
-              <Button variant="outline" className="w-full">
-                Go to sign in
-              </Button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <Link href="/">
+              <Image
+                src="/logo.svg"
+                alt="Vergo"
+                width={105}
+                height={32}
+                className="h-8 w-auto mx-auto"
+              />
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+          
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <h1 className="text-2xl font-semibold text-gray-900 mb-2">Invalid Invitation</h1>
+              <p className="text-gray-500 mb-6">
+                {tokenError || "This invitation link is invalid or has expired."}
+              </p>
+              <p className="text-sm text-gray-400 mb-8">
+                Please contact your team administrator to request a new invitation.
+              </p>
+              <Link
+                href="/auth/signin"
+                className="inline-flex items-center justify-center gap-2 w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl transition-all"
+              >
+                Go to sign in
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -148,120 +156,189 @@ function AcceptInviteContent() {
   // Success state
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-            <CardTitle className="text-xl">Welcome to {orgName}!</CardTitle>
-            <CardDescription className="mt-2">
-              Your account has been created successfully. You can now sign in and start using Vergo.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/auth/signin" className="block">
-              <Button className="w-full">
-                Sign in to your account
-              </Button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <Link href="/">
+              <Image
+                src="/logo.svg"
+                alt="Vergo"
+                width={105}
+                height={32}
+                className="h-8 w-auto mx-auto"
+              />
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+          
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="text-center">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+              <h1 className="text-2xl font-semibold text-gray-900 mb-2">Welcome to {orgName}!</h1>
+              <p className="text-gray-500 mb-8">
+                Your account has been created successfully. You can now sign in and start using Vergo.
+              </p>
+              <Link
+                href="/auth/signin"
+                className="inline-flex items-center justify-center gap-2 w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl transition-all group"
+              >
+                Sign in to your account
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
+  // Check if name was provided during invite
+  const hasProvidedName = inviteName && inviteName.trim().length > 0
+
   // Accept invite form
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-            <UserPlus className="w-6 h-6 text-indigo-600" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <Link href="/">
+            <Image
+              src="/logo.svg"
+              alt="Vergo"
+              width={105}
+              height={32}
+              className="h-8 w-auto mx-auto"
+            />
+          </Link>
+        </div>
+        
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-6">
+              <UserPlus className="w-8 h-8 text-orange-600" />
+            </div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-2">Join {orgName}</h1>
+            <p className="text-gray-500">
+              {hasProvidedName ? (
+                <>Hi <span className="font-medium text-gray-700">{inviteName}</span>! Set a password to join as a <span className="font-medium text-gray-700">{inviteRole?.toLowerCase()}</span>.</>
+              ) : (
+                <>You've been invited to join as a <span className="font-medium text-gray-700">{inviteRole?.toLowerCase()}</span></>
+              )}
+            </p>
           </div>
-          <CardTitle className="text-xl">Join {orgName}</CardTitle>
-          <CardDescription>
-            You've been invited to join as a <strong>{inviteRole?.toLowerCase()}</strong>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-red-500 text-xs">!</span>
+                </div>
                 {error}
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
+            {/* Email - always shown but disabled */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <input
                 type="email"
                 value={inviteEmail || ""}
                 disabled
-                className="bg-gray-50"
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-500 cursor-not-allowed"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Your name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="John Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
-            </div>
+            {/* Name - only show if not provided during invite */}
+            {!hasProvidedName && (
+              <div className="space-y-1.5">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                  Your name
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  placeholder="John Smith"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                />
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Create password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-              />
-              <p className="text-xs text-gray-500">Must be at least 8 characters</p>
+            {/* Password fields */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    autoFocus
+                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                  Confirm
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  />
+                </div>
+              </div>
             </div>
+            <p className="text-xs text-gray-500 -mt-2">Must be at least 8 characters</p>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={8}
-              />
-            </div>
-
-            <Button type="submit" className="w-full" disabled={loading}>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+            >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   Creating account...
                 </>
               ) : (
-                "Accept invitation"
+                <>
+                  Accept invitation
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </>
               )}
-            </Button>
+            </button>
 
             <p className="text-center text-sm text-gray-500">
               Already have an account?{" "}
-              <Link href="/auth/signin" className="text-indigo-600 hover:text-indigo-500 font-medium">
+              <Link href="/auth/signin" className="text-orange-600 hover:text-orange-700 font-medium transition-colors">
                 Sign in
               </Link>
             </p>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -269,13 +346,11 @@ function AcceptInviteContent() {
 export default function AcceptInvitePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardContent className="py-12 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-4" />
-            <p className="text-gray-600">Loading...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-orange-500 mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
       </div>
     }>
       <AcceptInviteContent />
