@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10)
 
-    // Create organization and admin user in a transaction
+    // Create organization, admin user, and starter data in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create organization
       const organization = await tx.organization.create({
@@ -115,7 +115,36 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      return { organization, user }
+      // Create "Onboarding" group for quick testing
+      const onboardingGroup = await tx.group.create({
+        data: {
+          name: "Onboarding",
+          description: "New team members for onboarding",
+          color: "#10b981", // Green color
+          organizationId: organization.id
+        }
+      })
+
+      // Create the user as a contact/stakeholder (so they can send requests to themselves)
+      const userEntity = await tx.entity.create({
+        data: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: normalizedEmail,
+          contactType: "EMPLOYEE",
+          organizationId: organization.id
+        }
+      })
+
+      // Add the user entity to the Onboarding group
+      await tx.entityGroup.create({
+        data: {
+          entityId: userEntity.id,
+          groupId: onboardingGroup.id
+        }
+      })
+
+      return { organization, user, onboardingGroup, userEntity }
     })
 
     // Send verification email (use first name for friendly greeting)

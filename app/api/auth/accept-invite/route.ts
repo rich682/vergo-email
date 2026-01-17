@@ -138,15 +138,74 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10)
 
-    // Update user: set password, clear token, mark as verified
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        name: name?.trim() || user.name,
-        verificationToken: null,
-        tokenExpiresAt: null,
-        emailVerified: true
+    // Parse name into first/last name for entity creation
+    const finalName = name?.trim() || user.name || ""
+    const nameParts = finalName.split(" ")
+    const firstName = nameParts[0] || "Team"
+    const lastName = nameParts.slice(1).join(" ") || "Member"
+
+    // Update user and create entity in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Update user: set password, clear token, mark as verified
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          name: finalName,
+          verificationToken: null,
+          tokenExpiresAt: null,
+          emailVerified: true
+        }
+      })
+
+      // Check if entity already exists for this email
+      const existingEntity = await tx.entity.findFirst({
+        where: {
+          email: user.email,
+          organizationId: user.organizationId
+        }
+      })
+
+      if (!existingEntity) {
+        // Find or create the Onboarding group
+        let onboardingGroup = await tx.group.findFirst({
+          where: {
+            name: "Onboarding",
+            organizationId: user.organizationId
+          }
+        })
+
+        if (!onboardingGroup) {
+          onboardingGroup = await tx.group.create({
+            data: {
+              name: "Onboarding",
+              description: "New team members for onboarding",
+              color: "#10b981", // Green color
+              organizationId: user.organizationId
+            }
+          })
+        }
+
+        // Create entity for the user
+        const userEntity = await tx.entity.create({
+          data: {
+            firstName,
+            lastName,
+            email: user.email,
+            contactType: "EMPLOYEE",
+            organizationId: user.organizationId
+          }
+        })
+
+        // Add to Onboarding group
+        await tx.entityGroup.create({
+          data: {
+            entityId: userEntity.id,
+            groupId: onboardingGroup.id
+          }
+        })
+
+        console.log(`[AcceptInvite] Created entity ${userEntity.id} for user ${user.id}`)
       }
     })
 
