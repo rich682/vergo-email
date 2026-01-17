@@ -135,6 +135,10 @@ model User {
   verificationToken String?   @unique
   tokenExpiresAt    DateTime?
 
+  // Onboarding tracking
+  onboardingCompleted Boolean @default(false)
+  onboardingDismissed Boolean @default(false)
+
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   emailDrafts       EmailDraft[]
   ownedJobs         Job[]             @relation("JobOwner")

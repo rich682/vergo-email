@@ -40,6 +40,7 @@ import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
+import { OnboardingChecklist } from "@/components/onboarding-checklist"
 
 // ============================================
 // Types
@@ -791,6 +792,9 @@ export default function JobsPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Onboarding Checklist - shows for new users */}
+        <OnboardingChecklist />
+
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
