@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Mail, Check, X, RefreshCw, RotateCcw } from "lucide-react"
+import { Mail, Check, X, RefreshCw, RotateCcw, Building2 } from "lucide-react"
 
 function SettingsContent() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -15,6 +15,11 @@ function SettingsContent() {
   const [loadingSignature, setLoadingSignature] = useState(true)
   const [savingSignature, setSavingSignature] = useState(false)
   const searchParams = useSearchParams()
+  
+  // Company settings state
+  const [companyName, setCompanyName] = useState<string>("")
+  const [loadingCompany, setLoadingCompany] = useState(true)
+  const [savingCompany, setSavingCompany] = useState(false)
 
   useEffect(() => {
     // Check for success/error messages in URL
@@ -59,7 +64,48 @@ function SettingsContent() {
 
     fetchAccounts()
     fetchUserSignature()
+    fetchCompanySettings()
   }, [searchParams])
+
+  const fetchCompanySettings = async () => {
+    try {
+      setLoadingCompany(true)
+      const response = await fetch("/api/org/settings")
+      if (response.ok) {
+        const data = await response.json()
+        setCompanyName(data.name || "")
+      }
+    } catch (error) {
+      console.error("Error fetching company settings:", error)
+    } finally {
+      setLoadingCompany(false)
+    }
+  }
+
+  const handleSaveCompanyName = async () => {
+    try {
+      setSavingCompany(true)
+      setMessage(null)
+      const response = await fetch("/api/org/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: companyName })
+      })
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to save company name")
+      }
+      
+      setMessage({ type: "success", text: "Company name saved successfully!" })
+      setTimeout(() => setMessage(null), 5000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to save company name" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setSavingCompany(false)
+    }
+  }
 
   const fetchUserSignature = async () => {
     try {
@@ -258,6 +304,51 @@ function SettingsContent() {
         )}
 
         <div className="space-y-6 max-w-3xl">
+          {/* Company Settings Section */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <h2 className="text-sm font-medium text-gray-900">Company Settings</h2>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <Label htmlFor="companyName" className="text-sm font-medium text-gray-700 mb-2 block">
+                  Company Name
+                </Label>
+                {loadingCompany ? (
+                  <div className="py-4 text-gray-500 text-sm">Loading...</div>
+                ) : (
+                  <>
+                    <input
+                      id="companyName"
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Your Company Inc."
+                      maxLength={100}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      This name appears in email invitations and throughout the app.
+                    </p>
+                    <button
+                      onClick={handleSaveCompanyName}
+                      disabled={savingCompany || !companyName.trim()}
+                      className="
+                        mt-4 px-4 py-2 rounded-md text-sm font-medium
+                        bg-gray-900 text-white
+                        hover:bg-gray-800
+                        disabled:opacity-50 disabled:cursor-not-allowed
+                        transition-colors
+                      "
+                    >
+                      {savingCompany ? "Saving..." : "Save Company Name"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Email Signature Section */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
