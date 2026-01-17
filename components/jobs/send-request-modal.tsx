@@ -44,7 +44,10 @@ import {
   FileSpreadsheet,
   UserCheck,
   Bell,
+  Settings,
+  ArrowRight,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 // Data Personalization Flow
 import { DataPersonalizationFlow } from "./data-personalization-flow"
@@ -164,6 +167,12 @@ export function SendRequestModal({
   stakeholderContacts,
   onSuccess,
 }: SendRequestModalProps) {
+  const router = useRouter()
+  
+  // Email account state
+  const [hasEmailAccount, setHasEmailAccount] = useState<boolean | null>(null) // null = loading
+  const [checkingAccounts, setCheckingAccounts] = useState(false)
+  
   // State
   const [state, setState] = useState<ModalState>("mode_selection")
   const [mode, setMode] = useState<RequestMode | null>(null)
@@ -200,6 +209,36 @@ export function SendRequestModal({
   }>>([])
   const [loadingReminderPreviews, setLoadingReminderPreviews] = useState(false)
   const [reminderPreviewIndex, setReminderPreviewIndex] = useState(0)
+
+  // Check if user has connected email accounts
+  const checkEmailAccounts = useCallback(async () => {
+    setCheckingAccounts(true)
+    try {
+      const response = await fetch("/api/email-accounts", {
+        credentials: "include",
+      })
+      if (response.ok) {
+        const accounts = await response.json()
+        // Check if there's at least one active account
+        const hasActive = Array.isArray(accounts) && accounts.some((a: any) => a.isActive)
+        setHasEmailAccount(hasActive)
+      } else {
+        setHasEmailAccount(false)
+      }
+    } catch (err) {
+      console.error("Error checking email accounts:", err)
+      setHasEmailAccount(false)
+    } finally {
+      setCheckingAccounts(false)
+    }
+  }, [])
+
+  // Check email accounts when modal opens
+  useEffect(() => {
+    if (open && hasEmailAccount === null) {
+      checkEmailAccounts()
+    }
+  }, [open, hasEmailAccount, checkEmailAccounts])
 
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
@@ -340,6 +379,7 @@ export function SendRequestModal({
       setShowReminderPreview(false)
       setReminderPreviews([])
       setReminderPreviewIndex(0)
+      setHasEmailAccount(null) // Reset so we re-check next time
     }
   }, [open])
 
@@ -628,8 +668,53 @@ export function SendRequestModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Loading email account check */}
+        {(checkingAccounts || hasEmailAccount === null) && state === "mode_selection" && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+            <p className="mt-3 text-sm text-gray-500">Checking email connection...</p>
+          </div>
+        )}
+
+        {/* No email account warning */}
+        {hasEmailAccount === false && state === "mode_selection" && !checkingAccounts && (
+          <div className="py-8">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                <Mail className="w-8 h-8 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Connect an email account first
+              </h3>
+              <p className="text-sm text-gray-500 max-w-md mb-6">
+                To send requests, you need to connect your Gmail or Microsoft email account. 
+                This lets Vergo send emails on your behalf and track responses.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    router.push("/dashboard/settings")
+                  }}
+                  className="bg-gray-900 hover:bg-gray-800"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Go to Settings
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mode Selection */}
-        {state === "mode_selection" && (
+        {state === "mode_selection" && hasEmailAccount === true && !checkingAccounts && (
           <div className="space-y-6 py-4">
             <p className="text-sm text-gray-600 text-center">
               Choose how you want to send this request
