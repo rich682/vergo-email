@@ -13,13 +13,17 @@ export const dynamic = "force-dynamic"
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Require authentication
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
+    // Check for admin secret or authentication
     const { searchParams } = new URL(request.url)
+    const adminSecret = searchParams.get("secret")
+    
+    // Allow with secret OR with valid session
+    if (adminSecret !== "vergo-admin-2026") {
+      const session = await getServerSession(authOptions)
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized - provide secret parameter" }, { status: 401 })
+      }
+    }
     const email = searchParams.get("email")
 
     if (!email) {
