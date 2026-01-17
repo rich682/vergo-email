@@ -170,10 +170,10 @@ export default function SignInPage() {
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="max-w-lg">
             <h2 className="font-display text-4xl mb-6">
-              Collect documents from clients, effortlessly.
+              Collect information from stakeholders, effortlessly.
             </h2>
             <p className="text-xl text-white/80 mb-12 leading-relaxed">
-              Send smart requests, track responses automatically, and close your books faster with AI-powered follow-ups.
+              Send smart requests, track responses automatically, and close tasks faster with AI-powered follow-ups.
             </p>
 
             {/* Feature highlights */}
@@ -181,7 +181,7 @@ export default function SignInPage() {
               {[
                 "Automated email follow-ups",
                 "Real-time response tracking",
-                "AI-powered document collection",
+                "AI-powered request management",
               ].map((feature, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
