@@ -3,9 +3,8 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import Image from "next/image"
+import { CheckCircle, AlertCircle, Loader2, ArrowRight, Sparkles } from "lucide-react"
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams()
@@ -47,13 +46,18 @@ function VerifyEmailContent() {
   // Loading state
   if (verifying) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardContent className="py-12 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-4" />
-            <p className="text-gray-600">Verifying your email...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <Link href="/" className="flex justify-center mb-8">
+            <Image src="/logo.svg" alt="Vergo" width={105} height={32} className="h-8 w-auto" />
+          </Link>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+            <div className="text-center py-8">
+              <Loader2 className="w-10 h-10 animate-spin mx-auto text-orange-500 mb-4" />
+              <p className="text-gray-600">Verifying your email...</p>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -61,67 +65,85 @@ function VerifyEmailContent() {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-              <AlertCircle className="w-6 h-6 text-red-600" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <Link href="/" className="flex justify-center mb-8">
+            <Image src="/logo.svg" alt="Vergo" width={105} height={32} className="h-8 w-auto" />
+          </Link>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-400 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/25">
+              <AlertCircle className="w-8 h-8 text-white" />
             </div>
-            <CardTitle className="text-xl">Verification Failed</CardTitle>
-            <CardDescription className="mt-2">
-              {error}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-500 text-center">
+            <h1 className="font-display text-2xl text-gray-900 mb-2">Verification Failed</h1>
+            <p className="text-gray-500 mb-4">{error}</p>
+            <p className="text-sm text-gray-400 mb-8">
               The verification link may have expired or already been used.
             </p>
-            <div className="flex flex-col gap-2">
-              <Link href="/auth/signin" className="block">
-                <Button className="w-full">
-                  Go to sign in
-                </Button>
+            <div className="space-y-3">
+              <Link
+                href="/auth/signin"
+                className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all group"
+              >
+                Go to sign in
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
-              <Link href="/signup" className="block">
-                <Button variant="outline" className="w-full">
-                  Create new account
-                </Button>
+              <Link
+                href="/signup"
+                className="w-full py-3 px-4 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center"
+              >
+                Create new account
               </Link>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     )
   }
 
   // Success state
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="w-6 h-6 text-green-600" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md">
+        <Link href="/" className="flex justify-center mb-8">
+          <Image src="/logo.svg" alt="Vergo" width={105} height={32} className="h-8 w-auto" />
+        </Link>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
+            <CheckCircle className="w-8 h-8 text-white" />
           </div>
-          <CardTitle className="text-xl">Email Verified!</CardTitle>
-          <CardDescription className="mt-2">
+          <h1 className="font-display text-2xl text-gray-900 mb-2">Email Verified!</h1>
+          <p className="text-gray-500 mb-6">
             {orgName ? (
-              <>Your account for <strong>{orgName}</strong> is now active.</>
+              <>Your account for <span className="font-medium text-gray-700">{orgName}</span> is now active.</>
             ) : (
               <>Your email has been verified successfully.</>
             )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-gray-500 text-center">
-            You can now sign in and start using Vergo to automate your document collection.
           </p>
-          <Link href="/auth/signin" className="block">
-            <Button className="w-full">
-              Sign in to your account
-            </Button>
+
+          {/* Welcome message */}
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-8 text-left">
+            <div className="flex gap-3">
+              <Sparkles className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-orange-800">
+                  You're all set!
+                </p>
+                <p className="text-sm text-orange-700 mt-1">
+                  Sign in to start automating your document collection.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Link
+            href="/auth/signin"
+            className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all group"
+          >
+            Sign in to your account
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -129,13 +151,18 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardContent className="py-12 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-4" />
-            <p className="text-gray-600">Verifying...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md">
+          <div className="flex justify-center mb-8">
+            <div className="h-8 w-24 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+            <div className="text-center py-8">
+              <Loader2 className="w-10 h-10 animate-spin mx-auto text-orange-500 mb-4" />
+              <p className="text-gray-600">Verifying...</p>
+            </div>
+          </div>
+        </div>
       </div>
     }>
       <VerifyEmailContent />

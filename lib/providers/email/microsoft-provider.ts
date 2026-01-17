@@ -55,7 +55,25 @@ export class MicrosoftProvider implements EmailProviderDriver {
     const domain = refreshedAccount.email.split('@')[1] || 'outlook.com'
     const generatedMessageId = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${domain}>`
     
-    const body = {
+    // Build internet message headers for threading
+    const internetMessageHeaders: Array<{ name: string; value: string }> = []
+    
+    // Add In-Reply-To header for threading (critical for email clients to group as thread)
+    if (params.inReplyTo) {
+      const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
+      internetMessageHeaders.push({ name: "In-Reply-To", value: inReplyToFormatted })
+    }
+    
+    // Add References header for threading
+    if (params.references) {
+      internetMessageHeaders.push({ name: "References", value: params.references })
+    } else if (params.inReplyTo) {
+      // If no references but we have inReplyTo, use that as references
+      const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
+      internetMessageHeaders.push({ name: "References", value: inReplyToFormatted })
+    }
+    
+    const body: any = {
       message: {
         subject: params.subject,
         body: {
@@ -70,6 +88,14 @@ export class MicrosoftProvider implements EmailProviderDriver {
       },
       saveToSentItems: true,
     }
+    
+    // Add threading headers if we're replying
+    if (internetMessageHeaders.length > 0) {
+      body.message.internetMessageHeaders = internetMessageHeaders
+    }
+    
+    // If we have a conversationId/threadId, try to use the reply endpoint for proper threading
+    // Note: Microsoft Graph doesn't have a direct "add to conversation" like Gmail's threadId
     
     const resp = await fetch(`${GRAPH_BASE}/me/sendMail`, {
       method: "POST",

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { X, Mail, Clock, Users, Calendar, Bell, ChevronDown, ChevronRight, Eye, Check, Pause, PlayCircle, AlertCircle, MoreHorizontal } from "lucide-react"
+import { X, Mail, Clock, Users, Calendar, Bell, ChevronDown, ChevronRight, Eye, Check, Pause, PlayCircle, AlertCircle, MoreHorizontal, MessageSquare } from "lucide-react"
 import { format } from "date-fns"
 import {
   Select,
@@ -61,13 +61,11 @@ interface RequestDetailModalProps {
   onStatusChange?: () => void
 }
 
-// Status options for recipient tasks
+// Status options for recipient tasks - No reply, Replied, Complete
 const RECIPIENT_STATUS_OPTIONS = [
-  { value: "AWAITING_RESPONSE", label: "Awaiting", icon: Clock, color: "amber" },
-  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, color: "blue" },
+  { value: "AWAITING_RESPONSE", label: "No reply", icon: Clock, color: "amber" },
+  { value: "REPLIED", label: "Replied", icon: MessageSquare, color: "blue" },
   { value: "FULFILLED", label: "Complete", icon: Check, color: "green" },
-  { value: "REJECTED", label: "Rejected", icon: AlertCircle, color: "red" },
-  { value: "ON_HOLD", label: "On Hold", icon: Pause, color: "gray" },
 ]
 
 function RecipientStatusBadge({ status }: { status: string }) {

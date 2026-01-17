@@ -2,11 +2,8 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Mail, CheckCircle } from "lucide-react"
+import Image from "next/image"
+import { ArrowLeft, Mail, CheckCircle, Loader2, ArrowRight } from "lucide-react"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -40,93 +37,144 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-            <CardTitle className="text-xl">Check your email</CardTitle>
-            <CardDescription className="mt-2">
-              If an account exists for <strong>{email}</strong>, you'll receive a password reset link shortly.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-500 text-center">
-              Didn't receive the email? Check your spam folder or try again.
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSubmitted(false)
-                  setEmail("")
-                }}
-                className="w-full"
-              >
-                Try another email
-              </Button>
-              <Link href="/auth/signin" className="w-full">
-                <Button variant="ghost" className="w-full">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to sign in
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-            <Mail className="w-6 h-6 text-indigo-600" />
-          </div>
-          <CardTitle className="text-xl">Forgot your password?</CardTitle>
-          <CardDescription>
-            Enter your email address and we'll send you a link to reset your password.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-                {error}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <Link href="/" className="flex justify-center mb-8">
+          <Image
+            src="/logo.svg"
+            alt="Vergo"
+            width={105}
+            height={32}
+            className="h-8 w-auto"
+          />
+        </Link>
+
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          {submitted ? (
+            <>
+              {/* Success State */}
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
+                  <CheckCircle className="w-8 h-8 text-white" />
+                </div>
+
+                <h1 className="font-display text-2xl text-gray-900 mb-2">
+                  Check your email
+                </h1>
+                <p className="text-gray-500 mb-6">
+                  If an account exists for <span className="font-medium text-gray-700">{email}</span>, you'll receive a password reset link shortly.
+                </p>
+
+                <p className="text-sm text-gray-400 mb-6">
+                  Didn't receive the email? Check your spam folder or try again.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      setSubmitted(false)
+                      setEmail("")
+                    }}
+                    className="w-full py-3 px-4 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                  >
+                    Try another email
+                  </button>
+                  <Link
+                    href="/auth/signin"
+                    className="w-full py-3 px-4 text-gray-500 font-medium rounded-xl hover:text-gray-700 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to sign in
+                  </Link>
+                </div>
               </div>
-            )}
-            
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
+            </>
+          ) : (
+            <>
+              {/* Form State */}
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                  <Mail className="w-8 h-8 text-white" />
+                </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Sending..." : "Send reset link"}
-            </Button>
+                <h1 className="font-display text-2xl text-gray-900 mb-2">
+                  Forgot your password?
+                </h1>
+                <p className="text-gray-500">
+                  No worries! Enter your email and we'll send you reset instructions.
+                </p>
+              </div>
 
-            <Link href="/auth/signin" className="block">
-              <Button variant="ghost" className="w-full">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to sign in
-              </Button>
-            </Link>
-          </form>
-        </CardContent>
-      </Card>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 flex items-center gap-3">
+                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-red-500 text-xs">!</span>
+                    </div>
+                    {error}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      id="email"
+                      type="email"
+                      placeholder="you@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                      className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      Send reset link
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    </>
+                  )}
+                </button>
+
+                <Link
+                  href="/auth/signin"
+                  className="w-full py-3 px-4 text-gray-500 font-medium rounded-xl hover:text-gray-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to sign in
+                </Link>
+              </form>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <p className="mt-8 text-center text-sm text-gray-400">
+          Need help?{" "}
+          <a href="mailto:support@getvergo.com" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
+            Contact support
+          </a>
+        </p>
+      </div>
     </div>
   )
 }

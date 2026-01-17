@@ -493,6 +493,10 @@ export class EmailSendingService {
     body: string
     htmlBody?: string
     accountId?: string
+    // Threading params for replies
+    inReplyTo?: string
+    references?: string
+    threadId?: string
   }): Promise<{ messageId: string }> {
     // Reminders bypass rate limiting - they are intentional scheduled follow-ups
     // The reminder system already has its own frequency controls
@@ -541,7 +545,11 @@ export class EmailSendingService {
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
-        replyTo
+        replyTo,
+        // Pass threading headers for proper email thread grouping
+        inReplyTo: data.inReplyTo,
+        references: data.references,
+        threadId: data.threadId
       })
     } else if (account.provider === EmailProvider.MICROSOFT) {
       const provider = new MicrosoftProvider()
@@ -551,7 +559,11 @@ export class EmailSendingService {
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
-        replyTo
+        replyTo,
+        // Pass threading headers for proper email thread grouping
+        inReplyTo: data.inReplyTo,
+        references: data.references,
+        threadId: data.threadId
       })
     } else {
       // GENERIC_SMTP or fallback

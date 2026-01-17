@@ -45,35 +45,63 @@ export async function POST(
       )
     }
 
-    // Send reply email
-    const sent = await EmailSendingService.sendEmail({
+    // Find the last message in the conversation to get threading info
+    // Prefer the most recent message (either inbound or outbound) for In-Reply-To
+    const lastMessage = await prisma.message.findFirst({
+      where: { taskId: task.id },
+      orderBy: { createdAt: "desc" }
+    })
+
+    // Build threading headers
+    let inReplyTo: string | undefined
+    let references: string | undefined
+    let threadId: string | undefined
+
+    if (lastMessage) {
+      // Get the Message-ID of the last message to use as In-Reply-To
+      const lastMessageId = lastMessage.messageIdHeader || 
+        (lastMessage.providerData as any)?.messageIdHeader || 
+        (lastMessage.providerData as any)?.internetMessageId
+      
+      if (lastMessageId) {
+        inReplyTo = lastMessageId
+      }
+
+      // Build References header (chain of message IDs)
+      // For simplicity, we'll just use the In-Reply-To value
+      // A more complete implementation would collect all message IDs in the thread
+      if (inReplyTo) {
+        references = inReplyTo
+      }
+
+      // Get thread ID for Gmail threading
+      threadId = lastMessage.threadId || 
+        (lastMessage.providerData as any)?.threadId ||
+        (lastMessage.providerData as any)?.conversationId ||
+        task.threadId || undefined
+    }
+
+    // Get original subject for proper Re: threading
+    const originalSubject = lastMessage?.subject || task.campaignName || "Your message"
+    // Remove existing Re: prefixes to avoid "Re: Re: Re:"
+    const cleanSubject = originalSubject.replace(/^(Re:\s*)+/i, "").trim()
+    const replySubject = `Re: ${cleanSubject}`
+
+    // Send reply using existing task method with threading headers
+    const sent = await EmailSendingService.sendEmailForExistingTask({
+      taskId: task.id,
+      entityId: task.entityId,
       organizationId: session.user.organizationId,
       to: task.entity.email,
-      toName: task.entity.firstName,
-      subject: `Re: ${task.replyToEmail || "Your message"}`,
+      subject: replySubject,
       body: replyBody,
-      campaignName: task.campaignName || undefined,
-      campaignType: task.campaignType || undefined
+      htmlBody: replyBody, // Treat as HTML
+      inReplyTo,
+      references,
+      threadId
     })
 
-    // Persist outbound message for thread history
-    await prisma.message.create({
-      data: {
-        taskId: task.id,
-        entityId: task.entityId,
-        direction: "OUTBOUND",
-        channel: "EMAIL",
-        subject: `Re: ${task.replyToEmail || task.campaignName || "Your message"}`,
-        body: replyBody,
-        fromAddress: session.user.email || "noreply@vergo.com",
-        toAddress: task.entity.email,
-        providerId: sent?.providerId || null,
-        providerData: sent?.providerData || null,
-        threadId: task.threadId || null,
-      }
-    })
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, messageId: sent.messageId })
   } catch (error: any) {
     console.error("Error sending reply:", error)
     return NextResponse.json(

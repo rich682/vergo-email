@@ -25,16 +25,16 @@ const statusStyles: Record<string, { bg: string; text: string; label: string }> 
   COMPLETED: { bg: 'bg-green-50', text: 'text-green-700', label: 'Completed' },
   ARCHIVED: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Archived' },
   
-  // Task/Request statuses
-  AWAITING_RESPONSE: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Awaiting' },
+  // Task/Request statuses - No reply, Replied, Complete
+  AWAITING_RESPONSE: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'No reply' },
   REPLIED: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Replied' },
-  HAS_ATTACHMENTS: { bg: 'bg-purple-50', text: 'text-purple-700', label: 'Has Attachments' },
-  VERIFYING: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Verifying' },
+  HAS_ATTACHMENTS: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Replied' },
+  VERIFYING: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Replied' },
   FULFILLED: { bg: 'bg-green-50', text: 'text-green-700', label: 'Complete' },
-  REJECTED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Rejected' },
-  FLAGGED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Flagged' },
-  MANUAL_REVIEW: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Manual Review' },
-  ON_HOLD: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'On Hold' },
+  REJECTED: { bg: 'bg-green-50', text: 'text-green-700', label: 'Complete' },
+  FLAGGED: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'No reply' },
+  MANUAL_REVIEW: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Replied' },
+  ON_HOLD: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'No reply' },
   
   // Email draft statuses
   DRAFT: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Draft' },

@@ -7,6 +7,10 @@ export interface EmailSendParams {
   body: string
   htmlBody?: string
   replyTo: string
+  // Threading headers for replies
+  inReplyTo?: string       // Message-ID of the email being replied to
+  references?: string      // Chain of Message-IDs in the thread
+  threadId?: string        // Gmail threadId or Microsoft conversationId for threading
 }
 
 export interface ContactSyncResult {

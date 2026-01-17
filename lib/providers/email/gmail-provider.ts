@@ -60,16 +60,36 @@ export class GmailProvider implements EmailProviderDriver {
     // Format: <unique-id@domain> where domain should match the sender's domain
     const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${account.email.split('@')[1] || 'gmail.com'}>`
 
+    // Build message headers - include threading headers if this is a reply
     const messageParts = [
       `To: ${params.to}`,
       `From: ${account.email}`,
       `Reply-To: ${params.replyTo}`,
       `Message-ID: ${messageIdHeader}`,
       `Subject: ${params.subject}`,
+    ]
+
+    // Add In-Reply-To header for threading (critical for email clients to group as thread)
+    if (params.inReplyTo) {
+      // Ensure proper format with angle brackets
+      const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
+      messageParts.push(`In-Reply-To: ${inReplyToFormatted}`)
+    }
+
+    // Add References header for threading (chain of message IDs)
+    if (params.references) {
+      messageParts.push(`References: ${params.references}`)
+    } else if (params.inReplyTo) {
+      // If no references but we have inReplyTo, use that as references
+      const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
+      messageParts.push(`References: ${inReplyToFormatted}`)
+    }
+
+    messageParts.push(
       "Content-Type: text/html; charset=utf-8",
       "",
       params.htmlBody || params.body,
-    ]
+    )
 
     const message = messageParts.join("\n")
     const encodedMessage = Buffer.from(message)
@@ -78,9 +98,13 @@ export class GmailProvider implements EmailProviderDriver {
       .replace(/\//g, "_")
       .replace(/=+$/, "")
 
+    // If we have a threadId, include it so Gmail adds to the same thread
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw: encodedMessage },
+      requestBody: { 
+        raw: encodedMessage,
+        threadId: params.threadId || undefined  // Gmail will add to existing thread if provided
+      },
     })
 
     // After sending, fetch the message to get Gmail's assigned Message-ID (which might differ from what we set)

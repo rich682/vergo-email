@@ -81,24 +81,25 @@ interface LabelOption {
   color: string | null
 }
 
-// Status options for the dropdown - simplified to just 2 statuses
+// Status options for the dropdown - No reply, Replied, Complete
 const STATUS_OPTIONS = [
-  { value: "IN_PROGRESS", label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  { value: "AWAITING_RESPONSE", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  { value: "REPLIED", label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   { value: "FULFILLED", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
 ]
 
 // All possible statuses for display (including legacy ones for backward compatibility)
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
-  AWAITING_RESPONSE: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  IN_PROGRESS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  REPLIED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  HAS_ATTACHMENTS: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  VERIFYING: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  AWAITING_RESPONSE: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  IN_PROGRESS: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  HAS_ATTACHMENTS: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  VERIFYING: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   REJECTED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  FLAGGED: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  MANUAL_REVIEW: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  ON_HOLD: { label: "In Progress", icon: PlayCircle, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+  MANUAL_REVIEW: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
 }
 
 // Status badge component - cleaner display

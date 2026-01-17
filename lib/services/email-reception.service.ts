@@ -368,8 +368,17 @@ export class EmailReceptionService {
       }
     }
 
-    // Update task - DO NOT auto-change status, let user decide
-    // Only update hasAttachments and documentKey
+    // Check if this is an auto-reply (OOO, bounce, etc.) - check before updating status
+    const isAutoReply = this.isAutoReply(data)
+    if (isAutoReply) {
+      console.log(`[Email Reception] Detected auto-reply from ${data.from}: "${data.subject?.substring(0, 50)}"`)
+    }
+
+    // Determine if we should auto-update status to REPLIED
+    // Only update if: not an auto-reply AND current status is not already FULFILLED (Complete)
+    const shouldUpdateStatus = !isAutoReply && task.status !== "FULFILLED"
+
+    // Update task - auto-change status to REPLIED when a real reply is received
     const updatedTask = await prisma.task.update({
       where: { id: task.id },
       data: {
@@ -378,15 +387,11 @@ export class EmailReceptionService {
           ? attachmentKeys[0]
           : task.documentKey,
         // Update readStatus to indicate a reply was received
-        readStatus: "replied"
+        readStatus: "replied",
+        // Auto-update status to REPLIED when receiving a real reply (not auto-reply)
+        ...(shouldUpdateStatus && { status: "REPLIED" })
       }
     })
-
-    // Check if this is an auto-reply (OOO, bounce, etc.)
-    const isAutoReply = this.isAutoReply(data)
-    if (isAutoReply) {
-      console.log(`[Email Reception] Detected auto-reply from ${data.from}: "${data.subject?.substring(0, 50)}"`)
-    }
 
     // Create message record
     const message = await prisma.message.create({

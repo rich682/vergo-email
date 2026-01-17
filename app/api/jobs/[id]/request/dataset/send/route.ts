@@ -5,6 +5,7 @@
  * 
  * Sends personalized emails to all valid recipients in the dataset.
  * Creates Tasks for tracking but does not link to Entity records.
+ * Returns info about new vs existing contacts for optional import.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -33,6 +34,14 @@ interface SendResult {
   success: boolean
   taskId?: string
   error?: string
+}
+
+interface NewContactInfo {
+  email: string
+  name: string | null
+  firstName: string | null
+  lastName: string | null
+  data: Record<string, string>
 }
 
 export async function POST(
@@ -142,11 +151,23 @@ export async function POST(
       )
     }
 
+    // Check which emails already exist in the contacts database
+    const recipientEmails = validRecipients.map(r => r.recipientEmail.toLowerCase())
+    const existingEntities = await prisma.entity.findMany({
+      where: {
+        organizationId,
+        email: { in: recipientEmails, mode: "insensitive" }
+      },
+      select: { email: true }
+    })
+    const existingEmailsSet = new Set(existingEntities.map(e => e.email?.toLowerCase()))
+
     // Generate campaign name
     const campaignName = `Dataset Request: ${job.name} - ${new Date().toISOString().split('T')[0]}`
 
-    // Send emails
+    // Send emails and track new contacts
     const results: SendResult[] = []
+    const newContacts: NewContactInfo[] = []
     let successCount = 0
     let failCount = 0
 
@@ -210,6 +231,21 @@ export async function POST(
         })
         successCount++
 
+        // Track if this is a new contact (not in database)
+        if (!existingEmailsSet.has(recipient.recipientEmail.toLowerCase())) {
+          const firstName = dataJson.first_name || dataJson.firstName || dataJson.name?.split(' ')[0] || null
+          const lastName = dataJson.last_name || dataJson.lastName || 
+            (dataJson.name?.split(' ').slice(1).join(' ')) || null
+          
+          newContacts.push({
+            email: recipient.recipientEmail,
+            name: recipientName || null,
+            firstName,
+            lastName,
+            data: dataJson
+          })
+        }
+
       } catch (error: any) {
         console.error(`Failed to send to ${recipient.recipientEmail}:`, error.message)
         
@@ -245,7 +281,14 @@ export async function POST(
       },
       campaignName,
       results: results.slice(0, 100), // Limit results in response
-      hasMoreResults: results.length > 100
+      hasMoreResults: results.length > 100,
+      // Contact import info
+      contactImport: {
+        newContacts: newContacts.slice(0, 100), // Limit for response size
+        newContactCount: newContacts.length,
+        existingContactCount: successCount - newContacts.length,
+        hasMoreNewContacts: newContacts.length > 100
+      }
     })
 
   } catch (error: any) {
