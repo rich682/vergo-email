@@ -169,8 +169,8 @@ export default function SignInPage() {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="max-w-lg">
-            <h2 className="font-display text-4xl mb-6">
-              Collect information from stakeholders, effortlessly.
+            <h2 className="font-display text-5xl leading-tight mb-6">
+              Stop chasing.<br />Start closing.
             </h2>
             <p className="text-xl text-white/80 mb-12 leading-relaxed">
               Send smart requests, track responses automatically, and close tasks faster with AI-powered follow-ups.

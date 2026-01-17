@@ -357,29 +357,13 @@ export default function SignupPage() {
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="max-w-lg">
             {/* Value prop */}
-            <div className="mb-12">
-              <h2 className="text-4xl font-display leading-tight mb-6">
-                Collect information from stakeholders, effortlessly.
+            <div>
+              <h2 className="text-5xl font-display leading-tight mb-6">
+                Stop chasing.<br />Start closing.
               </h2>
               <p className="text-xl text-white/80 leading-relaxed">
                 Send smart requests, track responses automatically, and close tasks faster with AI-powered follow-ups.
               </p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
-              <div>
-                <div className="text-3xl font-display">500+</div>
-                <div className="text-white/70 text-sm">Teams</div>
-              </div>
-              <div>
-                <div className="text-3xl font-display">2M+</div>
-                <div className="text-white/70 text-sm">Requests sent</div>
-              </div>
-              <div>
-                <div className="text-3xl font-display">94%</div>
-                <div className="text-white/70 text-sm">Response rate</div>
-              </div>
             </div>
           </div>
         </div>
