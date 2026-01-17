@@ -136,7 +136,7 @@ export default function SignupPage() {
                 You're almost there!
               </h2>
               <p className="text-xl text-white/80 leading-relaxed">
-                Verify your email to unlock all features and start collecting documents from your clients.
+                Verify your email to unlock all features and start sending requests to your stakeholders.
               </p>
             </div>
           </div>
@@ -167,7 +167,7 @@ export default function SignupPage() {
               Create your account
             </h1>
             <p className="text-gray-500">
-              Start automating your document collection today
+              Send requests, track responses, and get things done faster
             </p>
           </div>
 
@@ -356,34 +356,21 @@ export default function SignupPage() {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="max-w-lg">
-            {/* Testimonial / Value prop */}
+            {/* Value prop */}
             <div className="mb-12">
-              <div className="flex items-center gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-5 h-5 text-yellow-300 fill-current" viewBox="0 0 20 20">
-                    <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
-                  </svg>
-                ))}
-              </div>
-              <blockquote className="text-2xl font-display leading-relaxed mb-6">
-                "Vergo cut our month-end document collection time by 70%. What used to take days now takes hours."
-              </blockquote>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-medium">
-                  SK
-                </div>
-                <div>
-                  <div className="font-medium">Sarah Kim</div>
-                  <div className="text-white/70 text-sm">Partner, Horizon Accounting</div>
-                </div>
-              </div>
+              <h2 className="text-4xl font-display leading-tight mb-6">
+                Collect information from stakeholders, effortlessly.
+              </h2>
+              <p className="text-xl text-white/80 leading-relaxed">
+                Send smart requests, track responses automatically, and close tasks faster with AI-powered follow-ups.
+              </p>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
               <div>
                 <div className="text-3xl font-display">500+</div>
-                <div className="text-white/70 text-sm">Accounting firms</div>
+                <div className="text-white/70 text-sm">Teams</div>
               </div>
               <div>
                 <div className="text-3xl font-display">2M+</div>
