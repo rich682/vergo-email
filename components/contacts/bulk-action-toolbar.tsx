@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { 
   Users, 
@@ -9,7 +9,9 @@ import {
   X, 
   Check,
   ChevronDown,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  Loader2
 } from "lucide-react"
 
 interface Group {
@@ -42,6 +44,77 @@ export function BulkActionToolbar({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  
+  // State for creating new groups/types on the fly
+  const [newGroupName, setNewGroupName] = useState("")
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const [newTypeName, setNewTypeName] = useState("")
+  const [creatingType, setCreatingType] = useState(false)
+  const [localGroups, setLocalGroups] = useState<Group[]>(groups)
+  const [localContactTypes, setLocalContactTypes] = useState<Array<{ id: string; label: string }>>(contactTypes)
+
+  // Sync local state with props when they change
+  useEffect(() => {
+    setLocalGroups(groups)
+  }, [groups])
+
+  useEffect(() => {
+    setLocalContactTypes(contactTypes)
+  }, [contactTypes])
+
+  const createNewGroup = async () => {
+    if (!newGroupName.trim()) return
+    
+    setCreatingGroup(true)
+    try {
+      const res = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newGroupName.trim() })
+      })
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to create group")
+      }
+      
+      const newGroup = await res.json()
+      setLocalGroups(prev => [...prev, newGroup])
+      setSelectedGroupIds(prev => [...prev, newGroup.id])
+      setNewGroupName("")
+    } catch (err: any) {
+      setError(err.message || "Failed to create group")
+    } finally {
+      setCreatingGroup(false)
+    }
+  }
+
+  const createNewType = async () => {
+    if (!newTypeName.trim()) return
+    
+    setCreatingType(true)
+    try {
+      const res = await fetch("/api/contacts/custom-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newTypeName.trim() })
+      })
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to create type")
+      }
+      
+      const newType = await res.json()
+      setLocalContactTypes(prev => [...prev, { id: newType.id, label: newType.label }])
+      setSelectedType(newType.id)
+      setNewTypeName("")
+    } catch (err: any) {
+      setError(err.message || "Failed to create type")
+    } finally {
+      setCreatingType(false)
+    }
+  }
 
   const resetState = () => {
     setActiveAction(null)
@@ -49,6 +122,8 @@ export function BulkActionToolbar({
     setSelectedType("")
     setError(null)
     setShowDeleteConfirm(false)
+    setNewGroupName("")
+    setNewTypeName("")
   }
 
   const executeAction = async (action: string, payload: any) => {
@@ -148,13 +223,13 @@ export function BulkActionToolbar({
               </Button>
               
               {activeAction === "add_group" && (
-                <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                <div className="absolute bottom-full mb-2 left-0 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
                   <div className="text-sm font-medium text-gray-700 mb-2">Select groups:</div>
                   <div className="max-h-40 overflow-y-auto space-y-1">
-                    {groups.length === 0 ? (
-                      <div className="text-sm text-gray-500 py-2">No groups available</div>
+                    {localGroups.length === 0 ? (
+                      <div className="text-sm text-gray-500 py-2">No groups yet</div>
                     ) : (
-                      groups.map(group => (
+                      localGroups.map(group => (
                         <button
                           key={group.id}
                           onClick={() => toggleGroupSelection(group.id)}
@@ -174,6 +249,30 @@ export function BulkActionToolbar({
                       ))
                     )}
                   </div>
+                  
+                  {/* Create new group */}
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="New group name..."
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && createNewGroup()}
+                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={createNewGroup}
+                        disabled={!newGroupName.trim() || creatingGroup}
+                        className="px-2"
+                      >
+                        {creatingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                     <Button size="sm" variant="outline" onClick={resetState} className="flex-1">
                       Cancel
@@ -208,10 +307,10 @@ export function BulkActionToolbar({
                 <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
                   <div className="text-sm font-medium text-gray-700 mb-2">Select groups to remove from:</div>
                   <div className="max-h-40 overflow-y-auto space-y-1">
-                    {groups.length === 0 ? (
+                    {localGroups.length === 0 ? (
                       <div className="text-sm text-gray-500 py-2">No groups available</div>
                     ) : (
-                      groups.map(group => (
+                      localGroups.map(group => (
                         <button
                           key={group.id}
                           onClick={() => toggleGroupSelection(group.id)}
@@ -262,10 +361,10 @@ export function BulkActionToolbar({
               </Button>
               
               {activeAction === "set_type" && (
-                <div className="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Select organization:</div>
-                  <div className="space-y-1">
-                    {contactTypes.map(type => (
+                <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                  <div className="text-sm font-medium text-gray-700 mb-2">Select organization type:</div>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {localContactTypes.map(type => (
                       <button
                         key={type.id}
                         onClick={() => setSelectedType(type.id)}
@@ -286,6 +385,30 @@ export function BulkActionToolbar({
                       </button>
                     ))}
                   </div>
+                  
+                  {/* Create new type */}
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="New type name..."
+                        value={newTypeName}
+                        onChange={(e) => setNewTypeName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && createNewType()}
+                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={createNewType}
+                        disabled={!newTypeName.trim() || creatingType}
+                        className="px-2"
+                      >
+                        {creatingType ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                     <Button size="sm" variant="outline" onClick={resetState} className="flex-1">
                       Cancel
