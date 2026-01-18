@@ -109,11 +109,14 @@ export class GmailIngestProvider implements EmailIngestProvider {
       })) || undefined
 
     // Filter out outbound messages (from the connected account)
+    // EXCEPT: Allow if it has an inReplyTo header (could be a reply to a request sent to self for testing)
     const fromAddress = getAddressText(parsed.from)
+    const hasInReplyTo = !!inReplyToMessageId
     if (
       fromAddress &&
       account.email &&
-      fromAddress.toLowerCase().includes(account.email.toLowerCase())
+      fromAddress.toLowerCase().includes(account.email.toLowerCase()) &&
+      !hasInReplyTo // Allow if it's a reply (has inReplyTo header)
     ) {
       return null
     }
