@@ -143,69 +143,52 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
     setZoom(100)
     setRotation(0)
     setPreviewFailed(false)
+    setLoading(true)
 
-    // Fetch download URL
-    const fetchUrl = async () => {
-      setLoading(true)
+    // Use fileUrl directly if available (Vercel Blob URLs are publicly accessible)
+    if (attachment.fileUrl) {
       try {
-        // First, try to use the direct fileUrl if available (Vercel Blob URLs work directly)
-        if (attachment.fileUrl) {
-          // Remove any download param to enable preview
-          const previewUrl = new URL(attachment.fileUrl)
-          previewUrl.searchParams.delete("download")
-          setDownloadUrl(previewUrl.toString())
-          setLoading(false)
-          return
+        const previewUrl = new URL(attachment.fileUrl)
+        previewUrl.searchParams.delete("download")
+        setDownloadUrl(previewUrl.toString())
+      } catch {
+        setDownloadUrl(attachment.fileUrl)
+      }
+      setLoading(false)
+      return
+    }
+
+    // Fallback: Fetch URL from API
+    const fetchUrl = async () => {
+      try {
+        // Try attachments API first
+        const attachResponse = await fetch(
+          `/api/attachments/download/${attachment.id}`,
+          { credentials: "include" }
+        )
+        
+        if (attachResponse.ok) {
+          const data = await attachResponse.json()
+          if (data.url) {
+            setDownloadUrl(data.url)
+            return
+          }
         }
 
-        // Try attachments API - it returns { url, filename }
-        try {
-          const attachResponse = await fetch(
-            `/api/attachments/download/${attachment.id}`,
-            { credentials: "include" }
+        // Try collection API with jobId
+        const effectiveJobId = jobId || (attachment.fileKey ? attachment.fileKey.split('/')[1] : null)
+        if (effectiveJobId) {
+          const collectionResponse = await fetch(
+            `/api/jobs/${effectiveJobId}/collection/download?itemId=${attachment.id}`,
+            { credentials: "include", redirect: "follow" }
           )
           
-          if (attachResponse.ok) {
-            const data = await attachResponse.json()
-            if (data.url) {
-              // Remove download param for preview
-              const previewUrl = new URL(data.url)
-              previewUrl.searchParams.delete("download")
-              setDownloadUrl(previewUrl.toString())
-              return
-            }
-          }
-        } catch {
-          // Continue to next method
-        }
-
-        // Try to get jobId from prop or extract from fileKey
-        const effectiveJobId = jobId || (attachment.fileKey ? attachment.fileKey.split('/')[1] : null)
-        
-        if (effectiveJobId) {
-          // Fetch the item details to get fileUrl
-          try {
-            const response = await fetch(
-              `/api/jobs/${effectiveJobId}/collection?itemId=${attachment.id}`,
-              { credentials: "include" }
-            )
-
-            if (response.ok) {
-              const data = await response.json()
-              const item = data.items?.find((i: any) => i.id === attachment.id)
-              if (item?.fileUrl) {
-                const previewUrl = new URL(item.fileUrl)
-                previewUrl.searchParams.delete("download")
-                setDownloadUrl(previewUrl.toString())
-                return
-              }
-            }
-          } catch {
-            // Continue
+          if (collectionResponse.ok && collectionResponse.url !== window.location.href) {
+            setDownloadUrl(collectionResponse.url)
+            return
           }
         }
 
-        // If all else fails, mark as preview failed
         setPreviewFailed(true)
       } catch {
         setPreviewFailed(true)
@@ -215,13 +198,7 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
     }
 
     fetchUrl()
-
-    return () => {
-      if (downloadUrl && downloadUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(downloadUrl)
-      }
-    }
-  }, [attachment?.id, jobId])
+  }, [attachment?.id, attachment?.fileUrl, jobId])
 
   const isImage = attachment.mimeType?.startsWith("image/")
   const isPdf = attachment.mimeType?.includes("pdf")
@@ -326,7 +303,7 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
           </div>
         ) : isPdf && downloadUrl && !previewFailed ? (
           <iframe
-            src={downloadUrl}
+            src={`https://docs.google.com/gview?url=${encodeURIComponent(downloadUrl)}&embedded=true`}
             className="w-full h-full rounded-lg bg-white shadow-lg"
             style={{ 
               transform: `scale(${zoom / 100})`,
@@ -335,7 +312,6 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
               height: `${100 / (zoom / 100)}%`
             }}
             title={attachment.filename}
-            onError={() => setPreviewFailed(true)}
           />
         ) : (
           // Graceful fallback - no error messaging, just offer to open

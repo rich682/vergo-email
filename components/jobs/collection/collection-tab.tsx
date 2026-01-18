@@ -334,7 +334,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
               {items.map(item => (
                 <tr 
                   key={item.id} 
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className={`hover:bg-gray-50 ${item.message?.id ? 'cursor-pointer' : 'cursor-default'}`}
                   onClick={() => handleRowClick(item)}
                 >
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -349,8 +349,11 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className="font-medium text-gray-900 truncate max-w-[200px] hover:text-orange-600">
+                        <div className={`font-medium truncate max-w-[200px] ${item.message?.id ? 'text-orange-600 hover:text-orange-700' : 'text-gray-900'}`}>
                           {item.filename}
+                          {item.message?.id && (
+                            <span className="ml-1 text-xs text-gray-400">→</span>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500">
                           {formatFileSize(item.fileSize)}
@@ -611,7 +614,7 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
             </div>
           ) : isPdf ? (
             <iframe
-              src={`${previewUrl}#toolbar=1&navpanes=0`}
+              src={`https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`}
               className="w-full h-full rounded-lg bg-white shadow-lg"
               style={{ 
                 minHeight: "70vh",

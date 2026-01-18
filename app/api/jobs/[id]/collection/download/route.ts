@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -25,7 +25,7 @@ export async function GET(
     }
 
     const organizationId = session.user.organizationId
-    const { id: jobId } = await params
+    const jobId = params.id
 
     // Get itemId from query params
     const { searchParams } = new URL(request.url)
