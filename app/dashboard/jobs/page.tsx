@@ -24,7 +24,10 @@ import {
   Search, 
   CheckCircle,
   Loader2,
-  Sparkles
+  Sparkles,
+  Edit2,
+  Check,
+  X
 } from "lucide-react"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -122,6 +125,10 @@ export default function JobsPage() {
   
   // Bulk upload modal
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
+  
+  // Board name editing
+  const [editingBoardName, setEditingBoardName] = useState(false)
+  const [editBoardName, setEditBoardName] = useState("")
 
   // ============================================
   // Data fetching
@@ -434,6 +441,31 @@ export default function JobsPage() {
     }
   }
 
+  // Update board name
+  const handleUpdateBoardName = async () => {
+    if (!currentBoard || !editBoardName.trim() || editBoardName === currentBoard.name) {
+      setEditingBoardName(false)
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/boards/${currentBoard.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: editBoardName.trim() })
+      })
+      
+      if (response.ok) {
+        setCurrentBoard({ ...currentBoard, name: editBoardName.trim() })
+      }
+    } catch (error) {
+      console.error("Error updating board name:", error)
+    } finally {
+      setEditingBoardName(false)
+    }
+  }
+
   const handleCreateJob = async () => {
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
@@ -537,9 +569,62 @@ export default function JobsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
-              {currentBoard ? currentBoard.name : "All Tasks"}
-            </h1>
+            {currentBoard ? (
+              <div className="flex items-center gap-2">
+                {editingBoardName ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={editBoardName}
+                      onChange={(e) => setEditBoardName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleUpdateBoardName()
+                        if (e.key === "Escape") {
+                          setEditingBoardName(false)
+                          setEditBoardName(currentBoard.name)
+                        }
+                      }}
+                      className="text-2xl font-semibold h-auto py-1 px-2 w-64"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleUpdateBoardName}
+                      className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                    >
+                      <Check className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingBoardName(false)
+                        setEditBoardName(currentBoard.name)
+                      }}
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-2xl font-semibold text-gray-900">
+                      {currentBoard.name}
+                    </h1>
+                    <button
+                      onClick={() => {
+                        setEditBoardName(currentBoard.name)
+                        setEditingBoardName(true)
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      title="Edit board name"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <h1 className="text-2xl font-semibold text-gray-900">
+                All Tasks
+              </h1>
+            )}
             {currentBoard && (
               <p className="text-sm text-gray-500 mt-1">
                 {filteredJobs.length} tasks
