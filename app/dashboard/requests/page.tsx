@@ -21,7 +21,6 @@ import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { EmailChainSidebar } from "@/components/tasks/email-chain-sidebar"
 
 // Types
 interface BoardOption {
@@ -232,9 +231,6 @@ export default function RequestsPage() {
   const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
   const [attachmentFilter, setAttachmentFilter] = useState<string>("all")
 
-  // Email thread modal
-  const [selectedRequest, setSelectedRequest] = useState<RequestTask | null>(null)
-  const [isThreadModalOpen, setIsThreadModalOpen] = useState(false)
 
   // Check if any filters are active
   const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
@@ -373,15 +369,6 @@ export default function RequestsPage() {
     }
   }, [requests])
 
-  // Handle opening review page
-  const handleOpenReview = (requestId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    const messageId = replyMessageIds[requestId]
-    if (messageId) {
-      router.push(`/dashboard/review/${messageId}`)
-    }
-  }
-
   // Clear all filters
   const clearFilters = () => {
     setBoardFilter("all")
@@ -397,34 +384,49 @@ export default function RequestsPage() {
     setAttachmentFilter("all")
   }
 
-  // Handle opening email thread
+  // Handle opening request - go directly to review page if replies exist
   const handleOpenThread = (request: RequestTask) => {
-    setSelectedRequest(request)
-    setIsThreadModalOpen(true)
-  }
-
-  // Handle closing email thread
-  const handleCloseThread = () => {
-    setIsThreadModalOpen(false)
-    setSelectedRequest(null)
-  }
-
-  // Navigate between requests in the modal
-  const currentRequestIndex = selectedRequest 
-    ? requests.findIndex(r => r.id === selectedRequest.id) 
-    : -1
-
-  const handleNavigatePrev = () => {
-    if (currentRequestIndex > 0) {
-      setSelectedRequest(requests[currentRequestIndex - 1])
+    const hasReplies = hasReply(request.status) || (request._count?.messages || 0) > 1
+    const messageId = replyMessageIds[request.id]
+    
+    // If request has replies and we have the message ID, go to review page
+    if (hasReplies && messageId) {
+      router.push(`/dashboard/review/${messageId}`)
+      return
+    }
+    
+    // If request has replies but we're still loading message ID, fetch and navigate
+    if (hasReplies && !messageId) {
+      // Fetch the message ID and navigate
+      fetch(`/api/tasks/${request.id}/messages`, { credentials: "include" })
+        .then(res => res.json())
+        .then(messages => {
+          const inboundMessage = messages
+            .filter((m: any) => m.direction === "INBOUND")
+            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+          if (inboundMessage) {
+            router.push(`/dashboard/review/${inboundMessage.id}`)
+          } else {
+            // Fallback to job page
+            if (request.job?.id) {
+              router.push(`/dashboard/jobs/${request.job.id}`)
+            }
+          }
+        })
+        .catch(() => {
+          if (request.job?.id) {
+            router.push(`/dashboard/jobs/${request.job.id}`)
+          }
+        })
+      return
+    }
+    
+    // No replies - go to job detail page
+    if (request.job?.id) {
+      router.push(`/dashboard/jobs/${request.job.id}`)
     }
   }
 
-  const handleNavigateNext = () => {
-    if (currentRequestIndex < requests.length - 1) {
-      setSelectedRequest(requests[currentRequestIndex + 1])
-    }
-  }
 
   // Get read status display
   const getReadStatusDisplay = (readStatus: string | null, messageCount: number) => {
@@ -842,17 +844,6 @@ export default function RequestsPage() {
                       <span className="text-sm text-gray-400">Off</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {hasReply(request.status) && replyMessageIds[request.id] && (
-                      <button
-                        onClick={(e) => handleOpenReview(request.id, e)}
-                        className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
-                        title="Review response"
-                      >
-                        <FileSearch className="w-4 h-4 text-orange-500" />
-                      </button>
-                    )}
-                  </td>
                 </tr>
               )})}
             </tbody>
@@ -860,50 +851,6 @@ export default function RequestsPage() {
         </div>
       )}
 
-      {/* Email Thread Modal */}
-      {isThreadModalOpen && selectedRequest && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleCloseThread()
-          }}
-        >
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-3xl h-[85vh] overflow-hidden">
-            {/* Close button */}
-            <button
-              onClick={handleCloseThread}
-              className="absolute right-4 top-4 z-20 p-1 rounded-full hover:bg-gray-100"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-            
-            <div className="h-full overflow-hidden">
-              <EmailChainSidebar
-                task={{
-                  id: selectedRequest.id,
-                  entity: selectedRequest.entity ? {
-                    firstName: selectedRequest.entity.firstName,
-                    email: selectedRequest.entity.email
-                  } : { firstName: null, email: null },
-                  campaignName: selectedRequest.campaignName,
-                  status: selectedRequest.status,
-                  hasAttachments: selectedRequest.hasAttachments,
-                  hasReplies: (selectedRequest._count?.messages || 0) > 1,
-                  messageCount: selectedRequest._count?.messages || 0
-                }}
-                isOpen={true}
-                onClose={handleCloseThread}
-                onTaskUpdated={fetchRequests}
-                onNavigatePrev={handleNavigatePrev}
-                onNavigateNext={handleNavigateNext}
-                currentIndex={currentRequestIndex}
-                totalCount={requests.length}
-                variant="modal"
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
