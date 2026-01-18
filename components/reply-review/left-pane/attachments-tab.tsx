@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { 
   FileText, 
   FileImage, 
   FileSpreadsheet, 
   File, 
   Download,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PDFViewer, ImageViewer } from "@/components/ui/pdf-viewer"
@@ -53,6 +55,9 @@ function formatFileSize(bytes: number | null): string {
 
 export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: AttachmentsTabProps) {
   const selectedAttachment = attachments.find(a => a.id === selectedId) || null
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
 
   // Auto-select first attachment if none selected
   useEffect(() => {
@@ -60,6 +65,33 @@ export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: Att
       onSelect(attachments[0].id)
     }
   }, [selectedId, attachments, onSelect])
+
+  // Check scroll state
+  useEffect(() => {
+    const checkScroll = () => {
+      const el = scrollContainerRef.current
+      if (el) {
+        setCanScrollLeft(el.scrollLeft > 0)
+        setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 5)
+      }
+    }
+    checkScroll()
+    const el = scrollContainerRef.current
+    el?.addEventListener("scroll", checkScroll)
+    window.addEventListener("resize", checkScroll)
+    return () => {
+      el?.removeEventListener("scroll", checkScroll)
+      window.removeEventListener("resize", checkScroll)
+    }
+  }, [attachments])
+
+  const scroll = (direction: "left" | "right") => {
+    const el = scrollContainerRef.current
+    if (el) {
+      const scrollAmount = 200
+      el.scrollBy({ left: direction === "left" ? -scrollAmount : scrollAmount, behavior: "smooth" })
+    }
+  }
 
   if (attachments.length === 0) {
     return (
@@ -69,12 +101,29 @@ export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: Att
     )
   }
 
+  const selectedIndex = attachments.findIndex(a => a.id === selectedId)
+
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Attachment List Rail */}
-      <div className="flex-shrink-0 border-b border-gray-200 bg-gray-50 p-3">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {attachments.map((attachment) => {
+      {/* Compact Attachment Strip - Single Line */}
+      <div className="flex-shrink-0 h-10 border-b border-gray-200 bg-gray-50 flex items-center px-2 gap-1">
+        {/* Left scroll button */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scroll("left")}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
+        
+        {/* Scrollable attachment pills */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 flex items-center gap-1.5 overflow-x-auto scrollbar-hide"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
+          {attachments.map((attachment, index) => {
             const Icon = getFileIcon(attachment.mimeType)
             const iconColor = getIconColor(attachment.mimeType)
             const isSelected = attachment.id === selectedId
@@ -83,30 +132,39 @@ export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: Att
               <button
                 key={attachment.id}
                 onClick={() => onSelect(attachment.id)}
-                className={`flex-shrink-0 min-w-[140px] p-3 rounded-lg border-2 transition-all text-left ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-all ${
                   isSelected
-                    ? "border-orange-500 bg-orange-50"
-                    : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                    ? "bg-orange-100 text-orange-700 border border-orange-300"
+                    : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
                 }`}
+                title={`${attachment.filename} (${formatFileSize(attachment.fileSize)})`}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className={`w-5 h-5 ${iconColor}`} />
-                </div>
-                <p className="text-xs font-medium text-gray-900 truncate" title={attachment.filename}>
+                <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-orange-600" : iconColor}`} />
+                <span className="max-w-[120px] truncate font-medium">
                   {attachment.filename}
-                </p>
-                {attachment.fileSize && (
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    {formatFileSize(attachment.fileSize)}
-                  </p>
-                )}
+                </span>
               </button>
             )
           })}
         </div>
+
+        {/* Right scroll button */}
+        {canScrollRight && (
+          <button
+            onClick={() => scroll("right")}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Attachment counter */}
+        <span className="flex-shrink-0 text-[10px] text-gray-400 ml-1">
+          {selectedIndex + 1}/{attachments.length}
+        </span>
       </div>
 
-      {/* Preview Area */}
+      {/* Preview Area - Takes remaining space */}
       <div className="flex-1 overflow-hidden">
         {selectedAttachment ? (
           <AttachmentPreview attachment={selectedAttachment} jobId={jobId} />
@@ -134,13 +192,40 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
   const isImage = attachment.mimeType?.startsWith("image/")
   const isPdf = attachment.mimeType?.includes("pdf")
 
-  const handleDownload = () => {
-    const a = document.createElement('a')
-    a.href = downloadUrl
-    a.download = attachment.filename
+  // Proper download function that fetches as blob and triggers download
+  const handleDownload = async () => {
+    try {
+      // Fetch the file as a blob
+      const response = await fetch(previewUrl, { credentials: "include" })
+      if (!response.ok) {
+        // Try fallback URL
+        if (fallbackUrl) {
+          const fallbackResponse = await fetch(fallbackUrl)
+          if (!fallbackResponse.ok) throw new Error("Download failed")
+          const blob = await fallbackResponse.blob()
+          triggerDownload(blob, attachment.filename)
+          return
+        }
+        throw new Error("Download failed")
+      }
+      const blob = await response.blob()
+      triggerDownload(blob, attachment.filename)
+    } catch (error) {
+      console.error("Download error:", error)
+      // Fallback: open in new tab
+      window.open(downloadUrl, "_blank")
+    }
+  }
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   // PDF Preview using PDF.js

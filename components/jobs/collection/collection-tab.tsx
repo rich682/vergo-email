@@ -30,6 +30,7 @@ interface CollectedItem {
   submittedBy: string | null
   submittedByName: string | null
   receivedAt: string
+  messageId: string | null // Direct reference for navigation
   task?: {
     id: string
     campaignName: string | null
@@ -223,19 +224,25 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
       return
     }
     
-    // If the item came from an email reply, navigate to the review page with attachment tab
-    if (item.message?.id) {
-      const reviewUrl = `/dashboard/review/${item.message.id}?tab=attachments&attachmentId=${item.id}`
+    // Get messageId - prefer message relation, fall back to direct messageId field
+    const messageId = item.message?.id || item.messageId
+    
+    // If the item came from an email reply and has a messageId, navigate to the review page
+    if (item.source === "EMAIL_REPLY" && messageId) {
+      const reviewUrl = `/dashboard/review/${messageId}?tab=attachments&attachmentId=${item.id}`
+      console.log("[Collection] Navigating to review:", reviewUrl)
       router.push(reviewUrl)
     } else {
-      // For manually uploaded files, open the preview modal
+      // For manually uploaded files or items without messageId, open the preview modal
+      console.log("[Collection] Opening preview modal for:", item.filename, { source: item.source, messageId })
       setPreviewItem(item)
     }
   }
   
   // Check if item can navigate to review
   const canNavigateToReview = (item: CollectedItem) => {
-    return item.source === "EMAIL_REPLY" && item.message?.id
+    const messageId = item.message?.id || item.messageId
+    return item.source === "EMAIL_REPLY" && !!messageId
   }
 
   if (loading && items.length === 0) {
@@ -407,7 +414,10 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation()
-                            router.push(`/dashboard/review/${item.message!.id}?tab=attachments&attachmentId=${item.id}`)
+                            const msgId = item.message?.id || item.messageId
+                            if (msgId) {
+                              router.push(`/dashboard/review/${msgId}?tab=attachments&attachmentId=${item.id}`)
+                            }
                           }}
                           title="View in reply"
                           className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
