@@ -47,8 +47,9 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
         // Dynamic import of PDF.js
         const pdfjsLib = await import("pdfjs-dist")
         
-        // Set worker source - use CDN for reliability
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+        // Set worker source - use unpkg CDN which is more reliable
+        // Version must match the installed pdfjs-dist package
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
         // Try primary URL first, then fallback
         let arrayBuffer: ArrayBuffer | null = null
