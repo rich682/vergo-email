@@ -353,6 +353,55 @@ export default function JobsPage() {
     }
   }
 
+  // Bulk delete handler
+  const handleBulkDelete = async (jobIds: string[]) => {
+    try {
+      await Promise.all(
+        jobIds.map(id => 
+          fetch(`/api/jobs/${id}`, { method: "DELETE" })
+        )
+      )
+      setJobs(prev => prev.filter(j => !jobIds.includes(j.id)))
+    } catch (error) {
+      console.error("Error deleting jobs:", error)
+    }
+  }
+
+  // Bulk duplicate handler
+  const handleBulkDuplicate = async (jobIds: string[]) => {
+    const jobsToDuplicate = jobs.filter(j => jobIds.includes(j.id))
+    
+    try {
+      const newJobs = await Promise.all(
+        jobsToDuplicate.map(async (job) => {
+          const response = await fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              name: `${job.name} (Copy)`,
+              description: job.description,
+              dueDate: job.dueDate,
+              ownerId: job.ownerId,
+              labels: job.labels,
+              boardId: boardId || undefined
+            })
+          })
+          if (response.ok) {
+            const data = await response.json()
+            return data.job
+          }
+          return null
+        })
+      )
+      
+      const validNewJobs = newJobs.filter(j => j !== null)
+      setJobs(prev => [...validNewJobs, ...prev])
+    } catch (error) {
+      console.error("Error duplicating jobs:", error)
+    }
+  }
+
   const handleCreateJob = async () => {
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
@@ -769,6 +818,8 @@ export default function JobsPage() {
             boardId={boardId}
             onJobUpdate={handleJobUpdate}
             onAddTask={() => setIsCreateOpen(true)}
+            onDelete={handleBulkDelete}
+            onDuplicate={handleBulkDuplicate}
           />
         )}
       </div>

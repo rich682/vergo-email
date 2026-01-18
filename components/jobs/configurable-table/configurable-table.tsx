@@ -1,12 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { 
   ChevronDown, 
   ChevronRight, 
   Plus, 
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Trash2,
+  X
 } from "lucide-react"
 import { ColumnDefinition, DEFAULT_COLUMNS, JobRow, TeamMember } from "./types"
 import { ColumnHeader } from "./column-header"
@@ -17,14 +21,15 @@ interface StatusGroup {
   label: string
   color: string
   bgColor: string
+  borderColor: string
   defaultExpanded: boolean
 }
 
 const STATUS_GROUPS: StatusGroup[] = [
-  { status: "NOT_STARTED", label: "Not Started", color: "text-gray-600", bgColor: "bg-gray-50", defaultExpanded: true },
-  { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-600", bgColor: "bg-blue-50", defaultExpanded: true },
-  { status: "BLOCKED", label: "Blocked", color: "text-red-600", bgColor: "bg-red-50", defaultExpanded: true },
-  { status: "COMPLETE", label: "Complete", color: "text-green-600", bgColor: "bg-green-50", defaultExpanded: false },
+  { status: "NOT_STARTED", label: "Not Started", color: "text-gray-600", bgColor: "bg-gray-50", borderColor: "border-l-gray-400", defaultExpanded: true },
+  { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-l-blue-500", defaultExpanded: true },
+  { status: "BLOCKED", label: "Blocked", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-l-red-500", defaultExpanded: true },
+  { status: "COMPLETE", label: "Complete", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-l-green-500", defaultExpanded: false },
 ]
 
 interface ConfigurableTableProps {
@@ -33,6 +38,8 @@ interface ConfigurableTableProps {
   boardId?: string | null
   onJobUpdate: (jobId: string, updates: Record<string, any>) => Promise<void>
   onAddTask: () => void
+  onDelete?: (jobIds: string[]) => Promise<void>
+  onDuplicate?: (jobIds: string[]) => Promise<void>
 }
 
 // Map legacy statuses
@@ -52,6 +59,8 @@ export function ConfigurableTable({
   boardId,
   onJobUpdate,
   onAddTask,
+  onDelete,
+  onDuplicate,
 }: ConfigurableTableProps) {
   const router = useRouter()
   const [columns, setColumns] = useState<ColumnDefinition[]>(DEFAULT_COLUMNS)
@@ -59,6 +68,9 @@ export function ConfigurableTable({
     new Set(STATUS_GROUPS.filter(g => g.defaultExpanded).map(g => g.status))
   )
   const [loadingColumnConfig, setLoadingColumnConfig] = useState(true)
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDuplicating, setIsDuplicating] = useState(false)
 
   // Fetch column configuration on mount
   useEffect(() => {
@@ -156,14 +168,86 @@ export function ConfigurableTable({
       .sort((a, b) => a.order - b.order)
   }, [columns])
 
+  // Selection handlers
+  const toggleJobSelection = useCallback((jobId: string) => {
+    setSelectedJobs(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(jobId)) {
+        newSet.delete(jobId)
+      } else {
+        newSet.add(jobId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const toggleGroupSelection = useCallback((groupStatus: string) => {
+    const groupJobs = jobsByStatus[groupStatus] || []
+    const groupJobIds = groupJobs.map(j => j.id)
+    
+    setSelectedJobs(prev => {
+      const allSelected = groupJobIds.every(id => prev.has(id))
+      const newSet = new Set(prev)
+      
+      if (allSelected) {
+        // Deselect all in group
+        groupJobIds.forEach(id => newSet.delete(id))
+      } else {
+        // Select all in group
+        groupJobIds.forEach(id => newSet.add(id))
+      }
+      return newSet
+    })
+  }, [jobsByStatus])
+
+  const clearSelection = useCallback(() => {
+    setSelectedJobs(new Set())
+  }, [])
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!onDelete || selectedJobs.size === 0) return
+    setIsDeleting(true)
+    try {
+      await onDelete(Array.from(selectedJobs))
+      setSelectedJobs(new Set())
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [onDelete, selectedJobs])
+
+  const handleBulkDuplicate = useCallback(async () => {
+    if (!onDuplicate || selectedJobs.size === 0) return
+    setIsDuplicating(true)
+    try {
+      await onDuplicate(Array.from(selectedJobs))
+      setSelectedJobs(new Set())
+    } finally {
+      setIsDuplicating(false)
+    }
+  }, [onDuplicate, selectedJobs])
+
+  // Check if all jobs in a group are selected
+  const isGroupAllSelected = useCallback((groupStatus: string): boolean => {
+    const groupJobs = jobsByStatus[groupStatus] || []
+    if (groupJobs.length === 0) return false
+    return groupJobs.every(j => selectedJobs.has(j.id))
+  }, [jobsByStatus, selectedJobs])
+
+  const isGroupPartiallySelected = useCallback((groupStatus: string): boolean => {
+    const groupJobs = jobsByStatus[groupStatus] || []
+    if (groupJobs.length === 0) return false
+    const selectedCount = groupJobs.filter(j => selectedJobs.has(j.id)).length
+    return selectedCount > 0 && selectedCount < groupJobs.length
+  }, [jobsByStatus, selectedJobs])
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-20">
       {STATUS_GROUPS.map((group) => {
         const groupJobs = jobsByStatus[group.status] || []
         const isExpanded = expandedGroups.has(group.status)
 
         return (
-          <div key={group.status} className="rounded-lg overflow-hidden">
+          <div key={group.status} className={`rounded-lg overflow-hidden border-l-4 ${group.borderColor}`}>
             {/* Group Header */}
             <button
               onClick={() => toggleGroup(group.status)}
@@ -190,6 +274,18 @@ export function ConfigurableTable({
                     {/* Table Header */}
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        {/* Select All Checkbox for Group */}
+                        <th className="w-10 px-2 py-2">
+                          <input
+                            type="checkbox"
+                            checked={isGroupAllSelected(group.status)}
+                            ref={(el) => {
+                              if (el) el.indeterminate = isGroupPartiallySelected(group.status)
+                            }}
+                            onChange={() => toggleGroupSelection(group.status)}
+                            className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                          />
+                        </th>
                         <th className="w-10 px-2 py-2"></th>
                         {visibleColumns.map((column) => (
                           <th
@@ -214,8 +310,17 @@ export function ConfigurableTable({
                       {groupJobs.map((job) => (
                         <tr
                           key={job.id}
-                          className="hover:bg-gray-50 transition-colors group"
+                          className={`hover:bg-gray-50 transition-colors group ${selectedJobs.has(job.id) ? "bg-orange-50" : ""}`}
                         >
+                          {/* Row Checkbox */}
+                          <td className="px-2 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedJobs.has(job.id)}
+                              onChange={() => toggleJobSelection(job.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                            />
+                          </td>
                           <td className="px-2 py-2">
                             <button
                               onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
@@ -258,6 +363,57 @@ export function ConfigurableTable({
           </div>
         )
       })}
+
+      {/* Floating Action Bar when items selected */}
+      {selectedJobs.size > 0 && createPortal(
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-2xl">
+            {/* Selection count */}
+            <div className="flex items-center gap-2 pr-3 border-r border-gray-700">
+              <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-sm font-medium">
+                {selectedJobs.size}
+              </div>
+              <span className="text-sm font-medium">
+                Task{selectedJobs.size !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-1">
+              {onDuplicate && (
+                <button
+                  onClick={handleBulkDuplicate}
+                  disabled={isDuplicating}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span className="text-sm">Duplicate</span>
+                </button>
+              )}
+              
+              {onDelete && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="text-sm">Delete</span>
+                </button>
+              )}
+            </div>
+
+            {/* Close button */}
+            <button
+              onClick={clearSelection}
+              className="ml-2 p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
