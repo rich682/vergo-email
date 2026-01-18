@@ -14,6 +14,7 @@ interface StatusSectionProps {
   messageId: string
   currentReviewStatus: string
   onStatusChange: () => void
+  isOutbound?: boolean
 }
 
 const REVIEW_STATUS_OPTIONS = [
@@ -32,7 +33,8 @@ const RISK_OPTIONS = [
 export function StatusSection({ 
   messageId, 
   currentReviewStatus,
-  onStatusChange 
+  onStatusChange,
+  isOutbound = false
 }: StatusSectionProps) {
   const [reviewStatus, setReviewStatus] = useState(currentReviewStatus || "UNREVIEWED")
   const [riskCategory, setRiskCategory] = useState("none")
@@ -63,6 +65,26 @@ export function StatusSection({
 
   const currentStatusConfig = REVIEW_STATUS_OPTIONS.find(s => s.value === reviewStatus) || REVIEW_STATUS_OPTIONS[0]
   const StatusIcon = currentStatusConfig.icon
+
+  // For outbound messages (sent requests), show a simpler status display
+  if (isOutbound) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+            Request Status
+          </label>
+          <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-lg">
+            <Clock className="w-5 h-5 text-amber-600" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Awaiting Reply</p>
+              <p className="text-xs text-amber-600">Request was sent and is pending a response</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">

@@ -53,6 +53,10 @@ interface ReviewData {
       email: string | null
     } | null
   }
+  job?: {
+    id: string
+    name: string
+  }
   thread: ThreadMessage[]
   attachments: Attachment[]
   reviewStatus: string
@@ -94,12 +98,7 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
 
       const result = await response.json()
       
-      // Guard: Must be an inbound message (reply)
-      if (result.message?.direction !== "INBOUND") {
-        router.push("/dashboard/requests?notice=invalid-review")
-        return
-      }
-
+      // No guard on direction - we support viewing both sent requests and replies
       setData(result)
 
       // Handle URL params for tab and attachment selection
@@ -189,10 +188,16 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
   }
 
   const hasAttachments = data.attachments.length > 0
+  const isInbound = data.message.direction === "INBOUND"
   const recipientName = data.task.entity
     ? [data.task.entity.firstName, data.task.entity.lastName].filter(Boolean).join(" ")
-    : data.message.fromAddress
-  const recipientEmail = data.task.entity?.email || data.message.fromAddress
+    : isInbound ? data.message.fromAddress : data.message.toAddress
+  const recipientEmail = data.task.entity?.email || (isInbound ? data.message.fromAddress : data.message.toAddress)
+
+  // Header title based on message direction
+  const headerTitle = isInbound
+    ? `Review reply from ${recipientName}`
+    : `Request sent to ${recipientName}`
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
@@ -206,8 +211,13 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
             </Button>
             <div className="h-4 w-px bg-gray-200" />
             <h1 className="text-sm font-medium text-gray-900">
-              Review reply from {recipientName}
+              {headerTitle}
             </h1>
+            {!isInbound && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                Awaiting reply
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -281,13 +291,15 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
           style={{ width: `${100 - leftPaneWidth}%` }}
         >
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* AI Summary (Collapsed by default) */}
-            <AISummarySection
-              messageId={data.message.id}
-              taskSummary={data.task.aiSummary}
-              messageBody={data.message.body}
-              fromAddress={data.message.fromAddress}
-            />
+            {/* AI Summary - only for replies (inbound) */}
+            {isInbound && (
+              <AISummarySection
+                messageId={data.message.id}
+                taskSummary={data.task.aiSummary}
+                messageBody={data.message.body}
+                fromAddress={data.message.fromAddress}
+              />
+            )}
 
             {/* Status & Risk */}
             <div className="border border-gray-200 rounded-lg p-4">
@@ -295,13 +307,14 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
                 messageId={data.message.id}
                 currentReviewStatus={data.reviewStatus}
                 onStatusChange={handleStatusChange}
+                isOutbound={!isInbound}
               />
             </div>
 
-            {/* Reply */}
+            {/* Reply section - for inbound messages, follow-up for outbound */}
             <div className="border border-gray-200 rounded-lg p-4">
               <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                Reply
+                {isInbound ? "Reply" : "Send Follow-up"}
               </h3>
               <ReplySection
                 taskId={data.task.id}
@@ -311,6 +324,16 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
                 onReplySent={handleReplySent}
               />
             </div>
+
+            {/* Info panel for outbound messages */}
+            {!isInbound && (
+              <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
+                <p className="text-sm text-amber-800">
+                  This request was sent on {new Date(data.message.createdAt).toLocaleDateString()}. 
+                  You'll be notified when a reply is received.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

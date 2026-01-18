@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic"
 
 /**
  * GET /api/review/[messageId]
- * Fetch complete review context for a message (reply)
- * Guards: Only INBOUND messages, only from user's organization
+ * Fetch complete review context for a message (both sent requests and replies)
+ * Guards: Only from user's organization
  */
 export async function GET(
   request: NextRequest,
@@ -23,11 +23,10 @@ export async function GET(
     const organizationId = session.user.organizationId
     const { messageId } = params
 
-    // Fetch the message with full context
+    // Fetch the message with full context (both INBOUND and OUTBOUND)
     const message = await prisma.message.findFirst({
       where: {
         id: messageId,
-        direction: "INBOUND", // Must be a reply
         task: {
           organizationId // Access control
         }
@@ -70,7 +69,7 @@ export async function GET(
 
     if (!message) {
       return NextResponse.json(
-        { error: "Message not found or not a reply", code: "INVALID_REVIEW" },
+        { error: "Message not found", code: "INVALID_REVIEW" },
         { status: 404 }
       )
     }
