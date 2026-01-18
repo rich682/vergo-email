@@ -7,13 +7,10 @@ import {
   FileSpreadsheet, 
   File, 
   Download,
-  ExternalLink,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Maximize2
+  ExternalLink
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PDFViewer, ImageViewer } from "@/components/ui/pdf-viewer"
 
 interface Attachment {
   id: string
@@ -123,33 +120,16 @@ export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: Att
   )
 }
 
-// Simplified Attachment Preview (graceful fallback, no error messaging)
+// Attachment Preview using PDF.js for PDFs and native img for images
 function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobId?: string }) {
-  const [previewFailed, setPreviewFailed] = useState(false)
-  const [zoom, setZoom] = useState(100)
-  const [rotation, setRotation] = useState(0)
-
-  // Use our preview API which streams files with inline headers
-  // This works for both Vercel Blob and local storage, and avoids X-Frame-Options issues
+  // Use our preview API which streams files with proper headers
   const previewUrl = `/api/collection/preview/${attachment.id}`
   
   // For download, use the fileUrl directly if available, otherwise use preview URL
   const downloadUrl = attachment.fileUrl || previewUrl
 
-  useEffect(() => {
-    // Reset state when attachment changes
-    setZoom(100)
-    setRotation(0)
-    setPreviewFailed(false)
-  }, [attachment?.id])
-
   const isImage = attachment.mimeType?.startsWith("image/")
   const isPdf = attachment.mimeType?.includes("pdf")
-  const canPreview = (isImage || isPdf) && !previewFailed
-
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
-  const handleRotate = () => setRotation(prev => (prev + 90) % 360)
 
   const handleDownload = () => {
     const a = document.createElement('a')
@@ -160,121 +140,52 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
     document.body.removeChild(a)
   }
 
+  // PDF Preview using PDF.js
+  if (isPdf) {
+    return (
+      <PDFViewer
+        url={previewUrl}
+        filename={attachment.filename}
+        onDownload={handleDownload}
+      />
+    )
+  }
+
+  // Image Preview
+  if (isImage) {
+    return (
+      <ImageViewer
+        url={previewUrl}
+        filename={attachment.filename}
+        onDownload={handleDownload}
+      />
+    )
+  }
+
+  // Fallback for other file types
   return (
-    <div className="h-full flex flex-col bg-gray-100">
-      {/* Preview Toolbar */}
-      <div className="px-4 py-2 bg-white border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <span className="text-sm font-medium text-gray-900 truncate" title={attachment.filename}>
-            {attachment.filename}
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {canPreview && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleZoomOut}
-                disabled={zoom <= 50}
-                className="h-8 w-8 p-0"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </Button>
-              <span className="text-xs text-gray-500 w-12 text-center">{zoom}%</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleZoomIn}
-                disabled={zoom >= 200}
-                className="h-8 w-8 p-0"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </Button>
-              {isImage && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRotate}
-                  className="h-8 w-8 p-0"
-                >
-                  <RotateCw className="w-4 h-4" />
-                </Button>
-              )}
-              <div className="w-px h-4 bg-gray-200" />
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDownload}
-            className="h-8"
+    <div className="h-full flex items-center justify-center bg-gray-100 p-4">
+      <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
+        <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+        <h3 className="font-medium text-gray-900 mb-1">{attachment.filename}</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          {attachment.mimeType || "Document"}
+        </p>
+        <div className="flex flex-col gap-2">
+          <a
+            href={previewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
           >
-            <Download className="w-4 h-4 mr-1" />
+            <ExternalLink className="w-4 h-4" />
+            Open in new tab
+          </a>
+          <Button variant="outline" onClick={handleDownload}>
+            <Download className="w-4 h-4 mr-2" />
             Download
           </Button>
         </div>
-      </div>
-
-      {/* Preview Content */}
-      <div className="flex-1 overflow-auto flex items-center justify-center p-4">
-        {isImage && !previewFailed ? (
-          <div 
-            className="transition-transform"
-            style={{ 
-              transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              transformOrigin: 'center center'
-            }}
-          >
-            <img
-              src={previewUrl}
-              alt={attachment.filename}
-              className="max-w-full h-auto rounded-lg shadow-lg"
-              onError={() => setPreviewFailed(true)}
-            />
-          </div>
-        ) : isPdf && !previewFailed ? (
-          // Use iframe to embed PDF from our preview API
-          <iframe
-            src={previewUrl}
-            className="w-full h-full rounded-lg bg-white shadow-lg"
-            style={{ 
-              minHeight: '600px',
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: 'top left',
-              width: `${100 / (zoom / 100)}%`,
-              height: `${100 / (zoom / 100)}%`
-            }}
-            title={attachment.filename}
-            onError={() => setPreviewFailed(true)}
-          />
-        ) : (
-          // Graceful fallback - offer to open in new tab or download
-          <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
-            <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="font-medium text-gray-900 mb-1">{attachment.filename}</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {attachment.mimeType || "Document"}
-            </p>
-            <div className="flex flex-col gap-2">
-              <a
-                href={previewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open in new tab
-              </a>
-              <Button variant="outline" onClick={handleDownload}>
-                <Download className="w-4 h-4 mr-2" />
-                Download
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

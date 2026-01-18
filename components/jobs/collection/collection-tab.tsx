@@ -12,11 +12,11 @@ import {
 } from "@/components/ui/select"
 import { 
   Upload, Download, FileText, Filter, RefreshCw, Trash2,
-  FileImage, FileSpreadsheet, File, Archive, Eye, X,
-  ZoomIn, ZoomOut, RotateCw
+  FileImage, FileSpreadsheet, File, Archive, Eye, X
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { CollectionUploadModal } from "./collection-upload-modal"
+import { PDFViewer, ImageViewer } from "@/components/ui/pdf-viewer"
 
 // Types
 interface CollectedItem {
@@ -470,7 +470,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
   )
 }
 
-// File Preview Modal Component
+// File Preview Modal Component using PDF.js
 interface FilePreviewModalProps {
   jobId: string
   item: CollectedItem
@@ -479,27 +479,11 @@ interface FilePreviewModalProps {
 }
 
 function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModalProps) {
-  const [error, setError] = useState(false)
-  const [zoom, setZoom] = useState(100)
-  const [rotation, setRotation] = useState(0)
-
   const isImage = item.mimeType?.startsWith("image/")
   const isPdf = item.mimeType?.includes("pdf")
   
-  // Use our preview API which streams files with inline headers
-  // This works for both Vercel Blob and local storage, and avoids X-Frame-Options issues
+  // Use our preview API which streams files with proper headers
   const previewUrl = `/api/collection/preview/${item.id}`
-
-  // Reset state when item changes
-  useEffect(() => {
-    setError(false)
-    setZoom(100)
-    setRotation(0)
-  }, [item.id])
-
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
-  const handleRotate = () => setRotation(prev => (prev + 90) % 360)
 
   // Close on Escape key
   useEffect(() => {
@@ -520,7 +504,7 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
       
       {/* Modal */}
       <div className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
+        {/* Header with close button */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center gap-3 min-w-0">
             {getFileIcon(item.mimeType)}
@@ -530,98 +514,38 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Zoom controls */}
-            {!error && (isImage || isPdf) && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleZoomOut}
-                  disabled={zoom <= 50}
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </Button>
-                <span className="text-sm text-gray-500 w-12 text-center">{zoom}%</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleZoomIn}
-                  disabled={zoom >= 200}
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </Button>
-                {isImage && (
-                  <Button variant="ghost" size="sm" onClick={handleRotate}>
-                    <RotateCw className="w-4 h-4" />
-                  </Button>
-                )}
-                <div className="w-px h-6 bg-gray-300 mx-2" />
-              </>
-            )}
-            
-            <Button variant="outline" size="sm" onClick={onDownload}>
-              <Download className="w-4 h-4 mr-1" />
-              Download
-            </Button>
-            
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
         </div>
         
         {/* Preview Content */}
-        <div className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-4">
-          {error ? (
-            <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
-              <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="font-medium text-gray-900 mb-2">Preview not available</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                This file can't be previewed. You can download it instead.
-              </p>
-              <Button onClick={onDownload}>
-                <Download className="w-4 h-4 mr-2" />
-                Download File
-              </Button>
-            </div>
+        <div className="flex-1 overflow-hidden">
+          {isPdf ? (
+            <PDFViewer
+              url={previewUrl}
+              filename={item.filename}
+              onDownload={onDownload}
+            />
           ) : isImage ? (
-            <div 
-              className="transition-transform duration-200"
-              style={{ 
-                transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              }}
-            >
-              <img
-                src={previewUrl}
-                alt={item.filename}
-                className="max-w-full max-h-[70vh] rounded-lg shadow-lg"
-                onError={() => setError(true)}
-              />
-            </div>
-          ) : isPdf ? (
-            <iframe
-              src={previewUrl}
-              className="w-full h-full rounded-lg bg-white shadow-lg"
-              style={{ 
-                minHeight: "70vh",
-                transform: `scale(${zoom / 100})`,
-                transformOrigin: 'top center',
-              }}
-              title={item.filename}
-              onError={() => setError(true)}
+            <ImageViewer
+              url={previewUrl}
+              filename={item.filename}
+              onDownload={onDownload}
             />
           ) : (
-            <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
-              <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="font-medium text-gray-900 mb-2">{item.filename}</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                {item.mimeType || "Document"}
-              </p>
-              <Button onClick={onDownload}>
-                <Download className="w-4 h-4 mr-2" />
-                Download File
-              </Button>
+            <div className="h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
+                <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="font-medium text-gray-900 mb-2">{item.filename}</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  {item.mimeType || "Document"}
+                </p>
+                <Button onClick={onDownload}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download File
+                </Button>
+              </div>
             </div>
           )}
         </div>

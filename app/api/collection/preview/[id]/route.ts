@@ -7,9 +7,10 @@ export const dynamic = "force-dynamic"
 
 /**
  * GET /api/collection/preview/[id]
- * Preview a collected item - redirects to the file URL
+ * Stream a collected item's file content for client-side preview
  * 
- * Vercel Blob URLs are publicly accessible and should work in iframes
+ * Returns the raw file bytes with appropriate content-type headers.
+ * Used by PDF.js viewer and image preview components.
  */
 export async function GET(
   request: NextRequest,
@@ -18,18 +19,20 @@ export async function GET(
   const itemId = context.params.id
   
   try {
+    // Require authentication
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const organizationId = session.user.organizationId
-
-    // Fetch the collected item
-    const item = await prisma.collectedItem.findFirst({
-      where: {
-        id: itemId,
-        organizationId
+    // Fetch the collected item - use findUnique since IDs are globally unique
+    // Also verify user has access through the job's organization
+    const item = await prisma.collectedItem.findUnique({
+      where: { id: itemId },
+      include: {
+        job: {
+          select: { organizationId: true }
+        }
       }
     })
 
@@ -37,16 +40,42 @@ export async function GET(
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
-    // If we have a fileUrl, redirect to it
-    if (item.fileUrl) {
-      return NextResponse.redirect(item.fileUrl)
+    // Verify user has access to this item's organization
+    if (item.job?.organizationId !== session.user.organizationId) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // No fileUrl available
-    return NextResponse.json(
-      { error: "File URL not available" },
-      { status: 404 }
-    )
+    // We need a fileUrl to fetch from
+    if (!item.fileUrl) {
+      return NextResponse.json(
+        { error: "File URL not available" },
+        { status: 404 }
+      )
+    }
+
+    // Fetch the file from Vercel Blob storage
+    const fileResponse = await fetch(item.fileUrl)
+    if (!fileResponse.ok) {
+      console.error(`[Preview API] Failed to fetch file: ${fileResponse.status}`)
+      return NextResponse.json(
+        { error: "Failed to fetch file from storage" },
+        { status: 502 }
+      )
+    }
+
+    // Get the file as ArrayBuffer and return with proper headers
+    const arrayBuffer = await fileResponse.arrayBuffer()
+    const contentType = item.mimeType || "application/octet-stream"
+
+    return new NextResponse(arrayBuffer, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `inline; filename="${encodeURIComponent(item.filename)}"`,
+        "Content-Length": arrayBuffer.byteLength.toString(),
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff"
+      }
+    })
   } catch (error: any) {
     console.error("[Preview API] Error:", error)
     return NextResponse.json(
