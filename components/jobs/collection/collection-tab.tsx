@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/select"
 import { 
   Upload, Download, FileText, Filter, RefreshCw, Trash2,
-  FileImage, FileSpreadsheet, File, Archive
+  FileImage, FileSpreadsheet, File, Archive, Eye, X,
+  ZoomIn, ZoomOut, RotateCw, Loader2
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { CollectionUploadModal } from "./collection-upload-modal"
@@ -76,6 +77,12 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Check if file is previewable
+function isPreviewable(mimeType: string | null): boolean {
+  if (!mimeType) return false
+  return mimeType.startsWith("image/") || mimeType.includes("pdf")
+}
+
 export function CollectionTab({ jobId }: CollectionTabProps) {
   // State
   const [items, setItems] = useState<CollectedItem[]>([])
@@ -90,6 +97,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
   
   // Modals
   const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const [previewItem, setPreviewItem] = useState<CollectedItem | null>(null)
   
   // Bulk action loading
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -323,9 +331,18 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className="font-medium text-gray-900 truncate max-w-[200px]">
-                          {item.filename}
-                        </div>
+                        {isPreviewable(item.mimeType) ? (
+                          <button
+                            onClick={() => setPreviewItem(item)}
+                            className="font-medium text-gray-900 truncate max-w-[200px] hover:text-orange-600 hover:underline text-left"
+                          >
+                            {item.filename}
+                          </button>
+                        ) : (
+                          <div className="font-medium text-gray-900 truncate max-w-[200px]">
+                            {item.filename}
+                          </div>
+                        )}
                         <div className="text-xs text-gray-500">
                           {formatFileSize(item.fileSize)}
                         </div>
@@ -359,6 +376,16 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
+                      {isPreviewable(item.mimeType) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPreviewItem(item)}
+                          title="Preview"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -394,6 +421,202 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
           fetchItems()
         }}
       />
+
+      {/* Preview Modal */}
+      {previewItem && (
+        <FilePreviewModal
+          jobId={jobId}
+          item={previewItem}
+          onClose={() => setPreviewItem(null)}
+          onDownload={() => handleDownload(previewItem.id, previewItem.filename)}
+        />
+      )}
+    </div>
+  )
+}
+
+// File Preview Modal Component
+interface FilePreviewModalProps {
+  jobId: string
+  item: CollectedItem
+  onClose: () => void
+  onDownload: () => void
+}
+
+function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+  const [zoom, setZoom] = useState(100)
+  const [rotation, setRotation] = useState(0)
+
+  const isImage = item.mimeType?.startsWith("image/")
+  const isPdf = item.mimeType?.includes("pdf")
+
+  useEffect(() => {
+    const fetchPreview = async () => {
+      setLoading(true)
+      setError(false)
+      try {
+        const response = await fetch(
+          `/api/jobs/${jobId}/collection/download?itemId=${item.id}`,
+          { credentials: "include" }
+        )
+        
+        if (!response.ok) throw new Error("Failed to fetch")
+        
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        setPreviewUrl(url)
+      } catch {
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPreview()
+
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [item.id, jobId])
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
+  const handleRotate = () => setRotation(prev => (prev + 90) % 360)
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/70" 
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+          <div className="flex items-center gap-3 min-w-0">
+            {getFileIcon(item.mimeType)}
+            <div className="min-w-0">
+              <h3 className="font-medium text-gray-900 truncate">{item.filename}</h3>
+              <p className="text-xs text-gray-500">{formatFileSize(item.fileSize)}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Zoom controls */}
+            {!error && previewUrl && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleZoomOut}
+                  disabled={zoom <= 50}
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <span className="text-sm text-gray-500 w-12 text-center">{zoom}%</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 200}
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+                {isImage && (
+                  <Button variant="ghost" size="sm" onClick={handleRotate}>
+                    <RotateCw className="w-4 h-4" />
+                  </Button>
+                )}
+                <div className="w-px h-6 bg-gray-300 mx-2" />
+              </>
+            )}
+            
+            <Button variant="outline" size="sm" onClick={onDownload}>
+              <Download className="w-4 h-4 mr-1" />
+              Download
+            </Button>
+            
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Preview Content */}
+        <div className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-4">
+          {loading ? (
+            <div className="text-center">
+              <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto mb-3" />
+              <p className="text-gray-500">Loading preview...</p>
+            </div>
+          ) : error || !previewUrl ? (
+            <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
+              <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="font-medium text-gray-900 mb-2">Preview not available</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                This file can't be previewed. You can download it instead.
+              </p>
+              <Button onClick={onDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download File
+              </Button>
+            </div>
+          ) : isImage ? (
+            <div 
+              className="transition-transform duration-200"
+              style={{ 
+                transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+              }}
+            >
+              <img
+                src={previewUrl}
+                alt={item.filename}
+                className="max-w-full max-h-[70vh] rounded-lg shadow-lg"
+                onError={() => setError(true)}
+              />
+            </div>
+          ) : isPdf ? (
+            <iframe
+              src={`${previewUrl}#toolbar=1&navpanes=0`}
+              className="w-full h-full rounded-lg bg-white shadow-lg"
+              style={{ 
+                minHeight: "70vh",
+                transform: `scale(${zoom / 100})`,
+                transformOrigin: 'top center',
+              }}
+              title={item.filename}
+            />
+          ) : (
+            <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
+              <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="font-medium text-gray-900 mb-2">{item.filename}</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {item.mimeType || "Document"}
+              </p>
+              <Button onClick={onDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download File
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
