@@ -275,7 +275,7 @@ export function ConfigurableTable({
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {/* Select All Checkbox for Group */}
-                        <th className="w-10 px-2 py-2">
+                        <th className="w-12 px-3 py-2 text-center">
                           <input
                             type="checkbox"
                             checked={isGroupAllSelected(group.status)}
@@ -286,7 +286,7 @@ export function ConfigurableTable({
                             className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
                           />
                         </th>
-                        <th className="w-10 px-2 py-2"></th>
+                        <th className="w-10 px-2 py-2 text-center"></th>
                         {visibleColumns.map((column) => (
                           <th
                             key={column.id}
@@ -313,7 +313,7 @@ export function ConfigurableTable({
                           className={`hover:bg-gray-50 transition-colors group ${selectedJobs.has(job.id) ? "bg-orange-50" : ""}`}
                         >
                           {/* Row Checkbox */}
-                          <td className="px-2 py-2">
+                          <td className="w-12 px-3 py-2 text-center">
                             <input
                               type="checkbox"
                               checked={selectedJobs.has(job.id)}
@@ -321,7 +321,7 @@ export function ConfigurableTable({
                               className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
                             />
                           </td>
-                          <td className="px-2 py-2">
+                          <td className="w-10 px-2 py-2 text-center">
                             <button
                               onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
                               className="p-1.5 rounded hover:bg-blue-100 transition-colors text-gray-400 hover:text-blue-600"
