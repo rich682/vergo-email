@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { 
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
-  CheckCircle, MessageSquare, Bell,
+  CheckCircle, MessageSquare,
   Search, X, Calendar, Tag, Paperclip
 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -187,14 +187,6 @@ function StatusDropdown({
   )
 }
 
-// Format reminder frequency
-function formatReminderFrequency(hours: number | null): string {
-  if (!hours) return "—"
-  if (hours < 24) return `Every ${hours}h`
-  const days = Math.round(hours / 24)
-  return `Every ${days}d`
-}
-
 // Check if request has a reply based on status
 function hasReply(status: string): boolean {
   return ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING", "FULFILLED", "COMPLETE"].includes(status)
@@ -226,14 +218,12 @@ export default function RequestsPage() {
   const [contactSearch, setContactSearch] = useState<string>("")
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
-  const [hasReminders, setHasReminders] = useState<string>("all")
   const [attachmentFilter, setAttachmentFilter] = useState<string>("all")
 
 
   // Check if any filters are active
   const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
-    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all" ||
-    attachmentFilter !== "all"
+    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all"
 
   // Fetch boards for filter
   useEffect(() => {
@@ -302,13 +292,6 @@ export default function RequestsPage() {
         )
       }
       
-      // Client-side filtering for reminders
-      if (hasReminders === "yes") {
-        filteredRequests = filteredRequests.filter((r: RequestTask) => r.remindersEnabled)
-      } else if (hasReminders === "no") {
-        filteredRequests = filteredRequests.filter((r: RequestTask) => !r.remindersEnabled)
-      }
-      
       setRequests(filteredRequests)
       setTotal(data.total || 0)
       setJobs(data.jobs || [])
@@ -320,7 +303,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders, attachmentFilter])
+  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter])
 
   useEffect(() => {
     fetchRequests()
@@ -376,7 +359,6 @@ export default function RequestsPage() {
     setContactSearch("")
     setDateFrom("")
     setDateTo("")
-    setHasReminders("all")
     setAttachmentFilter("all")
   }
 
@@ -604,19 +586,6 @@ export default function RequestsPage() {
             </SelectContent>
           </Select>
 
-          {/* Reminders Filter */}
-          <Select value={hasReminders} onValueChange={setHasReminders}>
-            <SelectTrigger className="w-[130px]">
-              <Bell className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="yes">With Reminders</SelectItem>
-              <SelectItem value="no">No Reminders</SelectItem>
-            </SelectContent>
-          </Select>
-
           {/* Contact Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -693,7 +662,6 @@ export default function RequestsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attachments</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reminders</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -793,16 +761,6 @@ export default function RequestsPage() {
                     <div className="text-xs text-gray-500">
                       {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {request.remindersEnabled ? (
-                      <span className="inline-flex items-center gap-1 text-sm text-gray-700">
-                        <Bell className="w-3 h-3 text-amber-500" />
-                        {formatReminderFrequency(request.remindersFrequencyHours)}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-gray-400">Off</span>
-                    )}
                   </td>
                 </tr>
               )})}
