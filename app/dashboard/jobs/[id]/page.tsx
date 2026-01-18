@@ -44,7 +44,6 @@ import { SendRequestModal } from "@/components/jobs/send-request-modal"
 import { RequestDetailModal } from "@/components/jobs/request-detail-modal"
 
 // Labels components
-import { LabelsManager } from "@/components/jobs/labels-manager"
 import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 
 // Collection components
@@ -1617,16 +1616,7 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Contact Labels */}
-            {stakeholders.length > 0 && (
-              <Card>
-                <CardContent className="p-4">
-                  <LabelsManager jobId={jobId} canEdit={permissions?.canEdit} />
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Stakeholder Contacts with Labels */}
+            {/* Stakeholder Contacts */}
             {stakeholders.length > 0 && (
               <Card>
                 <CardContent className="p-4">
