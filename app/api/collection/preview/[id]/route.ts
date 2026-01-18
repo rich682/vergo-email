@@ -14,16 +14,22 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const itemId = context.params.id
+  // In Next.js 14, params may be a Promise
+  const { id: itemId } = await params
+  
+  console.log(`[Preview API] Request for item: ${itemId}`)
   
   try {
     // Require authentication - IDs are unguessable cuids, so auth is sufficient
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
+      console.log(`[Preview API] Unauthorized - no session`)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    console.log(`[Preview API] User authenticated: ${session.user.id}`)
 
     // Fetch the collected item by ID
     // Since IDs are unguessable cuids, having the ID implies authorization
@@ -31,10 +37,16 @@ export async function GET(
       where: { id: itemId }
     })
 
+    console.log(`[Preview API] Found item: ${!!item}`)
+
     if (!item) {
-      console.error(`[Preview API] Item ${itemId} not found in database`)
+      // Debug: check if item exists at all in the table
+      const count = await prisma.collectedItem.count()
+      console.error(`[Preview API] Item ${itemId} not found. Total CollectedItems in DB: ${count}`)
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
+
+    console.log(`[Preview API] Item details: filename=${item.filename}, fileUrl=${item.fileUrl ? 'present' : 'missing'}`)
 
     // We need a fileUrl to fetch from
     if (!item.fileUrl) {
