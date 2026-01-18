@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -127,6 +127,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
   const [boards, setBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
+  const boardMenuRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -150,6 +151,23 @@ export function Sidebar({ className = "" }: SidebarProps) {
   useEffect(() => {
     fetchBoards()
   }, [])
+
+  // Close board menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (boardMenuRef.current && !boardMenuRef.current.contains(event.target as Node)) {
+        setBoardMenuOpen(null)
+      }
+    }
+    
+    if (boardMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+    
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [boardMenuOpen])
 
   // Check if we're on the tasks page
   const isOnTasksPage = pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
@@ -337,7 +355,10 @@ export function Sidebar({ className = "" }: SidebarProps) {
 
                         {/* Board context menu */}
                         {boardMenuOpen === board.id && (
-                          <div className="absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-50">
+                          <div 
+                            ref={boardMenuRef}
+                            className="absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-50"
+                          >
                             <button
                               onClick={() => handleDuplicateBoard(board.id)}
                               className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"

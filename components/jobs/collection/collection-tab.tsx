@@ -217,14 +217,25 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
   }
 
   // Navigate to review workflow for this attachment
-  const handleRowClick = (item: CollectedItem) => {
+  const handleRowClick = (item: CollectedItem, e: React.MouseEvent) => {
+    // Prevent navigation if clicking on checkbox or actions
+    if ((e.target as HTMLElement).closest('input, button')) {
+      return
+    }
+    
     // If the item came from an email reply, navigate to the review page with attachment tab
     if (item.message?.id) {
-      router.push(`/dashboard/review/${item.message.id}?tab=attachments&attachmentId=${item.id}`)
+      const reviewUrl = `/dashboard/review/${item.message.id}?tab=attachments&attachmentId=${item.id}`
+      router.push(reviewUrl)
     } else {
-      // For manually uploaded files, just open the preview modal
+      // For manually uploaded files, open the preview modal
       setPreviewItem(item)
     }
+  }
+  
+  // Check if item can navigate to review
+  const canNavigateToReview = (item: CollectedItem) => {
+    return item.source === "EMAIL_REPLY" && item.message?.id
   }
 
   if (loading && items.length === 0) {
@@ -331,13 +342,15 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map(item => (
+              {items.map(item => {
+                const navigable = canNavigateToReview(item)
+                return (
                 <tr 
                   key={item.id} 
-                  className={`hover:bg-gray-50 ${item.message?.id ? 'cursor-pointer' : 'cursor-default'}`}
-                  onClick={() => handleRowClick(item)}
+                  className={`hover:bg-gray-50 transition-colors ${navigable ? 'cursor-pointer hover:bg-orange-50' : 'cursor-default'}`}
+                  onClick={(e) => handleRowClick(item, e)}
                 >
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-3">
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(item.id)}
@@ -349,10 +362,10 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className={`font-medium truncate max-w-[200px] ${item.message?.id ? 'text-orange-600 hover:text-orange-700' : 'text-gray-900'}`}>
+                        <div className={`font-medium truncate max-w-[200px] ${navigable ? 'text-orange-600 hover:text-orange-700 hover:underline' : 'text-gray-900'}`}>
                           {item.filename}
-                          {item.message?.id && (
-                            <span className="ml-1 text-xs text-gray-400">→</span>
+                          {navigable && (
+                            <span className="ml-1 text-xs text-orange-400">→ View reply</span>
                           )}
                         </div>
                         <div className="text-xs text-gray-500">
@@ -386,12 +399,29 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                       {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
                     </div>
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
+                      {navigable && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/dashboard/review/${item.message!.id}?tab=attachments&attachmentId=${item.id}`)
+                          }}
+                          title="View in reply"
+                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDownload(item.id, item.filename)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDownload(item.id, item.filename)
+                        }}
                         title="Download"
                       >
                         <Download className="w-4 h-4" />
@@ -399,7 +429,10 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(item.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(item.id)
+                        }}
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
@@ -407,7 +440,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -613,16 +646,24 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
               />
             </div>
           ) : isPdf ? (
-            <iframe
-              src={`https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`}
+            <object
+              data={previewUrl}
+              type="application/pdf"
               className="w-full h-full rounded-lg bg-white shadow-lg"
               style={{ 
                 minHeight: "70vh",
                 transform: `scale(${zoom / 100})`,
                 transformOrigin: 'top center',
               }}
-              title={item.filename}
-            />
+            >
+              {/* Fallback to Google Docs viewer if native PDF doesn't work */}
+              <iframe
+                src={`https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`}
+                className="w-full h-full"
+                style={{ minHeight: "70vh" }}
+                title={item.filename}
+              />
+            </object>
           ) : (
             <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
               <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />

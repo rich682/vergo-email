@@ -302,19 +302,29 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
             />
           </div>
         ) : isPdf && downloadUrl && !previewFailed ? (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(downloadUrl)}&embedded=true`}
+          // Use object tag with iframe fallback for better PDF compatibility
+          <object
+            data={downloadUrl}
+            type="application/pdf"
             className="w-full h-full rounded-lg bg-white shadow-lg"
             style={{ 
+              minHeight: '500px',
               transform: `scale(${zoom / 100})`,
               transformOrigin: 'top left',
               width: `${100 / (zoom / 100)}%`,
               height: `${100 / (zoom / 100)}%`
             }}
-            title={attachment.filename}
-          />
+          >
+            {/* Fallback to Google Docs viewer if native PDF doesn't work */}
+            <iframe
+              src={`https://docs.google.com/gview?url=${encodeURIComponent(downloadUrl)}&embedded=true`}
+              className="w-full h-full"
+              style={{ minHeight: '500px' }}
+              title={attachment.filename}
+            />
+          </object>
         ) : (
-          // Graceful fallback - no error messaging, just offer to open
+          // Graceful fallback - offer to open in new tab
           <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
             <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="font-medium text-gray-900 mb-1">{attachment.filename}</h3>
@@ -322,15 +332,21 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
               {attachment.mimeType || "Document"}
             </p>
             {downloadUrl || attachment.fileUrl ? (
-              <a
-                href={downloadUrl || attachment.fileUrl || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open document
-              </a>
+              <div className="flex flex-col gap-2">
+                <a
+                  href={downloadUrl || attachment.fileUrl || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open in new tab
+                </a>
+                <Button variant="outline" onClick={handleDownload}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+              </div>
             ) : (
               <Button onClick={handleDownload}>
                 <Download className="w-4 h-4 mr-2" />
