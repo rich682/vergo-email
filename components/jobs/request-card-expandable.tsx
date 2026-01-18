@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { 
   ChevronDown, ChevronRight, Users, Clock, Bell, 
   MessageSquare, CheckCircle, AlertCircle, Pause, 
-  PlayCircle, Mail, Paperclip, Eye, FileSearch
+  PlayCircle, Mail, Paperclip, Eye
 } from "lucide-react"
 import { format } from "date-fns"
 import {
@@ -223,6 +223,49 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
     }
   }
 
+  // Handle viewing a recipient - go to review page if replied, otherwise fetch and navigate
+  const handleViewRecipient = async (recipient: RequestRecipient) => {
+    // If we have a cached message ID, go directly to review
+    if (replyMessageIds[recipient.id]) {
+      router.push(`/dashboard/review/${replyMessageIds[recipient.id]}`)
+      return
+    }
+
+    // Try to fetch the latest message for this recipient's task
+    try {
+      const response = await fetch(`/api/tasks/${recipient.id}/messages`, {
+        credentials: "include"
+      })
+      if (response.ok) {
+        const messages = await response.json()
+        // Get the latest inbound message (reply) or outbound message
+        const inboundMsg = messages
+          .filter((m: any) => m.direction === "INBOUND")
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+        
+        if (inboundMsg) {
+          router.push(`/dashboard/review/${inboundMsg.id}`)
+          return
+        }
+
+        // If no inbound, get the latest outbound
+        const outboundMsg = messages
+          .filter((m: any) => m.direction === "OUTBOUND")
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+        
+        if (outboundMsg) {
+          router.push(`/dashboard/review/${outboundMsg.id}`)
+          return
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error)
+    }
+
+    // Fallback: use the old detail view
+    onViewDetails(request)
+  }
+
   const requestTitle = request.subjectTemplate || request.generatedSubject || request.suggestedCampaignName || "Request"
   const sentDate = request.sentAt 
     ? format(new Date(request.sentAt), "MMM d, yyyy 'at' h:mm a")
@@ -347,30 +390,16 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
                         />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onViewDetails(request)
-                            }}
-                            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-                            title="View email details"
-                          >
-                            <Eye className="w-4 h-4 text-gray-500" />
-                          </button>
-                          {hasReplied(recipient.status) && replyMessageIds[recipient.id] && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleReview(recipient.id)
-                              }}
-                              className="p-1.5 hover:bg-orange-100 rounded-lg transition-colors"
-                              title="Review response"
-                            >
-                              <FileSearch className="w-4 h-4 text-orange-500" />
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleViewRecipient(recipient)
+                          }}
+                          className="p-1.5 hover:bg-orange-100 rounded-lg transition-colors"
+                          title={hasReplied(recipient.status) ? "Review response" : "View request"}
+                        >
+                          <Eye className="w-4 h-4 text-orange-500" />
+                        </button>
                       </td>
                     </tr>
                   ))}
