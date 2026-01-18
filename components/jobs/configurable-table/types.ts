@@ -45,6 +45,7 @@ export interface JobRow {
   notes: string | null
   customFields?: Record<string, any>
   collectedItemCount?: number
+  taskCount?: number // Number of requests - used for delete/archive logic
 }
 
 // Team member for person cells

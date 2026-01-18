@@ -16,6 +16,7 @@ const STATUS_OPTIONS: StatusOption[] = [
   { value: "IN_PROGRESS", label: "In Progress", color: "text-blue-700", bgColor: "bg-blue-100" },
   { value: "BLOCKED", label: "Blocked", color: "text-red-700", bgColor: "bg-red-100" },
   { value: "COMPLETE", label: "Complete", color: "text-green-700", bgColor: "bg-green-100" },
+  { value: "ARCHIVED", label: "Archived", color: "text-amber-700", bgColor: "bg-amber-100" },
 ]
 
 interface StatusCellProps {
@@ -30,18 +31,19 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Map legacy statuses
+  // Map legacy statuses (but keep ARCHIVED as-is for visual distinction)
   const mapStatus = (status: string): string => {
     switch (status) {
       case "ACTIVE": return "NOT_STARTED"
       case "WAITING": return "IN_PROGRESS"
       case "COMPLETED": return "COMPLETE"
-      case "ARCHIVED": return "COMPLETE"
+      // ARCHIVED stays as ARCHIVED for visual indicator
       default: return status
     }
   }
 
   const displayStatus = mapStatus(value)
+  const isArchived = value === "ARCHIVED"
   const currentOption = STATUS_OPTIONS.find(opt => opt.value === displayStatus) || STATUS_OPTIONS[0]
 
   // Calculate dropdown position when opening
@@ -94,7 +96,7 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
             zIndex: 9999 
           }}
         >
-          {STATUS_OPTIONS.map((option) => {
+          {STATUS_OPTIONS.filter(opt => opt.value !== "ARCHIVED").map((option) => {
             const dotColor = option.value === "NOT_STARTED" ? "bg-gray-400" 
               : option.value === "IN_PROGRESS" ? "bg-blue-500"
               : option.value === "BLOCKED" ? "bg-red-500"

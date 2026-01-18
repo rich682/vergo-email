@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs
     const ownerId = searchParams.get("ownerId")
     const tagsParam = searchParams.get("tags")  // Comma-separated tags filter
+    const includeArchived = searchParams.get("includeArchived") === "true"  // Show archived jobs
     const limit = searchParams.get("limit")
     const offset = searchParams.get("offset")
 
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
       ownerId: myJobs ? userId : (ownerId || undefined),
       collaboratorId: myJobs ? userId : undefined,
       tags,  // Filter by tags (ANY match)
+      includeArchived,  // Include archived jobs (default: false)
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined
     })

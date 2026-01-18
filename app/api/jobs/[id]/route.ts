@@ -260,18 +260,30 @@ export async function DELETE(
       )
     }
 
-    const deleted = await JobService.delete(id, organizationId, { hard })
+    const result = await JobService.delete(id, organizationId, { hard })
 
-    if (!deleted) {
+    if (!result.success) {
+      // Check if it's a "has requests" error (evidence protection)
+      if (result.taskCount && result.taskCount > 0) {
+        return NextResponse.json(
+          { 
+            error: result.error,
+            taskCount: result.taskCount,
+            code: "HAS_REQUESTS"
+          },
+          { status: 400 }
+        )
+      }
       return NextResponse.json(
-        { error: "Job not found" },
+        { error: result.error || "Job not found" },
         { status: 404 }
       )
     }
 
     return NextResponse.json({
       success: true,
-      message: hard ? "Job permanently deleted" : "Job archived"
+      message: hard ? "Job permanently deleted" : "Job archived",
+      taskCount: result.taskCount
     })
 
   } catch (error: any) {

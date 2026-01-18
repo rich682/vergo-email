@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Copy,
   Trash2,
+  Archive,
   X
 } from "lucide-react"
 import { ColumnDefinition, DEFAULT_COLUMNS, JobRow, TeamMember } from "./types"
@@ -30,6 +31,7 @@ const STATUS_GROUPS: StatusGroup[] = [
   { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-l-blue-500", defaultExpanded: true },
   { status: "BLOCKED", label: "Blocked", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-l-red-500", defaultExpanded: true },
   { status: "COMPLETE", label: "Complete", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-l-green-500", defaultExpanded: false },
+  { status: "ARCHIVED", label: "Archived", color: "text-amber-600", bgColor: "bg-amber-50", borderColor: "border-l-amber-400", defaultExpanded: false },
 ]
 
 interface ConfigurableTableProps {
@@ -42,15 +44,117 @@ interface ConfigurableTableProps {
   onDuplicate?: (jobIds: string[]) => Promise<void>
 }
 
-// Map legacy statuses
+// Map legacy statuses (keep ARCHIVED as-is for visual distinction)
 const mapStatusForDisplay = (status: string): string => {
   switch (status) {
     case "ACTIVE": return "NOT_STARTED"
     case "WAITING": return "IN_PROGRESS"
     case "COMPLETED": return "COMPLETE"
-    case "ARCHIVED": return "COMPLETE"
+    // ARCHIVED stays as ARCHIVED for its own group
     default: return status
   }
+}
+
+// Bulk Actions Bar Component
+// Shows "Archive" when any selected job has requests, "Delete" otherwise
+function BulkActionsBar({
+  selectedJobs,
+  jobs,
+  onDelete,
+  onDuplicate,
+  onBulkDelete,
+  onBulkDuplicate,
+  onClearSelection,
+  isDeleting,
+  isDuplicating,
+}: {
+  selectedJobs: Set<string>
+  jobs: JobRow[]
+  onDelete?: (jobIds: string[]) => Promise<void>
+  onDuplicate?: (jobIds: string[]) => Promise<void>
+  onBulkDelete: () => Promise<void>
+  onBulkDuplicate: () => Promise<void>
+  onClearSelection: () => void
+  isDeleting: boolean
+  isDuplicating: boolean
+}) {
+  // Check if any selected job has requests (taskCount > 0)
+  const selectedJobsList = jobs.filter(j => selectedJobs.has(j.id))
+  const hasJobsWithRequests = selectedJobsList.some(j => (j.taskCount || 0) > 0)
+  const jobsWithRequestsCount = selectedJobsList.filter(j => (j.taskCount || 0) > 0).length
+  const jobsWithoutRequestsCount = selectedJobsList.filter(j => (j.taskCount || 0) === 0).length
+
+  // Determine button label and tooltip
+  let deleteLabel = "Delete"
+  let deleteTooltip = `Permanently delete ${selectedJobs.size} task(s)`
+  
+  if (hasJobsWithRequests) {
+    if (jobsWithoutRequestsCount > 0) {
+      // Mixed selection
+      deleteLabel = "Delete / Archive"
+      deleteTooltip = `${jobsWithoutRequestsCount} will be deleted, ${jobsWithRequestsCount} will be archived (have requests)`
+    } else {
+      // All have requests
+      deleteLabel = "Archive"
+      deleteTooltip = `Archive ${jobsWithRequestsCount} task(s) (cannot delete tasks with requests)`
+    }
+  }
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-2xl">
+        {/* Selection count */}
+        <div className="flex items-center gap-2 pr-3 border-r border-gray-700">
+          <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-sm font-medium">
+            {selectedJobs.size}
+          </div>
+          <span className="text-sm font-medium">
+            Task{selectedJobs.size !== 1 ? "s" : ""} selected
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1">
+          {onDuplicate && (
+            <button
+              onClick={onBulkDuplicate}
+              disabled={isDuplicating}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="text-sm">Duplicate</span>
+            </button>
+          )}
+          
+          {onDelete && (
+            <button
+              onClick={onBulkDelete}
+              disabled={isDeleting}
+              title={deleteTooltip}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                hasJobsWithRequests ? "hover:bg-amber-600" : "hover:bg-red-600"
+              }`}
+            >
+              {hasJobsWithRequests ? (
+                <Archive className="w-4 h-4" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              <span className="text-sm">{deleteLabel}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={onClearSelection}
+          className="ml-2 p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function ConfigurableTable({
@@ -366,52 +470,17 @@ export function ConfigurableTable({
 
       {/* Floating Action Bar when items selected */}
       {selectedJobs.size > 0 && createPortal(
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-2xl">
-            {/* Selection count */}
-            <div className="flex items-center gap-2 pr-3 border-r border-gray-700">
-              <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-sm font-medium">
-                {selectedJobs.size}
-              </div>
-              <span className="text-sm font-medium">
-                Task{selectedJobs.size !== 1 ? "s" : ""} selected
-              </span>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-1">
-              {onDuplicate && (
-                <button
-                  onClick={handleBulkDuplicate}
-                  disabled={isDuplicating}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
-                >
-                  <Copy className="w-4 h-4" />
-                  <span className="text-sm">Duplicate</span>
-                </button>
-              )}
-              
-              {onDelete && (
-                <button
-                  onClick={handleBulkDelete}
-                  disabled={isDeleting}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span className="text-sm">Delete</span>
-                </button>
-              )}
-            </div>
-
-            {/* Close button */}
-            <button
-              onClick={clearSelection}
-              className="ml-2 p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>,
+        <BulkActionsBar
+          selectedJobs={selectedJobs}
+          jobs={jobs}
+          onDelete={onDelete}
+          onDuplicate={onDuplicate}
+          onBulkDelete={handleBulkDelete}
+          onBulkDuplicate={handleBulkDuplicate}
+          onClearSelection={clearSelection}
+          isDeleting={isDeleting}
+          isDuplicating={isDuplicating}
+        />,
         document.body
       )}
     </div>

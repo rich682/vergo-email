@@ -336,6 +336,8 @@ export class JobService {
   /**
    * List Jobs for an organization
    * Supports filtering by owner ("My Jobs"), tags, or showing all
+   * 
+   * NOTE: Archived jobs are excluded by default. Pass includeArchived: true to show them.
    */
   static async findByOrganization(
     organizationId: string,
@@ -346,6 +348,7 @@ export class JobService {
       ownerId?: string  // Filter by owner ("My Jobs")
       collaboratorId?: string  // Include jobs where user is collaborator
       tags?: string[]  // Filter by tags (ANY match)
+      includeArchived?: boolean  // Include archived jobs (default: false)
       limit?: number
       offset?: number
     }
@@ -356,6 +359,17 @@ export class JobService {
       ...(options?.status && { status: options.status }),
       ...(options?.clientId && { clientId: options.clientId }),
       ...(options?.boardId && { boardId: options.boardId })
+    }
+
+    // Exclude archived jobs by default (unless explicitly requested or filtering by archived status)
+    if (!options?.includeArchived && options?.status !== JobStatus.ARCHIVED) {
+      where.status = {
+        not: JobStatus.ARCHIVED
+      }
+      // If a specific status was requested, combine with not-archived
+      if (options?.status) {
+        where.status = options.status
+      }
     }
 
     // If filtering by "My Jobs" (owner or collaborator)
@@ -587,32 +601,56 @@ export class JobService {
 
   /**
    * Delete a Job (soft delete by archiving, or hard delete)
+   * 
+   * SAFETY RULE: Jobs with requests (tasks) cannot be permanently deleted.
+   * - If taskCount > 0 and hard=true -> throws error (evidence protection)
+   * - If taskCount > 0 and hard=false -> archives the job
+   * - If taskCount == 0 -> allows both hard and soft delete
    */
   static async delete(
     id: string,
     organizationId: string,
     options?: { hard?: boolean }
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; taskCount?: number; error?: string }> {
+    // Fetch job with task count
     const existing = await prisma.job.findFirst({
-      where: { id, organizationId }
+      where: { id, organizationId },
+      include: {
+        _count: {
+          select: { tasks: true }
+        }
+      }
     })
 
-    if (!existing) return false
+    if (!existing) {
+      return { success: false, error: "Job not found" }
+    }
+
+    const taskCount = existing._count.tasks
+
+    // SAFETY: Prevent hard delete if job has any requests (evidence protection)
+    if (options?.hard && taskCount > 0) {
+      return { 
+        success: false, 
+        taskCount,
+        error: "This task has requests and cannot be permanently deleted. Archive it instead to preserve evidence."
+      }
+    }
 
     if (options?.hard) {
-      // Hard delete - tasks will have jobId set to null due to onDelete: SetNull
+      // Hard delete - only allowed when taskCount == 0
       await prisma.job.delete({
         where: { id }
       })
     } else {
-      // Soft delete - archive the job
+      // Soft delete - archive the job (always allowed)
       await prisma.job.update({
         where: { id },
         data: { status: JobStatus.ARCHIVED }
       })
     }
 
-    return true
+    return { success: true, taskCount }
   }
 
   /**

@@ -99,6 +99,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [showArchived, setShowArchived] = useState(false)
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -133,6 +134,9 @@ export default function JobsPage() {
       if (boardId) {
         params.set("boardId", boardId)
       }
+      if (showArchived) {
+        params.set("includeArchived", "true")
+      }
       
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
@@ -146,7 +150,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardId])
+  }, [boardId, showArchived])
 
   const fetchBoard = useCallback(async () => {
     if (!boardId) {
@@ -353,17 +357,45 @@ export default function JobsPage() {
     }
   }
 
-  // Bulk delete handler
+  // Bulk delete/archive handler
+  // Separates tasks into: deletable (0 requests) vs archive-only (>0 requests)
   const handleBulkDelete = async (jobIds: string[]) => {
+    // Separate jobs into deletable vs archive-only based on taskCount
+    const selectedJobs = jobs.filter(j => jobIds.includes(j.id))
+    const deletableJobs = selectedJobs.filter(j => (j.taskCount || 0) === 0)
+    const archiveOnlyJobs = selectedJobs.filter(j => (j.taskCount || 0) > 0)
+    
+    // Build confirmation message
+    let confirmMessage = ""
+    if (deletableJobs.length > 0 && archiveOnlyJobs.length > 0) {
+      confirmMessage = `${deletableJobs.length} task(s) will be permanently deleted. ${archiveOnlyJobs.length} task(s) have requests and will be archived instead. Continue?`
+    } else if (archiveOnlyJobs.length > 0) {
+      confirmMessage = `${archiveOnlyJobs.length} task(s) have requests and will be archived (not deleted). Continue?`
+    } else {
+      confirmMessage = `Permanently delete ${deletableJobs.length} task(s)? This cannot be undone.`
+    }
+    
+    if (!confirm(confirmMessage)) return
+    
     try {
+      // Hard delete jobs with no requests
       await Promise.all(
-        jobIds.map(id => 
-          fetch(`/api/jobs/${id}`, { method: "DELETE" })
+        deletableJobs.map(j => 
+          fetch(`/api/jobs/${j.id}?hard=true`, { method: "DELETE" })
         )
       )
+      
+      // Archive jobs with requests (soft delete)
+      await Promise.all(
+        archiveOnlyJobs.map(j => 
+          fetch(`/api/jobs/${j.id}`, { method: "DELETE" })
+        )
+      )
+      
+      // Remove all from UI (archived ones are hidden by default)
       setJobs(prev => prev.filter(j => !jobIds.includes(j.id)))
     } catch (error) {
-      console.error("Error deleting jobs:", error)
+      console.error("Error deleting/archiving jobs:", error)
     }
   }
 
@@ -480,7 +512,8 @@ export default function JobsPage() {
     dueDate: job.dueDate,
     notes: job.notes || null,
     customFields: job.customFields,
-    collectedItemCount: job.collectedItemCount || 0
+    collectedItemCount: job.collectedItemCount || 0,
+    taskCount: job.taskCount || 0
   }))
 
   // ============================================
@@ -775,8 +808,8 @@ export default function JobsPage() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="mb-4">
+        {/* Search and Filters */}
+        <div className="mb-4 flex items-center gap-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
@@ -786,6 +819,17 @@ export default function JobsPage() {
               className="pl-10"
             />
           </div>
+          
+          {/* Show Archived Toggle */}
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+            />
+            Show archived
+          </label>
         </div>
 
         {/* AI Summary Panel */}

@@ -738,14 +738,42 @@ export default function JobDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to archive this item?")) return
+    const hasRequests = (job?.taskCount || 0) > 0
+    
+    // Different confirmation messages based on whether task has requests
+    const confirmMessage = hasRequests
+      ? "This task has requests and will be archived (not permanently deleted). Continue?"
+      : "Are you sure you want to permanently delete this task? This cannot be undone."
+    
+    if (!confirm(confirmMessage)) return
+    
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      // If no requests, try hard delete; otherwise archive
+      const url = hasRequests 
+        ? `/api/jobs/${jobId}` 
+        : `/api/jobs/${jobId}?hard=true`
+      
+      const response = await fetch(url, {
         method: "DELETE",
         credentials: "include"
       })
+      
       if (response.ok) {
         router.push("/dashboard/jobs")
+      } else {
+        const data = await response.json()
+        // If hard delete was blocked due to requests, fall back to archive
+        if (data.code === "HAS_REQUESTS") {
+          const archiveResponse = await fetch(`/api/jobs/${jobId}`, {
+            method: "DELETE",
+            credentials: "include"
+          })
+          if (archiveResponse.ok) {
+            router.push("/dashboard/jobs")
+          }
+        } else {
+          alert(data.error || "Failed to delete task")
+        }
       }
     } catch (error) {
       console.error("Error deleting job:", error)
@@ -875,9 +903,20 @@ export default function JobDetailPage() {
           {permissions?.canEdit && (
             <button 
               onClick={handleDelete}
-              className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+              className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1.5"
+              title={(job?.taskCount || 0) > 0 ? "Archive task (has requests)" : "Delete task permanently"}
             >
-              <Trash2 className="w-4 h-4" />
+              {(job?.taskCount || 0) > 0 ? (
+                <>
+                  <Archive className="w-4 h-4" />
+                  <span className="text-xs">Archive</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  <span className="text-xs">Delete</span>
+                </>
+              )}
             </button>
           )}
         </div>
