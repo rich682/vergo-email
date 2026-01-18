@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 interface PDFViewerProps {
   url: string
   filename: string
+  fallbackUrl?: string // Direct URL to file (e.g., Vercel Blob URL) as fallback
   onDownload?: () => void
 }
 
@@ -23,7 +24,7 @@ interface PDFViewerProps {
  * PDF Viewer Component using PDF.js
  * Renders PDFs client-side to canvas, avoiding iframe/X-Frame-Options issues
  */
-export function PDFViewer({ url, filename, onDownload }: PDFViewerProps) {
+export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
@@ -49,13 +50,32 @@ export function PDFViewer({ url, filename, onDownload }: PDFViewerProps) {
         // Set worker source - use CDN for reliability
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
 
-        // Fetch PDF data
-        const response = await fetch(url, { credentials: "include" })
-        if (!response.ok) {
-          throw new Error(`Failed to load PDF: ${response.status}`)
+        // Try primary URL first, then fallback
+        let arrayBuffer: ArrayBuffer | null = null
+        
+        // Try API URL first
+        try {
+          const response = await fetch(url, { credentials: "include" })
+          if (response.ok) {
+            arrayBuffer = await response.arrayBuffer()
+          }
+        } catch (e) {
+          console.warn("Primary URL failed, trying fallback:", e)
         }
-
-        const arrayBuffer = await response.arrayBuffer()
+        
+        // If primary failed and we have a fallback, try it
+        if (!arrayBuffer && fallbackUrl) {
+          console.log("Trying fallback URL:", fallbackUrl)
+          const fallbackResponse = await fetch(fallbackUrl)
+          if (!fallbackResponse.ok) {
+            throw new Error(`Failed to load PDF: ${fallbackResponse.status}`)
+          }
+          arrayBuffer = await fallbackResponse.arrayBuffer()
+        }
+        
+        if (!arrayBuffer) {
+          throw new Error("Failed to load PDF: No valid source")
+        }
         
         if (cancelled) return
 
@@ -83,7 +103,7 @@ export function PDFViewer({ url, filename, onDownload }: PDFViewerProps) {
     return () => {
       cancelled = true
     }
-  }, [url])
+  }, [url, fallbackUrl])
 
   // Render current page
   const renderPage = useCallback(async () => {
@@ -263,12 +283,14 @@ export function PDFViewer({ url, filename, onDownload }: PDFViewerProps) {
 interface ImageViewerProps {
   url: string
   filename: string
+  fallbackUrl?: string // Direct URL to file as fallback
   onDownload?: () => void
 }
 
-export function ImageViewer({ url, filename, onDownload }: ImageViewerProps) {
+export function ImageViewer({ url, filename, fallbackUrl, onDownload }: ImageViewerProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [useFallback, setUseFallback] = useState(false)
   const [scale, setScale] = useState(1)
   const [rotation, setRotation] = useState(0)
 
@@ -276,8 +298,22 @@ export function ImageViewer({ url, filename, onDownload }: ImageViewerProps) {
   const zoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.25))
   const rotate = () => setRotation(prev => (prev + 90) % 360)
 
+  // Use fallback URL if primary fails
+  const imageUrl = useFallback && fallbackUrl ? fallbackUrl : url
+
   const openInNewTab = () => {
-    window.open(url, "_blank")
+    window.open(imageUrl, "_blank")
+  }
+
+  const handleImageError = () => {
+    // If primary URL fails and we have a fallback, try it
+    if (!useFallback && fallbackUrl) {
+      console.log("Primary image URL failed, trying fallback")
+      setUseFallback(true)
+    } else {
+      setLoading(false)
+      setError(true)
+    }
   }
 
   if (error) {
@@ -353,7 +389,7 @@ export function ImageViewer({ url, filename, onDownload }: ImageViewerProps) {
           </div>
         )}
         <img
-          src={url}
+          src={imageUrl}
           alt={filename}
           className="max-w-full h-auto shadow-lg transition-transform duration-200"
           style={{
@@ -361,10 +397,7 @@ export function ImageViewer({ url, filename, onDownload }: ImageViewerProps) {
             opacity: loading ? 0 : 1
           }}
           onLoad={() => setLoading(false)}
-          onError={() => {
-            setLoading(false)
-            setError(true)
-          }}
+          onError={handleImageError}
         />
       </div>
     </div>

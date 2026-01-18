@@ -125,6 +125,9 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
   // Use our preview API which streams files with proper headers
   const previewUrl = `/api/collection/preview/${attachment.id}`
   
+  // Use the direct fileUrl as fallback (Vercel Blob URL)
+  const fallbackUrl = attachment.fileUrl || undefined
+  
   // For download, use the fileUrl directly if available, otherwise use preview URL
   const downloadUrl = attachment.fileUrl || previewUrl
 
@@ -146,6 +149,7 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
       <PDFViewer
         url={previewUrl}
         filename={attachment.filename}
+        fallbackUrl={fallbackUrl}
         onDownload={handleDownload}
       />
     )
@@ -157,6 +161,7 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
       <ImageViewer
         url={previewUrl}
         filename={attachment.filename}
+        fallbackUrl={fallbackUrl}
         onDownload={handleDownload}
       />
     )

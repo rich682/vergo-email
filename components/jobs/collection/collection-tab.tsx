@@ -484,6 +484,9 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
   
   // Use our preview API which streams files with proper headers
   const previewUrl = `/api/collection/preview/${item.id}`
+  
+  // Use the direct fileUrl as fallback (Vercel Blob URL)
+  const fallbackUrl = item.fileUrl || undefined
 
   // Close on Escape key
   useEffect(() => {
@@ -525,12 +528,14 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
             <PDFViewer
               url={previewUrl}
               filename={item.filename}
+              fallbackUrl={fallbackUrl}
               onDownload={onDownload}
             />
           ) : isImage ? (
             <ImageViewer
               url={previewUrl}
               filename={item.filename}
+              fallbackUrl={fallbackUrl}
               onDownload={onDownload}
             />
           ) : (
