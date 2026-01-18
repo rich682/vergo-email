@@ -89,6 +89,8 @@ export interface JobWithStats {
   status: JobStatus
   dueDate: Date | null
   labels: JobLabels | null  // Structured labels with tags, period, workType
+  notes?: string | null  // User notes for the task
+  customFields?: Record<string, any> | null  // Custom column data
   createdAt: Date
   updatedAt: Date
   owner: JobOwner
@@ -104,6 +106,7 @@ export interface JobWithStats {
   respondedCount: number
   completedCount: number
   stakeholderCount?: number  // Resolved count of actual contacts
+  collectedItemCount?: number  // Count of files/attachments collected
 }
 
 // Permission actions for Jobs
@@ -419,6 +422,11 @@ export class JobService {
               id: true,
               status: true
             }
+          },
+          _count: {
+            select: {
+              collectedItems: true
+            }
           }
         },
         orderBy: { updatedAt: "desc" },
@@ -458,6 +466,8 @@ export class JobService {
           status: job.status,
           dueDate: job.dueDate,
           labels: labels,
+          notes: (job as any).notes || null,
+          customFields: (job as any).customFields || null,
           createdAt: job.createdAt,
           updatedAt: job.updatedAt,
           owner: job.owner,
@@ -466,7 +476,8 @@ export class JobService {
           taskCount,
           respondedCount,
           completedCount,
-          stakeholderCount
+          stakeholderCount,
+          collectedItemCount: job._count.collectedItems
         }
       })
     )

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Check, ChevronDown } from "lucide-react"
+import { createPortal } from "react-dom"
 
 interface StatusOption {
   value: string
@@ -25,7 +26,9 @@ interface StatusCellProps {
 
 export function StatusCell({ value, onChange, className = "" }: StatusCellProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 })
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Map legacy statuses
   const mapStatus = (status: string): string => {
@@ -41,9 +44,23 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
   const displayStatus = mapStatus(value)
   const currentOption = STATUS_OPTIONS.find(opt => opt.value === displayStatus) || STATUS_OPTIONS[0]
 
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left
+      })
+    }
+  }, [isOpen])
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        buttonRef.current && !buttonRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false)
       }
     }
@@ -57,8 +74,9 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
   }
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div className={`relative ${className}`}>
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${currentOption.bgColor} ${currentOption.color} hover:opacity-80 transition-opacity`}
       >
@@ -66,24 +84,39 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
         <ChevronDown className="w-3 h-3" />
       </button>
 
-      {isOpen && (
-        <div className="absolute left-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-          {STATUS_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => handleSelect(option.value)}
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
-            >
-              <span className={`inline-flex items-center gap-2`}>
-                <span className={`w-2 h-2 rounded-full ${option.bgColor.replace('bg-', 'bg-').replace('-100', '-500')}`} />
-                {option.label}
-              </span>
-              {displayStatus === option.value && (
-                <Check className="w-4 h-4 text-gray-500" />
-              )}
-            </button>
-          ))}
-        </div>
+      {isOpen && typeof document !== "undefined" && createPortal(
+        <div 
+          ref={dropdownRef}
+          className="fixed w-36 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+          style={{ 
+            top: dropdownPosition.top, 
+            left: dropdownPosition.left,
+            zIndex: 9999 
+          }}
+        >
+          {STATUS_OPTIONS.map((option) => {
+            const dotColor = option.value === "NOT_STARTED" ? "bg-gray-400" 
+              : option.value === "IN_PROGRESS" ? "bg-blue-500"
+              : option.value === "BLOCKED" ? "bg-red-500"
+              : "bg-green-500"
+            return (
+              <button
+                key={option.value}
+                onClick={() => handleSelect(option.value)}
+                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                  {option.label}
+                </span>
+                {displayStatus === option.value && (
+                  <Check className="w-4 h-4 text-gray-500" />
+                )}
+              </button>
+            )
+          })}
+        </div>,
+        document.body
       )}
     </div>
   )
