@@ -228,14 +228,13 @@ export default function RequestsPage() {
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
   const [hasReminders, setHasReminders] = useState<string>("all")
-  const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
   const [attachmentFilter, setAttachmentFilter] = useState<string>("all")
 
 
   // Check if any filters are active
   const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
     labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || hasReminders !== "all" ||
-    readStatusFilter !== "all" || attachmentFilter !== "all"
+    attachmentFilter !== "all"
 
   // Fetch boards for filter
   useEffect(() => {
@@ -265,7 +264,6 @@ export default function RequestsPage() {
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       if (labelFilter !== "all") params.set("labelId", labelFilter)
-      if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
       if (attachmentFilter !== "all") params.set("hasAttachments", attachmentFilter)
       
       const response = await fetch(
@@ -323,7 +321,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders, readStatusFilter, attachmentFilter])
+  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, hasReminders, attachmentFilter])
 
   useEffect(() => {
     fetchRequests()
@@ -380,7 +378,6 @@ export default function RequestsPage() {
     setDateFrom("")
     setDateTo("")
     setHasReminders("all")
-    setReadStatusFilter("all")
     setAttachmentFilter("all")
   }
 
@@ -605,19 +602,6 @@ export default function RequestsPage() {
             </Select>
           )}
 
-          {/* Read Status Filter */}
-          <Select value={readStatusFilter} onValueChange={setReadStatusFilter}>
-            <SelectTrigger className="w-[130px]">
-              <Eye className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="unread">Unread</SelectItem>
-              <SelectItem value="read">Read</SelectItem>
-              <SelectItem value="replied">Replied</SelectItem>
-            </SelectContent>
-          </Select>
 
           {/* Attachment Filter */}
           <Select value={attachmentFilter} onValueChange={setAttachmentFilter}>

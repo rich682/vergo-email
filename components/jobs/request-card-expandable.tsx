@@ -352,7 +352,6 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Recipient</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Replied</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">View</th>
                   </tr>
@@ -371,17 +370,6 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
                       <td className="px-4 py-2 text-gray-600">
                         {recipient.email}
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {hasReplied(recipient.status) ? (
-                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100">
-                            <CheckCircle className="w-4 h-4 text-green-600" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100">
-                            <Clock className="w-4 h-4 text-gray-400" />
-                          </span>
-                        )}
-                      </td>
                       <td className="px-4 py-2">
                         <RecipientStatusDropdown
                           recipientId={recipient.id}
@@ -396,7 +384,7 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
                             handleViewRecipient(recipient)
                           }}
                           className="p-1.5 hover:bg-orange-100 rounded-lg transition-colors"
-                          title={hasReplied(recipient.status) ? "Review response" : "View request"}
+                          title="View"
                         >
                           <Eye className="w-4 h-4 text-orange-500" />
                         </button>
