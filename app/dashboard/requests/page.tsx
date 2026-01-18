@@ -15,8 +15,9 @@ import {
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
   CheckCircle, AlertCircle, MessageSquare, Bell,
   Pause, PlayCircle, Search, X, Calendar, Tag, Paperclip,
-  MailOpen, Eye, EyeOff
+  MailOpen, Eye, EyeOff, FileSearch
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -196,13 +197,20 @@ function formatReminderFrequency(hours: number | null): string {
   return `Every ${days}d`
 }
 
+// Check if request has a reply based on status
+function hasReply(status: string): boolean {
+  return ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING", "FULFILLED", "COMPLETE"].includes(status)
+}
+
 export default function RequestsPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const boardIdFromUrl = searchParams.get("boardId")
   
   // State
   const [requests, setRequests] = useState<RequestTask[]>([])
   const [total, setTotal] = useState(0)
+  const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [owners, setOwners] = useState<OwnerOption[]>([])
   const [labels, setLabels] = useState<LabelOption[]>([])
@@ -324,6 +332,55 @@ export default function RequestsPage() {
   useEffect(() => {
     fetchRequests()
   }, [fetchRequests])
+
+  // Fetch message IDs for replied requests (for Review button)
+  useEffect(() => {
+    const fetchReplyMessageIds = async () => {
+      const repliedRequests = requests.filter(r => hasReply(r.status))
+      if (repliedRequests.length === 0) return
+
+      const messageIds: Record<string, string> = {}
+      
+      // Batch fetch - only get IDs we don't have yet
+      for (const request of repliedRequests) {
+        if (replyMessageIds[request.id]) continue
+        
+        try {
+          const response = await fetch(`/api/tasks/${request.id}/messages`, {
+            credentials: "include"
+          })
+          if (response.ok) {
+            const messages = await response.json()
+            const inboundMessage = messages
+              .filter((m: any) => m.direction === "INBOUND")
+              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+            if (inboundMessage) {
+              messageIds[request.id] = inboundMessage.id
+            }
+          }
+        } catch (err) {
+          // Silently fail - Review button just won't show
+        }
+      }
+      
+      if (Object.keys(messageIds).length > 0) {
+        setReplyMessageIds(prev => ({ ...prev, ...messageIds }))
+      }
+    }
+
+    if (requests.length > 0) {
+      fetchReplyMessageIds()
+    }
+  }, [requests])
+
+  // Handle opening review page
+  const handleOpenReview = (requestId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const messageId = replyMessageIds[requestId]
+    if (messageId) {
+      router.push(`/dashboard/review/${messageId}`)
+    }
+  }
 
   // Clear all filters
   const clearFilters = () => {
@@ -663,6 +720,7 @@ export default function RequestsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reminders</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -782,6 +840,17 @@ export default function RequestsPage() {
                       </span>
                     ) : (
                       <span className="text-sm text-gray-400">Off</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {hasReply(request.status) && replyMessageIds[request.id] && (
+                      <button
+                        onClick={(e) => handleOpenReview(request.id, e)}
+                        className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
+                        title="Review response"
+                      >
+                        <FileSearch className="w-4 h-4 text-orange-500" />
+                      </button>
                     )}
                   </td>
                 </tr>
