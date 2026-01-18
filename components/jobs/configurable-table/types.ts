@@ -14,13 +14,15 @@ export interface ColumnDefinition {
 }
 
 // Default column configuration
+// All default columns are marked as isSystem: true to prevent deletion
+// Users can hide columns via the visibility toggle, but cannot delete them
 export const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { id: "name", type: "text", label: "Task", width: 280, visible: true, order: 0, field: "name", isSystem: true },
   { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 1, field: "status", isSystem: true },
   { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 2, field: "ownerId", isSystem: true },
   { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 3, field: "dueDate", isSystem: true },
-  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 4, field: "notes", isSystem: false },
-  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 5, field: "collectedItemCount", isSystem: false },
+  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 4, field: "notes", isSystem: true },
+  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 5, field: "collectedItemCount", isSystem: true },
 ]
 
 // Available column types for adding new columns
