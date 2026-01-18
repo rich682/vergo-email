@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select"
 import { 
   Upload, Download, FileText, Filter, RefreshCw, Trash2,
-  FileImage, FileSpreadsheet, File, Archive, Eye, X
+  FileImage, FileSpreadsheet, File, Archive, Eye, X, ExternalLink
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { CollectionUploadModal } from "./collection-upload-modal"
@@ -217,29 +217,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
     }
   }
 
-  // Navigate to review workflow for this attachment
-  const handleRowClick = (item: CollectedItem, e: React.MouseEvent) => {
-    // Prevent navigation if clicking on checkbox or actions
-    if ((e.target as HTMLElement).closest('input, button')) {
-      return
-    }
-    
-    // Get messageId - prefer message relation, fall back to direct messageId field
-    const messageId = item.message?.id || item.messageId
-    
-    // If the item came from an email reply and has a messageId, navigate to the review page
-    if (item.source === "EMAIL_REPLY" && messageId) {
-      const reviewUrl = `/dashboard/review/${messageId}?tab=attachments&attachmentId=${item.id}`
-      console.log("[Collection] Navigating to review:", reviewUrl)
-      router.push(reviewUrl)
-    } else {
-      // For manually uploaded files or items without messageId, open the preview modal
-      console.log("[Collection] Opening preview modal for:", item.filename, { source: item.source, messageId })
-      setPreviewItem(item)
-    }
-  }
-  
-  // Check if item can navigate to review
+  // Check if item can navigate to review (has messageId from email reply)
   const canNavigateToReview = (item: CollectedItem) => {
     const messageId = item.message?.id || item.messageId
     return item.source === "EMAIL_REPLY" && !!messageId
@@ -341,11 +319,13 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     className="rounded border-gray-300"
                   />
                 </th>
+                <th className="w-16 px-4 py-3"></th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">From</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received</th>
-                <th className="w-24 px-4 py-3"></th>
+                <th className="w-12 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -354,8 +334,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                 return (
                 <tr 
                   key={item.id} 
-                  className={`hover:bg-gray-50 transition-colors ${navigable ? 'cursor-pointer hover:bg-orange-50' : 'cursor-default'}`}
-                  onClick={(e) => handleRowClick(item, e)}
+                  className="hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-4 py-3">
                     <input
@@ -365,20 +344,54 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                       className="rounded border-gray-300"
                     />
                   </td>
+                  {/* Open button column */}
+                  <td className="px-4 py-3">
+                    {navigable ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const msgId = item.message?.id || item.messageId
+                          if (msgId) {
+                            router.push(`/dashboard/review/${msgId}?tab=attachments&attachmentId=${item.id}`)
+                          }
+                        }}
+                        title="Open reply"
+                        className="h-7 px-2 text-xs text-gray-600 hover:text-orange-600 hover:bg-orange-50"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                        Open
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPreviewItem(item)}
+                        title="Preview file"
+                        className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        View
+                      </Button>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className={`font-medium truncate max-w-[200px] ${navigable ? 'text-orange-600 hover:text-orange-700 hover:underline' : 'text-gray-900'}`}>
+                        <div className="font-medium text-gray-900 truncate max-w-[200px]">
                           {item.filename}
-                          {navigable && (
-                            <span className="ml-1 text-xs text-orange-400">→ View reply</span>
-                          )}
                         </div>
                         <div className="text-xs text-gray-500">
                           {formatFileSize(item.fileSize)}
                         </div>
                       </div>
+                    </div>
+                  </td>
+                  {/* Task column - plain text, no hyperlink */}
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-gray-900">
+                      {item.task?.campaignName || "—"}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -406,48 +419,17 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                       {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      {navigable && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            const msgId = item.message?.id || item.messageId
-                            if (msgId) {
-                              router.push(`/dashboard/review/${msgId}?tab=attachments&attachmentId=${item.id}`)
-                            }
-                          }}
-                          title="View in reply"
-                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDownload(item.id, item.filename)
-                        }}
-                        title="Download"
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(item.id)
-                        }}
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </div>
+                  {/* Download column */}
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDownload(item.id, item.filename)}
+                      title="Download"
+                      className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
                   </td>
                 </tr>
               )})}
