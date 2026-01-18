@@ -219,10 +219,10 @@ export function ConfigurableTable({
                           <td className="px-2 py-2">
                             <button
                               onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
-                              className="p-1.5 rounded hover:bg-gray-200 transition-colors opacity-50 group-hover:opacity-100"
+                              className="p-1.5 rounded hover:bg-blue-100 transition-colors text-gray-400 hover:text-blue-600"
                               title="Open Task page"
                             >
-                              <ExternalLink className="w-4 h-4 text-gray-500" />
+                              <ExternalLink className="w-4 h-4" />
                             </button>
                           </td>
                           {visibleColumns.map((column) => (
