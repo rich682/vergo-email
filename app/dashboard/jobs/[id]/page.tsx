@@ -40,9 +40,6 @@ import { SectionHeader } from "@/components/ui/section-header"
 // Send Request Modal
 import { SendRequestModal } from "@/components/jobs/send-request-modal"
 
-// Request Detail Modal
-import { RequestDetailModal } from "@/components/jobs/request-detail-modal"
-
 // Labels components
 import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 
@@ -263,7 +260,6 @@ export default function JobDetailPage() {
   const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
   const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
   const [noStakeholdersNeeded, setNoStakeholdersNeeded] = useState(false)
-  const [selectedRequest, setSelectedRequest] = useState<JobRequest | null>(null)
 
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -1461,7 +1457,6 @@ export default function JobDetailPage() {
                         <RequestCardExpandable
                           key={request.id}
                           request={request}
-                          onViewDetails={setSelectedRequest}
                           onRefresh={fetchRequests}
                         />
                       ))}
@@ -1820,14 +1815,6 @@ export default function JobDetailPage() {
           fetchTimeline()
         }}
       />
-
-      {/* Request Detail Modal */}
-      {selectedRequest && (
-        <RequestDetailModal
-          request={selectedRequest}
-          onClose={() => setSelectedRequest(null)}
-        />
-      )}
 
     </div>
   )

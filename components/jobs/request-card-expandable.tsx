@@ -60,7 +60,6 @@ interface JobRequest {
 
 interface RequestCardExpandableProps {
   request: JobRequest
-  onViewDetails: (request: JobRequest) => void
   onRefresh: () => void
 }
 
@@ -176,7 +175,7 @@ function hasReplied(status: string): boolean {
   return ["REPLIED", "HAS_ATTACHMENTS", "FULFILLED", "VERIFYING"].includes(status)
 }
 
-export function RequestCardExpandable({ request, onViewDetails, onRefresh }: RequestCardExpandableProps) {
+export function RequestCardExpandable({ request, onRefresh }: RequestCardExpandableProps) {
   const router = useRouter()
   const [expanded, setExpanded] = useState(false)
   const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})
@@ -262,8 +261,8 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
       console.error("Error fetching messages:", error)
     }
 
-    // Fallback: use the old detail view
-    onViewDetails(request)
+    // No messages found - this shouldn't happen for sent requests
+    console.warn("No messages found for recipient:", recipient.id)
   }
 
   const requestTitle = request.subjectTemplate || request.generatedSubject || request.suggestedCampaignName || "Request"
