@@ -768,8 +768,6 @@ export default function JobsPage() {
             teamMembers={teamMembers}
             boardId={boardId}
             onJobUpdate={handleJobUpdate}
-            onJobDelete={handleDelete}
-            onJobDuplicate={handleDuplicate}
             onAddTask={() => setIsCreateOpen(true)}
           />
         )}

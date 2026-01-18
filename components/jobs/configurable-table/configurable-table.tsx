@@ -6,9 +6,6 @@ import {
   ChevronDown, 
   ChevronRight, 
   Plus, 
-  MoreHorizontal,
-  Trash2,
-  Copy,
   ExternalLink
 } from "lucide-react"
 import { ColumnDefinition, DEFAULT_COLUMNS, JobRow, TeamMember } from "./types"
@@ -35,8 +32,6 @@ interface ConfigurableTableProps {
   teamMembers: TeamMember[]
   boardId?: string | null
   onJobUpdate: (jobId: string, updates: Record<string, any>) => Promise<void>
-  onJobDelete: (jobId: string) => Promise<void>
-  onJobDuplicate: (jobId: string) => Promise<void>
   onAddTask: () => void
 }
 
@@ -56,8 +51,6 @@ export function ConfigurableTable({
   teamMembers,
   boardId,
   onJobUpdate,
-  onJobDelete,
-  onJobDuplicate,
   onAddTask,
 }: ConfigurableTableProps) {
   const router = useRouter()
@@ -163,14 +156,6 @@ export function ConfigurableTable({
       .sort((a, b) => a.order - b.order)
   }, [columns])
 
-  const handleRowClick = (jobId: string, e: React.MouseEvent) => {
-    // Don't navigate if clicking on interactive elements
-    if ((e.target as HTMLElement).closest('button, input, select, [role="button"]')) {
-      return
-    }
-    router.push(`/dashboard/jobs/${jobId}`)
-  }
-
   return (
     <div className="space-y-4">
       {STATUS_GROUPS.map((group) => {
@@ -205,6 +190,7 @@ export function ConfigurableTable({
                     {/* Table Header */}
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        <th className="w-10 px-2 py-2"></th>
                         {visibleColumns.map((column) => (
                           <th
                             key={column.id}
@@ -214,7 +200,7 @@ export function ConfigurableTable({
                             {column.label}
                           </th>
                         ))}
-                        <th className="w-16 px-3 py-2">
+                        <th className="w-12 px-2 py-2">
                           <ColumnHeader
                             columns={columns}
                             onColumnsChange={handleColumnsChange}
@@ -228,14 +214,21 @@ export function ConfigurableTable({
                       {groupJobs.map((job) => (
                         <tr
                           key={job.id}
-                          onClick={(e) => handleRowClick(job.id, e)}
-                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="hover:bg-gray-50 transition-colors group"
                         >
+                          <td className="px-2 py-2">
+                            <button
+                              onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+                              className="p-1.5 rounded hover:bg-gray-200 transition-colors opacity-50 group-hover:opacity-100"
+                              title="Open Task page"
+                            >
+                              <ExternalLink className="w-4 h-4 text-gray-500" />
+                            </button>
+                          </td>
                           {visibleColumns.map((column) => (
                             <td
                               key={column.id}
                               className="px-3 py-2"
-                              onClick={(e) => e.stopPropagation()}
                             >
                               <EditableCell
                                 column={column}
@@ -245,13 +238,7 @@ export function ConfigurableTable({
                               />
                             </td>
                           ))}
-                          <td className="px-3 py-2">
-                            <JobRowActions
-                              jobId={job.id}
-                              onDelete={onJobDelete}
-                              onDuplicate={onJobDuplicate}
-                            />
-                          </td>
+                          <td className="px-2 py-2"></td>
                         </tr>
                       ))}
                     </tbody>
@@ -271,80 +258,6 @@ export function ConfigurableTable({
           </div>
         )
       })}
-    </div>
-  )
-}
-
-// Row actions dropdown component
-function JobRowActions({
-  jobId,
-  onDelete,
-  onDuplicate,
-}: {
-  jobId: string
-  onDelete: (jobId: string) => Promise<void>
-  onDuplicate: (jobId: string) => Promise<void>
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const router = useRouter()
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          setIsOpen(!isOpen)
-        }}
-        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-      >
-        <MoreHorizontal className="w-4 h-4 text-gray-400" />
-      </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                router.push(`/dashboard/jobs/${jobId}`)
-                setIsOpen(false)
-              }}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onDuplicate(jobId)
-                setIsOpen(false)
-              }}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-            >
-              <Copy className="w-4 h-4" />
-              Duplicate
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                if (confirm("Are you sure you want to delete this task?")) {
-                  onDelete(jobId)
-                }
-                setIsOpen(false)
-              }}
-              className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete
-            </button>
-          </div>
-        </>
-      )}
     </div>
   )
 }
