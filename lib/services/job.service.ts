@@ -56,6 +56,8 @@ export interface UpdateJobInput {
   dueDate?: Date | null
   labels?: JobLabels  // Structured labels with tags, period, workType
   tags?: string[]     // Convenience: will be merged into labels.tags
+  notes?: string | null  // User notes for the task
+  customFields?: Record<string, any>  // Custom column data for configurable table
 }
 
 export interface JobOwner {
@@ -499,7 +501,9 @@ export class JobService {
         ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
         ...(input.status !== undefined && { status: input.status }),
         ...(input.dueDate !== undefined && { dueDate: input.dueDate }),
-        ...(input.labels !== undefined && { labels: input.labels })
+        ...(input.labels !== undefined && { labels: input.labels }),
+        ...(input.notes !== undefined && { notes: input.notes }),
+        ...(input.customFields !== undefined && { customFields: input.customFields })
       },
       include: {
         owner: {

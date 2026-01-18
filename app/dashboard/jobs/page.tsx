@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, KeyboardEvent } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,26 +21,17 @@ import {
 } from "@/components/ui/select"
 import { 
   Plus, 
-  ChevronDown,
-  ChevronRight,
   Search, 
-  MoreHorizontal,
-  Trash2,
-  Users,
-  Calendar,
   CheckCircle,
-  Clock,
-  AlertCircle,
   Loader2,
-  Copy,
   Sparkles
 } from "lucide-react"
-import { formatDistanceToNow, format, differenceInDays } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 import { OnboardingChecklist } from "@/components/onboarding-checklist"
+import { ConfigurableTable, JobRow } from "@/components/jobs/configurable-table"
 
 // ============================================
 // Types
@@ -81,377 +72,15 @@ interface Job {
   respondedCount: number
   completedCount: number
   stakeholderCount?: number
+  notes?: string | null
+  customFields?: Record<string, any>
+  collectedItemCount?: number
 }
 
 interface Board {
   id: string
   name: string
   status: string
-}
-
-// Status group configuration
-const STATUS_GROUPS = [
-  { 
-    status: "NOT_STARTED", 
-    label: "Not Started", 
-    icon: Clock,
-    color: "text-gray-600",
-    bgColor: "bg-gray-50",
-    defaultExpanded: true 
-  },
-  { 
-    status: "IN_PROGRESS", 
-    label: "In Progress", 
-    icon: AlertCircle,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50",
-    defaultExpanded: true 
-  },
-  { 
-    status: "BLOCKED", 
-    label: "Blocked", 
-    icon: AlertCircle,
-    color: "text-red-600",
-    bgColor: "bg-red-50",
-    defaultExpanded: true 
-  },
-  { 
-    status: "COMPLETE", 
-    label: "Complete", 
-    icon: CheckCircle,
-    color: "text-green-600",
-    bgColor: "bg-green-50",
-    defaultExpanded: false 
-  },
-]
-
-// Status options for dropdown
-const STATUS_OPTIONS = [
-  { value: "NOT_STARTED", label: "Not Started", color: "text-gray-600" },
-  { value: "IN_PROGRESS", label: "In Progress", color: "text-blue-600" },
-  { value: "BLOCKED", label: "Blocked", color: "text-red-600" },
-  { value: "COMPLETE", label: "Complete", color: "text-green-600" },
-]
-
-// ============================================
-// Helpers
-// ============================================
-
-function getInitials(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.trim().split(/\s+/)
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    }
-    return parts[0]?.[0]?.toUpperCase() || email[0]?.toUpperCase() || "?"
-  }
-  return email[0]?.toUpperCase() || "?"
-}
-
-type RAGRating = "green" | "amber" | "red" | "gray"
-
-function calculateRAGRating(job: Job): RAGRating {
-  const dueDate = job.dueDate ? new Date(job.dueDate) : null
-  const now = new Date()
-  
-  // Map legacy statuses for comparison
-  const status = job.status === "COMPLETED" || job.status === "ARCHIVED" ? "COMPLETE" : job.status
-  
-  if (status === "COMPLETE") return "green"
-  if (status === "BLOCKED") return "red"
-  if (!dueDate) return "gray"
-  
-  const daysUntilDue = differenceInDays(dueDate, now)
-  
-  if (daysUntilDue < 0) return "red"
-  
-  const hasOutstandingRequests = job.taskCount > 0 && job.respondedCount === 0
-  
-  if (daysUntilDue <= 3 && hasOutstandingRequests) return "red"
-  if (daysUntilDue <= 7 && hasOutstandingRequests) return "amber"
-  if (daysUntilDue <= 3) return "amber"
-  if (job.taskCount > 0 && job.respondedCount === job.taskCount) return "green"
-  
-  return "green"
-}
-
-function RAGBadge({ rating }: { rating: RAGRating }) {
-  const colors = {
-    green: "bg-green-500",
-    amber: "bg-amber-500",
-    red: "bg-red-500",
-    gray: "bg-gray-300"
-  }
-  
-  return (
-    <div className={`w-2.5 h-2.5 rounded-full ${colors[rating]}`} />
-  )
-}
-
-// Map legacy statuses to new ones for display
-const mapStatusForDisplay = (status: string): string => {
-  switch (status) {
-    case "ACTIVE": return "NOT_STARTED"
-    case "WAITING": return "IN_PROGRESS"
-    case "COMPLETED": return "COMPLETE"
-    case "ARCHIVED": return "COMPLETE"
-    default: return status
-  }
-}
-
-// ============================================
-// Task Row Component
-// ============================================
-
-function TaskRow({ 
-  job, 
-  teamMembers,
-  onStatusChange,
-  onDelete,
-  onDuplicate
-}: { 
-  job: Job
-  teamMembers: { id: string; name: string | null; email: string }[]
-  onStatusChange: (jobId: string, status: string) => void
-  onDelete: (jobId: string) => void
-  onDuplicate: (jobId: string) => void
-}) {
-  const router = useRouter()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const statusMenuRef = useRef<HTMLDivElement>(null)
-  
-  const rag = calculateRAGRating(job)
-  
-  // Map legacy status to new status for display
-  const displayStatus = mapStatusForDisplay(job.status)
-
-  // Close menus on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
-  const handleRowClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking on interactive elements
-    if ((e.target as HTMLElement).closest('button, input, select, [role="button"]')) {
-      return
-    }
-    router.push(`/dashboard/jobs/${job.id}`)
-  }
-
-  return (
-    <div 
-      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 group"
-      onClick={handleRowClick}
-    >
-      {/* Task name */}
-      <div className="flex-1 min-w-0">
-        <span className={`font-medium truncate ${displayStatus === "COMPLETE" ? "line-through text-gray-400" : "text-gray-900"}`}>
-          {job.name}
-        </span>
-      </div>
-
-        {/* Status Dropdown */}
-        <div className="w-28 flex-shrink-0 relative" ref={statusMenuRef}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setStatusMenuOpen(!statusMenuOpen)
-            }}
-            className={`
-              px-2 py-1 text-xs font-medium rounded-full border
-              ${displayStatus === "NOT_STARTED" ? "bg-gray-100 text-gray-600 border-gray-200" : ""}
-              ${displayStatus === "IN_PROGRESS" ? "bg-blue-100 text-blue-700 border-blue-200" : ""}
-              ${displayStatus === "BLOCKED" ? "bg-red-100 text-red-700 border-red-200" : ""}
-              ${displayStatus === "COMPLETE" ? "bg-green-100 text-green-700 border-green-200" : ""}
-              hover:opacity-80 transition-opacity
-            `}
-          >
-            {STATUS_OPTIONS.find(s => s.value === displayStatus)?.label || displayStatus}
-          </button>
-          {statusMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 w-32 bg-white border rounded-lg shadow-lg z-20">
-              {STATUS_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onStatusChange(job.id, option.value)
-                    setStatusMenuOpen(false)
-                  }}
-                  className={`
-                    w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2
-                    ${displayStatus === option.value ? "bg-gray-50 font-medium" : ""}
-                  `}
-                >
-                  <span className={`w-2 h-2 rounded-full ${
-                    option.value === "NOT_STARTED" ? "bg-gray-400" :
-                    option.value === "IN_PROGRESS" ? "bg-blue-500" :
-                    option.value === "BLOCKED" ? "bg-red-500" :
-                    "bg-green-500"
-                  }`} />
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Owner */}
-        <div className="w-24 flex-shrink-0">
-          <div 
-            className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600"
-            title={job.owner.name || job.owner.email}
-          >
-            {getInitials(job.owner.name, job.owner.email)}
-          </div>
-        </div>
-
-        {/* Due Date */}
-        <div className="w-24 flex-shrink-0 text-sm text-gray-500">
-          {job.dueDate ? format(new Date(job.dueDate), "MMM d") : "—"}
-        </div>
-
-        {/* Actions */}
-        <div className="w-10 flex-shrink-0 relative" ref={menuRef}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuOpen(!menuOpen)
-            }}
-            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200"
-          >
-            <MoreHorizontal className="w-4 h-4 text-gray-500" />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-36 bg-white border rounded-lg shadow-lg z-10">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setMenuOpen(false)
-                  onDuplicate(job.id)
-                }}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-              >
-                <Copy className="w-4 h-4" />
-                Duplicate
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setMenuOpen(false)
-                  onDelete(job.id)
-                }}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-  )
-}
-
-// ============================================
-// Status Group Component
-// ============================================
-
-function StatusGroup({
-  group,
-  jobs,
-  teamMembers,
-  onStatusChange,
-  onDelete,
-  onDuplicate,
-  onAddTask
-}: {
-  group: typeof STATUS_GROUPS[0]
-  jobs: Job[]
-  teamMembers: { id: string; name: string | null; email: string }[]
-  onStatusChange: (jobId: string, status: string) => void
-  onDelete: (jobId: string) => void
-  onDuplicate: (jobId: string) => void
-  onAddTask: () => void
-}) {
-  const [isExpanded, setIsExpanded] = useState(group.defaultExpanded)
-  const Icon = group.icon
-
-  return (
-    <div className="mb-4">
-      {/* Group Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={`
-          w-full flex items-center gap-2 px-4 py-2 rounded-lg
-          ${group.bgColor} hover:opacity-90 transition-opacity
-        `}
-      >
-        {isExpanded ? (
-          <ChevronDown className={`w-4 h-4 ${group.color}`} />
-        ) : (
-          <ChevronRight className={`w-4 h-4 ${group.color}`} />
-        )}
-        <Icon className={`w-4 h-4 ${group.color}`} />
-        <span className={`font-medium ${group.color}`}>{group.label}</span>
-        <span className={`text-sm ${group.color} opacity-70`}>({jobs.length})</span>
-      </button>
-
-      {/* Group Content */}
-      {isExpanded && (
-        <div className="mt-2 border rounded-lg bg-white overflow-hidden">
-          {jobs.length === 0 ? (
-            <div className="px-4 py-6 text-center text-gray-400 text-sm">
-              No tasks in this group
-            </div>
-          ) : (
-            <>
-              {/* Header Row */}
-              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase">
-                <div className="flex-1">Task</div>
-                <div className="w-28">Status</div>
-                <div className="w-24">Owner</div>
-                <div className="w-24">Due Date</div>
-                <div className="w-10" /> {/* Actions */}
-              </div>
-              
-              {/* Task Rows */}
-              {jobs.map((job) => (
-                <TaskRow
-                  key={job.id}
-                  job={job}
-                  teamMembers={teamMembers}
-                  onStatusChange={onStatusChange}
-                  onDelete={onDelete}
-                  onDuplicate={onDuplicate}
-                />
-              ))}
-            </>
-          )}
-          
-          {/* Add Task Row */}
-          <button
-            onClick={onAddTask}
-            className="w-full flex items-center gap-2 px-4 py-3 text-gray-500 hover:bg-gray-50 hover:text-gray-700 border-t"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-sm">Add task</span>
-          </button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ============================================
@@ -667,7 +296,6 @@ export default function JobsPage() {
   }
 
   const handleDelete = async (jobId: string) => {
-    if (!window.confirm("Delete this task?")) return
     try {
       const response = await fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
       if (response.ok) {
@@ -675,6 +303,26 @@ export default function JobsPage() {
       }
     } catch (error) {
       console.error("Error deleting job:", error)
+    }
+  }
+
+  // Handler for inline cell updates from ConfigurableTable
+  const handleJobUpdate = async (jobId: string, updates: Record<string, any>) => {
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates, owner: data.job?.owner || j.owner } : j))
+      } else {
+        throw new Error("Failed to update")
+      }
+    } catch (error) {
+      console.error("Error updating job:", error)
+      throw error
     }
   }
 
@@ -772,10 +420,19 @@ export default function JobsPage() {
     )
   })
 
-  const jobsByStatus = STATUS_GROUPS.reduce((acc, group) => {
-    acc[group.status] = filteredJobs.filter(j => mapStatusForDisplay(j.status) === group.status)
-    return acc
-  }, {} as Record<string, Job[]>)
+  // Transform jobs to JobRow format for ConfigurableTable
+  const jobRows: JobRow[] = filteredJobs.map(job => ({
+    id: job.id,
+    name: job.name,
+    status: job.status,
+    ownerId: job.ownerId,
+    ownerName: job.owner.name,
+    ownerEmail: job.owner.email,
+    dueDate: job.dueDate,
+    notes: job.notes || null,
+    customFields: job.customFields,
+    collectedItemCount: job.collectedItemCount || 0
+  }))
 
   // ============================================
   // Render
@@ -791,7 +448,7 @@ export default function JobsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="w-full px-6 py-6">
         {/* Onboarding Checklist - shows for new users */}
         <OnboardingChecklist />
 
@@ -1070,8 +727,8 @@ export default function JobsPage() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
-          <div className="relative max-w-md">
+        <div className="mb-4">
+          <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Search tasks..."
@@ -1087,7 +744,7 @@ export default function JobsPage() {
           <AISummaryPanel boardId={boardId} />
         )}
 
-        {/* Status Groups */}
+        {/* Configurable Task Table */}
         {filteredJobs.length === 0 && !searchQuery ? (
           <EmptyState
             icon={<CheckCircle className="w-12 h-12 text-gray-300" />}
@@ -1106,20 +763,15 @@ export default function JobsPage() {
             No tasks match "{searchQuery}"
           </div>
         ) : (
-          <div>
-            {STATUS_GROUPS.map((group) => (
-              <StatusGroup
-                key={group.status}
-                group={group}
-                jobs={jobsByStatus[group.status] || []}
-                teamMembers={teamMembers}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-                onDuplicate={handleDuplicate}
-                onAddTask={() => setIsCreateOpen(true)}
-              />
-            ))}
-          </div>
+          <ConfigurableTable
+            jobs={jobRows}
+            teamMembers={teamMembers}
+            boardId={boardId}
+            onJobUpdate={handleJobUpdate}
+            onJobDelete={handleDelete}
+            onJobDuplicate={handleDuplicate}
+            onAddTask={() => setIsCreateOpen(true)}
+          />
         )}
       </div>
       

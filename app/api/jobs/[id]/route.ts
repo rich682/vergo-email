@@ -128,7 +128,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields } = body
 
     // Handle status - support both built-in enum values and custom statuses
     // Custom statuses are stored in labels.customStatus while the enum field uses ACTIVE
@@ -186,7 +186,9 @@ export async function PATCH(
       ownerId: ownerId || undefined,
       status: effectiveStatus || undefined,
       dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined,
-      labels: updatedLabels
+      labels: updatedLabels,
+      notes: notes !== undefined ? notes : undefined,
+      customFields: customFields !== undefined ? customFields : undefined
     })
 
     if (!job) {

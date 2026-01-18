@@ -257,6 +257,8 @@ model Job {
   labels         Json?     // Flexible tagging/categorization
   boardId        String?   // Optional: parent Board for period-based organization
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
+  notes          String?   // User notes for this task
+  customFields   Json?     // Custom column data for configurable table
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -849,4 +851,17 @@ model EmailSendAudit {
   @@index([toEmail])
   @@index([result])
   @@index([createdAt])
+}
+
+// Column configuration for Monday.com-style configurable task tables
+model JobColumnConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique // One config per organization
+  boardId        String?  // Optional: board-specific config (null = global default)
+  columns        Json     // Array of column definitions: { id, type, label, width, visible, order }
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@unique([organizationId, boardId])
+  @@index([organizationId])
 }
