@@ -25,24 +25,28 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch the collected item - use findUnique since IDs are globally unique
-    // Also verify user has access through the job's organization
-    const item = await prisma.collectedItem.findUnique({
-      where: { id: itemId },
-      include: {
-        job: {
-          select: { organizationId: true }
-        }
+    const organizationId = session.user.organizationId
+
+    // Fetch the collected item - use the direct organizationId field for access control
+    const item = await prisma.collectedItem.findFirst({
+      where: { 
+        id: itemId,
+        organizationId: organizationId 
       }
     })
 
     if (!item) {
+      // Try without org check for debugging - maybe organizationId mismatch
+      const itemAny = await prisma.collectedItem.findUnique({
+        where: { id: itemId }
+      })
+      
+      if (itemAny) {
+        console.error(`[Preview API] Item found but org mismatch. Item org: ${itemAny.organizationId}, User org: ${organizationId}`)
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
+      
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
-    }
-
-    // Verify user has access to this item's organization
-    if (item.job?.organizationId !== session.user.organizationId) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     // We need a fileUrl to fetch from
