@@ -13,9 +13,8 @@ import {
 } from "@/components/ui/select"
 import { 
   Filter, RefreshCw, Mail, ExternalLink, Clock, 
-  CheckCircle, AlertCircle, MessageSquare, Bell,
-  Pause, PlayCircle, Search, X, Calendar, Tag, Paperclip,
-  MailOpen, Eye, EyeOff, FileSearch
+  CheckCircle, MessageSquare, Bell,
+  Search, X, Calendar, Tag, Paperclip
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
@@ -425,17 +424,6 @@ export default function RequestsPage() {
   }
 
 
-  // Get read status display
-  const getReadStatusDisplay = (readStatus: string | null, messageCount: number) => {
-    if (readStatus === "replied" || messageCount > 1) {
-      return { icon: MessageSquare, label: "Replied", color: "text-green-600", bgColor: "bg-green-50" }
-    }
-    if (readStatus === "read") {
-      return { icon: MailOpen, label: "Read", color: "text-blue-600", bgColor: "bg-blue-50" }
-    }
-    return { icon: Mail, label: "Unread", color: "text-gray-400", bgColor: "bg-gray-50" }
-  }
-
   // Calculate summary stats - No reply, Replied, Complete
   const noReplyStatuses = ["NO_REPLY", "AWAITING_RESPONSE", "IN_PROGRESS", "FLAGGED", "MANUAL_REVIEW", "ON_HOLD"]
   const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
@@ -698,45 +686,24 @@ export default function RequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-10"></th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attachments</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reminders</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {requests.map(request => {
-                const readDisplay = getReadStatusDisplay(request.readStatus, request._count?.messages || 0)
-                const ReadIcon = readDisplay.icon
                 return (
                 <tr 
                   key={request.id} 
                   className="hover:bg-gray-50 cursor-pointer"
                   onClick={() => handleOpenThread(request)}
                 >
-                  {/* Indicators Column */}
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span 
-                        className={`p-1 rounded ${readDisplay.bgColor}`}
-                        title={readDisplay.label}
-                      >
-                        <ReadIcon className={`w-3.5 h-3.5 ${readDisplay.color}`} />
-                      </span>
-                      {request.hasAttachments && (
-                        <span 
-                          className="p-1 rounded bg-purple-50"
-                          title="Has attachments"
-                        >
-                          <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                        </span>
-                      )}
-                    </div>
-                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900 truncate max-w-[200px]">
                       {request.campaignName || "Untitled Request"}
@@ -808,6 +775,16 @@ export default function RequestsPage() {
                       currentStatus={request.status}
                       onStatusChange={fetchRequests}
                     />
+                  </td>
+                  <td className="px-4 py-3">
+                    {request.hasAttachments ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-purple-700">
+                        <Paperclip className="w-4 h-4" />
+                        Yes
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-sm text-gray-900">
