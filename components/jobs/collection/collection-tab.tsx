@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -84,6 +85,8 @@ function isPreviewable(mimeType: string | null): boolean {
 }
 
 export function CollectionTab({ jobId }: CollectionTabProps) {
+  const router = useRouter()
+  
   // State
   const [items, setItems] = useState<CollectedItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -213,6 +216,17 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
     }
   }
 
+  // Navigate to review workflow for this attachment
+  const handleRowClick = (item: CollectedItem) => {
+    // If the item came from an email reply, navigate to the review page with attachment tab
+    if (item.message?.id) {
+      router.push(`/dashboard/review/${item.message.id}?tab=attachments&attachmentId=${item.id}`)
+    } else {
+      // For manually uploaded files, just open the preview modal
+      setPreviewItem(item)
+    }
+  }
+
   if (loading && items.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -318,8 +332,12 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {items.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
+                <tr 
+                  key={item.id} 
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleRowClick(item)}
+                >
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(item.id)}
@@ -331,18 +349,9 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        {isPreviewable(item.mimeType) ? (
-                          <button
-                            onClick={() => setPreviewItem(item)}
-                            className="font-medium text-gray-900 truncate max-w-[200px] hover:text-orange-600 hover:underline text-left"
-                          >
-                            {item.filename}
-                          </button>
-                        ) : (
-                          <div className="font-medium text-gray-900 truncate max-w-[200px]">
-                            {item.filename}
-                          </div>
-                        )}
+                        <div className="font-medium text-gray-900 truncate max-w-[200px] hover:text-orange-600">
+                          {item.filename}
+                        </div>
                         <div className="text-xs text-gray-500">
                           {formatFileSize(item.fileSize)}
                         </div>
@@ -374,18 +383,8 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
                       {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
-                      {isPreviewable(item.mimeType) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPreviewItem(item)}
-                          title="Preview"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      )}
                       <Button
                         variant="ghost"
                         size="sm"

@@ -9,7 +9,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/requests": "Requests",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/team": "Team",
-  "/dashboard/quest/new": "New Request",
+  "/dashboard/collection": "Collection",
 }
 
 export function PageTitle() {
@@ -22,10 +22,8 @@ export function PageTitle() {
     // Check for dynamic routes
     if (pathname.startsWith("/dashboard/jobs/")) {
       title = "Item Details"
-    } else if (pathname.startsWith("/dashboard/requests/")) {
-      title = "Request Details"
-    } else if (pathname.startsWith("/dashboard/quest/")) {
-      title = "Request"
+    } else if (pathname.startsWith("/dashboard/review/")) {
+      title = "Review"
     }
   }
   

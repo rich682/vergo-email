@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Mail, Paperclip, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EmailTab } from "./left-pane/email-tab"
@@ -66,12 +66,17 @@ type LeftTab = "email" | "attachments"
 
 export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReviewData | null>(null)
   const [leftTab, setLeftTab] = useState<LeftTab>("email")
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<string | null>(null)
   const [leftPaneWidth, setLeftPaneWidth] = useState(60)
   const [isDragging, setIsDragging] = useState(false)
+
+  // Check URL params for initial tab/attachment selection
+  const initialTab = searchParams.get("tab") as LeftTab | null
+  const initialAttachmentId = searchParams.get("attachmentId")
 
   // Fetch review data
   const fetchData = useCallback(async () => {
@@ -97,8 +102,17 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
 
       setData(result)
 
-      // Auto-select first attachment if any
-      if (result.attachments?.length > 0) {
+      // Handle URL params for tab and attachment selection
+      if (initialTab === "attachments" && result.attachments?.length > 0) {
+        setLeftTab("attachments")
+        // Select specific attachment if provided, otherwise first one
+        if (initialAttachmentId && result.attachments.some((a: Attachment) => a.id === initialAttachmentId)) {
+          setSelectedAttachmentId(initialAttachmentId)
+        } else {
+          setSelectedAttachmentId(result.attachments[0].id)
+        }
+      } else if (result.attachments?.length > 0) {
+        // Default: auto-select first attachment
         setSelectedAttachmentId(result.attachments[0].id)
       }
     } catch {
@@ -106,7 +120,7 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
     } finally {
       setLoading(false)
     }
-  }, [messageId, router])
+  }, [messageId, router, initialTab, initialAttachmentId])
 
   useEffect(() => {
     fetchData()

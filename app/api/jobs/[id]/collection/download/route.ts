@@ -53,12 +53,10 @@ export async function GET(
 
     const storage = getStorageService()
 
-    // If we have a stored fileUrl (from Vercel Blob), redirect to it for efficient download
+    // If we have a stored fileUrl (from Vercel Blob), redirect to it
+    // Don't add download param - let browser decide based on content-type
     if (item.fileUrl) {
-      // Add download query param to force download instead of preview
-      const downloadUrl = new URL(item.fileUrl)
-      downloadUrl.searchParams.set("download", "1")
-      return NextResponse.redirect(downloadUrl.toString())
+      return NextResponse.redirect(item.fileUrl)
     }
 
     // Fallback: download file from storage and stream it
