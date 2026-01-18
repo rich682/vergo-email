@@ -247,6 +247,7 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
                 attachments={data.attachments}
                 selectedId={selectedAttachmentId}
                 onSelect={setSelectedAttachmentId}
+                jobId={data.job?.id}
               />
             )}
           </div>

@@ -11,7 +11,8 @@ import {
   Loader2,
   ZoomIn,
   ZoomOut,
-  RotateCw
+  RotateCw,
+  Maximize2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -28,6 +29,7 @@ interface AttachmentsTabProps {
   attachments: Attachment[]
   selectedId: string | null
   onSelect: (id: string) => void
+  jobId?: string // Optional job ID for fetching from collection endpoint
 }
 
 function getFileIcon(mimeType: string | null) {
@@ -53,7 +55,7 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function AttachmentsTab({ attachments, selectedId, onSelect }: AttachmentsTabProps) {
+export function AttachmentsTab({ attachments, selectedId, onSelect, jobId }: AttachmentsTabProps) {
   const selectedAttachment = attachments.find(a => a.id === selectedId) || null
 
   // Auto-select first attachment if none selected
@@ -111,7 +113,7 @@ export function AttachmentsTab({ attachments, selectedId, onSelect }: Attachment
       {/* Preview Area */}
       <div className="flex-1 overflow-hidden">
         {selectedAttachment ? (
-          <AttachmentPreview attachment={selectedAttachment} />
+          <AttachmentPreview attachment={selectedAttachment} jobId={jobId} />
         ) : (
           <div className="h-full flex items-center justify-center bg-gray-50">
             <p className="text-sm text-gray-500">Select an attachment to preview</p>
@@ -123,7 +125,7 @@ export function AttachmentsTab({ attachments, selectedId, onSelect }: Attachment
 }
 
 // Simplified Attachment Preview (graceful fallback, no error messaging)
-function AttachmentPreview({ attachment }: { attachment: Attachment }) {
+function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobId?: string }) {
   const [loading, setLoading] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [previewFailed, setPreviewFailed] = useState(false)
@@ -146,24 +148,55 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
     const fetchUrl = async () => {
       setLoading(true)
       try {
-        const jobId = attachment.fileKey.split('/')[1]
-        const response = await fetch(
-          `/api/jobs/${jobId}/collection/download?itemId=${attachment.id}`,
+        // First, try to use the direct fileUrl if available
+        if (attachment.fileUrl) {
+          // Test if the URL is accessible
+          const testResponse = await fetch(attachment.fileUrl, { method: 'HEAD' }).catch(() => null)
+          if (testResponse?.ok) {
+            setDownloadUrl(attachment.fileUrl)
+            setLoading(false)
+            return
+          }
+        }
+
+        // Try to get jobId from prop or extract from fileKey
+        const effectiveJobId = jobId || (attachment.fileKey ? attachment.fileKey.split('/')[1] : null)
+        
+        if (effectiveJobId) {
+          const response = await fetch(
+            `/api/jobs/${effectiveJobId}/collection/download?itemId=${attachment.id}`,
+            { credentials: "include" }
+          )
+
+          if (response.ok) {
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            setDownloadUrl(url)
+            return
+          }
+        }
+
+        // Try attachments API as another fallback
+        const attachResponse = await fetch(
+          `/api/attachments/download/${attachment.id}`,
           { credentials: "include" }
         )
-
-        if (!response.ok) {
-          if (attachment.fileUrl) {
-            setDownloadUrl(attachment.fileUrl)
-          } else {
-            setPreviewFailed(true)
-          }
-        } else {
-          const blob = await response.blob()
+        
+        if (attachResponse.ok) {
+          const blob = await attachResponse.blob()
           const url = URL.createObjectURL(blob)
           setDownloadUrl(url)
+          return
+        }
+
+        // Final fallback - use fileUrl anyway (might work for some providers)
+        if (attachment.fileUrl) {
+          setDownloadUrl(attachment.fileUrl)
+        } else {
+          setPreviewFailed(true)
         }
       } catch {
+        // Use fileUrl as last resort
         if (attachment.fileUrl) {
           setDownloadUrl(attachment.fileUrl)
         } else {
@@ -181,7 +214,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
         URL.revokeObjectURL(downloadUrl)
       }
     }
-  }, [attachment?.id])
+  }, [attachment?.id, jobId])
 
   const isImage = attachment.mimeType?.startsWith("image/")
   const isPdf = attachment.mimeType?.includes("pdf")
