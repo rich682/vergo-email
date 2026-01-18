@@ -706,7 +706,6 @@ export default function RequestsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reminders</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
