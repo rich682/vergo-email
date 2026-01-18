@@ -241,12 +241,12 @@ export default function JobsPage() {
 
   useEffect(() => { fetchJobs() }, [fetchJobs])
   useEffect(() => { fetchBoard() }, [fetchBoard])
+  useEffect(() => { fetchTeamMembers() }, [fetchTeamMembers]) // Fetch team members on page load for inline editing
   useEffect(() => { 
     if (isCreateOpen) {
-      fetchTeamMembers()
       fetchStakeholderOptions()
     }
-  }, [isCreateOpen, fetchTeamMembers, fetchStakeholderOptions])
+  }, [isCreateOpen, fetchStakeholderOptions])
 
   // Search stakeholders (contacts/entities)
   useEffect(() => {
