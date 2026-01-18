@@ -345,7 +345,7 @@ export class EmailReceptionService {
     // Process attachments
     let hasAttachments = false
     const attachmentKeys: string[] = []
-    const attachmentData: Array<{ key: string; filename: string; content: Buffer; contentType: string }> = []
+    const attachmentData: Array<{ key: string; url: string; filename: string; content: Buffer; contentType: string }> = []
 
     if (data.attachments && data.attachments.length > 0) {
       hasAttachments = true
@@ -353,7 +353,8 @@ export class EmailReceptionService {
 
       for (const attachment of data.attachments) {
         const key = `tasks/${task.id}/${Date.now()}-${attachment.filename}`
-        await storage.upload(
+        // Capture the URL directly from the upload response!
+        const { url } = await storage.upload(
           attachment.content,
           key,
           attachment.contentType
@@ -361,6 +362,7 @@ export class EmailReceptionService {
         attachmentKeys.push(key)
         attachmentData.push({
           key,
+          url, // Store the URL from the upload response
           filename: attachment.filename,
           content: attachment.content,
           contentType: attachment.contentType
@@ -431,6 +433,7 @@ export class EmailReceptionService {
             messageId: message.id,
             filename: att.filename,
             fileKey: att.key,
+            fileUrl: att.url, // Pass the URL directly from upload!
             fileSize: att.content.length,
             mimeType: att.contentType,
             submittedBy: data.from,

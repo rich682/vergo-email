@@ -9,6 +9,7 @@ export interface CreateFromEmailAttachmentData {
   messageId: string
   filename: string
   fileKey: string
+  fileUrl?: string // Direct URL from upload - preferred over looking it up
   fileSize?: number
   mimeType?: string
   submittedBy: string
@@ -49,13 +50,17 @@ export class CollectionService {
   static async createFromEmailAttachment(
     data: CreateFromEmailAttachmentData
   ): Promise<CollectedItem> {
-    const storage = getStorageService()
-    let fileUrl: string | null = null
+    // Use provided fileUrl if available (preferred - comes directly from upload)
+    // Only fall back to lookup if not provided (for backwards compatibility)
+    let fileUrl: string | null = data.fileUrl || null
     
-    try {
-      fileUrl = await storage.getUrl(data.fileKey)
-    } catch {
-      // URL generation may fail for some storage backends
+    if (!fileUrl) {
+      try {
+        const storage = getStorageService()
+        fileUrl = await storage.getUrl(data.fileKey)
+      } catch {
+        console.warn(`[CollectionService] Could not get URL for fileKey: ${data.fileKey}`)
+      }
     }
 
     return prisma.collectedItem.create({
