@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { 
   ChevronDown, ChevronRight, Users, Clock, Bell, 
   MessageSquare, CheckCircle, AlertCircle, Pause, 
-  PlayCircle, Mail, Paperclip, Eye
+  PlayCircle, Mail, Paperclip, Eye, FileSearch
 } from "lucide-react"
 import { format } from "date-fns"
 import {
@@ -176,7 +177,51 @@ function hasReplied(status: string): boolean {
 }
 
 export function RequestCardExpandable({ request, onViewDetails, onRefresh }: RequestCardExpandableProps) {
+  const router = useRouter()
   const [expanded, setExpanded] = useState(false)
+  const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})
+
+  // Fetch latest inbound message IDs for recipients who have replied
+  useEffect(() => {
+    const fetchReplyMessageIds = async () => {
+      const repliedRecipients = request.recipients.filter(r => hasReplied(r.status))
+      if (repliedRecipients.length === 0) return
+
+      // Fetch messages for each replied recipient's task
+      const messageIds: Record<string, string> = {}
+      for (const recipient of repliedRecipients) {
+        try {
+          const response = await fetch(`/api/tasks/${recipient.id}/messages`, {
+            credentials: "include"
+          })
+          if (response.ok) {
+            const messages = await response.json()
+            // Find the latest inbound message
+            const inboundMessage = messages
+              .filter((m: any) => m.direction === "INBOUND")
+              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+            if (inboundMessage) {
+              messageIds[recipient.id] = inboundMessage.id
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching messages for recipient:", err)
+        }
+      }
+      setReplyMessageIds(messageIds)
+    }
+
+    if (expanded) {
+      fetchReplyMessageIds()
+    }
+  }, [expanded, request.recipients])
+
+  const handleReview = (recipientId: string) => {
+    const messageId = replyMessageIds[recipientId]
+    if (messageId) {
+      router.push(`/dashboard/review/${messageId}`)
+    }
+  }
 
   const requestTitle = request.subjectTemplate || request.generatedSubject || request.suggestedCampaignName || "Request"
   const sentDate = request.sentAt 
@@ -302,16 +347,30 @@ export function RequestCardExpandable({ request, onViewDetails, onRefresh }: Req
                         />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onViewDetails(request)
-                          }}
-                          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-                          title="View email details"
-                        >
-                          <Eye className="w-4 h-4 text-gray-500" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onViewDetails(request)
+                            }}
+                            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+                            title="View email details"
+                          >
+                            <Eye className="w-4 h-4 text-gray-500" />
+                          </button>
+                          {hasReplied(recipient.status) && replyMessageIds[recipient.id] && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleReview(recipient.id)
+                              }}
+                              className="p-1.5 hover:bg-orange-100 rounded-lg transition-colors"
+                              title="Review response"
+                            >
+                              <FileSearch className="w-4 h-4 text-orange-500" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectedItemSource } from "@prisma/client"
+import { CollectedItemSource, CollectedItemStatus } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
 
@@ -189,6 +189,69 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching collection items:", error)
     return NextResponse.json(
       { error: "Failed to fetch collection items", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PATCH /api/collection
+ * Update a collected item's status (approve/reject)
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId || !session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const userId = session.user.id
+
+    const body = await request.json()
+    const { id, status, rejectionReason } = body
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 })
+    }
+
+    // Validate status
+    const validStatuses: CollectedItemStatus[] = ["UNREVIEWED", "APPROVED", "REJECTED"]
+    if (status && !validStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` },
+        { status: 400 }
+      )
+    }
+
+    // Verify item exists and belongs to org
+    const existing = await prisma.collectedItem.findFirst({
+      where: { id, organizationId }
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
+    }
+
+    // Update item
+    const updated = await prisma.collectedItem.update({
+      where: { id },
+      data: {
+        status: status || existing.status,
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        rejectionReason: status === "REJECTED" ? rejectionReason : null
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      item: updated
+    })
+  } catch (error: any) {
+    console.error("Error updating collection item:", error)
+    return NextResponse.json(
+      { error: "Failed to update item", message: error.message },
       { status: 500 }
     )
   }

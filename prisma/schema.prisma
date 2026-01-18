@@ -75,6 +75,13 @@ enum CollectedItemStatus {
   REJECTED
 }
 
+// Review workflow status for inbound messages
+enum ReviewStatus {
+  UNREVIEWED
+  NEEDS_FOLLOW_UP
+  REVIEWED
+}
+
 enum CollectedItemSource {
   EMAIL_REPLY
   MANUAL_UPLOAD
@@ -150,6 +157,8 @@ model User {
   createdBoards     Board[]           @relation("BoardCreator")
   ownedSubtasks     Subtask[]         @relation("SubtaskOwner")
   uploadedAttachments Attachment[]    @relation("AttachmentUploader")
+  reviewedMessages  Message[]         @relation("MessageReviewer")
+  reviewAuditLogs   ReviewAuditLog[]  @relation("ReviewAuditAuthor")
 
   @@index([organizationId])
   @@index([email])
@@ -423,10 +432,18 @@ model Message {
   aiReasoning      String? // Brief explanation of classification
   isAutoReply      Boolean          @default(false) // True if this is an OOO, bounce, or auto-reply
   createdAt        DateTime         @default(now())
+  
+  // Review workflow fields
+  reviewStatus     ReviewStatus     @default(UNREVIEWED)
+  reviewedAt       DateTime?
+  reviewedById     String?
+  reviewNotes      String?
 
   entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
   task           Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
   collectedItems CollectedItem[] // Evidence/attachments extracted from this message
+  reviewedBy     User?           @relation("MessageReviewer", fields: [reviewedById], references: [id])
+  auditLogs      ReviewAuditLog[]
 
   @@index([taskId])
   @@index([entityId])
@@ -436,6 +453,7 @@ model Message {
   @@index([messageIdHeader])
   @@index([threadId])
   @@index([isAutoReply])
+  @@index([reviewStatus])
 }
 
 model AgentSchedule {
@@ -773,6 +791,23 @@ model EmailQueue {
   @@index([organizationId])
   @@index([status, nextAttemptAt])  // For queue processing
   @@index([toEmail])
+  @@index([createdAt])
+}
+
+// ReviewAuditLog provides audit trail for review actions
+model ReviewAuditLog {
+  id              String   @id @default(cuid())
+  messageId       String
+  userId          String
+  action          String   // "marked_reviewed" | "marked_needs_follow_up" | "reply_sent" | "follow_up_created"
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  
+  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user            User     @relation("ReviewAuditAuthor", fields: [userId], references: [id])
+  
+  @@index([messageId])
+  @@index([userId])
   @@index([createdAt])
 }
 
