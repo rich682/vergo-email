@@ -458,13 +458,32 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
       setLoading(true)
       setError(false)
       try {
+        // Use the fileUrl directly if available (Vercel Blob URLs work for preview)
+        if (item.fileUrl) {
+          // Remove download param to enable preview
+          const previewUrl = new URL(item.fileUrl)
+          previewUrl.searchParams.delete("download")
+          setPreviewUrl(previewUrl.toString())
+          return
+        }
+
+        // Fallback: try to fetch via API (will redirect)
         const response = await fetch(
           `/api/jobs/${jobId}/collection/download?itemId=${item.id}`,
-          { credentials: "include" }
+          { credentials: "include", redirect: "follow" }
         )
         
         if (!response.ok) throw new Error("Failed to fetch")
         
+        // If we got redirected to a URL, use the final URL
+        if (response.url && response.url !== window.location.href) {
+          const previewUrl = new URL(response.url)
+          previewUrl.searchParams.delete("download")
+          setPreviewUrl(previewUrl.toString())
+          return
+        }
+        
+        // If we got a blob, create object URL
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         setPreviewUrl(url)
@@ -478,11 +497,11 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
     fetchPreview()
 
     return () => {
-      if (previewUrl) {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl)
       }
     }
-  }, [item.id, jobId])
+  }, [item.id, jobId, item.fileUrl])
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))

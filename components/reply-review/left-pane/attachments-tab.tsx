@@ -148,60 +148,67 @@ function AttachmentPreview({ attachment, jobId }: { attachment: Attachment; jobI
     const fetchUrl = async () => {
       setLoading(true)
       try {
-        // First, try to use the direct fileUrl if available
+        // First, try to use the direct fileUrl if available (Vercel Blob URLs work directly)
         if (attachment.fileUrl) {
-          // Test if the URL is accessible
-          const testResponse = await fetch(attachment.fileUrl, { method: 'HEAD' }).catch(() => null)
-          if (testResponse?.ok) {
-            setDownloadUrl(attachment.fileUrl)
-            setLoading(false)
-            return
+          // Remove any download param to enable preview
+          const previewUrl = new URL(attachment.fileUrl)
+          previewUrl.searchParams.delete("download")
+          setDownloadUrl(previewUrl.toString())
+          setLoading(false)
+          return
+        }
+
+        // Try attachments API - it returns { url, filename }
+        try {
+          const attachResponse = await fetch(
+            `/api/attachments/download/${attachment.id}`,
+            { credentials: "include" }
+          )
+          
+          if (attachResponse.ok) {
+            const data = await attachResponse.json()
+            if (data.url) {
+              // Remove download param for preview
+              const previewUrl = new URL(data.url)
+              previewUrl.searchParams.delete("download")
+              setDownloadUrl(previewUrl.toString())
+              return
+            }
           }
+        } catch {
+          // Continue to next method
         }
 
         // Try to get jobId from prop or extract from fileKey
         const effectiveJobId = jobId || (attachment.fileKey ? attachment.fileKey.split('/')[1] : null)
         
         if (effectiveJobId) {
-          const response = await fetch(
-            `/api/jobs/${effectiveJobId}/collection/download?itemId=${attachment.id}`,
-            { credentials: "include" }
-          )
+          // Fetch the item details to get fileUrl
+          try {
+            const response = await fetch(
+              `/api/jobs/${effectiveJobId}/collection?itemId=${attachment.id}`,
+              { credentials: "include" }
+            )
 
-          if (response.ok) {
-            const blob = await response.blob()
-            const url = URL.createObjectURL(blob)
-            setDownloadUrl(url)
-            return
+            if (response.ok) {
+              const data = await response.json()
+              const item = data.items?.find((i: any) => i.id === attachment.id)
+              if (item?.fileUrl) {
+                const previewUrl = new URL(item.fileUrl)
+                previewUrl.searchParams.delete("download")
+                setDownloadUrl(previewUrl.toString())
+                return
+              }
+            }
+          } catch {
+            // Continue
           }
         }
 
-        // Try attachments API as another fallback
-        const attachResponse = await fetch(
-          `/api/attachments/download/${attachment.id}`,
-          { credentials: "include" }
-        )
-        
-        if (attachResponse.ok) {
-          const blob = await attachResponse.blob()
-          const url = URL.createObjectURL(blob)
-          setDownloadUrl(url)
-          return
-        }
-
-        // Final fallback - use fileUrl anyway (might work for some providers)
-        if (attachment.fileUrl) {
-          setDownloadUrl(attachment.fileUrl)
-        } else {
-          setPreviewFailed(true)
-        }
+        // If all else fails, mark as preview failed
+        setPreviewFailed(true)
       } catch {
-        // Use fileUrl as last resort
-        if (attachment.fileUrl) {
-          setDownloadUrl(attachment.fileUrl)
-        } else {
-          setPreviewFailed(true)
-        }
+        setPreviewFailed(true)
       } finally {
         setLoading(false)
       }
