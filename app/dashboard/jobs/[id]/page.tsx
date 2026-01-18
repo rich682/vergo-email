@@ -248,8 +248,12 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Inline editing states
+  const [editingName, setEditingName] = useState(false)
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [editingDueDate, setEditingDueDate] = useState(false)
 
   // Data state
   const [tasks, setTasks] = useState<JobTask[]>([])
@@ -598,29 +602,31 @@ export default function JobDetailPage() {
   // Handlers
   // ============================================
 
-  const handleSave = async () => {
-    if (!editName.trim()) return
+  // Inline save for individual fields
+  const handleSaveField = async (field: "name" | "description" | "dueDate", value: string | null) => {
     setSaving(true)
     try {
       const response = await fetch(`/api/jobs/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          name: editName.trim(),
-          description: editDescription.trim() || null,
-          dueDate: editDueDate || null
-        })
+        body: JSON.stringify({ [field]: value })
       })
       if (response.ok) {
         const data = await response.json()
         setJob(data.job)
-        setEditing(false)
+        // Update edit states
+        setEditName(data.job.name)
+        setEditDescription(data.job.description || "")
+        setEditDueDate(data.job.dueDate ? data.job.dueDate.split("T")[0] : "")
       }
     } catch (error) {
-      console.error("Error updating job:", error)
+      console.error(`Error updating ${field}:`, error)
     } finally {
       setSaving(false)
+      setEditingName(false)
+      setEditingDescription(false)
+      setEditingDueDate(false)
     }
   }
 
@@ -871,41 +877,12 @@ export default function JobDetailPage() {
             <span className="text-sm">Back to {UI_LABELS.jobsPageTitle}</span>
           </Link>
           {permissions?.canEdit && (
-            <div className="flex items-center gap-2">
-              {editing ? (
-                <>
-                  <button 
-                    onClick={() => setEditing(false)}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleSave} 
-                    disabled={saving}
-                    className="px-4 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                  >
-                    {saving ? "Saving..." : "Save"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => setEditing(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:border-gray-300 transition-colors"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    Edit
-                  </button>
-                  <button 
-                    onClick={handleDelete}
-                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-            </div>
+            <button 
+              onClick={handleDelete}
+              className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
@@ -916,42 +893,53 @@ export default function JobDetailPage() {
           <div className="col-span-12 lg:col-span-8 space-y-6">
             {/* Header Section */}
             <div className="pb-6 border-b border-gray-100">
-                {editing ? (
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Name</Label>
-                      <Input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="mt-1 text-lg font-semibold"
-                      />
-                    </div>
-                    <div>
-                      <Label>Description</Label>
-                      <Input
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                        placeholder="Optional description"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>Deadline</Label>
-                      <Input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                        className="mt-1 w-48"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
                     {/* Title + Status */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
+                          {/* Inline editable name */}
+                          {editingName ? (
+                            <Input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onBlur={() => {
+                                if (editName.trim() && editName !== job.name) {
+                                  handleSaveField("name", editName.trim())
+                                } else {
+                                  setEditName(job.name)
+                                  setEditingName(false)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  if (editName.trim() && editName !== job.name) {
+                                    handleSaveField("name", editName.trim())
+                                  } else {
+                                    setEditName(job.name)
+                                    setEditingName(false)
+                                  }
+                                }
+                                if (e.key === "Escape") {
+                                  setEditName(job.name)
+                                  setEditingName(false)
+                                }
+                              }}
+                              autoFocus
+                              className="text-2xl font-semibold h-auto py-1 px-2 -ml-2"
+                            />
+                          ) : (
+                            <div className="group flex items-center gap-2">
+                              <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
+                              {permissions?.canEdit && (
+                                <button
+                                  onClick={() => setEditingName(true)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {/* Status Dropdown */}
                           {permissions?.canEdit ? (
                             <div className="relative">
@@ -985,28 +973,125 @@ export default function JobDetailPage() {
                             <StatusBadge status={job.status} />
                           )}
                         </div>
-                        {job.description && (
-                          <p className="text-gray-500 mb-3">{job.description}</p>
+                        {/* Inline editable description */}
+                        {editingDescription ? (
+                          <Input
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            onBlur={() => {
+                              const newDesc = editDescription.trim() || null
+                              if (newDesc !== (job.description || null)) {
+                                handleSaveField("description", newDesc)
+                              } else {
+                                setEditDescription(job.description || "")
+                                setEditingDescription(false)
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const newDesc = editDescription.trim() || null
+                                if (newDesc !== (job.description || null)) {
+                                  handleSaveField("description", newDesc)
+                                } else {
+                                  setEditDescription(job.description || "")
+                                  setEditingDescription(false)
+                                }
+                              }
+                              if (e.key === "Escape") {
+                                setEditDescription(job.description || "")
+                                setEditingDescription(false)
+                              }
+                            }}
+                            autoFocus
+                            placeholder="Add a description..."
+                            className="text-gray-500 mb-3 h-auto py-1 px-2 -ml-2"
+                          />
+                        ) : (
+                          <div className="group flex items-center gap-2 mb-3">
+                            {job.description ? (
+                              <p className="text-gray-500">{job.description}</p>
+                            ) : (
+                              permissions?.canEdit && (
+                                <p className="text-gray-400 italic">Add a description...</p>
+                              )
+                            )}
+                            {permissions?.canEdit && (
+                              <button
+                                onClick={() => setEditingDescription(true)}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Deadline */}
-                    {job.dueDate && (
-                      <div className="flex items-center gap-2 mb-3 text-sm">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="font-medium">Deadline:</span>
-                        <span className={`${
-                          differenceInDays(new Date(job.dueDate), new Date()) < 0 
-                            ? "text-red-600 font-medium" 
-                            : differenceInDays(new Date(job.dueDate), new Date()) <= 3
-                            ? "text-amber-600 font-medium"
-                            : "text-gray-700"
-                        }`}>
-                          {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
-                        </span>
-                      </div>
-                    )}
+                    {/* Inline editable Deadline */}
+                    <div className="flex items-center gap-2 mb-3 text-sm">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span className="font-medium">Deadline:</span>
+                      {editingDueDate ? (
+                        <Input
+                          type="date"
+                          value={editDueDate}
+                          onChange={(e) => setEditDueDate(e.target.value)}
+                          onBlur={() => {
+                            const newDate = editDueDate || null
+                            const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
+                            if (newDate !== currentDate) {
+                              handleSaveField("dueDate", newDate)
+                            } else {
+                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                              setEditingDueDate(false)
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const newDate = editDueDate || null
+                              const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
+                              if (newDate !== currentDate) {
+                                handleSaveField("dueDate", newDate)
+                              } else {
+                                setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                                setEditingDueDate(false)
+                              }
+                            }
+                            if (e.key === "Escape") {
+                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                              setEditingDueDate(false)
+                            }
+                          }}
+                          autoFocus
+                          className="w-48 h-8"
+                        />
+                      ) : (
+                        <div className="group flex items-center gap-2">
+                          {job.dueDate ? (
+                            <span className={`${
+                              differenceInDays(new Date(job.dueDate), new Date()) < 0 
+                                ? "text-red-600 font-medium" 
+                                : differenceInDays(new Date(job.dueDate), new Date()) <= 3
+                                ? "text-amber-600 font-medium"
+                                : "text-gray-700"
+                            }`}>
+                              {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic">Not set</span>
+                          )}
+                          {permissions?.canEdit && (
+                            <button
+                              onClick={() => setEditingDueDate(true)}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Labels */}
                     <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -1199,8 +1284,6 @@ export default function JobDetailPage() {
                         </Dialog>
                       )}
                     </div>
-                  </>
-                )}
             </div>
 
             {/* Task AI Summary - shows when requests exist */}
