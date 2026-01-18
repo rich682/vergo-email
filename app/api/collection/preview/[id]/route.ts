@@ -40,22 +40,39 @@ export async function GET(
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
-    // Get the file from storage
-    const storage = getStorageService()
-    let fileBuffer: Buffer
-
-    try {
-      fileBuffer = await storage.download(item.fileKey)
-    } catch (error) {
-      console.error("Error downloading file from storage:", error)
-      return NextResponse.json(
-        { error: "Failed to retrieve file" },
-        { status: 500 }
-      )
-    }
-
     // Determine content type
     const contentType = item.mimeType || "application/octet-stream"
+    let fileBuffer: Buffer
+
+    // Strategy 1: If we have a direct fileUrl (Vercel Blob), fetch from it
+    if (item.fileUrl) {
+      try {
+        const response = await fetch(item.fileUrl)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch from fileUrl: ${response.status}`)
+        }
+        const arrayBuffer = await response.arrayBuffer()
+        fileBuffer = Buffer.from(arrayBuffer)
+      } catch (error) {
+        console.error("Error fetching from fileUrl:", error)
+        // Fall through to storage download
+        fileBuffer = null as any
+      }
+    }
+
+    // Strategy 2: Fall back to storage service download
+    if (!fileBuffer) {
+      try {
+        const storage = getStorageService()
+        fileBuffer = await storage.download(item.fileKey)
+      } catch (error) {
+        console.error("Error downloading file from storage:", error)
+        return NextResponse.json(
+          { error: "Failed to retrieve file" },
+          { status: 500 }
+        )
+      }
+    }
 
     // Return file with inline disposition for preview
     return new NextResponse(fileBuffer, {
@@ -63,9 +80,7 @@ export async function GET(
         "Content-Type": contentType,
         "Content-Disposition": `inline; filename="${encodeURIComponent(item.filename)}"`,
         "Content-Length": fileBuffer.length.toString(),
-        "Cache-Control": "private, max-age=3600", // Cache for 1 hour
-        // Explicitly allow iframe embedding by NOT setting X-Frame-Options
-        // and setting a permissive Content-Security-Policy for frame-ancestors
+        "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff"
       }
     })
