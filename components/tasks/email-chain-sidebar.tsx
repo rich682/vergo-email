@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Paperclip, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Paperclip, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileSearch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDistanceToNow } from "date-fns"
@@ -71,6 +72,7 @@ export function EmailChainSidebar({
   totalCount,
   variant = "sidebar"
 }: EmailChainSidebarProps) {
+  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [replyText, setReplyText] = useState("")
@@ -411,6 +413,35 @@ export function EmailChainSidebar({
                   All reminders sent ({reminderData.state.sentCount} total)
                 </p>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Review Reply Button - Show if there's an inbound message */}
+        {messages.some(m => m.direction === "INBOUND") && (
+          <Card className="bg-orange-50 border-orange-200">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-orange-900">Reply received</p>
+                  <p className="text-xs text-orange-700">Open the full review experience</p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const latestInbound = messages
+                      .filter(m => m.direction === "INBOUND")
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+                    if (latestInbound) {
+                      router.push(`/dashboard/review/${latestInbound.id}`)
+                    }
+                  }}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  <FileSearch className="w-4 h-4 mr-1" />
+                  Review Reply
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
