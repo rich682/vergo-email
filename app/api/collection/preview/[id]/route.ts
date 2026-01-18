@@ -17,8 +17,10 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const itemId = context.params.id
+  
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
@@ -26,7 +28,8 @@ export async function GET(
     }
 
     const organizationId = session.user.organizationId
-    const itemId = params.id
+
+    console.log(`[Preview API] Fetching item: ${itemId} for org: ${organizationId}`)
 
     // Fetch the collected item
     const item = await prisma.collectedItem.findFirst({
@@ -37,41 +40,54 @@ export async function GET(
     })
 
     if (!item) {
+      console.log(`[Preview API] Item not found: ${itemId}`)
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
+    console.log(`[Preview API] Found item: ${item.filename}, fileUrl: ${item.fileUrl ? 'yes' : 'no'}, fileKey: ${item.fileKey}`)
+
     // Determine content type
     const contentType = item.mimeType || "application/octet-stream"
-    let fileBuffer: Buffer
+    let fileBuffer: Buffer | null = null
+    let fetchError: string | null = null
 
     // Strategy 1: If we have a direct fileUrl (Vercel Blob), fetch from it
     if (item.fileUrl) {
       try {
+        console.log(`[Preview API] Fetching from fileUrl: ${item.fileUrl.substring(0, 50)}...`)
         const response = await fetch(item.fileUrl)
         if (!response.ok) {
-          throw new Error(`Failed to fetch from fileUrl: ${response.status}`)
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
         const arrayBuffer = await response.arrayBuffer()
         fileBuffer = Buffer.from(arrayBuffer)
-      } catch (error) {
-        console.error("Error fetching from fileUrl:", error)
-        // Fall through to storage download
-        fileBuffer = null as any
+        console.log(`[Preview API] Successfully fetched ${fileBuffer.length} bytes from fileUrl`)
+      } catch (error: any) {
+        console.error("[Preview API] Error fetching from fileUrl:", error.message)
+        fetchError = error.message
       }
     }
 
     // Strategy 2: Fall back to storage service download
-    if (!fileBuffer) {
+    if (!fileBuffer && item.fileKey) {
       try {
+        console.log(`[Preview API] Falling back to storage download: ${item.fileKey}`)
         const storage = getStorageService()
         fileBuffer = await storage.download(item.fileKey)
-      } catch (error) {
-        console.error("Error downloading file from storage:", error)
-        return NextResponse.json(
-          { error: "Failed to retrieve file" },
-          { status: 500 }
-        )
+        console.log(`[Preview API] Successfully downloaded ${fileBuffer.length} bytes from storage`)
+      } catch (error: any) {
+        console.error("[Preview API] Error downloading from storage:", error.message)
+        fetchError = error.message
       }
+    }
+
+    // If we still don't have the file, return error
+    if (!fileBuffer) {
+      console.error(`[Preview API] Failed to retrieve file. Last error: ${fetchError}`)
+      return NextResponse.json(
+        { error: "Failed to retrieve file", details: fetchError },
+        { status: 500 }
+      )
     }
 
     // Return file with inline disposition for preview
@@ -85,7 +101,7 @@ export async function GET(
       }
     })
   } catch (error: any) {
-    console.error("Error previewing collection item:", error)
+    console.error("[Preview API] Unexpected error:", error)
     return NextResponse.json(
       { error: "Failed to preview file", message: error.message },
       { status: 500 }
