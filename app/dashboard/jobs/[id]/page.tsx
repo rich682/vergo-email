@@ -109,6 +109,7 @@ interface Job {
   taskCount: number
   respondedCount: number
   completedCount: number
+  collectedItemCount?: number
 }
 
 interface Permissions {
@@ -1393,6 +1394,7 @@ export default function JobDetailPage() {
               <CardContent className="p-4">
                 <SectionHeader
                   title="Collection"
+                  count={job?.collectedItemCount}
                   icon={<Inbox className="w-4 h-4 text-purple-500" />}
                   collapsible
                   expanded={collectionExpanded}
