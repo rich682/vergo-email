@@ -13,7 +13,7 @@ import {
 import { 
   Upload, Download, FileText, Filter, RefreshCw, Trash2,
   FileImage, FileSpreadsheet, File, Archive, Eye, X,
-  ZoomIn, ZoomOut, RotateCw, Loader2
+  ZoomIn, ZoomOut, RotateCw
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { CollectionUploadModal } from "./collection-upload-modal"
@@ -479,64 +479,23 @@ interface FilePreviewModalProps {
 }
 
 function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModalProps) {
-  const [loading, setLoading] = useState(true)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState(false)
   const [zoom, setZoom] = useState(100)
   const [rotation, setRotation] = useState(0)
 
   const isImage = item.mimeType?.startsWith("image/")
   const isPdf = item.mimeType?.includes("pdf")
+  
+  // Use our preview API which streams files with inline headers
+  // This works for both Vercel Blob and local storage, and avoids X-Frame-Options issues
+  const previewUrl = `/api/collection/preview/${item.id}`
 
+  // Reset state when item changes
   useEffect(() => {
-    const fetchPreview = async () => {
-      setLoading(true)
-      setError(false)
-      try {
-        // Use the fileUrl directly if available (Vercel Blob URLs work for preview)
-        if (item.fileUrl) {
-          // Remove download param to enable preview
-          const previewUrl = new URL(item.fileUrl)
-          previewUrl.searchParams.delete("download")
-          setPreviewUrl(previewUrl.toString())
-          return
-        }
-
-        // Fallback: try to fetch via API (will redirect)
-        const response = await fetch(
-          `/api/jobs/${jobId}/collection/download?itemId=${item.id}`,
-          { credentials: "include", redirect: "follow" }
-        )
-        
-        if (!response.ok) throw new Error("Failed to fetch")
-        
-        // If we got redirected to a URL, use the final URL
-        if (response.url && response.url !== window.location.href) {
-          const previewUrl = new URL(response.url)
-          previewUrl.searchParams.delete("download")
-          setPreviewUrl(previewUrl.toString())
-          return
-        }
-        
-        // If we got a blob, create object URL
-        const blob = await response.blob()
-        const url = URL.createObjectURL(blob)
-        setPreviewUrl(url)
-      } catch {
-        setError(true)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchPreview()
-
-    return () => {
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl)
-      }
-    }
-  }, [item.id, jobId, item.fileUrl])
+    setError(false)
+    setZoom(100)
+    setRotation(0)
+  }, [item.id])
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
@@ -573,7 +532,7 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
           
           <div className="flex items-center gap-2">
             {/* Zoom controls */}
-            {!error && previewUrl && (
+            {!error && (isImage || isPdf) && (
               <>
                 <Button
                   variant="ghost"
@@ -614,12 +573,7 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
         
         {/* Preview Content */}
         <div className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-4">
-          {loading ? (
-            <div className="text-center">
-              <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto mb-3" />
-              <p className="text-gray-500">Loading preview...</p>
-            </div>
-          ) : error || !previewUrl ? (
+          {error ? (
             <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
               <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
               <h3 className="font-medium text-gray-900 mb-2">Preview not available</h3>
@@ -646,24 +600,17 @@ function FilePreviewModal({ jobId, item, onClose, onDownload }: FilePreviewModal
               />
             </div>
           ) : isPdf ? (
-            <object
-              data={previewUrl}
-              type="application/pdf"
+            <iframe
+              src={previewUrl}
               className="w-full h-full rounded-lg bg-white shadow-lg"
               style={{ 
                 minHeight: "70vh",
                 transform: `scale(${zoom / 100})`,
                 transformOrigin: 'top center',
               }}
-            >
-              {/* Fallback to Google Docs viewer if native PDF doesn't work */}
-              <iframe
-                src={`https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`}
-                className="w-full h-full"
-                style={{ minHeight: "70vh" }}
-                title={item.filename}
-              />
-            </object>
+              title={item.filename}
+              onError={() => setError(true)}
+            />
           ) : (
             <div className="text-center p-8 bg-white rounded-lg shadow max-w-md">
               <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
