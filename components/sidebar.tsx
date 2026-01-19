@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2, Copy, Calendar } from "lucide-react"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface SidebarProps {
   className?: string
@@ -139,6 +140,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
   const [boards, setBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null }>({ open: false, boardId: null })
   const boardMenuRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -216,21 +218,27 @@ export function Sidebar({ className = "" }: SidebarProps) {
   }
 
   const handleDeleteBoard = async (boardId: string) => {
-    if (!window.confirm("Delete this board? Tasks will be moved to 'All Tasks'.")) return
+    // Open confirmation dialog instead of using window.confirm
+    setDeleteConfirm({ open: true, boardId })
+    setBoardMenuOpen(null)
+  }
+
+  const confirmDeleteBoard = async () => {
+    if (!deleteConfirm.boardId) return
     try {
-      const response = await fetch(`/api/boards/${boardId}?hard=true`, {
+      const response = await fetch(`/api/boards/${deleteConfirm.boardId}?hard=true`, {
         method: "DELETE"
       })
       if (response.ok) {
         fetchBoards()
-        setBoardMenuOpen(null)
-        if (currentBoardId === boardId) {
+        if (currentBoardId === deleteConfirm.boardId) {
           router.push("/dashboard/jobs")
         }
       }
     } catch (error) {
       console.error("Error deleting board:", error)
     }
+    setDeleteConfirm({ open: false, boardId: null })
   }
 
   const handleDuplicateBoard = async (boardId: string) => {
@@ -543,6 +551,18 @@ export function Sidebar({ className = "" }: SidebarProps) {
           fetchBoards()
           router.push(`/dashboard/jobs?boardId=${board.id}`)
         }}
+      />
+
+      {/* Delete Board Confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, boardId: open ? deleteConfirm.boardId : null })}
+        title="Delete Board"
+        description="Are you sure you want to delete this board? All tasks in this board will be permanently removed."
+        confirmLabel="Delete Board"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteBoard}
       />
     </>
   )
