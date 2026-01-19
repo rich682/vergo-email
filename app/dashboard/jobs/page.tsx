@@ -102,7 +102,6 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [showArchived, setShowArchived] = useState(false)
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -141,9 +140,8 @@ export default function JobsPage() {
       if (boardId) {
         params.set("boardId", boardId)
       }
-      if (showArchived) {
-        params.set("includeArchived", "true")
-      }
+      // Always include archived - they appear in their own "Archived" group section
+      params.set("includeArchived", "true")
       
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
@@ -157,7 +155,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardId, showArchived])
+  }, [boardId])
 
   const fetchBoard = useCallback(async () => {
     if (!boardId) {
@@ -894,8 +892,8 @@ export default function JobsPage() {
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="mb-4 flex items-center gap-4">
+        {/* Search */}
+        <div className="mb-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
@@ -905,17 +903,6 @@ export default function JobsPage() {
               className="pl-10"
             />
           </div>
-          
-          {/* Show Archived Toggle */}
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(e) => setShowArchived(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
-            />
-            Show archived
-          </label>
         </div>
 
         {/* AI Summary Panel */}
