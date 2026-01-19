@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2, Copy } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Archive, Trash2, Copy, Calendar } from "lucide-react"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 
 interface SidebarProps {
@@ -509,6 +509,22 @@ export function Sidebar({ className = "" }: SidebarProps) {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Onboarding Call CTA */}
+          <div className="mx-3 mb-3">
+            <a
+              href="https://calendly.com/vergo-ai/vergo-onboarding-call"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-all duration-150"
+            >
+              <Calendar className="w-5 h-5 flex-shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Book Onboarding</span>
+                <span className="text-xs text-orange-500">Schedule a call</span>
+              </div>
+            </a>
+          </div>
 
           {/* Settings/Management Section (Bottom) */}
           <ul className="space-y-1 pb-4 border-t border-gray-100 pt-4 mt-4">
