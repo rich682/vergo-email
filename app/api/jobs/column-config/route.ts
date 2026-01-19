@@ -9,9 +9,26 @@ const DEFAULT_COLUMNS = [
   { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 1, field: "status", isSystem: true },
   { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 2, field: "ownerId", isSystem: true },
   { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 3, field: "dueDate", isSystem: true },
-  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 4, field: "notes", isSystem: false },
-  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 5, field: "collectedItemCount", isSystem: false },
+  { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 4, field: "responses", isSystem: true },
+  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 5, field: "notes", isSystem: false },
+  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 6, field: "collectedItemCount", isSystem: false },
 ]
+
+// Merge saved config with default columns to include any new system columns
+function mergeWithDefaults(savedColumns: any[]): any[] {
+  const savedIds = new Set(savedColumns.map(c => c.id))
+  const maxOrder = Math.max(...savedColumns.map(c => c.order), -1)
+  
+  // Find any default system columns that are missing from saved config
+  const missingColumns = DEFAULT_COLUMNS.filter(
+    dc => dc.isSystem && !savedIds.has(dc.id)
+  ).map((col, index) => ({
+    ...col,
+    order: maxOrder + 1 + index // Add at the end
+  }))
+  
+  return [...savedColumns, ...missingColumns]
+}
 
 // GET - Fetch column configuration for the organization
 export async function GET(request: NextRequest) {
@@ -56,7 +73,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (config) {
-      return NextResponse.json({ columns: config.columns })
+      // Merge with defaults to include any new system columns
+      const mergedColumns = mergeWithDefaults(config.columns as any[])
+      return NextResponse.json({ columns: mergedColumns })
     }
 
     // Return default columns if no config found
