@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 
 interface CreateBoardModalProps {
   open: boolean
@@ -27,9 +26,6 @@ export function CreateBoardModal({
   onBoardCreated
 }: CreateBoardModalProps) {
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [periodStart, setPeriodStart] = useState("")
-  const [periodEnd, setPeriodEnd] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,10 +45,7 @@ export function CreateBoardModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          periodStart: periodStart || undefined,
-          periodEnd: periodEnd || undefined
+          name: name.trim()
         })
       })
 
@@ -65,9 +58,6 @@ export function CreateBoardModal({
       
       // Reset form
       setName("")
-      setDescription("")
-      setPeriodStart("")
-      setPeriodEnd("")
       
       onOpenChange(false)
       onBoardCreated?.(data.board)
@@ -81,20 +71,17 @@ export function CreateBoardModal({
   const handleClose = () => {
     setError(null)
     setName("")
-    setDescription("")
-    setPeriodStart("")
-    setPeriodEnd("")
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[400px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create New Board</DialogTitle>
             <DialogDescription>
-              Create a board to organize tasks by period (e.g., "January 2025 Book Close")
+              Organize your tasks by period or project
             </DialogDescription>
           </DialogHeader>
           
@@ -104,46 +91,16 @@ export function CreateBoardModal({
             </div>
           )}
           
-          <div className="grid gap-4 py-4">
+          <div className="py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Board Name *</Label>
+              <Label htmlFor="name">Board Name</Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="January 2025 Book Close"
-                required
+                placeholder="e.g., January 2025 Close"
+                autoFocus
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description..."
-                rows={2}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="periodStart">Period Start</Label>
-                <Input
-                  id="periodStart"
-                  type="date"
-                  value={periodStart}
-                  onChange={(e) => setPeriodStart(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="periodEnd">Period End</Label>
-                <Input
-                  id="periodEnd"
-                  type="date"
-                  value={periodEnd}
-                  onChange={(e) => setPeriodEnd(e.target.value)}
-                />
-              </div>
             </div>
           </div>
           <DialogFooter>
@@ -155,9 +112,9 @@ export function CreateBoardModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !name.trim()}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Board
+              Create
             </Button>
           </DialogFooter>
         </form>
