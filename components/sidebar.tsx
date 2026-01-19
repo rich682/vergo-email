@@ -311,31 +311,6 @@ export function Sidebar({ className = "" }: SidebarProps) {
               {/* Boards Sub-items */}
               {tasksExpanded && (
                 <ul className="mt-1 ml-6 space-y-0.5">
-                  {/* All Tasks */}
-                  <li>
-                    <Link
-                      href="/dashboard/jobs"
-                      className={`
-                        flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm
-                        transition-all duration-150
-                        ${isOnTasksPage && !currentBoardId
-                          ? "bg-blue-50 text-blue-700 font-medium" 
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
-                        }
-                      `}
-                    >
-                      <TasksIcon className="w-4 h-4 flex-shrink-0" />
-                      <span>All Tasks</span>
-                    </Link>
-                  </li>
-
-                  {/* Divider if there are boards */}
-                  {boards.length > 0 && (
-                    <li className="mx-6 my-2">
-                      <div className="border-t border-gray-200" />
-                    </li>
-                  )}
-
                   {/* Board Items */}
                   {boards.map((board) => {
                     const isActiveBoard = currentBoardId === board.id
