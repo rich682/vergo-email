@@ -19,6 +19,7 @@ interface Entity {
   firstName: string
   email: string
   phone?: string
+  companyName?: string
   isInternal?: boolean
   groups: Group[]
   contactType?: string
@@ -308,17 +309,16 @@ export function ContactList({
               )}
               <th className="px-4 py-3 w-40">Name</th>
               <th className="px-4 py-3 w-48">Email</th>
+              <th className="px-4 py-3 w-36">Company</th>
               <th className="px-4 py-3 w-24">Org</th>
               <th className="px-4 py-3 w-28">Groups</th>
-              {/* Tags column hidden for now */}
-              {/* <th className="px-4 py-3">Tags</th> */}
               <th className="px-4 py-3 w-32 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {entities.length === 0 && (
               <tr>
-                <td colSpan={showSelectionColumn ? 6 : 5} className="px-4 py-4 text-gray-500">
+                <td colSpan={showSelectionColumn ? 7 : 6} className="px-4 py-4 text-gray-500">
                   No contacts found.
                 </td>
               </tr>
@@ -352,6 +352,9 @@ export function ContactList({
                   {entity.phone && <div className="text-xs text-gray-500">{entity.phone}</div>}
                 </td>
                 <td className="px-4 py-2 text-gray-600">{entity.email}</td>
+                <td className="px-4 py-2 text-gray-600">
+                  {entity.companyName || "—"}
+                </td>
                 <td className="px-4 py-2">
                   <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
                     {entity.contactType === "CUSTOM"

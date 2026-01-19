@@ -18,6 +18,7 @@ interface EntityInput {
   lastName?: string
   email?: string
   phone?: string
+  companyName?: string
   contactType?: string
   contactTypeCustomLabel?: string
   groups?: { id: string; name: string }[]
@@ -34,6 +35,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
   const [lastName, setLastName] = useState(entity?.lastName || "")
   const [email, setEmail] = useState(entity?.email || "")
   const [phone, setPhone] = useState(entity?.phone || "")
+  const [companyName, setCompanyName] = useState(entity?.companyName || "")
   const [contactType, setContactType] = useState(entity?.contactType || "UNKNOWN")
   const [contactTypeCustomLabel, setContactTypeCustomLabel] = useState(entity?.contactTypeCustomLabel || "")
   const [groupIds, setGroupIds] = useState<string[]>(
@@ -64,6 +66,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     setLastName(entity?.lastName || "")
     setEmail(entity?.email || "")
     setPhone(entity?.phone || "")
+    setCompanyName(entity?.companyName || "")
     setContactType(entity?.contactType || "UNKNOWN")
     setContactTypeCustomLabel(entity?.contactTypeCustomLabel || "")
     setGroupIds(entity?.groups?.map((g) => g.id) || [])
@@ -80,6 +83,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         lastName: lastName.trim() || undefined,
         email,
         phone: phone || undefined,
+        companyName: companyName.trim() || undefined,
         contactType,
         contactTypeCustomLabel: contactType === "CUSTOM" ? contactTypeCustomLabel || undefined : undefined,
         groupIds,
@@ -141,6 +145,15 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="name@example.com"
           required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="companyName">Company <span className="text-gray-400 text-xs font-normal">(optional)</span></Label>
+        <Input
+          id="companyName"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+          placeholder="Acme Corp"
         />
       </div>
       <div className="space-y-2">

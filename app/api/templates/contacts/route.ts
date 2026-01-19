@@ -7,6 +7,7 @@ export async function GET() {
     "EMAIL",
     "FIRST_NAME",
     "LAST_NAME",
+    "COMPANY",
     "PHONE",
     "TYPE",
     "GROUPS"
@@ -16,6 +17,7 @@ export async function GET() {
     "alex@example.com",
     "Alex",
     "Smith",
+    "Acme Corp",
     "555-123-4567",
     "CLIENT",
     "NY Office, Marketing Team"

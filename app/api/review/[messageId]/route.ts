@@ -230,6 +230,27 @@ export async function PATCH(
           metadata: { previousStatus: existingMessage.reviewStatus }
         }
       })
+
+      // FEEDBACK LOOP: Link human decision to latest AIRecommendation
+      // Find the most recent recommendation for this message that hasn't been acted on
+      const latestRecommendation = await prisma.aIRecommendation.findFirst({
+        where: { 
+          messageId,
+          humanActedAt: null // Only update if not already acted on
+        },
+        orderBy: { createdAt: "desc" }
+      })
+
+      if (latestRecommendation) {
+        await prisma.aIRecommendation.update({
+          where: { id: latestRecommendation.id },
+          data: {
+            humanAction: status,
+            agreedWithAI: status === latestRecommendation.recommendedAction,
+            humanActedAt: new Date()
+          }
+        })
+      }
     }
 
     return NextResponse.json({

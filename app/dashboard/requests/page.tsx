@@ -45,6 +45,7 @@ interface RequestTask {
     firstName: string
     lastName: string | null
     email: string | null
+    companyName: string | null
   } | null
   job?: {
     id: string
@@ -657,6 +658,7 @@ export default function RequestsPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -690,6 +692,11 @@ export default function RequestsPage() {
                     ) : (
                       <span className="text-sm text-gray-500">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-sm text-gray-600">
+                      {request.entity?.companyName || "—"}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     {request.job ? (

@@ -80,6 +80,18 @@ function BoardIcon({ className }: { className?: string }) {
   )
 }
 
+function DocumentIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14,2 14,8 20,8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10,9 9,9 8,9" />
+    </svg>
+  )
+}
+
 interface Board {
   id: string
   name: string
@@ -93,18 +105,17 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
 }
 
-// Non-Tasks nav items
-const otherNavItems: NavItem[] = [
+// Core workflow nav items (excluding Tasks and Collection which have their own expandable sections)
+const coreNavItems: NavItem[] = [
   {
     href: "/dashboard/requests",
     label: "Requests",
     icon: RequestsIcon
   },
-  {
-    href: "/dashboard/collection",
-    label: "Collection",
-    icon: CollectionIcon
-  },
+]
+
+// Settings/management nav items (shown at bottom)
+const settingsNavItems: NavItem[] = [
   { 
     href: "/dashboard/contacts", 
     label: "Contacts", 
@@ -124,6 +135,7 @@ const otherNavItems: NavItem[] = [
 
 export function Sidebar({ className = "" }: SidebarProps) {
   const [tasksExpanded, setTasksExpanded] = useState(true)
+  const [collectionExpanded, setCollectionExpanded] = useState(true)
   const [boards, setBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
@@ -171,6 +183,9 @@ export function Sidebar({ className = "" }: SidebarProps) {
 
   // Check if we're on the tasks page
   const isOnTasksPage = pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
+  
+  // Check if we're on the collection page
+  const isOnCollectionPage = pathname === "/dashboard/collection" || pathname.startsWith("/dashboard/collection/")
 
   // Handle board actions
   const handleArchiveBoard = async (boardId: string) => {
@@ -264,7 +279,8 @@ export function Sidebar({ className = "" }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 pt-4 overflow-y-auto">
+        <nav className="flex-1 pt-4 overflow-y-auto flex flex-col">
+          {/* Core Workflow Section */}
           <ul className="space-y-1">
             {/* Tasks Section - Expandable with Boards */}
             <li>
@@ -410,8 +426,92 @@ export function Sidebar({ className = "" }: SidebarProps) {
               )}
             </li>
 
-            {/* Other Nav Items */}
-            {otherNavItems.map((item) => {
+            {/* Core Nav Items (Requests) */}
+            {coreNavItems.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+              const Icon = item.icon
+              
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`
+                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                      transition-all duration-150
+                      ${isActive 
+                        ? "bg-gray-100 text-gray-900" 
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                      }
+                    `}
+                  >
+                    <Icon className="w-6 h-6 flex-shrink-0" />
+                    <span className="text-base font-normal whitespace-nowrap">
+                      {item.label}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+
+            {/* Collection Section - Expandable */}
+            <li>
+              {/* Collection Header */}
+              <button
+                onClick={() => setCollectionExpanded(!collectionExpanded)}
+                className={`
+                  w-full flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                  transition-all duration-150
+                  ${isOnCollectionPage
+                    ? "bg-gray-100 text-gray-900" 
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  }
+                `}
+                style={{ width: "calc(100% - 24px)" }}
+              >
+                <CollectionIcon className="w-6 h-6 flex-shrink-0" />
+                <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                  Collection
+                </span>
+                {collectionExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+
+              {/* Collection Sub-items */}
+              {collectionExpanded && (
+                <ul className="mt-1 ml-6 space-y-0.5">
+                  {/* Documents */}
+                  <li>
+                    <Link
+                      href="/dashboard/collection"
+                      className={`
+                        flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm
+                        transition-all duration-150
+                        ${isOnCollectionPage
+                          ? "bg-blue-50 text-blue-700 font-medium" 
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                        }
+                      `}
+                    >
+                      <DocumentIcon className="w-4 h-4 flex-shrink-0" />
+                      <span>Documents</span>
+                    </Link>
+                  </li>
+                  
+                  {/* Future: Expenses, Invoices, etc. will go here */}
+                </ul>
+              )}
+            </li>
+          </ul>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Settings/Management Section (Bottom) */}
+          <ul className="space-y-1 pb-4 border-t border-gray-100 pt-4 mt-4">
+            {settingsNavItems.map((item) => {
               let isActive = pathname === item.href || pathname.startsWith(item.href + "/")
               if (item.href === "/dashboard/settings" && pathname.startsWith("/dashboard/settings/team")) {
                 isActive = false

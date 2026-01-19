@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ChevronDown, ChevronRight, Sparkles, RefreshCw } from "lucide-react"
+import { ChevronDown, ChevronRight, Sparkles, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface AISummarySectionProps {
@@ -19,6 +19,8 @@ export function AISummarySection({
 }: AISummarySectionProps) {
   const [expanded, setExpanded] = useState(false)
   const [summary, setSummary] = useState<string | null>(null)
+  const [recommendedAction, setRecommendedAction] = useState<string | null>(null)
+  const [reasoning, setReasoning] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   // Generate summary on first expand if no task summary exists
@@ -45,6 +47,9 @@ export function AISummarySection({
         // Combine summary bullets into a paragraph
         const summaryText = data.summaryBullets?.join(" ") || "No summary available."
         setSummary(summaryText)
+        // Store the AI recommendation
+        setRecommendedAction(data.recommendedAction || null)
+        setReasoning(data.reasoning || null)
       }
     } catch {
       // Fallback: extract first 2-3 sentences from message body
@@ -59,6 +64,9 @@ export function AISummarySection({
       } else {
         setSummary("Reply received.")
       }
+      // Clear recommendation on error
+      setRecommendedAction(null)
+      setReasoning(null)
     } finally {
       setLoading(false)
     }
@@ -73,6 +81,20 @@ export function AISummarySection({
 
   // Generate a calm, deterministic summary if none exists
   const displaySummary = summary || `${fromAddress.split('@')[0]} sent a reply to your request.`
+
+  // Map recommended action to user-friendly label
+  const getRecommendationLabel = () => {
+    if (!recommendedAction) return null
+    if (recommendedAction === "REVIEWED") {
+      return { label: "Mark as reviewed", icon: CheckCircle, color: "text-green-600" }
+    }
+    if (recommendedAction === "NEEDS_FOLLOW_UP") {
+      return { label: "Follow up needed", icon: AlertTriangle, color: "text-amber-600" }
+    }
+    return null
+  }
+
+  const recommendation = getRecommendationLabel()
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -99,9 +121,29 @@ export function AISummarySection({
               Generating summary...
             </div>
           ) : (
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {displaySummary}
-            </p>
+            <>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {displaySummary}
+              </p>
+
+              {/* AI Recommendation */}
+              {recommendation && (
+                <div className="mt-3 flex items-center gap-2 text-xs">
+                  <span className="text-gray-500">AI suggests:</span>
+                  <span className={`flex items-center gap-1 font-medium ${recommendation.color}`}>
+                    <recommendation.icon className="w-3 h-3" />
+                    {recommendation.label}
+                  </span>
+                </div>
+              )}
+
+              {/* Reasoning (shown subtly) */}
+              {reasoning && (
+                <p className="mt-1 text-xs text-gray-400 italic">
+                  {reasoning}
+                </p>
+              )}
+            </>
           )}
 
           {!loading && (

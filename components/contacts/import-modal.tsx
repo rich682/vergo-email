@@ -12,6 +12,7 @@ const CORE_FIELDS = new Set([
   "email",
   "firstname", "first_name", "first name",
   "lastname", "last_name", "last name",
+  "company", "companyname", "company_name", "company name",
   "phone",
   "type", "contacttype", "contact_type",
   "groups", "group"

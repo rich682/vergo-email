@@ -44,6 +44,7 @@ export async function GET(
     lastName: entity.lastName,
     email: entity.email,
     phone: entity.phone,
+    companyName: entity.companyName,
     contactType: entity.contactType,
     contactTypeCustomLabel: entity.contactTypeCustomLabel,
     isInternal,
@@ -72,7 +73,7 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel, tagValues } = body
+    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel, tagValues } = body
 
     // Update entity fields (including lastName which is now a proper Entity field)
     const updateData: any = {}
@@ -80,6 +81,7 @@ export async function PATCH(
     if (lastName !== undefined) updateData.lastName = lastName || null
     if (email !== undefined) updateData.email = email
     if (phone !== undefined) updateData.phone = phone
+    if (companyName !== undefined) updateData.companyName = companyName || null
     if (contactType !== undefined) updateData.contactType = contactType
     if (contactTypeCustomLabel !== undefined) updateData.contactTypeCustomLabel = contactTypeCustomLabel
 
@@ -145,6 +147,7 @@ export async function PATCH(
       lastName: updated.lastName,
       email: updated.email,
       phone: updated.phone,
+      companyName: updated.companyName,
       contactType: updated.contactType,
       contactTypeCustomLabel: updated.contactTypeCustomLabel,
       isInternal,

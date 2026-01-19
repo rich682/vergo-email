@@ -8,6 +8,7 @@ export class EntityService {
     lastName?: string
     email?: string
     phone?: string
+    companyName?: string
     organizationId: string
     groupIds?: string[]
     contactType?: any
@@ -19,6 +20,7 @@ export class EntityService {
         lastName: data.lastName,
         email: data.email,
         phone: data.phone,
+        companyName: data.companyName,
         contactType: data.contactType,
         contactTypeCustomLabel: data.contactTypeCustomLabel,
         organizationId: data.organizationId
@@ -142,7 +144,7 @@ export class EntityService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "contactType" | "contactTypeCustomLabel">>
+    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "companyName" | "contactType" | "contactTypeCustomLabel">>
   ): Promise<Entity> {
     return prisma.entity.update({
       where: {

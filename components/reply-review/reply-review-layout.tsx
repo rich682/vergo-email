@@ -6,9 +6,7 @@ import { ArrowLeft, Mail, Paperclip, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EmailTab } from "./left-pane/email-tab"
 import { AttachmentsTab } from "./left-pane/attachments-tab"
-import { AISummarySection } from "./right-pane/ai-summary-section"
-import { ReplySection } from "./right-pane/reply-section"
-import { StatusSection } from "./right-pane/status-section"
+import { ReviewRHS } from "./right-pane/review-rhs"
 
 interface ThreadMessage {
   id: string
@@ -165,11 +163,6 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
     fetchData()
   }
 
-  const handleStatusChange = () => {
-    // Could refresh data, but status is local state
-    fetchData()
-  }
-
   // Loading state
   if (loading) {
     return (
@@ -285,55 +278,21 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
           onMouseDown={handleMouseDown}
         />
 
-        {/* RIGHT PANE */}
+        {/* RIGHT PANE - Memory-Aware AI Assessment + Draft Reply */}
         <div
           className="flex flex-col overflow-hidden bg-white"
           style={{ width: `${100 - leftPaneWidth}%` }}
         >
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* AI Summary - only for replies (inbound) */}
-            {isInbound && (
-              <AISummarySection
-                messageId={data.message.id}
-                taskSummary={data.task.aiSummary}
-                messageBody={data.message.body}
-                fromAddress={data.message.fromAddress}
-              />
-            )}
-
-            {/* Status & Risk */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <StatusSection
-                messageId={data.message.id}
-                currentReviewStatus={data.reviewStatus}
-                onStatusChange={handleStatusChange}
-                isOutbound={!isInbound}
-              />
-            </div>
-
-            {/* Reply section - for inbound messages, follow-up for outbound */}
-            <div className="border border-gray-200 rounded-lg p-4">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                {isInbound ? "Reply" : "Send Follow-up"}
-              </h3>
-              <ReplySection
-                taskId={data.task.id}
-                recipientEmail={recipientEmail}
-                recipientName={recipientName}
-                originalSubject={data.message.subject}
-                onReplySent={handleReplySent}
-              />
-            </div>
-
-            {/* Info panel for outbound messages */}
-            {!isInbound && (
-              <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
-                <p className="text-sm text-amber-800">
-                  This request was sent on {new Date(data.message.createdAt).toLocaleDateString()}. 
-                  You'll be notified when a reply is received.
-                </p>
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto p-4">
+            <ReviewRHS
+              messageId={data.message.id}
+              taskId={data.task.id}
+              recipientEmail={recipientEmail}
+              recipientName={recipientName}
+              originalSubject={data.message.subject}
+              isInbound={isInbound}
+              onReplySent={handleReplySent}
+            />
           </div>
         </div>
       </div>

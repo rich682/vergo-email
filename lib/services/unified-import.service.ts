@@ -8,6 +8,7 @@ type ParsedRow = {
   firstName?: string
   lastName?: string
   phone?: string
+  companyName?: string
   contactType?: string
   groups: string[]
   customFields: Record<string, any>
@@ -40,6 +41,9 @@ const CORE_FIELDS = [
   "lastname",
   "last_name",
   "phone",
+  "company",
+  "companyname",
+  "company_name",
   "type",
   "groups"
 ]
@@ -146,6 +150,7 @@ function parseWorkbook(buffer: ArrayBuffer): { rows: ParsedRow[]; headers: strin
       firstName: normalizedEntries["firstname"] || normalizedEntries["first_name"],
       lastName: normalizedEntries["lastname"] || normalizedEntries["last_name"],
       phone: normalizedEntries["phone"] || undefined,
+      companyName: normalizedEntries["company"] || normalizedEntries["companyname"] || normalizedEntries["company_name"] || undefined,
       contactType: normalizedEntries["type"]
         ? normalizedEntries["type"].toString().toUpperCase()
         : undefined,
@@ -284,6 +289,7 @@ export class UnifiedImportService {
           lastName: row.lastName || undefined,
           email: row.email,
           phone: row.phone,
+          companyName: row.companyName || undefined,
           organizationId,
           ...contactTypeData
         })
@@ -302,6 +308,7 @@ export class UnifiedImportService {
           firstName: row.firstName || existing.firstName,
           lastName: row.lastName || existing.lastName || undefined,
           phone: row.phone || existing.phone,
+          companyName: row.companyName || existing.companyName || undefined,
           ...contactTypeData
         })
         entity = existing

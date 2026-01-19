@@ -60,6 +60,7 @@ interface CollectedItem {
       firstName: string
       lastName: string | null
       email: string | null
+      companyName: string | null
     } | null
   } | null
   message?: {
@@ -394,6 +395,7 @@ export default function CollectionPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 <th className="w-20 px-4 py-3"></th>
               </tr>
@@ -457,6 +459,11 @@ export default function CollectionPage() {
                     <div className="text-sm text-gray-900">
                       {item.submittedBy || "—"}
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-sm text-gray-600">
+                      {item.task?.entity?.companyName || "—"}
+                    </span>
                     {item.submittedByName && (
                       <div className="text-xs text-gray-500">{item.submittedByName}</div>
                     )}

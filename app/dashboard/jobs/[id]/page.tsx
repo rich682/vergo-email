@@ -101,7 +101,7 @@ interface Job {
   updatedAt: string
   owner: JobOwner
   collaborators?: JobCollaborator[]
-  client?: { id: string; firstName: string; lastName: string | null; email: string | null } | null
+  client?: { id: string; firstName: string; lastName: string | null; email: string | null; companyName: string | null } | null
   taskCount: number
   respondedCount: number
   completedCount: number
@@ -118,7 +118,7 @@ interface Permissions {
 interface JobTask {
   id: string
   entityId: string | null
-  entity: { id: string; firstName: string; lastName: string | null; email: string | null } | null
+  entity: { id: string; firstName: string; lastName: string | null; email: string | null; companyName: string | null } | null
   campaignName: string | null
   status: string
   createdAt: string
@@ -186,13 +186,14 @@ interface JobRequest {
 
 interface ContactType { value: string; label: string; count: number }
 interface Group { id: string; name: string; memberCount: number }
-interface Entity { id: string; firstName: string; lastName: string | null; email: string | null }
+interface Entity { id: string; firstName: string; lastName: string | null; email: string | null; companyName: string | null }
 
 interface StakeholderContact {
   id: string
   firstName: string
   lastName: string | null
   email: string | null
+  companyName: string | null
   stakeholderType: "contact_type" | "group" | "individual"
   stakeholderName: string
 }
@@ -437,6 +438,7 @@ export default function JobDetailPage() {
             firstName: stakeholder.name.split(" ")[0] || stakeholder.name,
             lastName: stakeholder.name.split(" ").slice(1).join(" ") || null,
             email: null,
+            companyName: null,
             stakeholderType: "individual",
             stakeholderName: stakeholder.name
           })
@@ -451,6 +453,7 @@ export default function JobDetailPage() {
                 firstName: c.firstName,
                 lastName: c.lastName || null,
                 email: c.email,
+                companyName: c.companyName || null,
                 stakeholderType: "group",
                 stakeholderName: stakeholder.name
               })
@@ -467,6 +470,7 @@ export default function JobDetailPage() {
                 firstName: c.firstName,
                 lastName: c.lastName || null,
                 email: c.email,
+                companyName: c.companyName || null,
                 stakeholderType: "contact_type",
                 stakeholderName: stakeholder.name
               })

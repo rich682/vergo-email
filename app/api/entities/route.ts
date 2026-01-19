@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
       lastName: entity.lastName,
       email: entity.email,
       phone: entity.phone,
+      companyName: entity.companyName,
       contactType: entity.contactType,
       contactTypeCustomLabel: entity.contactTypeCustomLabel,
       isInternal,
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, groupIds, contactType, contactTypeCustomLabel } = body
+    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel } = body
 
     if (!firstName || !email) {
       return NextResponse.json(
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       lastName: lastName?.trim() || undefined,
       email,
       phone: phone || undefined,
+      companyName: companyName?.trim() || undefined,
       contactType,
       contactTypeCustomLabel,
       organizationId: session.user.organizationId,
@@ -128,8 +130,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       id: entityWithGroups.id,
       firstName: entityWithGroups.firstName,
+      lastName: entityWithGroups.lastName,
       email: entityWithGroups.email,
       phone: entityWithGroups.phone,
+      companyName: entityWithGroups.companyName,
       contactType: entityWithGroups.contactType,
       contactTypeCustomLabel: entityWithGroups.contactTypeCustomLabel,
       isInternal,

@@ -113,8 +113,8 @@ export default function ContactsPage() {
 
   const tabs = [
     { id: "contacts" as TabType, label: "Contacts", icon: Users },
+    { id: "types" as TabType, label: "Organization", icon: Building2 },
     { id: "groups" as TabType, label: "Groups", icon: FolderOpen },
-    { id: "types" as TabType, label: "Organizations", icon: Building2 },
   ]
 
   return (

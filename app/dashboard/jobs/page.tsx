@@ -545,7 +545,8 @@ export default function JobsPage() {
     notes: job.notes || null,
     customFields: job.customFields,
     collectedItemCount: job.collectedItemCount || 0,
-    taskCount: job.taskCount || 0
+    taskCount: job.taskCount || 0,
+    respondedCount: job.respondedCount || 0
   }))
 
   // ============================================

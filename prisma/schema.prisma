@@ -171,6 +171,7 @@ model Entity {
   lastName               String?
   email                  String?
   phone                  String?
+  companyName            String?     // Company name for accounting reference
   contactType            ContactType @default(UNKNOWN)
   contactTypeCustomLabel String?
   organizationId         String
@@ -394,11 +395,12 @@ model Task {
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
 
-  job            Job?            @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  messages       Message[]
-  reminderStates ReminderState[]
-  collectedItems CollectedItem[] // Evidence/attachments collected for this task
+  job               Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  messages          Message[]
+  reminderStates    ReminderState[]
+  collectedItems    CollectedItem[]    // Evidence/attachments collected for this task
+  aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
   @@index([organizationId])
   @@index([jobId])
@@ -441,11 +443,12 @@ model Message {
   reviewedById     String?
   reviewNotes      String?
 
-  entity         Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  task           Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  collectedItems CollectedItem[] // Evidence/attachments extracted from this message
-  reviewedBy     User?           @relation("MessageReviewer", fields: [reviewedById], references: [id])
-  auditLogs      ReviewAuditLog[]
+  entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  task              Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  collectedItems    CollectedItem[]    // Evidence/attachments extracted from this message
+  reviewedBy        User?              @relation("MessageReviewer", fields: [reviewedById], references: [id])
+  auditLogs         ReviewAuditLog[]
+  aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
   @@index([taskId])
   @@index([entityId])
@@ -864,4 +867,44 @@ model JobColumnConfig {
   
   @@unique([organizationId, boardId])
   @@index([organizationId])
+}
+
+// AI recommendation storage for feedback loop
+// Persists AI analysis results and links them to human decisions
+model AIRecommendation {
+  id                String        @id @default(cuid())
+  organizationId    String
+  messageId         String
+  taskId            String
+  
+  // Denormalized for metrics queries
+  campaignType      CampaignType?
+  
+  // AI recommendation
+  recommendedAction String        // "REVIEWED" | "NEEDS_FOLLOW_UP" (matches ReviewStatus)
+  reasoning         String        // Short explanation
+  summaryBullets    Json?         // Array of summary points
+  findings          Json?         // Array of findings
+  
+  // Model tracking
+  model             String        @default("gpt-4o-mini")
+  promptVersion     String        @default("v1")
+  
+  // Draft reply (generated with memory, persisted for idempotency)
+  draftReply        String?       // Pre-filled draft reply text
+  draftPromptVersion String?      // Track draft prompt version separately
+  
+  // Human reconciliation (filled when user acts)
+  humanAction       String?       // Actual ReviewStatus chosen
+  agreedWithAI      Boolean?      // Computed: recommendedAction == humanAction
+  humanActedAt      DateTime?
+  
+  createdAt         DateTime      @default(now())
+  
+  message           Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  task              Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([organizationId, createdAt])
+  @@index([messageId])
+  @@index([organizationId, campaignType, agreedWithAI])
 }
