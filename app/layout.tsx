@@ -6,8 +6,8 @@ import React from "react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Vergo Inbox",
-  description: "AI-Automated Email Response Tracking System",
+  title: "Vergo",
+  description: "AI-Powered Accounting Execution Platform",
 };
 
 export default function RootLayout({

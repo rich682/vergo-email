@@ -26,7 +26,7 @@ import {
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
-  FileText, Inbox
+  FileText, FolderOpen
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -1515,7 +1515,7 @@ export default function JobDetailPage() {
                 <SectionHeader
                   title="Collection"
                   count={job?.collectedItemCount}
-                  icon={<Inbox className="w-4 h-4 text-purple-500" />}
+                  icon={<FolderOpen className="w-4 h-4 text-purple-500" />}
                   collapsible
                   expanded={collectionExpanded}
                   onToggle={() => setCollectionExpanded(!collectionExpanded)}
