@@ -443,9 +443,10 @@ export function Sidebar({ className = "" }: SidebarProps) {
                         : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                       }
                     `}
+                    style={{ width: "calc(100% - 24px)" }}
                   >
                     <Icon className="w-6 h-6 flex-shrink-0" />
-                    <span className="text-base font-normal whitespace-nowrap">
+                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
                       {item.label}
                     </span>
                   </Link>
