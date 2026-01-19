@@ -293,6 +293,11 @@ export class JobService {
             id: true,
             status: true
           }
+        },
+        _count: {
+          select: {
+            collectedItems: true
+          }
         }
       }
     })
@@ -329,7 +334,8 @@ export class JobService {
       client: job.client,
       taskCount,
       respondedCount,
-      completedCount
+      completedCount,
+      collectedItemCount: job._count.collectedItems
     }
   }
 

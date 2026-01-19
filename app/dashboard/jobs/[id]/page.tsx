@@ -1804,30 +1804,6 @@ export default function JobDetailPage() {
               </Card>
             )}
 
-            {/* Details */}
-            <Card>
-              <CardContent className="p-4">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Details</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Created</span>
-                    <span className="text-gray-900">{format(new Date(job.createdAt), "MMM d, yyyy")}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Updated</span>
-                    <span className="text-gray-900">{formatDistanceToNow(new Date(job.updatedAt), { addSuffix: true })}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Requests</span>
-                    <span className="text-gray-900">{requests.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Comments</span>
-                    <span className="text-gray-900">{comments.length}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>

@@ -150,6 +150,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
+  const [archiveConfirm, setArchiveConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const boardMenuRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -213,17 +214,18 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
   const isOnCollectionPage = pathname === "/dashboard/collection" || pathname.startsWith("/dashboard/collection/")
 
   // Handle board actions
-  const handleArchiveBoard = async (boardId: string) => {
+  const handleArchiveBoard = (boardId: string) => {
     // Find the board name for the confirmation message
     const board = boards.find(b => b.id === boardId)
     const boardName = board?.name || "this board"
-    
-    if (!window.confirm(`Archive "${boardName}"? Archived boards are hidden from the sidebar but can be restored later.`)) {
-      return
-    }
-    
+    setArchiveConfirm({ open: true, boardId, boardName })
+    setBoardMenuOpen(null)
+  }
+
+  const confirmArchiveBoard = async () => {
+    if (!archiveConfirm.boardId) return
     try {
-      const response = await fetch(`/api/boards/${boardId}`, {
+      const response = await fetch(`/api/boards/${archiveConfirm.boardId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "ARCHIVED" })
@@ -231,14 +233,14 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
       if (response.ok) {
         fetchBoards()
         fetchArchivedBoards()
-        setBoardMenuOpen(null)
-        if (currentBoardId === boardId) {
+        if (currentBoardId === archiveConfirm.boardId) {
           router.push("/dashboard/jobs")
         }
       }
     } catch (error) {
       console.error("Error archiving board:", error)
     }
+    setArchiveConfirm({ open: false, boardId: null, boardName: "" })
   }
 
   const handleRestoreBoard = async (boardId: string) => {
@@ -692,6 +694,18 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
           fetchBoards()
           router.push(`/dashboard/jobs?boardId=${board.id}`)
         }}
+      />
+
+      {/* Archive Board Confirmation */}
+      <ConfirmDialog
+        open={archiveConfirm.open}
+        onOpenChange={(open) => setArchiveConfirm({ open, boardId: open ? archiveConfirm.boardId : null, boardName: open ? archiveConfirm.boardName : "" })}
+        title="Archive Board"
+        description={`Archive "${archiveConfirm.boardName}"? Archived boards are hidden from the sidebar but can be restored later.`}
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={confirmArchiveBoard}
       />
 
       {/* Delete Board Confirmation */}
