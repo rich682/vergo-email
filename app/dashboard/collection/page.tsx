@@ -393,6 +393,7 @@ export default function CollectionPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                <th className="w-16 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">View</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
@@ -435,15 +436,24 @@ export default function CollectionPage() {
                   </td>
                   <td className="px-4 py-3">
                     {item.job ? (
-                      <Link 
-                        href={`/dashboard/jobs/${item.jobId}`}
-                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                      >
+                      <span className="text-sm text-gray-900">
                         {item.job.name}
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
+                      </span>
                     ) : (
                       <span className="text-sm text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {item.message?.id ? (
+                      <Link
+                        href={`/dashboard/review/${item.message.id}?tab=attachments`}
+                        className="inline-flex items-center justify-center p-1.5 rounded hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-colors"
+                        title="View attachment in reply"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Link>
+                    ) : (
+                      <span className="text-gray-300">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
