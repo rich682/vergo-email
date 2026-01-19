@@ -5,6 +5,10 @@
  * 
  * Takes a prompt like "create me a month end checklist" and uses AI to generate
  * a list of tasks with suggested due dates.
+ * 
+ * Supports referencing existing boards/periods:
+ * - "Create same tasks as January for March"
+ * - "Copy the year-end checklist for Q1"
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -40,13 +44,53 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { prompt, baseDate } = body as { prompt: string; baseDate?: string }
+    const { prompt, baseDate, boardId } = body as { prompt: string; baseDate?: string; boardId?: string }
 
     if (!prompt || typeof prompt !== "string" || prompt.trim().length < 5) {
       return NextResponse.json(
         { error: "Please provide a more detailed prompt" },
         { status: 400 }
       )
+    }
+
+    // Fetch existing boards and their tasks for context
+    const existingBoards = await prisma.board.findMany({
+      where: { organizationId: session.user.organizationId },
+      select: {
+        id: true,
+        name: true,
+        jobs: {
+          where: { status: { not: "ARCHIVED" } },
+          select: {
+            name: true,
+            description: true,
+            dueDate: true,
+            priority: true
+          },
+          orderBy: { createdAt: "asc" },
+          take: 50 // Limit per board
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10 // Limit to recent boards
+    })
+
+    // Format existing boards/tasks as context for the AI
+    let existingChecklistsContext = ""
+    if (existingBoards.length > 0) {
+      const boardsWithTasks = existingBoards.filter(b => b.jobs.length > 0)
+      if (boardsWithTasks.length > 0) {
+        existingChecklistsContext = `\n\nEXISTING CHECKLISTS (user can reference these to copy/replicate tasks):
+${boardsWithTasks.map(board => {
+  const taskList = board.jobs.map(job => {
+    let taskStr = `  - ${job.name}`
+    if (job.description) taskStr += ` (${job.description})`
+    if (job.priority) taskStr += ` [${job.priority}]`
+    return taskStr
+  }).join('\n')
+  return `\n"${board.name}" (${board.jobs.length} tasks):\n${taskList}`
+}).join('\n')}`
+      }
     }
 
     // Get today's date or use provided base date
@@ -83,6 +127,9 @@ Date context:
 - End of current quarter: ${quarterEnd}
 - End of current year: ${endOfYear}
 
+IMPORTANT: If the user references an existing checklist (e.g., "same tasks as January", "copy from Q4", "replicate last month's checklist"), you MUST use the tasks from the referenced existing checklist below. Adjust the dates appropriately for the new period but keep the same task names and structure.
+${existingChecklistsContext}
+
 For due dates, use ISO format (YYYY-MM-DD). Spread tasks appropriately - don't put everything on the last day.`
 
     const userPrompt = `Generate a detailed task checklist for: "${prompt}"
@@ -92,6 +139,8 @@ Return a JSON array of tasks. Each task should have:
 - "dueDate": An appropriate due date in YYYY-MM-DD format (optional for flexible tasks)
 - "description": A brief description of what the task involves (optional)
 - "priority": "high", "medium", or "low" (optional)
+
+${existingBoards.length > 0 ? `If the user is referencing an existing checklist (like "January", "Q4", etc.), copy those exact tasks with updated dates for the new period.` : ''}
 
 Return ONLY a valid JSON array, no other text. Generate between 5-20 tasks depending on complexity.`
 
@@ -143,7 +192,8 @@ Return ONLY a valid JSON array, no other text. Generate between 5-20 tasks depen
     return NextResponse.json({
       success: true,
       items: validItems,
-      prompt: prompt.trim()
+      prompt: prompt.trim(),
+      referencedBoards: existingBoards.map(b => b.name) // Let frontend know what boards were available as context
     })
 
   } catch (error: any) {
