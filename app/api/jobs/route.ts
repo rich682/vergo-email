@@ -6,10 +6,10 @@
  * 
  * Feature Flag: JOBS_UI (for UI visibility, API always available)
  * 
- * Ownership Model:
- * - Jobs are visible org-wide by default
- * - Owner is set to creating user by default
- * - Supports "My Jobs" filter via ownerId/myJobs params
+ * Role-Based Access:
+ * - ADMIN: Sees all jobs, can use "My Jobs" filter
+ * - MEMBER: Only sees jobs they own or collaborate on
+ * - VIEWER: Read-only access to owned/collaborated jobs (cannot create)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -17,6 +17,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { JobService } from "@/lib/services/job.service"
 import { JobStatus } from "@prisma/client"
+import { isReadOnly } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,12 +31,13 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+    const userRole = (session.user as any).role as string | undefined
     const { searchParams } = new URL(request.url)
     
     const status = searchParams.get("status") as JobStatus | null
     const clientId = searchParams.get("clientId")
     const boardId = searchParams.get("boardId")  // Filter by board
-    const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs
+    const myJobs = searchParams.get("myJobs") === "true"  // Filter to user's jobs (for admin)
     const ownerId = searchParams.get("ownerId")
     const tagsParam = searchParams.get("tags")  // Comma-separated tags filter
     const includeArchived = searchParams.get("includeArchived") === "true"  // Show archived jobs
@@ -46,10 +48,12 @@ export async function GET(request: NextRequest) {
     const tags = tagsParam ? tagsParam.split(",").map(t => t.trim()).filter(Boolean) : undefined
 
     const result = await JobService.findByOrganization(organizationId, {
+      userId,  // Pass for role-based filtering
+      userRole,  // Pass for role-based filtering
       status: status || undefined,
       clientId: clientId || undefined,
       boardId: boardId || undefined,  // Filter by board
-      // "My Jobs" filter: show jobs where user is owner or collaborator
+      // "My Jobs" filter: only applies for admin, non-admins are auto-filtered
       ownerId: myJobs ? userId : (ownerId || undefined),
       collaboratorId: myJobs ? userId : undefined,
       tags,  // Filter by tags (ANY match)
@@ -90,6 +94,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
+      )
+    }
+
+    // VIEWER users cannot create jobs
+    const userRole = (session.user as any).role as string | undefined
+    if (isReadOnly(userRole)) {
+      return NextResponse.json(
+        { error: "Forbidden - Viewers cannot create tasks" },
+        { status: 403 }
       )
     }
 

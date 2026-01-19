@@ -11,13 +11,53 @@ function generateRequestId(): string {
   return `req_${timestamp}${random}`
 }
 
+/**
+ * Routes that require ADMIN role
+ */
+const ADMIN_ONLY_ROUTES = [
+  "/dashboard/settings/team",
+  "/dashboard/settings",
+  "/api/org/settings",
+  "/api/org/users",
+  "/api/org/team",
+]
+
+/**
+ * Check if a path matches any admin-only route
+ */
+function isAdminOnlyRoute(pathname: string): boolean {
+  for (const adminRoute of ADMIN_ONLY_ROUTES) {
+    if (pathname === adminRoute || pathname.startsWith(adminRoute + "/")) {
+      return true
+    }
+  }
+  return false
+}
+
 export default withAuth(
-  function middleware(req: NextRequest) {
+  function middleware(req: NextRequest & { nextauth: { token: any } }) {
     const { pathname } = req.nextUrl
+    const token = req.nextauth?.token
 
     // Allow Inngest to access its endpoint without auth/cookies
     if (pathname.startsWith("/api/inngest")) {
       return NextResponse.next()
+    }
+
+    // Check role-based access for admin-only routes
+    if (isAdminOnlyRoute(pathname)) {
+      const role = token?.role as string | undefined
+      if (role?.toUpperCase() !== "ADMIN") {
+        // For API routes, return 403 Forbidden
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Forbidden - Admin access required" },
+            { status: 403 }
+          )
+        }
+        // For dashboard routes, redirect to jobs page
+        return NextResponse.redirect(new URL("/dashboard/jobs", req.url))
+      }
     }
 
     // Generate and attach request ID for tracing
@@ -68,6 +108,6 @@ export const config = {
     "/api/webhooks/:path*",
     "/api/auth/:path*",
     "/api/tracking/:path*",
+    "/api/org/:path*",
   ],
 }
-

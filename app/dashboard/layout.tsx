@@ -31,11 +31,12 @@ export default async function DashboardLayout({
   }
 
   const orgName = (session.user as any)?.organizationName || undefined
+  const userRole = (session.user as any)?.role as string | undefined
 
   return (
     <div className="min-h-screen bg-white">
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar userRole={userRole} />
       
       {/* Main content area - offset by sidebar width (w-64 = 16rem = 256px) */}
       <div className="pl-64">

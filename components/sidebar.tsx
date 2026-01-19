@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface SidebarProps {
   className?: string
+  userRole?: string  // User's role for showing/hiding admin items
 }
 
 // Custom icons matching Vergo style (outline, thin strokes)
@@ -134,9 +135,12 @@ const settingsNavItems: NavItem[] = [
   },
 ]
 
-export function Sidebar({ className = "" }: SidebarProps) {
+export function Sidebar({ className = "", userRole }: SidebarProps) {
   const [tasksExpanded, setTasksExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(true)
+  
+  // Check if user is admin
+  const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const [boards, setBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
@@ -511,7 +515,15 @@ export function Sidebar({ className = "" }: SidebarProps) {
 
           {/* Settings/Management Section (Bottom) */}
           <ul className="space-y-1 pb-4 border-t border-gray-100 pt-4 mt-4">
-            {settingsNavItems.map((item) => {
+            {settingsNavItems
+              // Filter out Team and Settings for non-admins
+              .filter((item) => {
+                if (!isAdmin && (item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings")) {
+                  return false
+                }
+                return true
+              })
+              .map((item) => {
               let isActive = pathname === item.href || pathname.startsWith(item.href + "/")
               if (item.href === "/dashboard/settings" && pathname.startsWith("/dashboard/settings/team")) {
                 isActive = false

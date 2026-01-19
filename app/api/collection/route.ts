@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { CollectedItemSource, CollectedItemStatus } from "@prisma/client"
+import { getJobAccessFilter, isReadOnly } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -10,15 +11,21 @@ export const dynamic = "force-dynamic"
  * GET /api/collection
  * List all collected items across all jobs for the organization
  * Simplified view - just attachments with task/owner info
+ * 
+ * Role-Based Access:
+ * - ADMIN: Sees all collection items
+ * - MEMBER/VIEWER: Only sees items from jobs they own or collaborate on
  */
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user as any).role as string | undefined
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
@@ -34,11 +41,16 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
     const skip = (page - 1) * limit
 
+    // Get job access filter based on user role
+    const jobAccessFilter = getJobAccessFilter(userId, userRole)
+
     const where: any = {
-      organizationId
+      organizationId,
+      // Role-based access: only show items from jobs user can access
+      ...(jobAccessFilter && { job: jobAccessFilter })
     }
 
-    // Filter by board (via job.boardId)
+    // Filter by board (via job.boardId) - merge with job filter
     if (boardId) {
       where.job = {
         ...where.job,
@@ -154,9 +166,12 @@ export async function GET(request: NextRequest) {
       where: { organizationId }
     })
 
-    // Get unique jobs for filter dropdown
+    // Get unique jobs for filter dropdown, filtered by access
     const jobs = await prisma.job.findMany({
-      where: { organizationId },
+      where: { 
+        organizationId,
+        ...(jobAccessFilter || {})
+      },
       select: {
         id: true,
         name: true
@@ -204,6 +219,15 @@ export async function PATCH(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // VIEWER users cannot modify collection items
+    const userRole = (session.user as any).role as string | undefined
+    if (isReadOnly(userRole)) {
+      return NextResponse.json(
+        { error: "Forbidden - Viewers cannot modify items" },
+        { status: 403 }
+      )
     }
 
     const organizationId = session.user.organizationId

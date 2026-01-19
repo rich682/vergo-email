@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskStatus } from "@prisma/client"
+import { getJobAccessFilter } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -10,15 +11,21 @@ export const dynamic = "force-dynamic"
  * GET /api/requests
  * List all requests (Tasks) for the organization
  * Each Task represents a request sent to one contact (initial email, not reminders)
+ * 
+ * Role-Based Access:
+ * - ADMIN: Sees all requests
+ * - MEMBER/VIEWER: Only sees requests from jobs they own or collaborate on
  */
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user as any).role as string | undefined
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
@@ -35,10 +42,15 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
     const skip = (page - 1) * limit
 
+    // Get job access filter based on user role
+    const jobAccessFilter = getJobAccessFilter(userId, userRole)
+
     const where: any = {
       organizationId,
       // Only show tasks that have a job (request-based tasks)
-      jobId: { not: null }
+      jobId: { not: null },
+      // Role-based access: only show requests from jobs user can access
+      ...(jobAccessFilter && { job: jobAccessFilter })
     }
 
     // Filter by read status
@@ -151,13 +163,15 @@ export async function GET(request: NextRequest) {
       filteredTasks = tasks.filter(t => t.job?.ownerId === ownerId)
     }
 
-    // Get only jobs that have sent requests (tasks with jobId)
+    // Get only jobs that have sent requests (tasks with jobId), filtered by access
     const jobsWithRequests = await prisma.job.findMany({
       where: { 
         organizationId,
         tasks: {
           some: {} // Has at least one task
-        }
+        },
+        // Apply same access filter for dropdown
+        ...(jobAccessFilter || {})
       },
       select: {
         id: true,

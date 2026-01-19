@@ -274,14 +274,6 @@ export default function CollectionPage() {
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Collection</h1>
-        <p className="text-gray-500 mt-1">
-          All attachments received from email responses to your requests
-        </p>
-      </div>
-
       {/* Toolbar - Simplified */}
       <div className="flex items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-2 flex-wrap">

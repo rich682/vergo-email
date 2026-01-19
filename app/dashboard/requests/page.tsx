@@ -12,13 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { 
-  Filter, RefreshCw, Mail, ExternalLink, Clock, 
+  Filter, RefreshCw, Mail, Clock, 
   CheckCircle, MessageSquare,
   Search, X, Calendar, Tag, Paperclip
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
 // Types
@@ -448,14 +447,6 @@ export default function RequestsPage() {
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Requests</h1>
-        <p className="text-gray-500 mt-1">
-          All requests sent to contacts across your tasks
-        </p>
-      </div>
-
       {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <Card>
@@ -656,10 +647,10 @@ export default function RequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attachments</th>
@@ -675,8 +666,13 @@ export default function RequestsPage() {
                   onClick={() => handleOpenThread(request)}
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900 truncate max-w-[200px]">
-                      {request.campaignName || "Untitled Request"}
+                    <span className="text-sm text-gray-900 truncate max-w-[180px] block">
+                      {request.job?.name || "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-gray-900 truncate max-w-[200px]">
+                      {request.campaignName || "Untitled"}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -697,43 +693,6 @@ export default function RequestsPage() {
                     <span className="text-sm text-gray-600">
                       {request.entity?.companyName || "—"}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {request.job ? (
-                      <div>
-                        <Link 
-                          href={`/dashboard/jobs/${request.job.id}`}
-                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                        >
-                          {request.job.name}
-                          <ExternalLink className="w-3 h-3" />
-                        </Link>
-                        {/* Show labels if any */}
-                        {request.job.jobLabels && request.job.jobLabels.length > 0 && (
-                          <div className="flex gap-1 mt-1">
-                            {request.job.jobLabels.slice(0, 2).map(label => (
-                              <span 
-                                key={label.id}
-                                className="text-xs px-1.5 py-0.5 rounded"
-                                style={{ 
-                                  backgroundColor: `${label.color || "#6B7280"}20`,
-                                  color: label.color || "#6B7280"
-                                }}
-                              >
-                                {label.name}
-                              </span>
-                            ))}
-                            {request.job.jobLabels.length > 2 && (
-                              <span className="text-xs text-gray-400">
-                                +{request.job.jobLabels.length - 2}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-500">—</span>
-                    )}
                   </td>
                   <td className="px-4 py-3">
                     {request.job?.owner ? (

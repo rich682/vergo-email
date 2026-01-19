@@ -338,14 +338,20 @@ export class JobService {
    * Supports filtering by owner ("My Jobs"), tags, or showing all
    * 
    * NOTE: Archived jobs are excluded by default. Pass includeArchived: true to show them.
+   * 
+   * Role-Based Access:
+   * - ADMIN: Sees all jobs in the organization
+   * - MEMBER/VIEWER: Only sees jobs they own or collaborate on
    */
   static async findByOrganization(
     organizationId: string,
     options?: {
+      userId?: string  // Current user ID (required for role-based filtering)
+      userRole?: UserRole | string  // Current user's role
       status?: JobStatus
       clientId?: string
       boardId?: string  // Filter by board
-      ownerId?: string  // Filter by owner ("My Jobs")
+      ownerId?: string  // Filter by owner ("My Jobs") - only for ADMIN
       collaboratorId?: string  // Include jobs where user is collaborator
       tags?: string[]  // Filter by tags (ANY match)
       includeArchived?: boolean  // Include archived jobs (default: false)
@@ -372,9 +378,22 @@ export class JobService {
       }
     }
 
-    // If filtering by "My Jobs" (owner or collaborator)
-    if (options?.ownerId && options?.collaboratorId && options.ownerId === options.collaboratorId) {
-      // Show jobs where user is owner OR collaborator
+    // Role-based access filtering
+    const normalizedRole = options?.userRole?.toString().toUpperCase()
+    const isAdmin = normalizedRole === "ADMIN"
+    
+    // For non-admins, automatically filter to owned/collaborated jobs
+    if (options?.userId && !isAdmin) {
+      // Non-admin users can only see jobs they own or collaborate on
+      where = {
+        ...where,
+        OR: [
+          { ownerId: options.userId },
+          { collaborators: { some: { userId: options.userId } } }
+        ]
+      }
+    } else if (options?.ownerId && options?.collaboratorId && options.ownerId === options.collaboratorId) {
+      // Admin using "My Jobs" filter - show jobs where user is owner OR collaborator
       where = {
         ...where,
         OR: [

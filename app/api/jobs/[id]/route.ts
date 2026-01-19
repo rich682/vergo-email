@@ -16,6 +16,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { JobService } from "@/lib/services/job.service"
 import { JobStatus, UserRole } from "@prisma/client"
+import { isReadOnly } from "@/lib/permissions"
 
 export async function GET(
   request: NextRequest,
@@ -104,9 +105,18 @@ export async function PATCH(
       )
     }
 
+    // VIEWER users cannot modify jobs
+    const sessionRole = (session.user as any).role as string | undefined
+    if (isReadOnly(sessionRole)) {
+      return NextResponse.json(
+        { error: "Forbidden - Viewers cannot modify tasks" },
+        { status: 403 }
+      )
+    }
+
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = sessionRole?.toUpperCase() as UserRole || UserRole.MEMBER
     const { id } = await params
     const body = await request.json()
 
@@ -225,9 +235,18 @@ export async function DELETE(
       )
     }
 
+    // VIEWER users cannot delete/archive jobs
+    const sessionRole = (session.user as any).role as string | undefined
+    if (isReadOnly(sessionRole)) {
+      return NextResponse.json(
+        { error: "Forbidden - Viewers cannot delete tasks" },
+        { status: 403 }
+      )
+    }
+
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = sessionRole?.toUpperCase() as UserRole || UserRole.MEMBER
     const { id } = await params
     const { searchParams } = new URL(request.url)
     
