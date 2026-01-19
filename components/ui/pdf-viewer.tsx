@@ -106,7 +106,7 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
     }
   }, [url, fallbackUrl])
 
-  // Render current page
+  // Render current page with high-DPI support
   const renderPage = useCallback(async () => {
     if (!pdfDoc || !canvasRef.current) return
 
@@ -117,19 +117,30 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
 
       if (!context) return
 
+      // Get device pixel ratio for sharp rendering on Retina/HiDPI displays
+      const devicePixelRatio = window.devicePixelRatio || 1
+
       // Calculate scale to fit container width
       const containerWidth = containerRef.current?.clientWidth || 800
       const viewport = page.getViewport({ scale: 1 })
       const fitScale = (containerWidth - 48) / viewport.width // 48px for padding
       const actualScale = fitScale * scale
 
-      const scaledViewport = page.getViewport({ scale: actualScale })
+      // Create viewport at higher resolution for sharp text
+      const scaledViewport = page.getViewport({ scale: actualScale * devicePixelRatio })
 
-      // Set canvas dimensions
+      // Set canvas dimensions at higher resolution
       canvas.height = scaledViewport.height
       canvas.width = scaledViewport.width
 
-      // Render page
+      // Scale canvas back down with CSS for proper display size
+      canvas.style.width = `${scaledViewport.width / devicePixelRatio}px`
+      canvas.style.height = `${scaledViewport.height / devicePixelRatio}px`
+
+      // Clear any previous rendering
+      context.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Render page at high resolution
       const renderContext = {
         canvasContext: context,
         viewport: scaledViewport
