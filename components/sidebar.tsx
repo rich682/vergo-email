@@ -99,6 +99,9 @@ interface Board {
   name: string
   status: "OPEN" | "CLOSED" | "ARCHIVED"
   jobCount: number
+  _count?: {
+    jobs?: number
+  }
 }
 
 interface NavItem {
@@ -138,13 +141,15 @@ const settingsNavItems: NavItem[] = [
 export function Sidebar({ className = "", userRole }: SidebarProps) {
   const [tasksExpanded, setTasksExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(true)
+  const [archivedExpanded, setArchivedExpanded] = useState(false)
   
   // Check if user is admin
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const [boards, setBoards] = useState<Board[]>([])
+  const [archivedBoards, setArchivedBoards] = useState<Board[]>([])
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [boardMenuOpen, setBoardMenuOpen] = useState<string | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null }>({ open: false, boardId: null })
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const boardMenuRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -153,7 +158,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
   // Get current boardId from URL
   const currentBoardId = searchParams.get("boardId")
 
-  // Fetch boards for sidebar
+  // Fetch active boards for sidebar
   const fetchBoards = async () => {
     try {
       const response = await fetch("/api/boards?status=OPEN,CLOSED")
@@ -166,8 +171,22 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
     }
   }
 
+  // Fetch archived boards
+  const fetchArchivedBoards = async () => {
+    try {
+      const response = await fetch("/api/boards?status=ARCHIVED")
+      if (response.ok) {
+        const data = await response.json()
+        setArchivedBoards(data.boards || [])
+      }
+    } catch (error) {
+      console.error("Error fetching archived boards:", error)
+    }
+  }
+
   useEffect(() => {
     fetchBoards()
+    fetchArchivedBoards()
   }, [])
 
   // Close board menu when clicking outside
@@ -211,6 +230,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
       })
       if (response.ok) {
         fetchBoards()
+        fetchArchivedBoards()
         setBoardMenuOpen(null)
         if (currentBoardId === boardId) {
           router.push("/dashboard/jobs")
@@ -221,9 +241,28 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
     }
   }
 
+  const handleRestoreBoard = async (boardId: string) => {
+    try {
+      const response = await fetch(`/api/boards/${boardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "OPEN" })
+      })
+      if (response.ok) {
+        fetchBoards()
+        fetchArchivedBoards()
+        setBoardMenuOpen(null)
+      }
+    } catch (error) {
+      console.error("Error restoring board:", error)
+    }
+  }
+
   const handleDeleteBoard = async (boardId: string) => {
     // Open confirmation dialog instead of using window.confirm
-    setDeleteConfirm({ open: true, boardId })
+    const board = boards.find(b => b.id === boardId) || archivedBoards.find(b => b.id === boardId)
+    const boardName = board?.name || "this board"
+    setDeleteConfirm({ open: true, boardId, boardName })
     setBoardMenuOpen(null)
   }
 
@@ -235,6 +274,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
       })
       if (response.ok) {
         fetchBoards()
+        fetchArchivedBoards()
         if (currentBoardId === deleteConfirm.boardId) {
           router.push("/dashboard/jobs")
         }
@@ -242,7 +282,12 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
     } catch (error) {
       console.error("Error deleting board:", error)
     }
-    setDeleteConfirm({ open: false, boardId: null })
+    setDeleteConfirm({ open: false, boardId: null, boardName: "" })
+  }
+
+  // Check if board can be deleted (only if no tasks)
+  const canDeleteBoard = (board: Board): boolean => {
+    return (board.jobCount || 0) === 0
   }
 
   const handleDuplicateBoard = async (boardId: string) => {
@@ -376,13 +421,16 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
                               <Archive className="w-4 h-4" />
                               Archive
                             </button>
-                            <button
-                              onClick={() => handleDeleteBoard(board.id)}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Delete
-                            </button>
+                            {/* Only show delete if board has no tasks */}
+                            {canDeleteBoard(board) && (
+                              <button
+                                onClick={() => handleDeleteBoard(board.id)}
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Delete
+                              </button>
+                            )}
                           </div>
                         )}
                       </li>
@@ -409,6 +457,87 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
                       <span>New Board</span>
                     </button>
                   </li>
+
+                  {/* Archived Boards Section */}
+                  {archivedBoards.length > 0 && (
+                    <>
+                      <li className="mx-6 my-2">
+                        <div className="border-t border-gray-200" />
+                      </li>
+                      <li>
+                        <button
+                          onClick={() => setArchivedExpanded(!archivedExpanded)}
+                          className="
+                            flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm
+                            text-gray-400 hover:bg-gray-50 hover:text-gray-600
+                            transition-all duration-150 w-full
+                          "
+                          style={{ width: "calc(100% - 24px)" }}
+                        >
+                          <Archive className="w-4 h-4 flex-shrink-0" />
+                          <span className="flex-1 text-left">Archived</span>
+                          <span className="text-xs text-gray-400">{archivedBoards.length}</span>
+                          {archivedExpanded ? (
+                            <ChevronDown className="w-3 h-3 text-gray-400" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3 text-gray-400" />
+                          )}
+                        </button>
+                      </li>
+                      
+                      {archivedExpanded && archivedBoards.map((board) => (
+                        <li key={board.id} className="relative group">
+                          <div
+                            className="
+                              flex items-center gap-3 mx-3 ml-6 px-3 py-2 rounded-lg text-sm
+                              text-gray-400
+                            "
+                          >
+                            <BoardIcon className="w-4 h-4 flex-shrink-0 opacity-50" />
+                            <span className="truncate flex-1">{board.name}</span>
+                          </div>
+                          
+                          {/* Archived board context menu trigger */}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setBoardMenuOpen(boardMenuOpen === `archived-${board.id}` ? null : `archived-${board.id}`)
+                            }}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 transition-opacity"
+                          >
+                            <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                          </button>
+
+                          {/* Archived board context menu */}
+                          {boardMenuOpen === `archived-${board.id}` && (
+                            <div 
+                              ref={boardMenuRef}
+                              className="absolute right-0 top-full mt-1 w-40 bg-white border rounded-lg shadow-lg z-50"
+                            >
+                              <button
+                                onClick={() => handleRestoreBoard(board.id)}
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
+                              >
+                                <Archive className="w-4 h-4" />
+                                Restore
+                              </button>
+                              {/* Only show delete if board has no tasks */}
+                              {canDeleteBoard(board) && (
+                                <button
+                                  onClick={() => handleDeleteBoard(board.id)}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </>
+                  )}
                 </ul>
               )}
             </li>
@@ -568,9 +697,9 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
       {/* Delete Board Confirmation */}
       <ConfirmDialog
         open={deleteConfirm.open}
-        onOpenChange={(open) => setDeleteConfirm({ open, boardId: open ? deleteConfirm.boardId : null })}
+        onOpenChange={(open) => setDeleteConfirm({ open, boardId: open ? deleteConfirm.boardId : null, boardName: open ? deleteConfirm.boardName : "" })}
         title="Delete Board"
-        description="Are you sure you want to delete this board? All tasks in this board will be permanently removed."
+        description={`Are you sure you want to permanently delete "${deleteConfirm.boardName}"? This action cannot be undone.`}
         confirmLabel="Delete Board"
         cancelLabel="Cancel"
         variant="danger"

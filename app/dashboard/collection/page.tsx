@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 
 // Types
 interface BoardOption {
@@ -104,6 +104,7 @@ function formatFileSize(bytes: number | null): string {
 
 export default function CollectionPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const boardIdFromUrl = searchParams.get("boardId")
   
   // State
@@ -395,7 +396,21 @@ export default function CollectionPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {items.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
+                <tr 
+                  key={item.id} 
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={(e) => {
+                    // Don't navigate if clicking interactive elements
+                    const target = e.target as HTMLElement
+                    if (target.closest('input, select, button, a')) {
+                      return
+                    }
+                    // Navigate to reply review with attachment tab
+                    if (item.message?.id) {
+                      router.push(`/dashboard/review/${item.message.id}?tab=attachments&attachmentId=${item.id}`)
+                    }
+                  }}
+                >
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"

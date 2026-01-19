@@ -414,7 +414,15 @@ export function ConfigurableTable({
                       {groupJobs.map((job) => (
                         <tr
                           key={job.id}
-                          className={`hover:bg-gray-50 transition-colors group ${selectedJobs.has(job.id) ? "bg-orange-50" : ""}`}
+                          className={`hover:bg-gray-50 transition-colors group cursor-pointer ${selectedJobs.has(job.id) ? "bg-orange-50" : ""}`}
+                          onClick={(e) => {
+                            // Don't navigate if clicking interactive elements
+                            const target = e.target as HTMLElement
+                            if (target.closest('input, select, button, [role="menu"], [role="listbox"]')) {
+                              return
+                            }
+                            router.push(`/dashboard/jobs/${job.id}`)
+                          }}
                         >
                           {/* Row Checkbox */}
                           <td className="w-12 px-3 py-2 text-center">
@@ -427,7 +435,10 @@ export function ConfigurableTable({
                           </td>
                           <td className="w-10 px-2 py-2 text-center">
                             <button
-                              onClick={() => router.push(`/dashboard/jobs/${job.id}`)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/dashboard/jobs/${job.id}`)
+                              }}
                               className="p-1.5 rounded hover:bg-blue-100 transition-colors text-gray-400 hover:text-blue-600"
                               title="Open Task page"
                             >
