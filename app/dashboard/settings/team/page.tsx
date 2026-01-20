@@ -173,6 +173,8 @@ function TeamSettingsContent() {
       const response = await fetch("/api/org/users")
       if (response.ok) {
         const data = await response.json()
+        console.log("[Team] API response:", data)
+        console.log("[Team] Users with isCurrentUser:", data.users?.map((u: any) => ({ id: u.id, email: u.email, isCurrentUser: u.isCurrentUser })))
         setTeamUsers(data.users || [])
         setIsAdmin(data.isAdmin || false)
       } else if (response.status === 403) {
