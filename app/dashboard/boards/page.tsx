@@ -659,6 +659,51 @@ export default function BoardsPage() {
           )}
         </div>
       )}
+
+      {/* Create Board Modal */}
+      <CreateBoardModal
+        open={isCreateBoardOpen}
+        onOpenChange={setIsCreateBoardOpen}
+        onBoardCreated={(board) => {
+          fetchBoards()
+          router.push(`/dashboard/jobs?boardId=${board.id}`)
+        }}
+      />
+
+      {/* Edit Board Modal */}
+      <EditBoardModal
+        open={!!editingBoard}
+        onOpenChange={(open) => !open && setEditingBoard(null)}
+        board={editingBoard}
+        onBoardUpdated={() => {
+          fetchBoards()
+          setEditingBoard(null)
+        }}
+      />
+
+      {/* Archive Board Confirmation */}
+      <ConfirmDialog
+        open={archiveConfirm.open}
+        onOpenChange={(open) => setArchiveConfirm({ open, boardId: open ? archiveConfirm.boardId : null, boardName: open ? archiveConfirm.boardName : "" })}
+        title="Archive Board"
+        description={`Archive "${archiveConfirm.boardName}"? You can restore it later from the Archived filter.`}
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={confirmArchiveBoard}
+      />
+
+      {/* Delete Board Confirmation */}
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm({ open, boardId: open ? deleteConfirm.boardId : null, boardName: open ? deleteConfirm.boardName : "" })}
+        title="Delete Board"
+        description={`Are you sure you want to permanently delete "${deleteConfirm.boardName}"? This action cannot be undone.`}
+        confirmLabel="Delete Board"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteBoard}
+      />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info } from "lucide-react"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,8 +37,57 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { format, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns"
 
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
+
+/**
+ * Calculate periodStart based on today's date and cadence
+ */
+function calculatePeriodStart(cadence: BoardCadence): Date | null {
+  const today = new Date()
+  
+  switch (cadence) {
+    case "DAILY":
+      return today
+    case "WEEKLY":
+      return startOfWeek(today, { weekStartsOn: 1 }) // Monday
+    case "MONTHLY":
+      return startOfMonth(today)
+    case "QUARTERLY":
+      return startOfQuarter(today)
+    case "YEAR_END":
+      return startOfYear(today)
+    case "AD_HOC":
+      return null
+    default:
+      return null
+  }
+}
+
+/**
+ * Generate a board name based on cadence and period
+ */
+function generateBoardName(cadence: BoardCadence, periodStart: Date | null): string {
+  if (!periodStart || cadence === "AD_HOC") return ""
+  
+  switch (cadence) {
+    case "DAILY":
+      return format(periodStart, "EEEE, MMM d") // "Tuesday, Jan 20"
+    case "WEEKLY":
+      return `Week of ${format(periodStart, "MMM d, yyyy")}` // "Week of Jan 20, 2026"
+    case "MONTHLY":
+      return format(periodStart, "MMMM yyyy") // "January 2026"
+    case "QUARTERLY": {
+      const quarter = Math.floor(periodStart.getMonth() / 3) + 1
+      return `Q${quarter} ${periodStart.getFullYear()}` // "Q1 2026"
+    }
+    case "YEAR_END":
+      return `Year-End ${periodStart.getFullYear()}` // "Year-End 2026"
+    default:
+      return ""
+  }
+}
 
 interface TeamMember {
   id: string
@@ -79,9 +128,11 @@ export function CreateBoardModal({
   // Form state
   const [cadence, setCadence] = useState<BoardCadence | null>(null)
   const [name, setName] = useState("")
+  const [periodStart, setPeriodStart] = useState<Date | null>(null)
   const [ownerId, setOwnerId] = useState<string | null>(null)
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>([])
   const [autoCreateNextBoard, setAutoCreateNextBoard] = useState(true)
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
   
   // UI state
   const [loading, setLoading] = useState(false)
@@ -90,6 +141,27 @@ export function CreateBoardModal({
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+  // Auto-set periodStart and name when cadence changes
+  const handleCadenceChange = useCallback((newCadence: BoardCadence) => {
+    setCadence(newCadence)
+    
+    // Calculate period start based on today
+    const newPeriodStart = calculatePeriodStart(newCadence)
+    setPeriodStart(newPeriodStart)
+    
+    // Auto-generate board name if not manually edited
+    if (!nameManuallyEdited || !name.trim()) {
+      const suggestedName = generateBoardName(newCadence, newPeriodStart)
+      setName(suggestedName)
+    }
+  }, [nameManuallyEdited, name])
+
+  // Track if name was manually edited
+  const handleNameChange = useCallback((newName: string) => {
+    setName(newName)
+    setNameManuallyEdited(true)
+  }, [])
 
   // Fetch team members on mount
   useEffect(() => {
@@ -157,6 +229,7 @@ export function CreateBoardModal({
         body: JSON.stringify({
           name: name.trim(),
           cadence,
+          periodStart: periodStart?.toISOString(),
           ownerId: ownerId || undefined,
           collaboratorIds: collaboratorIds.length > 0 ? collaboratorIds : undefined,
           automationEnabled
@@ -185,9 +258,11 @@ export function CreateBoardModal({
   const resetForm = () => {
     setCadence(null)
     setName("")
+    setPeriodStart(null)
     setOwnerId(currentUserId)
     setCollaboratorIds([])
     setAutoCreateNextBoard(true)
+    setNameManuallyEdited(false)
     setError(null)
   }
 
@@ -214,23 +289,12 @@ export function CreateBoardModal({
           )}
           
           <div className="py-4 space-y-4">
-            {/* Board Name */}
-            <div className="grid gap-2">
-              <Label htmlFor="name">Board Name *</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., January 2026 Close"
-              />
-            </div>
-
-            {/* Board Type (Cadence) */}
+            {/* Board Type (Cadence) - Show first to auto-generate name */}
             <div className="grid gap-2">
               <Label htmlFor="cadence">Board Type *</Label>
               <Select
                 value={cadence || ""}
-                onValueChange={(v) => setCadence(v as BoardCadence)}
+                onValueChange={(v) => handleCadenceChange(v as BoardCadence)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select board type" />
@@ -244,6 +308,23 @@ export function CreateBoardModal({
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500">Used for filtering and automation</p>
+            </div>
+
+            {/* Board Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="name">Board Name *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder={cadence && cadence !== "AD_HOC" ? "Auto-generated from board type" : "e.g., Q1 Tax Prep"}
+              />
+              {periodStart && cadence && cadence !== "AD_HOC" && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Calendar className="h-3 w-3" />
+                  <span>Period: {format(periodStart, "MMM d, yyyy")}</span>
+                </div>
+              )}
             </div>
 
             {/* Automation Section - shown after cadence is selected */}

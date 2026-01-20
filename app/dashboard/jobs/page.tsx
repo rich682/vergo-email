@@ -27,7 +27,8 @@ import {
   Sparkles,
   Edit2,
   Check,
-  X
+  X,
+  Settings
 } from "lucide-react"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -35,6 +36,7 @@ import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 import { OnboardingChecklist } from "@/components/onboarding-checklist"
 import { ConfigurableTable, JobRow } from "@/components/jobs/configurable-table"
+import { EditBoardModal } from "@/components/boards/edit-board-modal"
 
 // ============================================
 // Types
@@ -80,10 +82,33 @@ interface Job {
   collectedItemCount?: number
 }
 
+interface BoardOwner {
+  id: string
+  name: string | null
+  email: string
+}
+
+interface BoardCollaborator {
+  id: string
+  userId: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+  }
+}
+
 interface Board {
   id: string
   name: string
   status: string
+  cadence: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC" | null
+  periodStart: string | null
+  periodEnd: string | null
+  automationEnabled?: boolean
+  skipWeekends?: boolean
+  owner: BoardOwner | null
+  collaborators: BoardCollaborator[]
 }
 
 // ============================================
@@ -128,6 +153,9 @@ export default function JobsPage() {
   // Board name editing
   const [editingBoardName, setEditingBoardName] = useState(false)
   const [editBoardName, setEditBoardName] = useState("")
+  
+  // Board settings modal
+  const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false)
 
   // ============================================
   // Data fetching
@@ -616,6 +644,13 @@ export default function JobsPage() {
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={() => setIsBoardSettingsOpen(true)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      title="Board settings"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
                   </>
                 )}
               </div>
@@ -951,6 +986,19 @@ export default function JobsPage() {
         }}
         boardId={boardId}
       />
+      
+      {/* Board Settings Modal */}
+      {currentBoard && (
+        <EditBoardModal
+          open={isBoardSettingsOpen}
+          onOpenChange={setIsBoardSettingsOpen}
+          board={currentBoard}
+          onBoardUpdated={(updatedBoard) => {
+            setCurrentBoard(updatedBoard)
+            setIsBoardSettingsOpen(false)
+          }}
+        />
+      )}
     </div>
   )
 }
