@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { Receipt, Zap, Shield, BarChart3 } from "lucide-react"
+import { Receipt, Zap, Shield, Link2 } from "lucide-react"
 
 const features = [
   {
@@ -20,9 +20,9 @@ const features = [
     description: "Built-in policy checks ensure expenses meet your firm's guidelines before approval."
   },
   {
-    icon: BarChart3,
-    title: "Real-time Reporting",
-    description: "Track spending trends, budget utilization, and expense patterns across your organization."
+    icon: Link2,
+    title: "Accounting Software Integrations",
+    description: "Connect with QuickBooks, Xero, Sage, and other accounting platforms for seamless data sync."
   }
 ]
 

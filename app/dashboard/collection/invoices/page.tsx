@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { FileText, Clock, DollarSign, Send } from "lucide-react"
+import { FileText, Clock, Link2, Send } from "lucide-react"
 
 const features = [
   {
@@ -15,14 +15,14 @@ const features = [
     description: "Customizable approval chains with automatic routing based on amount, vendor, or department."
   },
   {
-    icon: DollarSign,
-    title: "Payment Integration",
-    description: "Connect with your payment systems for seamless invoice-to-payment processing."
+    icon: Link2,
+    title: "Accounting Software Integrations",
+    description: "Connect with QuickBooks, Xero, Sage, and other accounting platforms for seamless data sync."
   },
   {
     icon: Send,
     title: "Client Billing",
-    description: "Generate and send professional invoices to clients with automatic payment reminders."
+    description: "Generate and send professional invoices to clients with automatic follow-up reminders."
   }
 ]
 
