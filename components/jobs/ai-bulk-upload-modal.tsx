@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useDropzone } from "react-dropzone"
 import * as XLSX from "xlsx"
 import {
   Dialog,
@@ -10,9 +9,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { 
-  Upload, FileSpreadsheet, Check, AlertCircle, Loader2, 
-  Sparkles, Download, ArrowRight, Calendar, User
+  FileSpreadsheet, Check, AlertCircle, Loader2, 
+  Sparkles, Download, ArrowRight, Calendar, User, ClipboardPaste, X
 } from "lucide-react"
 
 interface ParsedItem {
@@ -31,7 +31,7 @@ interface AIBulkUploadModalProps {
   boardId?: string | null
 }
 
-type Tab = "generate" | "upload"
+type Tab = "generate" | "paste"
 type UploadState = "idle" | "parsing" | "interpreting" | "generating" | "preview" | "importing" | "complete" | "error"
 
 const EXAMPLE_PROMPTS = [
@@ -45,21 +45,27 @@ const EXAMPLE_PROMPTS = [
 export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardId }: AIBulkUploadModalProps) {
   const [tab, setTab] = useState<Tab>("generate")
   const [state, setState] = useState<UploadState>("idle")
-  const [fileName, setFileName] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
+  const [pastedData, setPastedData] = useState("")
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([])
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [importProgress, setImportProgress] = useState(0)
+  const [hasParsedData, setHasParsedData] = useState(false)
+  const [rowCount, setRowCount] = useState(0)
+  const [colCount, setColCount] = useState(0)
 
   const resetState = () => {
     setState("idle")
-    setFileName(null)
     setPrompt("")
+    setPastedData("")
     setParsedItems([])
     setSelectedItems(new Set())
     setError(null)
     setImportProgress(0)
+    setHasParsedData(false)
+    setRowCount(0)
+    setColCount(0)
   }
 
   // Handle AI prompt generation
@@ -96,32 +102,116 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
     }
   }
 
-  // Handle spreadsheet upload
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0]
-    if (!file) return
-
-    setFileName(file.name)
-    setState("parsing")
-    setError(null)
+  // Parse pasted data from Excel
+  const parsePastedData = useCallback((text: string) => {
+    if (!text.trim()) {
+      setHasParsedData(false)
+      setError(null)
+      return
+    }
 
     try {
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data, { type: "array" })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      const rows: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+      // Split into lines
+      const lines = text.trim().split(/\r?\n/)
       
-      // Filter out empty rows
-      const nonEmptyRows = rows.filter(row => row.some(cell => cell && String(cell).trim()))
-      
-      if (nonEmptyRows.length === 0) {
-        setError("The spreadsheet appears to be empty")
-        setState("error")
+      if (lines.length < 2) {
+        setError("Need at least a header row and one data row")
+        setHasParsedData(false)
         return
       }
 
-      setState("interpreting")
+      // Detect delimiter (tab or comma)
+      const firstLine = lines[0]
+      const tabCount = (firstLine.match(/\t/g) || []).length
+      const commaCount = (firstLine.match(/,/g) || []).length
+      const delimiter = tabCount >= commaCount ? "\t" : ","
+
+      // Parse rows
+      const rows: string[][] = lines.map(line => {
+        // Handle quoted values for comma-separated
+        if (delimiter === ",") {
+          const result: string[] = []
+          let current = ""
+          let inQuotes = false
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i]
+            if (char === '"') {
+              inQuotes = !inQuotes
+            } else if (char === "," && !inQuotes) {
+              result.push(current.trim())
+              current = ""
+            } else {
+              current += char
+            }
+          }
+          result.push(current.trim())
+          return result
+        }
+        return line.split(delimiter).map(cell => cell.trim())
+      })
+
+      // Filter out empty rows
+      const nonEmptyRows = rows.filter(row => row.some(cell => cell && cell.trim()))
+
+      if (nonEmptyRows.length < 2) {
+        setError("Need at least a header row and one data row")
+        setHasParsedData(false)
+        return
+      }
+
+      setRowCount(nonEmptyRows.length - 1)
+      setColCount(nonEmptyRows[0].length)
+      setHasParsedData(true)
+      setError(null)
+
+    } catch (err: any) {
+      setError(err.message || "Failed to parse pasted data")
+      setHasParsedData(false)
+    }
+  }, [])
+
+  // Handle paste data interpretation
+  const handleInterpretPastedData = async () => {
+    if (!pastedData.trim()) return
+
+    setState("interpreting")
+    setError(null)
+
+    try {
+      // Split into lines
+      const lines = pastedData.trim().split(/\r?\n/)
+      
+      // Detect delimiter
+      const firstLine = lines[0]
+      const tabCount = (firstLine.match(/\t/g) || []).length
+      const commaCount = (firstLine.match(/,/g) || []).length
+      const delimiter = tabCount >= commaCount ? "\t" : ","
+
+      // Parse rows
+      const rows: string[][] = lines.map(line => {
+        if (delimiter === ",") {
+          const result: string[] = []
+          let current = ""
+          let inQuotes = false
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i]
+            if (char === '"') {
+              inQuotes = !inQuotes
+            } else if (char === "," && !inQuotes) {
+              result.push(current.trim())
+              current = ""
+            } else {
+              current += char
+            }
+          }
+          result.push(current.trim())
+          return result
+        }
+        return line.split(delimiter).map(cell => cell.trim())
+      })
+
+      // Filter out empty rows
+      const nonEmptyRows = rows.filter(row => row.some(cell => cell && cell.trim()))
 
       // Send to AI for interpretation
       const response = await fetch("/api/jobs/bulk-import", {
@@ -132,7 +222,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
       })
 
       if (!response.ok) {
-        let errorMessage = "Failed to interpret spreadsheet"
+        let errorMessage = "Failed to interpret data"
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorData.message || errorMessage
@@ -151,22 +241,11 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
       setState("preview")
 
     } catch (err: any) {
-      console.error("Error processing file:", err)
-      setError(err.message || "Failed to process file")
+      console.error("Error processing pasted data:", err)
+      setError(err.message || "Failed to process data")
       setState("error")
     }
-  }, [])
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "application/vnd.ms-excel": [".xls"],
-      "text/csv": [".csv"]
-    },
-    maxFiles: 1,
-    disabled: state !== "idle" && state !== "error"
-  })
+  }
 
   const toggleItem = (index: number) => {
     const newSelected = new Set(selectedItems)
@@ -270,15 +349,15 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
                 AI Generate
               </button>
               <button
-                onClick={() => { setTab("upload"); resetState(); }}
+                onClick={() => { setTab("paste"); resetState(); }}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === "upload" 
+                  tab === "paste" 
                     ? "bg-white text-gray-900 shadow-sm" 
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                <Upload className="w-4 h-4" />
-                Upload Spreadsheet
+                <ClipboardPaste className="w-4 h-4" />
+                Paste from Excel
               </button>
             </div>
           )}
@@ -327,32 +406,50 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
             </div>
           )}
 
-          {/* Upload Tab */}
-          {tab === "upload" && (state === "idle" || state === "error") && (
+          {/* Paste from Excel Tab */}
+          {tab === "paste" && (state === "idle" || state === "error") && (
             <div className="space-y-4">
-              <div
-                {...getRootProps()}
-                className={`
-                  border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
-                  transition-colors
-                  ${isDragActive 
-                    ? "border-orange-500 bg-orange-50" 
-                    : "border-gray-300 hover:border-gray-400"
-                  }
-                `}
-              >
-                <input {...getInputProps()} />
-                <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm text-gray-600 mb-1">
-                  {isDragActive 
-                    ? "Drop your spreadsheet here..." 
-                    : "Drag & drop your checklist spreadsheet"
-                  }
-                </p>
-                <p className="text-xs text-gray-400">
-                  Supports .xlsx, .xls, and .csv files
-                </p>
-              </div>
+              {/* Paste Input or Parsed Data View */}
+              {!hasParsedData ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <ClipboardPaste className="w-4 h-4" />
+                    <span>Copy from Excel → Paste here</span>
+                  </div>
+                  <Textarea
+                    placeholder="Paste your Excel data here (include headers)...
+
+Example:
+Task Name	Due Date	Owner	Description
+Reconcile bank accounts	2026-01-31	John	Monthly bank rec
+Review journal entries	2026-01-31	Sarah	Month-end review
+Submit payroll	2026-01-25	Mike	Process payroll"
+                    value={pastedData}
+                    onChange={(e) => {
+                      setPastedData(e.target.value)
+                      parsePastedData(e.target.value)
+                    }}
+                    className="min-h-[180px] font-mono text-sm"
+                  />
+                </div>
+              ) : (
+                <div className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                      <div>
+                        <p className="font-medium text-gray-900">Data ready</p>
+                        <p className="text-sm text-gray-500">
+                          {rowCount} rows, {colCount} columns
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={resetState}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Template Download */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -376,6 +473,16 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
                   <li><span className="text-gray-600">Priority</span> - High, Medium, or Low</li>
                 </ul>
               </div>
+
+              <Button
+                onClick={handleInterpretPastedData}
+                disabled={!hasParsedData}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Process with AI
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </div>
           )}
 
@@ -392,16 +499,10 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
             <div className="py-12 text-center">
               <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto mb-3" />
               <p className="text-sm text-gray-600">
-                {state === "parsing" && "Reading spreadsheet..."}
+                {state === "parsing" && "Reading data..."}
                 {state === "interpreting" && "AI is interpreting your data..."}
                 {state === "generating" && "AI is generating your checklist..."}
               </p>
-              {fileName && state !== "generating" && (
-                <p className="text-xs text-gray-400 mt-1 flex items-center justify-center gap-1">
-                  <FileSpreadsheet className="w-3 h-3" />
-                  {fileName}
-                </p>
-              )}
             </div>
           )}
 
