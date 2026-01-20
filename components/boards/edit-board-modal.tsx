@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
+type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
 
 interface TeamMember {
@@ -45,19 +46,55 @@ interface TeamMember {
   email: string
 }
 
-interface CreateBoardModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onBoardCreated?: (board: any) => void
+interface BoardOwner {
+  id: string
+  name: string | null
+  email: string
 }
 
-const CADENCE_OPTIONS: { value: BoardCadence; label: string; description: string }[] = [
-  { value: "MONTHLY", label: "Monthly", description: "e.g., January Close, February Close" },
-  { value: "WEEKLY", label: "Weekly", description: "e.g., Week of Jan 20" },
-  { value: "QUARTERLY", label: "Quarterly", description: "e.g., Q1 2026, Q2 2026" },
-  { value: "YEAR_END", label: "Year-End", description: "e.g., Year-End Close 2025" },
-  { value: "DAILY", label: "Daily", description: "e.g., Daily Reconciliation Jan 20" },
-  { value: "AD_HOC", label: "Ad Hoc", description: "One-off project or audit" },
+interface BoardCollaborator {
+  id: string
+  userId: string
+  user: {
+    id: string
+    name: string | null
+    email: string
+  }
+}
+
+interface Board {
+  id: string
+  name: string
+  status: BoardStatus
+  cadence: BoardCadence | null
+  periodStart: string | null
+  periodEnd: string | null
+  owner: BoardOwner | null
+  collaborators: BoardCollaborator[]
+}
+
+interface EditBoardModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  board: Board | null
+  onBoardUpdated?: (board: any) => void
+}
+
+const STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
+  { value: "NOT_STARTED", label: "Not Started", color: "bg-gray-100 text-gray-600" },
+  { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-100 text-blue-700" },
+  { value: "COMPLETE", label: "Complete", color: "bg-green-100 text-green-700" },
+  { value: "BLOCKED", label: "Blocked", color: "bg-red-100 text-red-700" },
+  { value: "ARCHIVED", label: "Archived", color: "bg-amber-100 text-amber-700" },
+]
+
+const CADENCE_OPTIONS: { value: BoardCadence; label: string }[] = [
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "WEEKLY", label: "Weekly" },
+  { value: "QUARTERLY", label: "Quarterly" },
+  { value: "YEAR_END", label: "Year-End" },
+  { value: "DAILY", label: "Daily" },
+  { value: "AD_HOC", label: "Ad Hoc" },
 ]
 
 const MONTHS = [
@@ -66,9 +103,8 @@ const MONTHS = [
 ]
 
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
-
 const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 1 + i) // -1 to +3 years
+const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 1 + i)
 
 function getInitials(name: string | null, email: string): string {
   if (name) {
@@ -80,30 +116,27 @@ function getInitials(name: string | null, email: string): string {
   return email.substring(0, 2).toUpperCase()
 }
 
-function generateBoardName(
-  cadence: BoardCadence | null,
-  month: string | null,
-  week: number | null,
-  quarter: string | null,
-  year: number | null
-): string {
-  if (!cadence) return ""
+function parsePeriod(periodStart: string | null, cadence: BoardCadence | null): { month: string | null; week: number | null; quarter: string | null; year: number | null } {
+  if (!periodStart) return { month: null, week: null, quarter: null, year: null }
+  
+  const date = new Date(periodStart)
+  const year = date.getFullYear()
+  const monthIndex = date.getMonth()
   
   switch (cadence) {
     case "MONTHLY":
-      return month && year ? `${month} ${year} Close` : ""
-    case "WEEKLY":
-      return week && month && year ? `Week ${week} ${month} ${year}` : ""
-    case "QUARTERLY":
-      return quarter && year ? `${quarter} ${year}` : ""
-    case "YEAR_END":
-      return year ? `Year-End Close ${year}` : ""
     case "DAILY":
-      return month && year ? `Daily ${month} ${year}` : ""
-    case "AD_HOC":
-      return ""
+      return { month: MONTHS[monthIndex], week: null, quarter: null, year }
+    case "WEEKLY":
+      const weekOfMonth = Math.ceil(date.getDate() / 7)
+      return { month: MONTHS[monthIndex], week: weekOfMonth, quarter: null, year }
+    case "QUARTERLY":
+      const q = Math.floor(monthIndex / 3) + 1
+      return { month: null, week: null, quarter: `Q${q}`, year }
+    case "YEAR_END":
+      return { month: null, week: null, quarter: null, year }
     default:
-      return ""
+      return { month: null, week: null, quarter: null, year }
   }
 }
 
@@ -123,11 +156,10 @@ function getPeriodDates(
       if (monthIndex === -1) return { start: null, end: null }
       return {
         start: new Date(year, monthIndex, 1),
-        end: new Date(year, monthIndex + 1, 0) // Last day of month
+        end: new Date(year, monthIndex + 1, 0)
       }
     case "WEEKLY":
       if (monthIndex === -1 || !week) return { start: null, end: null }
-      // Approximate: week 1 starts on 1st, each week is 7 days
       const weekStart = new Date(year, monthIndex, 1 + (week - 1) * 7)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekStart.getDate() + 6)
@@ -157,19 +189,20 @@ function getPeriodDates(
   }
 }
 
-export function CreateBoardModal({
+export function EditBoardModal({
   open,
   onOpenChange,
-  onBoardCreated
-}: CreateBoardModalProps) {
+  board,
+  onBoardUpdated
+}: EditBoardModalProps) {
   // Form state
+  const [name, setName] = useState("")
+  const [status, setStatus] = useState<BoardStatus>("NOT_STARTED")
   const [cadence, setCadence] = useState<BoardCadence | null>(null)
   const [month, setMonth] = useState<string | null>(null)
   const [week, setWeek] = useState<number | null>(null)
   const [quarter, setQuarter] = useState<string | null>(null)
   const [year, setYear] = useState<number | null>(CURRENT_YEAR)
-  const [name, setName] = useState("")
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
   const [ownerId, setOwnerId] = useState<string | null>(null)
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>([])
   
@@ -179,22 +212,30 @@ export function CreateBoardModal({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-  // Fetch team members on mount
+  // Initialize form with board data
   useEffect(() => {
-    if (open) {
+    if (board && open) {
+      setName(board.name)
+      // Normalize legacy statuses
+      const normalizedStatus = board.status === "OPEN" as any ? "NOT_STARTED" : 
+                               board.status === "CLOSED" as any ? "COMPLETE" : 
+                               board.status
+      setStatus(normalizedStatus)
+      setCadence(board.cadence)
+      setOwnerId(board.owner?.id || null)
+      setCollaboratorIds(board.collaborators.map(c => c.user.id))
+      
+      // Parse period
+      const period = parsePeriod(board.periodStart, board.cadence)
+      setMonth(period.month)
+      setWeek(period.week)
+      setQuarter(period.quarter)
+      setYear(period.year)
+      
       fetchTeamMembers()
     }
-  }, [open])
-
-  // Auto-generate name when cadence/period changes
-  useEffect(() => {
-    if (!nameManuallyEdited) {
-      const generated = generateBoardName(cadence, month, week, quarter, year)
-      setName(generated)
-    }
-  }, [cadence, month, week, quarter, year, nameManuallyEdited])
+  }, [board, open])
 
   const fetchTeamMembers = async () => {
     try {
@@ -202,11 +243,6 @@ export function CreateBoardModal({
       if (response.ok) {
         const data = await response.json()
         setTeamMembers(data.members || [])
-        setCurrentUserId(data.currentUserId || null)
-        // Set default owner to current user
-        if (data.currentUserId && !ownerId) {
-          setOwnerId(data.currentUserId)
-        }
       }
     } catch (err) {
       console.error("Failed to fetch team members:", err)
@@ -221,11 +257,6 @@ export function CreateBoardModal({
     return teamMembers.filter(m => collaboratorIds.includes(m.id))
   }, [teamMembers, collaboratorIds])
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setName(e.target.value)
-    setNameManuallyEdited(true)
-  }
-
   const toggleCollaborator = (userId: string) => {
     setCollaboratorIds(prev => 
       prev.includes(userId)
@@ -236,15 +267,12 @@ export function CreateBoardModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!board) return
+    
     setError(null)
     
     if (!name.trim()) {
       setError("Board name is required")
-      return
-    }
-
-    if (!cadence) {
-      setError("Please select a cadence")
       return
     }
 
@@ -253,53 +281,38 @@ export function CreateBoardModal({
     try {
       const { start, end } = getPeriodDates(cadence, month, week, quarter, year)
       
-      const response = await fetch("/api/boards", {
-        method: "POST",
+      const response = await fetch(`/api/boards/${board.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
+          status,
           cadence,
           ownerId: ownerId || undefined,
-          periodStart: start?.toISOString(),
-          periodEnd: end?.toISOString(),
-          collaboratorIds: collaboratorIds.length > 0 ? collaboratorIds : undefined
+          periodStart: start?.toISOString() || null,
+          periodEnd: end?.toISOString() || null,
+          collaboratorIds
         })
       })
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Failed to create board")
+        throw new Error(data.error || "Failed to update board")
       }
 
       const data = await response.json()
       
-      // Reset form
-      resetForm()
-      
       onOpenChange(false)
-      onBoardCreated?.(data.board)
+      onBoardUpdated?.(data.board)
     } catch (error: any) {
-      setError(error.message || "Failed to create board")
+      setError(error.message || "Failed to update board")
     } finally {
       setLoading(false)
     }
   }
 
-  const resetForm = () => {
-    setCadence(null)
-    setMonth(null)
-    setWeek(null)
-    setQuarter(null)
-    setYear(CURRENT_YEAR)
-    setName("")
-    setNameManuallyEdited(false)
-    setOwnerId(currentUserId)
-    setCollaboratorIds([])
-    setError(null)
-  }
-
   const handleClose = () => {
-    resetForm()
+    setError(null)
     onOpenChange(false)
   }
 
@@ -309,14 +322,16 @@ export function CreateBoardModal({
   const showQuarterSelector = cadence === "QUARTERLY"
   const showYearSelector = cadence && cadence !== "AD_HOC"
 
+  if (!board) return null
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create New Board</DialogTitle>
+            <DialogTitle>Edit Board</DialogTitle>
             <DialogDescription>
-              Organize your tasks by time period
+              Update board details and team assignments
             </DialogDescription>
           </DialogHeader>
           
@@ -327,14 +342,43 @@ export function CreateBoardModal({
           )}
           
           <div className="py-4 space-y-4">
+            {/* Board Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Board Name *</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., January 2026 Close"
+              />
+            </div>
+
+            {/* Status */}
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as BoardStatus)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${opt.color}`}>
+                        {opt.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Cadence */}
             <div className="grid gap-2">
-              <Label htmlFor="cadence">Cadence *</Label>
+              <Label>Cadence</Label>
               <Select
                 value={cadence || ""}
                 onValueChange={(v) => {
                   setCadence(v as BoardCadence)
-                  setNameManuallyEdited(false)
                   // Reset period selectors when cadence changes
                   setMonth(null)
                   setWeek(null)
@@ -347,10 +391,7 @@ export function CreateBoardModal({
                 <SelectContent>
                   {CADENCE_OPTIONS.map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      <div>
-                        <span className="font-medium">{opt.label}</span>
-                        <span className="text-gray-500 ml-2 text-xs">{opt.description}</span>
-                      </div>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -360,7 +401,7 @@ export function CreateBoardModal({
             {/* Time Period Selectors */}
             {cadence && cadence !== "AD_HOC" && (
               <div className="grid gap-2">
-                <Label>Time Period *</Label>
+                <Label>Time Period</Label>
                 <div className="flex gap-2">
                   {showMonthSelector && (
                     <Select value={month || ""} onValueChange={setMonth}>
@@ -417,23 +458,9 @@ export function CreateBoardModal({
               </div>
             )}
 
-            {/* Board Name */}
-            <div className="grid gap-2">
-              <Label htmlFor="name">Board Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={handleNameChange}
-                placeholder="e.g., January 2026 Close"
-              />
-              {!nameManuallyEdited && name && (
-                <p className="text-xs text-gray-500">Auto-generated from cadence and period</p>
-              )}
-            </div>
-
             {/* Owner */}
             <div className="grid gap-2">
-              <Label>Owner *</Label>
+              <Label>Owner</Label>
               <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -503,7 +530,6 @@ export function CreateBoardModal({
               <Label className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Collaborators
-                <span className="text-gray-400 font-normal">(optional)</span>
               </Label>
               <Popover open={collaboratorsOpen} onOpenChange={setCollaboratorsOpen}>
                 <PopoverTrigger asChild>
@@ -545,7 +571,7 @@ export function CreateBoardModal({
                       <CommandEmpty>No team members found.</CommandEmpty>
                       <CommandGroup>
                         {teamMembers
-                          .filter(m => m.id !== ownerId) // Can't be both owner and collaborator
+                          .filter(m => m.id !== ownerId)
                           .map((member) => (
                             <CommandItem
                               key={member.id}
@@ -590,10 +616,10 @@ export function CreateBoardModal({
             </Button>
             <Button 
               type="submit" 
-              disabled={loading || !name.trim() || !cadence}
+              disabled={loading || !name.trim()}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Board
+              Save Changes
             </Button>
           </DialogFooter>
         </form>

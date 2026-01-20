@@ -90,9 +90,26 @@ enum CollectedItemSource {
 // Board represents a period-based checklist (e.g., "January 2025 Book Close")
 // Boards group Jobs for accounting period workflows (Monday.com parity)
 enum BoardStatus {
-  OPEN
-  CLOSED
-  ARCHIVED
+  // New action-oriented statuses
+  NOT_STARTED  // Work not yet begun
+  IN_PROGRESS  // Work actively happening
+  COMPLETE     // All work done
+  BLOCKED      // Waiting on external dependency
+  ARCHIVED     // Hidden from active view
+  // Legacy statuses (kept for backward compatibility during migration)
+  OPEN         // @deprecated - use NOT_STARTED
+  CLOSED       // @deprecated - use COMPLETE
+}
+
+// Board cadence - what kind of time period this board represents
+// FUTURE: cadence + periodStart/periodEnd enable auto-creation and AI reasoning
+enum BoardCadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEAR_END
+  AD_HOC
 }
 
 // Subtask status for checklist items within a Job (Monday.com subitem parity)
@@ -148,17 +165,19 @@ model User {
   onboardingCompleted Boolean @default(false)
   onboardingDismissed Boolean @default(false)
 
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  emailDrafts       EmailDraft[]
-  ownedJobs         Job[]             @relation("JobOwner")
-  jobCollaborations JobCollaborator[]
-  jobComments       JobComment[]
-  reviewedItems     CollectedItem[]   @relation("CollectedItemReviewer")
-  createdBoards     Board[]           @relation("BoardCreator")
-  ownedSubtasks     Subtask[]         @relation("SubtaskOwner")
-  uploadedAttachments Attachment[]    @relation("AttachmentUploader")
-  reviewedMessages  Message[]         @relation("MessageReviewer")
-  reviewAuditLogs   ReviewAuditLog[]  @relation("ReviewAuditAuthor")
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDrafts         EmailDraft[]
+  ownedJobs           Job[]               @relation("JobOwner")
+  jobCollaborations   JobCollaborator[]
+  jobComments         JobComment[]
+  reviewedItems       CollectedItem[]     @relation("CollectedItemReviewer")
+  ownedBoards         Board[]             @relation("BoardOwner")
+  createdBoards       Board[]             @relation("BoardCreator")
+  boardCollaborations BoardCollaborator[]
+  ownedSubtasks       Subtask[]           @relation("SubtaskOwner")
+  uploadedAttachments Attachment[]        @relation("AttachmentUploader")
+  reviewedMessages    Message[]           @relation("MessageReviewer")
+  reviewAuditLogs     ReviewAuditLog[]    @relation("ReviewAuditAuthor")
 
   @@index([organizationId])
   @@index([email])
@@ -669,23 +688,50 @@ model CollectedItem {
 // Board represents a period-based checklist (e.g., "January 2025 Book Close")
 // Boards group Jobs for accounting period workflows (Monday.com parity)
 model Board {
-  id             String      @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
-  name           String      // "January 2025 Book Close", "Year-End Close 2024"
+  name           String        // "January 2025 Book Close", "Year-End Close 2024"
   description    String?
-  status         BoardStatus @default(OPEN)
-  periodStart    DateTime?   // Optional period bounds
-  periodEnd      DateTime?
+  status         BoardStatus   @default(NOT_STARTED)
+  
+  // Ownership (nullable during migration, will become required after data backfill)
+  ownerId        String?       // Accountable user for this board
+  
+  // Time metadata - enables filtering, sorting, and future auto-creation
+  cadence        BoardCadence? // Type of time period (Monthly, Weekly, etc.)
+  periodStart    DateTime?     // Start of the time period
+  periodEnd      DateTime?     // End of the time period
+  
   createdById    String
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation("BoardCreator", fields: [createdById], references: [id])
-  jobs         Job[]
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner          User?               @relation("BoardOwner", fields: [ownerId], references: [id])
+  createdBy      User                @relation("BoardCreator", fields: [createdById], references: [id])
+  collaborators  BoardCollaborator[]
+  jobs           Job[]
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([ownerId])
+}
+
+// BoardCollaborator join table for team collaboration on Boards
+model BoardCollaborator {
+  id        String   @id @default(cuid())
+  boardId   String
+  userId    String
+  role      String   @default("collaborator") // Future: "viewer"
+  addedAt   DateTime @default(now())
+  addedBy   String   // User.id who added this collaborator
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId])
+  @@index([boardId])
 }
 
 // Subtask represents a checklist item within a Job (Monday.com subitem parity)

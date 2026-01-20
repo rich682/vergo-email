@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { BoardService } from "@/lib/services/board.service"
-import { BoardStatus } from "@prisma/client"
+import { BoardStatus, BoardCadence } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
+
+const VALID_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETE", "BLOCKED", "ARCHIVED", "OPEN", "CLOSED"]
+const VALID_CADENCES = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEAR_END", "AD_HOC"]
 
 /**
  * GET /api/boards/[id] - Get a single board with its jobs
@@ -45,6 +48,16 @@ export async function GET(
 
 /**
  * PATCH /api/boards/[id] - Update a board
+ * 
+ * Body:
+ * - name?: string
+ * - description?: string | null
+ * - status?: BoardStatus
+ * - ownerId?: string
+ * - cadence?: BoardCadence | null
+ * - periodStart?: ISO date string | null
+ * - periodEnd?: ISO date string | null
+ * - collaboratorIds?: string[]
  */
 export async function PATCH(
   request: NextRequest,
@@ -52,35 +65,52 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
     const boardId = params.id
     const body = await request.json()
 
-    const { name, description, status, periodStart, periodEnd } = body
+    const { name, description, status, ownerId, cadence, periodStart, periodEnd, collaboratorIds } = body
 
     // Validate status if provided
-    if (status && !["OPEN", "CLOSED", "ARCHIVED"].includes(status)) {
+    if (status && !VALID_STATUSES.includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status. Must be OPEN, CLOSED, or ARCHIVED" },
+        { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` },
         { status: 400 }
       )
     }
 
-    const board = await BoardService.update(boardId, organizationId, {
-      name: name?.trim(),
-      description: description !== undefined ? description?.trim() || null : undefined,
-      status: status as BoardStatus | undefined,
-      periodStart: periodStart !== undefined
-        ? periodStart ? new Date(periodStart) : null
-        : undefined,
-      periodEnd: periodEnd !== undefined
-        ? periodEnd ? new Date(periodEnd) : null
-        : undefined
-    })
+    // Validate cadence if provided
+    if (cadence && !VALID_CADENCES.includes(cadence)) {
+      return NextResponse.json(
+        { error: `Invalid cadence. Must be one of: ${VALID_CADENCES.join(", ")}` },
+        { status: 400 }
+      )
+    }
+
+    const board = await BoardService.update(
+      boardId, 
+      organizationId, 
+      {
+        name: name?.trim(),
+        description: description !== undefined ? description?.trim() || null : undefined,
+        status: status as BoardStatus | undefined,
+        ownerId,
+        cadence: cadence !== undefined ? cadence as BoardCadence | null : undefined,
+        periodStart: periodStart !== undefined
+          ? periodStart ? new Date(periodStart) : null
+          : undefined,
+        periodEnd: periodEnd !== undefined
+          ? periodEnd ? new Date(periodEnd) : null
+          : undefined,
+        collaboratorIds
+      },
+      userId
+    )
 
     return NextResponse.json({ board })
   } catch (error: any) {

@@ -1,48 +1,97 @@
 import { prisma } from "@/lib/prisma"
-import { Board, BoardStatus } from "@prisma/client"
+import { Board, BoardStatus, BoardCadence } from "@prisma/client"
 
 export interface CreateBoardData {
   organizationId: string
   name: string
   description?: string
+  ownerId: string           // Required: accountable user
+  cadence?: BoardCadence    // Type of time period
   periodStart?: Date
   periodEnd?: Date
   createdById: string
+  collaboratorIds?: string[] // Optional: team members to add
 }
 
 export interface UpdateBoardData {
   name?: string
   description?: string | null
   status?: BoardStatus
+  ownerId?: string
+  cadence?: BoardCadence | null
   periodStart?: Date | null
   periodEnd?: Date | null
+  collaboratorIds?: string[] // Replace all collaborators
 }
 
-export interface BoardWithCounts extends Board {
-  jobCount: number
-  createdBy: {
+interface BoardOwner {
+  id: string
+  name: string | null
+  email: string
+}
+
+interface BoardCollaboratorWithUser {
+  id: string
+  userId: string
+  role: string
+  user: {
     id: string
     name: string | null
     email: string
   }
 }
 
+export interface BoardWithCounts extends Board {
+  jobCount: number
+  createdBy: BoardOwner
+  owner: BoardOwner | null
+  collaborators: BoardCollaboratorWithUser[]
+}
+
 export class BoardService {
   /**
    * Create a new board
    */
-  static async create(data: CreateBoardData): Promise<Board> {
-    return prisma.board.create({
+  static async create(data: CreateBoardData): Promise<BoardWithCounts> {
+    const board = await prisma.board.create({
       data: {
         organizationId: data.organizationId,
         name: data.name,
         description: data.description,
+        ownerId: data.ownerId,
+        cadence: data.cadence,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
         createdById: data.createdById,
-        status: "OPEN"
+        status: "NOT_STARTED",
+        // Add collaborators if provided
+        collaborators: data.collaboratorIds?.length ? {
+          create: data.collaboratorIds.map(userId => ({
+            userId,
+            addedBy: data.createdById
+          }))
+        } : undefined
+      },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        _count: { select: { jobs: true } }
       }
     })
+
+    return {
+      ...board,
+      jobCount: board._count.jobs,
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
+    }
   }
 
   /**
@@ -52,6 +101,9 @@ export class BoardService {
     organizationId: string,
     options?: {
       status?: BoardStatus | BoardStatus[]
+      cadence?: BoardCadence | BoardCadence[]
+      ownerId?: string
+      year?: number // Filter by periodStart year
       includeJobCount?: boolean
     }
   ): Promise<BoardWithCounts[]> {
@@ -63,22 +115,38 @@ export class BoardService {
         : options.status
     }
 
+    if (options?.cadence) {
+      where.cadence = Array.isArray(options.cadence)
+        ? { in: options.cadence }
+        : options.cadence
+    }
+
+    if (options?.ownerId) {
+      where.ownerId = options.ownerId
+    }
+
+    if (options?.year) {
+      where.periodStart = {
+        gte: new Date(options.year, 0, 1),
+        lt: new Date(options.year + 1, 0, 1)
+      }
+    }
+
     const boards = await prisma.board.findMany({
       where,
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
         },
         _count: options?.includeJobCount
           ? { select: { jobs: true } }
           : undefined
       },
       orderBy: [
-        { status: "asc" }, // OPEN first, then CLOSED, then ARCHIVED
+        { status: "asc" },
+        { periodStart: "desc" },
         { createdAt: "desc" }
       ]
     })
@@ -86,7 +154,12 @@ export class BoardService {
     return boards.map(board => ({
       ...board,
       jobCount: (board as any)._count?.jobs ?? 0,
-      createdBy: board.createdBy
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
     }))
   }
 
@@ -100,16 +173,12 @@ export class BoardService {
     const board = await prisma.board.findFirst({
       where: { id, organizationId },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
         },
-        _count: {
-          select: { jobs: true }
-        }
+        _count: { select: { jobs: true } }
       }
     })
 
@@ -118,7 +187,12 @@ export class BoardService {
     return {
       ...board,
       jobCount: board._count.jobs,
-      createdBy: board.createdBy
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
     }
   }
 
@@ -132,28 +206,15 @@ export class BoardService {
     const board = await prisma.board.findFirst({
       where: { id, organizationId },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
         },
         jobs: {
           include: {
-            owner: {
-              select: {
-                id: true,
-                name: true,
-                email: true
-              }
-            },
-            _count: {
-              select: {
-                tasks: true,
-                subtasks: true
-              }
-            }
+            owner: { select: { id: true, name: true, email: true } },
+            _count: { select: { tasks: true, subtasks: true } }
           },
           orderBy: [
             { sortOrder: "asc" },
@@ -168,7 +229,12 @@ export class BoardService {
     return {
       ...board,
       jobCount: board.jobs.length,
-      createdBy: board.createdBy
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
     }
   }
 
@@ -178,8 +244,9 @@ export class BoardService {
   static async update(
     id: string,
     organizationId: string,
-    data: UpdateBoardData
-  ): Promise<Board> {
+    data: UpdateBoardData,
+    updatedById?: string
+  ): Promise<BoardWithCounts> {
     // Verify board exists and belongs to organization
     const existing = await prisma.board.findFirst({
       where: { id, organizationId }
@@ -189,22 +256,62 @@ export class BoardService {
       throw new Error("Board not found")
     }
 
-    return prisma.board.update({
+    // Handle collaborator updates separately if provided
+    if (data.collaboratorIds !== undefined && updatedById) {
+      // Delete existing collaborators
+      await prisma.boardCollaborator.deleteMany({
+        where: { boardId: id }
+      })
+      
+      // Add new collaborators
+      if (data.collaboratorIds.length > 0) {
+        await prisma.boardCollaborator.createMany({
+          data: data.collaboratorIds.map(userId => ({
+            boardId: id,
+            userId,
+            addedBy: updatedById
+          }))
+        })
+      }
+    }
+
+    const board = await prisma.board.update({
       where: { id },
       data: {
         name: data.name,
         description: data.description,
         status: data.status,
+        ownerId: data.ownerId,
+        cadence: data.cadence,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd
+      },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        _count: { select: { jobs: true } }
       }
     })
+
+    return {
+      ...board,
+      jobCount: board._count.jobs,
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
+    }
   }
 
   /**
    * Archive a board (soft delete)
    */
-  static async archive(id: string, organizationId: string): Promise<Board> {
+  static async archive(id: string, organizationId: string): Promise<BoardWithCounts> {
     return this.update(id, organizationId, { status: "ARCHIVED" })
   }
 
@@ -252,12 +359,18 @@ export class BoardService {
     sourceBoardId: string,
     organizationId: string,
     newName: string,
-    createdById: string
-  ): Promise<Board> {
-    // Get the source board with all jobs and subtasks
+    createdById: string,
+    options?: {
+      newOwnerId?: string
+      newPeriodStart?: Date
+      newPeriodEnd?: Date
+    }
+  ): Promise<BoardWithCounts> {
+    // Get the source board with all jobs, subtasks, and collaborators
     const sourceBoard = await prisma.board.findFirst({
       where: { id: sourceBoardId, organizationId },
       include: {
+        collaborators: true,
         jobs: {
           include: {
             subtasks: true
@@ -276,10 +389,28 @@ export class BoardService {
         organizationId,
         name: newName,
         description: sourceBoard.description,
-        periodStart: sourceBoard.periodStart,
-        periodEnd: sourceBoard.periodEnd,
+        ownerId: options?.newOwnerId || sourceBoard.ownerId || createdById,
+        cadence: sourceBoard.cadence,
+        periodStart: options?.newPeriodStart || sourceBoard.periodStart,
+        periodEnd: options?.newPeriodEnd || sourceBoard.periodEnd,
         createdById,
-        status: "OPEN"
+        status: "NOT_STARTED",
+        // Copy collaborators from source board
+        collaborators: sourceBoard.collaborators.length > 0 ? {
+          create: sourceBoard.collaborators.map(c => ({
+            userId: c.userId,
+            role: c.role,
+            addedBy: createdById
+          }))
+        } : undefined
+      },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        _count: { select: { jobs: true } }
       }
     })
 
@@ -316,6 +447,15 @@ export class BoardService {
       }
     }
 
-    return newBoard
+    return {
+      ...newBoard,
+      jobCount: newBoard._count.jobs,
+      collaborators: newBoard.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
+    }
   }
 }

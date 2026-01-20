@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { BoardService } from "@/lib/services/board.service"
-import { BoardStatus } from "@prisma/client"
+import { BoardStatus, BoardCadence } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
 
 /**
  * GET /api/boards - List all boards for the organization
+ * 
+ * Query params:
+ * - status: BoardStatus or comma-separated list
+ * - cadence: BoardCadence or comma-separated list
+ * - ownerId: Filter by owner
+ * - year: Filter by periodStart year
  */
 export async function GET(request: NextRequest) {
   try {
@@ -30,8 +36,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Parse cadence filter
+    const cadenceParam = searchParams.get("cadence")
+    let cadence: BoardCadence | BoardCadence[] | undefined
+    if (cadenceParam) {
+      if (cadenceParam.includes(",")) {
+        cadence = cadenceParam.split(",") as BoardCadence[]
+      } else {
+        cadence = cadenceParam as BoardCadence
+      }
+    }
+
+    // Parse owner filter
+    const ownerId = searchParams.get("ownerId") || undefined
+
+    // Parse year filter
+    const yearParam = searchParams.get("year")
+    const year = yearParam ? parseInt(yearParam, 10) : undefined
+
     const boards = await BoardService.getByOrganizationId(organizationId, {
       status,
+      cadence,
+      ownerId,
+      year,
       includeJobCount: true
     })
 
@@ -47,6 +74,16 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/boards - Create a new board (or duplicate an existing one)
+ * 
+ * Body:
+ * - name: string (required)
+ * - description?: string
+ * - ownerId?: string (defaults to current user)
+ * - cadence?: BoardCadence
+ * - periodStart?: ISO date string
+ * - periodEnd?: ISO date string
+ * - collaboratorIds?: string[]
+ * - duplicateFromId?: string (if duplicating)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,11 +96,29 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const body = await request.json()
 
-    const { name, description, periodStart, periodEnd, duplicateFromId } = body
+    const { 
+      name, 
+      description, 
+      ownerId,
+      cadence,
+      periodStart, 
+      periodEnd, 
+      collaboratorIds,
+      duplicateFromId 
+    } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
         { error: "Board name is required" },
+        { status: 400 }
+      )
+    }
+
+    // Validate cadence if provided
+    const validCadences = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEAR_END", "AD_HOC"]
+    if (cadence && !validCadences.includes(cadence)) {
+      return NextResponse.json(
+        { error: `Invalid cadence. Must be one of: ${validCadences.join(", ")}` },
         { status: 400 }
       )
     }
@@ -76,7 +131,12 @@ export async function POST(request: NextRequest) {
         duplicateFromId,
         organizationId,
         name.trim(),
-        userId
+        userId,
+        {
+          newOwnerId: ownerId,
+          newPeriodStart: periodStart ? new Date(periodStart) : undefined,
+          newPeriodEnd: periodEnd ? new Date(periodEnd) : undefined
+        }
       )
     } else {
       // Create a new board
@@ -84,9 +144,12 @@ export async function POST(request: NextRequest) {
         organizationId,
         name: name.trim(),
         description: description?.trim() || undefined,
+        ownerId: ownerId || userId, // Default to current user
+        cadence: cadence as BoardCadence | undefined,
         periodStart: periodStart ? new Date(periodStart) : undefined,
         periodEnd: periodEnd ? new Date(periodEnd) : undefined,
-        createdById: userId
+        createdById: userId,
+        collaboratorIds
       })
     }
 
