@@ -70,16 +70,6 @@ function SettingsIcon({ className }: { className?: string }) {
   )
 }
 
-function BoardIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="3" y1="9" x2="21" y2="9" />
-      <line x1="9" y1="21" x2="9" y2="9" />
-    </svg>
-  )
-}
-
 function DocumentIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -127,18 +117,14 @@ const settingsNavItems: NavItem[] = [
 ]
 
 export function Sidebar({ className = "", userRole }: SidebarProps) {
-  const [tasksExpanded, setTasksExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(true)
   
   // Check if user is admin
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
 
-  // Check if we're on the tasks page
-  const isOnTasksPage = pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
-  
-  // Check if we're on the boards page
-  const isOnBoardsPage = pathname === "/dashboard/boards"
+  // Check if we're on the tasks/boards page
+  const isOnTasksPage = pathname === "/dashboard/boards" || pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
   
   // Check if we're on the collection page
   const isOnCollectionPage = pathname === "/dashboard/collection" || pathname.startsWith("/dashboard/collection/")
@@ -153,7 +139,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
     >
       {/* Logo */}
       <div className="h-20 flex items-center px-5">
-        <Link href="/dashboard/jobs" className="flex items-center">
+        <Link href="/dashboard/boards" className="flex items-center">
           <img 
             src="/logo.svg" 
             alt="Vergo" 
@@ -166,15 +152,14 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
       <nav className="flex-1 pt-4 overflow-y-auto flex flex-col">
         {/* Core Workflow Section */}
         <ul className="space-y-1">
-          {/* Tasks Section - Expandable */}
+          {/* Tasks - Direct link to Boards */}
           <li>
-            {/* Tasks Header */}
-            <button
-              onClick={() => setTasksExpanded(!tasksExpanded)}
+            <Link
+              href="/dashboard/boards"
               className={`
-                w-full flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
                 transition-all duration-150
-                ${isOnTasksPage || isOnBoardsPage
+                ${isOnTasksPage
                   ? "bg-gray-100 text-gray-900" 
                   : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                 }
@@ -185,35 +170,7 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
               <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
                 {UI_LABELS.jobsNavLabel}
               </span>
-              {tasksExpanded ? (
-                <ChevronDown className="w-4 h-4 text-gray-400" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              )}
-            </button>
-
-            {/* Tasks Sub-items */}
-            {tasksExpanded && (
-              <ul className="mt-1 ml-6 space-y-0.5">
-                {/* Boards */}
-                <li>
-                  <Link
-                    href="/dashboard/boards"
-                    className={`
-                      flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm
-                      transition-all duration-150
-                      ${isOnBoardsPage
-                        ? "bg-blue-50 text-blue-700 font-medium" 
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
-                      }
-                    `}
-                  >
-                    <BoardIcon className="w-4 h-4 flex-shrink-0" />
-                    <span>Boards</span>
-                  </Link>
-                </li>
-              </ul>
-            )}
+            </Link>
           </li>
 
           {/* Core Nav Items (Requests) */}
