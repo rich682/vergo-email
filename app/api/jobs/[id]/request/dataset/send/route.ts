@@ -194,9 +194,11 @@ export async function POST(
         const recipientName = dataJson.first_name || dataJson.name || dataJson.full_name || undefined
 
         // Send email with jobId to link task directly to Item
+        // Pass userId so email is sent from the logged-in user's connected inbox
         const sendResult = await EmailSendingService.sendEmail({
           organizationId,
-          jobId,  // Link task directly to Item
+          userId,  // Send from the logged-in user's inbox
+          jobId,   // Link task directly to Item
           to: recipient.recipientEmail,
           toName: recipientName,
           subject: subjectResult.rendered,

@@ -169,8 +169,10 @@ export async function GET(request: Request) {
     const expiresInMs = tokenData.expires_in ? Number(tokenData.expires_in) * 1000 : 3600 * 1000
 
     // Create connection in ConnectedEmailAccount (used by email sync)
+    // Associate with the logged-in user so they can send from their own inbox
     const connectedAccount = await EmailConnectionService.createMicrosoftConnection({
       organizationId,
+      userId: session.user.id,  // Associate account with the connecting user
       email,
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,

@@ -74,8 +74,10 @@ export async function GET(request: Request) {
     }
 
     // Create connection in ConnectedEmailAccount (used by email sync)
+    // Associate with the logged-in user so they can send from their own inbox
     const connectedAccount = await EmailConnectionService.createGmailConnection({
       organizationId,
+      userId: session.user.id,  // Associate account with the connecting user
       email: userInfo.data.email,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,

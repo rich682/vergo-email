@@ -7,6 +7,7 @@ import { OAuth2Client } from "google-auth-library"
 export class EmailConnectionService {
   static async createGmailConnection(data: {
     organizationId: string
+    userId?: string  // User who connected this account
     email: string
     accessToken: string
     refreshToken: string
@@ -27,6 +28,7 @@ export class EmailConnectionService {
     return prisma.connectedEmailAccount.create({
       data: {
         organizationId: data.organizationId,
+        userId: data.userId || null,  // Associate with the connecting user
         email: data.email,
         provider: "GMAIL",
         accessToken: encryptedAccessToken,
@@ -40,6 +42,7 @@ export class EmailConnectionService {
 
   static async createMicrosoftConnection(data: {
     organizationId: string
+    userId?: string  // User who connected this account
     email: string
     accessToken: string
     refreshToken: string
@@ -60,6 +63,7 @@ export class EmailConnectionService {
     return prisma.connectedEmailAccount.create({
       data: {
         organizationId: data.organizationId,
+        userId: data.userId || null,  // Associate with the connecting user
         email: data.email,
         provider: "MICROSOFT",
         accessToken: encryptedAccessToken,
@@ -133,6 +137,51 @@ export class EmailConnectionService {
       where: { organizationId, isActive: true },
       orderBy: [{ createdAt: "asc" }]
     })
+  }
+
+  /**
+   * Get the email account owned by a specific user.
+   * If user has no account, returns null.
+   */
+  static async getByUserId(
+    userId: string,
+    organizationId: string
+  ): Promise<ConnectedEmailAccount | null> {
+    return prisma.connectedEmailAccount.findFirst({
+      where: {
+        userId,
+        organizationId,
+        isActive: true
+      },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }]
+    })
+  }
+
+  /**
+   * Get the best email account for a user to send from.
+   * Priority:
+   * 1. User's own connected account
+   * 2. Organization's primary account (fallback for legacy)
+   * 3. Any active organization account
+   */
+  static async getAccountForUser(
+    userId: string,
+    organizationId: string
+  ): Promise<ConnectedEmailAccount | null> {
+    // First, try to get user's own account
+    const userAccount = await this.getByUserId(userId, organizationId)
+    if (userAccount) {
+      return userAccount
+    }
+
+    // Fallback to organization's primary account (for backward compatibility)
+    const primaryAccount = await this.getPrimaryAccount(organizationId)
+    if (primaryAccount) {
+      return primaryAccount
+    }
+
+    // Last resort: any active account
+    return this.getFirstActive(organizationId)
   }
 
   static async updateTokens(
@@ -226,6 +275,31 @@ export class EmailConnectionService {
   ): Promise<ConnectedEmailAccount[]> {
     return prisma.connectedEmailAccount.findMany({
       where: { organizationId },
+      orderBy: [
+        { isPrimary: "desc" },
+        { createdAt: "desc" }
+      ]
+    })
+  }
+
+  /**
+   * Get all email accounts for an organization with owner info.
+   * Includes the user who connected each account.
+   */
+  static async findByOrganizationWithOwner(
+    organizationId: string
+  ): Promise<Array<ConnectedEmailAccount & { user: { id: string; name: string | null; email: string } | null }>> {
+    return prisma.connectedEmailAccount.findMany({
+      where: { organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
       orderBy: [
         { isPrimary: "desc" },
         { createdAt: "desc" }

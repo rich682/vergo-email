@@ -485,11 +485,15 @@ function SettingsContent() {
                   {accounts.map((account) => (
                     <div
                       key={account.id}
-                      className="flex justify-between items-center p-4 border border-gray-200 rounded-lg"
+                      className={`flex justify-between items-center p-4 border rounded-lg ${
+                        account.isOwn ? 'border-orange-200 bg-orange-50/30' : 'border-gray-200'
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                          <Mail className="w-5 h-5 text-gray-500" />
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          account.isOwn ? 'bg-orange-100' : 'bg-gray-100'
+                        }`}>
+                          <Mail className={`w-5 h-5 ${account.isOwn ? 'text-orange-500' : 'text-gray-500'}`} />
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{account.email}</p>
@@ -501,6 +505,16 @@ function SettingsContent() {
                                 Active
                               </span>
                             )}
+                            {/* Show ownership info */}
+                            {account.isOwn ? (
+                              <span className="text-orange-600 font-medium">Your inbox</span>
+                            ) : account.owner ? (
+                              <span className="text-gray-500">
+                                {account.owner.name || account.owner.email}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">Shared (legacy)</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -508,6 +522,11 @@ function SettingsContent() {
                         {account.isPrimary && (
                           <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
                             Primary
+                          </span>
+                        )}
+                        {account.isOwn && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
+                            Sends as you
                           </span>
                         )}
                         <button

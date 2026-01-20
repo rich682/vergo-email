@@ -258,7 +258,8 @@ export class EmailSendingService {
 
   static async sendEmail(data: {
     organizationId: string
-    jobId?: string | null  // Parent Job/Item for request-level association
+    userId?: string         // User sending the email (for auto-selecting their account)
+    jobId?: string | null   // Parent Job/Item for request-level association
     to: string
     toName?: string
     subject: string
@@ -266,7 +267,7 @@ export class EmailSendingService {
     htmlBody?: string
     campaignName?: string
     campaignType?: string
-    accountId?: string
+    accountId?: string      // Explicit account to use (overrides user's account)
     deadlineDate?: Date | null
     skipRateLimit?: boolean  // Allow bypassing rate limit for reminders
     remindersConfig?: {
@@ -339,9 +340,11 @@ export class EmailSendingService {
     }
 
     // Resolve email account for sending
+    // Priority: explicit accountId > user's own account > org primary > any active
     let account: ConnectedEmailAccount | null = null
 
     if (data.accountId) {
+      // Explicit account ID provided - use that
       account = await EmailConnectionService.getById(data.accountId, data.organizationId)
       if (!account) {
         const { prisma } = await import("@/lib/prisma")
@@ -353,10 +356,14 @@ export class EmailSendingService {
           }
         })
       }
+    } else if (data.userId) {
+      // User ID provided - try to use their connected account
+      account = await EmailConnectionService.getAccountForUser(data.userId, data.organizationId)
     } else {
-      account = await EmailConnectionService.getFirstActive(data.organizationId)
+      // Fallback: org's primary or first active account
+      account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
       if (!account) {
-        account = await EmailConnectionService.getPrimaryAccount(data.organizationId)
+        account = await EmailConnectionService.getFirstActive(data.organizationId)
       }
     }
 
@@ -609,7 +616,8 @@ export class EmailSendingService {
 
   static async sendBulkEmail(data: {
     organizationId: string
-    jobId?: string | null  // Parent Job/Item for request-level association
+    userId?: string          // User sending the email (for auto-selecting their account)
+    jobId?: string | null    // Parent Job/Item for request-level association
     recipients: Array<{ email: string; name?: string }>
     subject: string
     body: string
@@ -654,6 +662,7 @@ export class EmailSendingService {
 
         const result = await this.sendEmail({
           organizationId: data.organizationId,
+          userId: data.userId,  // Pass userId for account selection
           jobId: data.jobId,
           to: recipient.email,
           toName: recipient.name,

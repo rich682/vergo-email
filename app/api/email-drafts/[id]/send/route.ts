@@ -455,8 +455,10 @@ export async function POST(
 
     // Send emails with per-recipient rendering
     // Pass jobId to link tasks directly to Item (if draft has one)
+    // Pass userId so emails are sent from the logged-in user's connected inbox
     const results = await EmailSendingService.sendBulkEmail({
       organizationId: orgId,
+      userId: session.user.id,  // Send from the logged-in user's inbox
       jobId: draft.jobId || undefined,  // Link tasks directly to Item
       recipients: renderedEmails.map(e => ({ email: e.email, name: e.name })),
       subject: subjectTemplate, // Will be overridden per-recipient if personalization

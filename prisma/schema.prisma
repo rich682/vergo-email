@@ -178,9 +178,10 @@ model User {
   boardCollaborations BoardCollaborator[]
   ownedSubtasks       Subtask[]           @relation("SubtaskOwner")
   uploadedAttachments Attachment[]        @relation("AttachmentUploader")
-  reviewedMessages    Message[]           @relation("MessageReviewer")
-  reviewAuditLogs     ReviewAuditLog[]    @relation("ReviewAuditAuthor")
-  reconciliations     Reconciliation[]    @relation("ReconciliationCreator")
+  reviewedMessages       Message[]               @relation("MessageReviewer")
+  reviewAuditLogs        ReviewAuditLog[]        @relation("ReviewAuditAuthor")
+  reconciliations        Reconciliation[]        @relation("ReconciliationCreator")
+  connectedEmailAccounts ConnectedEmailAccount[]
 
   @@index([organizationId])
   @@index([email])
@@ -513,6 +514,7 @@ model AgentSchedule {
 model ConnectedEmailAccount {
   id             String        @id @default(cuid())
   organizationId String
+  userId         String?       // User who connected this account (null = legacy/shared)
   email          String
   provider       EmailProvider
   accessToken    String? // Encrypted
@@ -531,10 +533,13 @@ model ConnectedEmailAccount {
   updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([userId])
   @@index([email])
   @@index([organizationId, isPrimary])
+  @@index([organizationId, userId])
 }
 
 model AutomationRule {
