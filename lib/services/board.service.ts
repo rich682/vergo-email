@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { Board, BoardStatus, BoardCadence } from "@prisma/client"
-import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear } from "date-fns"
+import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 
 /**
  * Derive periodEnd from periodStart based on cadence type.
@@ -97,6 +97,123 @@ export function normalizePeriodStart(
   }
 }
 
+/**
+ * Calculate the next period start date based on cadence.
+ * 
+ * Rules:
+ * - DAILY: next day (or next Monday if skipWeekends and result is weekend)
+ * - WEEKLY: Monday of next week
+ * - MONTHLY: 1st of next month
+ * - QUARTERLY: 1st of next quarter
+ * - YEAR_END: Jan 1 of next year (or fiscal year start if provided)
+ * - AD_HOC: null (no next period)
+ */
+export function calculateNextPeriodStart(
+  cadence: BoardCadence | null | undefined,
+  currentPeriodStart: Date | null | undefined,
+  options?: {
+    skipWeekends?: boolean
+    fiscalYearStartMonth?: number // 1-12
+  }
+): Date | null {
+  if (!cadence || !currentPeriodStart || cadence === "AD_HOC") return null
+
+  const skipWeekends = options?.skipWeekends ?? true
+  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
+
+  switch (cadence) {
+    case "DAILY": {
+      let nextDate = addDays(currentPeriodStart, 1)
+      // Skip weekends if configured
+      if (skipWeekends && isWeekend(nextDate)) {
+        nextDate = nextMonday(nextDate)
+      }
+      return nextDate
+    }
+
+    case "WEEKLY":
+      // Monday of next week
+      return addWeeks(startOfWeek(currentPeriodStart, { weekStartsOn: 1 }), 1)
+
+    case "MONTHLY":
+      // 1st of next month
+      return addMonths(new Date(currentPeriodStart.getFullYear(), currentPeriodStart.getMonth(), 1), 1)
+
+    case "QUARTERLY": {
+      // 1st of next quarter
+      const quarterMonth = Math.floor(currentPeriodStart.getMonth() / 3) * 3
+      const currentQuarterStart = new Date(currentPeriodStart.getFullYear(), quarterMonth, 1)
+      return addMonths(currentQuarterStart, 3)
+    }
+
+    case "YEAR_END": {
+      // Start of next fiscal year
+      const currentYear = currentPeriodStart.getFullYear()
+      // If fiscal year starts in January, just go to next calendar year
+      if (fiscalYearStartMonth === 1) {
+        return new Date(currentYear + 1, 0, 1)
+      }
+      // Otherwise, calculate next fiscal year start
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      if (currentPeriodStart.getMonth() >= fiscalMonthIndex) {
+        // Current period is in or after fiscal year start month, go to next year
+        return new Date(currentYear + 1, fiscalMonthIndex, 1)
+      } else {
+        // Current period is before fiscal year start month (same calendar year)
+        return new Date(currentYear, fiscalMonthIndex, 1)
+      }
+    }
+
+    default:
+      return null
+  }
+}
+
+/**
+ * Generate a board name for a given period.
+ */
+export function generatePeriodBoardName(
+  cadence: BoardCadence,
+  periodStart: Date,
+  options?: {
+    fiscalYearStartMonth?: number
+  }
+): string {
+  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
+
+  switch (cadence) {
+    case "DAILY":
+      return format(periodStart, "MMM d, yyyy")
+
+    case "WEEKLY":
+      return `Week of ${format(periodStart, "MMM d, yyyy")}`
+
+    case "MONTHLY":
+      return format(periodStart, "MMMM yyyy")
+
+    case "QUARTERLY": {
+      const quarterIndex = Math.floor(periodStart.getMonth() / 3)
+      // Adjust quarter number based on fiscal year
+      let fiscalQuarter = quarterIndex + 1
+      if (fiscalYearStartMonth !== 1) {
+        const fiscalMonthIndex = fiscalYearStartMonth - 1
+        const monthsFromFiscalStart = (periodStart.getMonth() - fiscalMonthIndex + 12) % 12
+        fiscalQuarter = Math.floor(monthsFromFiscalStart / 3) + 1
+      }
+      return `Q${fiscalQuarter} ${periodStart.getFullYear()}`
+    }
+
+    case "YEAR_END":
+      return `Year-End ${periodStart.getFullYear()}`
+
+    case "AD_HOC":
+      return "Ad Hoc Board"
+
+    default:
+      return "New Board"
+  }
+}
+
 export interface CreateBoardData {
   organizationId: string
   name: string
@@ -107,6 +224,7 @@ export interface CreateBoardData {
   periodEnd?: Date
   createdById: string
   collaboratorIds?: string[] // Optional: team members to add
+  automationEnabled?: boolean // Auto-create next board when complete
 }
 
 export interface UpdateBoardData {
@@ -162,6 +280,7 @@ export class BoardService {
         periodEnd: data.periodEnd,
         createdById: data.createdById,
         status: "NOT_STARTED",
+        automationEnabled: data.automationEnabled ?? false,
         // Add collaborators if provided
         collaborators: data.collaboratorIds?.length ? {
           create: data.collaboratorIds.map(userId => ({
@@ -546,6 +665,119 @@ export class BoardService {
         })
       }
     }
+
+    return {
+      ...newBoard,
+      jobCount: newBoard._count.jobs,
+      collaborators: newBoard.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      }))
+    }
+  }
+
+  /**
+   * Create the next period's board when a board is marked complete.
+   * Only creates if automationEnabled is true and cadence is not AD_HOC.
+   * 
+   * @param completedBoardId - ID of the board that was just completed
+   * @param organizationId - Organization ID for scoping
+   * @param createdById - User ID who triggered the completion
+   * @returns The new board if created, null if automation is disabled or not applicable
+   */
+  static async createNextPeriodBoard(
+    completedBoardId: string,
+    organizationId: string,
+    createdById: string
+  ): Promise<BoardWithCounts | null> {
+    // Fetch the completed board with collaborators
+    const completedBoard = await prisma.board.findFirst({
+      where: { id: completedBoardId, organizationId },
+      include: {
+        collaborators: true,
+        organization: {
+          select: { fiscalYearStartMonth: true }
+        }
+      }
+    })
+
+    if (!completedBoard) {
+      throw new Error("Board not found")
+    }
+
+    // Check if automation should run
+    if (!completedBoard.automationEnabled) {
+      return null // Automation is disabled for this board
+    }
+
+    if (completedBoard.cadence === "AD_HOC" || !completedBoard.cadence) {
+      return null // AD_HOC boards never auto-create
+    }
+
+    // Calculate next period start
+    // If no periodStart exists, use today as the reference
+    const referenceDate = completedBoard.periodStart || new Date()
+    const fiscalYearStartMonth = completedBoard.organization?.fiscalYearStartMonth ?? 1
+
+    const nextPeriodStart = calculateNextPeriodStart(
+      completedBoard.cadence,
+      referenceDate,
+      {
+        skipWeekends: completedBoard.skipWeekends,
+        fiscalYearStartMonth
+      }
+    )
+
+    if (!nextPeriodStart) {
+      return null // Could not calculate next period
+    }
+
+    // Derive period end
+    const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart)
+
+    // Generate board name
+    const boardName = generatePeriodBoardName(
+      completedBoard.cadence,
+      nextPeriodStart,
+      { fiscalYearStartMonth }
+    )
+
+    // Create the new board
+    const newBoard = await prisma.board.create({
+      data: {
+        organizationId,
+        name: boardName,
+        description: completedBoard.description,
+        ownerId: completedBoard.ownerId || createdById,
+        cadence: completedBoard.cadence,
+        periodStart: nextPeriodStart,
+        periodEnd: nextPeriodEnd,
+        createdById,
+        status: "NOT_STARTED",
+        automationEnabled: completedBoard.automationEnabled,
+        skipWeekends: completedBoard.skipWeekends,
+        // Copy collaborators from completed board
+        collaborators: completedBoard.collaborators.length > 0 ? {
+          create: completedBoard.collaborators.map(c => ({
+            userId: c.userId,
+            role: c.role,
+            addedBy: createdById
+          }))
+        } : undefined
+      },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        _count: { select: { jobs: true } }
+      }
+    })
+
+    // Note: Tasks are NOT copied (future feature - "Copy tasks forward")
 
     return {
       ...newBoard,

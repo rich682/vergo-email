@@ -52,12 +52,18 @@ export async function GET(
  * Body:
  * - name?: string
  * - description?: string | null
- * - status?: BoardStatus
+ * - status?: BoardStatus (if changed to COMPLETE, may trigger auto-creation of next board)
  * - ownerId?: string
  * - cadence?: BoardCadence | null
  * - periodStart?: ISO date string | null
  * - periodEnd?: ISO date string | null (optional - derived server-side if cadence provided)
  * - collaboratorIds?: string[]
+ * - automationEnabled?: boolean
+ * - skipWeekends?: boolean
+ * 
+ * Response:
+ * - board: The updated board
+ * - nextBoard?: The auto-created next period board (if status changed to COMPLETE and automation enabled)
  */
 export async function PATCH(
   request: NextRequest,
@@ -128,6 +134,16 @@ export async function PATCH(
       finalPeriodEnd = periodEnd ? new Date(periodEnd) : null
     }
 
+    // Check if we need to trigger auto-creation (status changing to COMPLETE)
+    let shouldTriggerAutomation = false
+    if (status === "COMPLETE") {
+      // Get current board to check if this is actually a status change
+      const currentBoard = await BoardService.getById(boardId, organizationId)
+      if (currentBoard && currentBoard.status !== "COMPLETE") {
+        shouldTriggerAutomation = true
+      }
+    }
+
     const board = await BoardService.update(
       boardId, 
       organizationId, 
@@ -146,7 +162,22 @@ export async function PATCH(
       userId
     )
 
-    return NextResponse.json({ board })
+    // Trigger auto-creation of next period board if applicable
+    let nextBoard = null
+    if (shouldTriggerAutomation) {
+      try {
+        nextBoard = await BoardService.createNextPeriodBoard(
+          boardId,
+          organizationId,
+          userId
+        )
+      } catch (autoCreateError: any) {
+        // Log but don't fail the request - the board was still updated successfully
+        console.error("[API/boards/[id]] Error auto-creating next board:", autoCreateError)
+      }
+    }
+
+    return NextResponse.json({ board, nextBoard })
   } catch (error: any) {
     console.error("[API/boards/[id]] Error updating board:", error)
     

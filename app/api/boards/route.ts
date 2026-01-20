@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
  * - periodStart?: ISO date string
  * - periodEnd?: ISO date string (optional - derived server-side if not provided)
  * - collaboratorIds?: string[]
+ * - automationEnabled?: boolean (defaults to true for non-AD_HOC, false for AD_HOC)
  * - duplicateFromId?: string (if duplicating)
  */
 export async function POST(request: NextRequest) {
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
       periodStart, 
       periodEnd, 
       collaboratorIds,
+      automationEnabled,
       duplicateFromId 
     } = body
 
@@ -149,6 +151,12 @@ export async function POST(request: NextRequest) {
         }
       )
     } else {
+      // Determine automationEnabled default based on cadence
+      // AD_HOC boards never have automation, others default to true
+      const finalAutomationEnabled = cadence === "AD_HOC" 
+        ? false 
+        : (automationEnabled !== undefined ? automationEnabled : true)
+
       // Create a new board
       board = await BoardService.create({
         organizationId,
@@ -159,7 +167,8 @@ export async function POST(request: NextRequest) {
         periodStart: normalizedStart || undefined,
         periodEnd: finalPeriodEnd || undefined,
         createdById: userId,
-        collaboratorIds
+        collaboratorIds,
+        automationEnabled: finalAutomationEnabled
       })
     }
 

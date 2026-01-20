@@ -521,6 +521,15 @@ export function EditBoardModal({
                     />
                   </div>
                 )}
+
+                {/* Copy tasks forward - Coming soon */}
+                <div className="flex items-center justify-between opacity-50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Copy tasks forward</p>
+                    <p className="text-xs text-gray-500">Duplicate tasks to the next board automatically</p>
+                  </div>
+                  <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded">Coming soon</span>
+                </div>
               </div>
             </div>
           </div>

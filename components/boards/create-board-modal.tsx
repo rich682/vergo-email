@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users } from "lucide-react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,6 +34,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
@@ -80,6 +81,7 @@ export function CreateBoardModal({
   const [name, setName] = useState("")
   const [ownerId, setOwnerId] = useState<string | null>(null)
   const [collaboratorIds, setCollaboratorIds] = useState<string[]>([])
+  const [autoCreateNextBoard, setAutoCreateNextBoard] = useState(true)
   
   // UI state
   const [loading, setLoading] = useState(false)
@@ -146,6 +148,9 @@ export function CreateBoardModal({
     setLoading(true)
 
     try {
+      // For AD_HOC boards, automation is always disabled
+      const automationEnabled = cadence !== "AD_HOC" ? autoCreateNextBoard : false
+
       const response = await fetch("/api/boards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,7 +158,8 @@ export function CreateBoardModal({
           name: name.trim(),
           cadence,
           ownerId: ownerId || undefined,
-          collaboratorIds: collaboratorIds.length > 0 ? collaboratorIds : undefined
+          collaboratorIds: collaboratorIds.length > 0 ? collaboratorIds : undefined,
+          automationEnabled
         })
       })
 
@@ -181,6 +187,7 @@ export function CreateBoardModal({
     setName("")
     setOwnerId(currentUserId)
     setCollaboratorIds([])
+    setAutoCreateNextBoard(true)
     setError(null)
   }
 
@@ -238,6 +245,40 @@ export function CreateBoardModal({
               </Select>
               <p className="text-xs text-gray-500">Used for filtering and automation</p>
             </div>
+
+            {/* Automation Section - shown after cadence is selected */}
+            {cadence && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                {cadence === "AD_HOC" ? (
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-gray-600">
+                      Ad hoc boards are one-off and do not repeat.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Zap className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-gray-600">
+                        This is a <span className="font-medium">{CADENCE_OPTIONS.find(o => o.value === cadence)?.label}</span> board. 
+                        Vergo will automatically create the next board when this one completes.
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between pl-6">
+                      <Label htmlFor="auto-create" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Auto-create next board
+                      </Label>
+                      <Switch
+                        id="auto-create"
+                        checked={autoCreateNextBoard}
+                        onCheckedChange={setAutoCreateNextBoard}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Owner */}
             <div className="grid gap-2">
