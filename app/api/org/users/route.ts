@@ -35,6 +35,13 @@ export async function GET(request: NextRequest) {
     const currentUserId = session.user.id
     const userRole = (session.user as any).role as UserRole
     const isAdmin = userRole === UserRole.ADMIN
+    
+    console.log("[GET /api/org/users] Session info:", {
+      currentUserId,
+      organizationId,
+      userRole,
+      isAdmin
+    })
 
     // Fetch users based on role
     // Admins: all users in org
@@ -72,6 +79,8 @@ export async function GET(request: NextRequest) {
     const usersWithStatus = users.map(user => {
       // Ensure string comparison for IDs
       const isCurrentUser = String(user.id) === String(currentUserId)
+      
+      console.log("[GET /api/org/users] Checking user:", user.id, "vs session:", currentUserId, "match:", isCurrentUser)
       
       return {
         id: user.id,
