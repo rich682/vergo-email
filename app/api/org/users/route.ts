@@ -69,22 +69,27 @@ export async function GET(request: NextRequest) {
     })
 
     // Map users with computed status and email account info
-    const usersWithStatus = users.map(user => ({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      // Status: "active" if they have a real password, "pending" otherwise
-      status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-      // Connected email account (primary or first one)
-      connectedEmail: user.connectedEmailAccounts[0] || null,
-      // All connected accounts (for admins who want to see multiple)
-      connectedEmailAccounts: user.connectedEmailAccounts,
-      // Is this the current user? (for UI to know if they can connect/disconnect)
-      isCurrentUser: user.id === currentUserId
-    }))
+    const usersWithStatus = users.map(user => {
+      // Ensure string comparison for IDs
+      const isCurrentUser = String(user.id) === String(currentUserId)
+      
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        // Status: "active" if they have a real password, "pending" otherwise
+        status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+        // Connected email account (primary or first one)
+        connectedEmail: user.connectedEmailAccounts[0] || null,
+        // All connected accounts (for admins who want to see multiple)
+        connectedEmailAccounts: user.connectedEmailAccounts,
+        // Is this the current user? (for UI to know if they can connect/disconnect)
+        isCurrentUser
+      }
+    })
 
     return NextResponse.json({
       success: true,

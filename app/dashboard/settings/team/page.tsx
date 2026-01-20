@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X, RefreshCw } from "lucide-react"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 
 interface ConnectedEmail {
@@ -106,8 +106,6 @@ function TeamSettingsContent() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   
-  // Admin sync tools state
-  const [syncing, setSyncing] = useState(false)
 
   // Handle OAuth callback messages
   useEffect(() => {
@@ -218,29 +216,6 @@ function TeamSettingsContent() {
     }
   }
 
-  // Admin: Sync all emails
-  const handleSyncEmails = async () => {
-    try {
-      setSyncing(true)
-      setMessage(null)
-      const res = await fetch("/api/admin/sync-emails", { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || "Sync failed")
-      }
-      setMessage({ 
-        type: "success", 
-        text: `Email sync complete! Found ${data.total?.messagesFetched || 0} messages, ${data.total?.repliesPersisted || 0} replies linked.` 
-      })
-      setTimeout(() => setMessage(null), 8000)
-      fetchTeamUsers() // Refresh to update lastSyncAt
-    } catch (err: any) {
-      setMessage({ type: "error", text: err?.message || "Sync failed" })
-      setTimeout(() => setMessage(null), 5000)
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const handleInviteUser = async () => {
     if (!inviteEmail.trim()) return
@@ -397,25 +372,8 @@ function TeamSettingsContent() {
             </p>
           )}
           
-          {/* Admin tools on left */}
-          {isAdmin && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSyncEmails}
-                disabled={syncing}
-                className="
-                  flex items-center gap-2 px-3 py-1.5
-                  border border-green-200 rounded-lg
-                  text-sm font-medium text-green-700
-                  hover:border-green-400 hover:bg-green-50
-                  transition-colors disabled:opacity-50
-                "
-              >
-                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync All Emails'}
-              </button>
-            </div>
-          )}
+          {/* Spacer for layout */}
+          <div />
           
           {/* Invite User Button - Admin only */}
           {isAdmin && (
