@@ -747,7 +747,7 @@ function BoardRow({
   router
 }: BoardRowProps) {
   return (
-    <div className="border rounded-lg overflow-hidden bg-white">
+    <div className="border rounded-lg bg-white">
       {/* Board Header Row */}
       <div 
         className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
