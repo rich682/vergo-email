@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { JobService } from "@/lib/services/job.service"
+import { BoardService } from "@/lib/services/board.service"
 import { JobStatus, UserRole } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
 
@@ -208,9 +209,25 @@ export async function PATCH(
       )
     }
 
+    // Sync board status if job has a board and status was changed
+    let boardStatusUpdate = null
+    if (job.boardId && status !== undefined) {
+      try {
+        boardStatusUpdate = await BoardService.syncBoardStatusFromJobs(job.boardId, organizationId)
+      } catch (err) {
+        // Log but don't fail the request - job was updated successfully
+        console.error("Error syncing board status:", err)
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      job
+      job,
+      boardStatusUpdate: boardStatusUpdate ? {
+        boardId: job.boardId,
+        newStatus: boardStatusUpdate.board.status,
+        previousStatus: boardStatusUpdate.previousStatus
+      } : null
     })
 
   } catch (error: any) {
@@ -279,6 +296,9 @@ export async function DELETE(
       )
     }
 
+    // Get boardId before delete for status sync
+    const boardId = existingJob.boardId
+
     const result = await JobService.delete(id, organizationId, { hard })
 
     if (!result.success) {
@@ -299,10 +319,26 @@ export async function DELETE(
       )
     }
 
+    // Sync board status after archive/delete
+    let boardStatusUpdate = null
+    if (boardId) {
+      try {
+        boardStatusUpdate = await BoardService.syncBoardStatusFromJobs(boardId, organizationId)
+      } catch (err) {
+        // Log but don't fail - job was deleted/archived successfully
+        console.error("Error syncing board status after job delete:", err)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: hard ? "Job permanently deleted" : "Job archived",
-      taskCount: result.taskCount
+      taskCount: result.taskCount,
+      boardStatusUpdate: boardStatusUpdate ? {
+        boardId,
+        newStatus: boardStatusUpdate.board.status,
+        previousStatus: boardStatusUpdate.previousStatus
+      } : null
     })
 
   } catch (error: any) {

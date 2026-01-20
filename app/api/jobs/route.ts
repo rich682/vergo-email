@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { JobService } from "@/lib/services/job.service"
+import { BoardService } from "@/lib/services/board.service"
 import { JobStatus } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
 

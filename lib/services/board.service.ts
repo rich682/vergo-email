@@ -535,6 +535,84 @@ export class BoardService {
   }
 
   /**
+   * Sync board status based on the statuses of its tasks (jobs).
+   * 
+   * Rules:
+   * - If board has no jobs → status unchanged
+   * - If all jobs are NOT_STARTED → Board stays NOT_STARTED
+   * - If any job is not NOT_STARTED (and not all complete) → Board becomes IN_PROGRESS
+   * - If all jobs are COMPLETE → Board becomes COMPLETE
+   * 
+   * This should be called after job status changes.
+   * 
+   * @returns The new board status if changed, null if no change needed
+   */
+  static async syncBoardStatusFromJobs(
+    boardId: string,
+    organizationId: string
+  ): Promise<{ board: BoardWithCounts; statusChanged: boolean; previousStatus: string } | null> {
+    // Get the board with its jobs
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, organizationId },
+      include: {
+        jobs: {
+          select: { status: true },
+          where: {
+            status: { not: "ARCHIVED" } // Don't count archived jobs
+          }
+        }
+      }
+    })
+
+    if (!board) return null
+
+    // Don't change status of archived or blocked boards
+    if (board.status === "ARCHIVED" || board.status === "BLOCKED") {
+      return null
+    }
+
+    const jobStatuses = board.jobs.map(j => j.status)
+    
+    // If no jobs, don't change status
+    if (jobStatuses.length === 0) {
+      return null
+    }
+
+    // Determine target status based on job statuses
+    // Job statuses that indicate "started": ACTIVE, IN_PROGRESS, COMPLETE, FULFILLED
+    const startedStatuses = ["ACTIVE", "IN_PROGRESS", "COMPLETE", "FULFILLED"]
+    const completeStatuses = ["COMPLETE", "FULFILLED"]
+    
+    const allNotStarted = jobStatuses.every(s => s === "NOT_STARTED")
+    const allComplete = jobStatuses.every(s => completeStatuses.includes(s))
+    const anyStarted = jobStatuses.some(s => startedStatuses.includes(s))
+
+    let targetStatus: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" = board.status as any
+    
+    if (allComplete) {
+      targetStatus = "COMPLETE"
+    } else if (anyStarted || !allNotStarted) {
+      targetStatus = "IN_PROGRESS"
+    } else {
+      targetStatus = "NOT_STARTED"
+    }
+
+    // Only update if status actually changes
+    if (targetStatus === board.status) {
+      return null
+    }
+
+    const previousStatus = board.status
+    const updatedBoard = await this.update(boardId, organizationId, { status: targetStatus })
+
+    return {
+      board: updatedBoard,
+      statusChanged: true,
+      previousStatus
+    }
+  }
+
+  /**
    * Delete a board (hard delete - only if no jobs)
    */
   static async delete(id: string, organizationId: string): Promise<void> {
