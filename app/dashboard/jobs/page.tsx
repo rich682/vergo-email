@@ -34,7 +34,8 @@ import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
-import { OnboardingChecklist } from "@/components/onboarding-checklist"
+// Onboarding checklist hidden for now - not at that product stage
+// import { OnboardingChecklist } from "@/components/onboarding-checklist"
 import { ConfigurableTable, JobRow } from "@/components/jobs/configurable-table"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 
@@ -590,8 +591,7 @@ export default function JobsPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="w-full px-6 py-6">
-        {/* Onboarding Checklist - shows for new users */}
-        <OnboardingChecklist />
+        {/* Onboarding checklist hidden for now - not at that product stage */}
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
