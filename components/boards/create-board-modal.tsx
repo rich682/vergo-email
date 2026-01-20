@@ -343,12 +343,12 @@ export function CreateBoardModal({
                       <Zap className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
                       <p className="text-sm text-gray-600">
                         This is a <span className="font-medium">{CADENCE_OPTIONS.find(o => o.value === cadence)?.label}</span> board. 
-                        Vergo will automatically create the next board when this one completes.
+                        When this board completes, Vergo will create the next period with all tasks copied forward.
                       </p>
                     </div>
                     <div className="flex items-center justify-between pl-6">
                       <Label htmlFor="auto-create" className="text-sm font-medium text-gray-700 cursor-pointer">
-                        Auto-create next board
+                        Enable automation
                       </Label>
                       <Switch
                         id="auto-create"

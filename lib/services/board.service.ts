@@ -855,17 +855,96 @@ export class BoardService {
       }
     })
 
-    // Note: Tasks are NOT copied (future feature - "Copy tasks forward")
+    // Copy tasks from the completed board to the new board
+    await this.copyTasksToBoard(completedBoardId, newBoard.id, organizationId, createdById)
+
+    // Re-fetch to get updated job count
+    const updatedBoard = await prisma.board.findUnique({
+      where: { id: newBoard.id },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        _count: { select: { jobs: true } }
+      }
+    })
+
+    if (!updatedBoard) {
+      throw new Error("Failed to fetch updated board")
+    }
 
     return {
-      ...newBoard,
-      jobCount: newBoard._count.jobs,
-      collaborators: newBoard.collaborators.map(c => ({
+      ...updatedBoard,
+      jobCount: updatedBoard._count.jobs,
+      collaborators: updatedBoard.collaborators.map(c => ({
         id: c.id,
         userId: c.userId,
         role: c.role,
         user: c.user
       }))
+    }
+  }
+
+  /**
+   * Copy all tasks (jobs) from one board to another.
+   * Copies task name, description, owner, and stakeholders.
+   * Does NOT copy: requests, replies, attachments, comments, status (resets to NOT_STARTED).
+   */
+  private static async copyTasksToBoard(
+    sourceBoardId: string,
+    targetBoardId: string,
+    organizationId: string,
+    createdById: string
+  ): Promise<void> {
+    // Fetch all jobs from source board with their stakeholders and collaborators
+    const sourceJobs = await prisma.job.findMany({
+      where: {
+        boardId: sourceBoardId,
+        organizationId,
+        status: { not: "ARCHIVED" } // Don't copy archived tasks
+      },
+      include: {
+        stakeholders: true,
+        collaborators: true
+      }
+    })
+
+    // Create each job in the target board
+    for (const sourceJob of sourceJobs) {
+      await prisma.job.create({
+        data: {
+          organizationId,
+          boardId: targetBoardId,
+          name: sourceJob.name,
+          description: sourceJob.description,
+          ownerId: sourceJob.ownerId,
+          status: "NOT_STARTED", // Always start fresh
+          // Copy due date pattern (if source had one, shift to new period)
+          // For now, we'll leave dueDate null - users can set when needed
+          labels: sourceJob.labels,
+          notes: sourceJob.notes,
+          customFields: sourceJob.customFields,
+          createdById,
+          // Copy stakeholders
+          stakeholders: sourceJob.stakeholders.length > 0 ? {
+            create: sourceJob.stakeholders.map(s => ({
+              type: s.type,
+              contactId: s.contactId,
+              contactTypeId: s.contactTypeId,
+              groupId: s.groupId
+            }))
+          } : undefined,
+          // Copy collaborators
+          collaborators: sourceJob.collaborators.length > 0 ? {
+            create: sourceJob.collaborators.map(c => ({
+              userId: c.userId,
+              addedBy: createdById
+            }))
+          } : undefined
+        }
+      })
     }
   }
 }
