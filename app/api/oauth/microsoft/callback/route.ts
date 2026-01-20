@@ -14,13 +14,13 @@ export async function GET(request: Request) {
   if (error) {
     console.error("Microsoft OAuth error from provider:", error, errorDescription)
     return NextResponse.redirect(
-      new URL(`/dashboard/settings?error=ms_${error}&message=${encodeURIComponent(errorDescription || "")}`, request.url)
+      new URL(`/dashboard/settings/team?error=ms_${error}&message=${encodeURIComponent(errorDescription || "")}`, request.url)
     )
   }
 
   if (!code || !state) {
     console.error("Microsoft OAuth: Missing code or state")
-    return NextResponse.redirect(new URL("/dashboard/settings?error=missing_code_or_state", request.url))
+    return NextResponse.redirect(new URL("/dashboard/settings/team?error=missing_code_or_state", request.url))
   }
 
   let organizationId: string | null = null
@@ -31,12 +31,12 @@ export async function GET(request: Request) {
     userId = parsed.userId
   } catch (e) {
     console.error("Microsoft OAuth: Failed to parse state:", e)
-    return NextResponse.redirect(new URL("/dashboard/settings?error=invalid_state", request.url))
+    return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
   }
 
   if (!organizationId || !userId) {
     console.error("Microsoft OAuth: Missing organizationId or userId in state")
-    return NextResponse.redirect(new URL("/dashboard/settings?error=invalid_state_data", request.url))
+    return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state_data", request.url))
   }
 
   try {
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
         userId: session.user.id, 
         organizationId: session.user.organizationId 
       })
-      return NextResponse.redirect(new URL("/dashboard/settings?error=session_mismatch", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=session_mismatch", request.url))
     }
 
     // Check required env vars
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
       console.error("Microsoft OAuth: Missing env vars - MS_CLIENT_ID:", !!process.env.MS_CLIENT_ID, 
         "MS_CLIENT_SECRET:", !!process.env.MS_CLIENT_SECRET, 
         "MS_REDIRECT_URI:", !!process.env.MS_REDIRECT_URI)
-      return NextResponse.redirect(new URL("/dashboard/settings?error=missing_config", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=missing_config", request.url))
     }
 
     const tokenUrl = `https://login.microsoftonline.com/${process.env.MS_TENANT_ID || "common"}/oauth2/v2.0/token`
@@ -83,18 +83,18 @@ export async function GET(request: Request) {
     if (!tokenResp.ok) {
       console.error("Microsoft OAuth: Token exchange failed:", tokenData)
       return NextResponse.redirect(
-        new URL(`/dashboard/settings?error=token_exchange_failed&message=${encodeURIComponent(tokenData.error_description || tokenData.error || "Unknown error")}`, request.url)
+        new URL(`/dashboard/settings/team?error=token_exchange_failed&message=${encodeURIComponent(tokenData.error_description || tokenData.error || "Unknown error")}`, request.url)
       )
     }
 
     if (!tokenData.access_token) {
       console.error("Microsoft OAuth: No access token in response:", tokenData)
-      return NextResponse.redirect(new URL("/dashboard/settings?error=no_access_token", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=no_access_token", request.url))
     }
     
     if (!tokenData.refresh_token) {
       console.error("Microsoft OAuth: No refresh token in response (did you request offline_access scope?)")
-      return NextResponse.redirect(new URL("/dashboard/settings?error=no_refresh_token", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=no_refresh_token", request.url))
     }
 
     // Get user email from Graph /me
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     if (!meResp.ok) {
       const meError = await meResp.text()
       console.error("Microsoft OAuth: Failed to fetch user profile:", meError)
-      return NextResponse.redirect(new URL("/dashboard/settings?error=profile_fetch_failed", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=profile_fetch_failed", request.url))
     }
     
     const me = await meResp.json()
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
     
     if (!email) {
       console.error("Microsoft OAuth: No email found in user profile:", me)
-      return NextResponse.redirect(new URL("/dashboard/settings?error=no_email_in_profile", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=no_email_in_profile", request.url))
     }
 
     console.log("Microsoft OAuth: Creating email account for:", email)
@@ -180,11 +180,11 @@ export async function GET(request: Request) {
     })
 
     console.log(`[Microsoft OAuth] Created ConnectedEmailAccount: ${connectedAccount.id} for ${email}`)
-    return NextResponse.redirect(new URL("/dashboard/settings?success=microsoft_connected", request.url))
+    return NextResponse.redirect(new URL("/dashboard/settings/team?success=microsoft_connected", request.url))
   } catch (error: any) {
     console.error("Microsoft OAuth unexpected error:", error)
     return NextResponse.redirect(
-      new URL(`/dashboard/settings?error=unexpected_error&message=${encodeURIComponent(error.message || "Unknown error")}`, request.url)
+      new URL(`/dashboard/settings/team?error=unexpected_error&message=${encodeURIComponent(error.message || "Unknown error")}`, request.url)
     )
   }
 }

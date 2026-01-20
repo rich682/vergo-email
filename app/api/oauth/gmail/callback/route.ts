@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL("/dashboard/settings?error=oauth_failed", request.url)
+      new URL("/dashboard/settings/team?error=oauth_failed", request.url)
     )
   }
 
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
     if (!tokens.access_token || !tokens.refresh_token) {
       return NextResponse.redirect(
-        new URL("/dashboard/settings?error=no_tokens", request.url)
+        new URL("/dashboard/settings/team?error=no_tokens", request.url)
       )
     }
 
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 
     if (!userInfo.data.email) {
       return NextResponse.redirect(
-        new URL("/dashboard/settings?error=no_email", request.url)
+        new URL("/dashboard/settings/team?error=no_email", request.url)
       )
     }
 
@@ -67,10 +67,10 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/auth/signin", request.url))
     }
     if (userId && session.user.id !== userId) {
-      return NextResponse.redirect(new URL("/dashboard/settings?error=oauth_failed", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=oauth_failed", request.url))
     }
     if (organizationId && session.user.organizationId !== organizationId) {
-      return NextResponse.redirect(new URL("/dashboard/settings?error=oauth_failed", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=oauth_failed", request.url))
     }
 
     // Create connection in ConnectedEmailAccount (used by email sync)
@@ -100,12 +100,12 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-      new URL("/dashboard/settings?success=gmail_connected", request.url)
+      new URL("/dashboard/settings/team?success=gmail_connected", request.url)
     )
   } catch (error) {
     console.error("Gmail OAuth error:", error)
     return NextResponse.redirect(
-      new URL("/dashboard/settings?error=oauth_error", request.url)
+      new URL("/dashboard/settings/team?error=oauth_error", request.url)
     )
   }
 }

@@ -1,10 +1,12 @@
 /**
  * Organization Users API Endpoints
  * 
- * GET /api/org/users - List users in organization (admin-only)
+ * GET /api/org/users - List users in organization
+ *   - Admins: See all users with email account info
+ *   - Non-admins: See only their own user record (for inbox connection)
  * POST /api/org/users - Create/invite a user (admin-only)
  * 
- * Authorization: Admin only
+ * Authorization: Authenticated users (self-view) or Admin (all users)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -16,7 +18,8 @@ import { AuthEmailService } from "@/lib/services/auth-email.service"
 
 /**
  * GET /api/org/users - List users in organization
- * Admin-only endpoint
+ * - Admins see all users with their connected email accounts
+ * - Non-admins see only themselves (to allow inbox connection)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -29,19 +32,17 @@ export async function GET(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+    const currentUserId = session.user.id
     const userRole = (session.user as any).role as UserRole
+    const isAdmin = userRole === UserRole.ADMIN
 
-    // Admin-only check
-    if (userRole !== UserRole.ADMIN) {
-      return NextResponse.json(
-        { error: "Admin access required" },
-        { status: 403 }
-      )
-    }
-
-    // Fetch all users in the organization
+    // Fetch users based on role
+    // Admins: all users in org
+    // Non-admins: only themselves
     const users = await prisma.user.findMany({
-      where: { organizationId },
+      where: isAdmin 
+        ? { organizationId }
+        : { organizationId, id: currentUserId },
       select: {
         id: true,
         email: true,
@@ -49,13 +50,25 @@ export async function GET(request: NextRequest) {
         role: true,
         passwordHash: true,  // Used to determine "pending" status
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        // Include connected email accounts
+        connectedEmailAccounts: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            email: true,
+            provider: true,
+            isPrimary: true,
+            isActive: true,
+            lastSyncAt: true
+          },
+          orderBy: { isPrimary: "desc" }
+        }
       },
       orderBy: { createdAt: "desc" }
     })
 
-    // Map users with computed status
-    // A user is "pending" if they have an empty or placeholder password
+    // Map users with computed status and email account info
     const usersWithStatus = users.map(user => ({
       id: user.id,
       email: user.email,
@@ -64,12 +77,19 @@ export async function GET(request: NextRequest) {
       // Status: "active" if they have a real password, "pending" otherwise
       status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
       createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString()
+      updatedAt: user.updatedAt.toISOString(),
+      // Connected email account (primary or first one)
+      connectedEmail: user.connectedEmailAccounts[0] || null,
+      // All connected accounts (for admins who want to see multiple)
+      connectedEmailAccounts: user.connectedEmailAccounts,
+      // Is this the current user? (for UI to know if they can connect/disconnect)
+      isCurrentUser: user.id === currentUserId
     }))
 
     return NextResponse.json({
       success: true,
-      users: usersWithStatus
+      users: usersWithStatus,
+      isAdmin // Let frontend know if user is admin for UI decisions
     })
 
   } catch (error: any) {
