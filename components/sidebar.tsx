@@ -268,7 +268,6 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
                       <line x1="1" y1="10" x2="23" y2="10" />
                     </svg>
                     <span>Expenses</span>
-                    <span className="ml-auto text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Soon</span>
                   </Link>
                 </li>
                 
@@ -293,7 +292,6 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
                       <polyline points="10 9 9 9 8 9" />
                     </svg>
                     <span>Invoices</span>
-                    <span className="ml-auto text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Soon</span>
                   </Link>
                 </li>
               </ul>

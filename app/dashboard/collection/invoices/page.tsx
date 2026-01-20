@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { FileText, Check, Zap, Clock, DollarSign, Send } from "lucide-react"
+import { FileText, Clock, DollarSign, Send } from "lucide-react"
 
 const features = [
   {
@@ -48,10 +48,6 @@ export default function InvoicesPage() {
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-4">
-            <Zap className="w-4 h-4" />
-            Coming Soon
-          </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Invoice Management
           </h1>
@@ -80,7 +76,7 @@ export default function InvoicesPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                What's Coming
+                Features
               </h2>
               
               <div className="space-y-6">
@@ -99,20 +95,6 @@ export default function InvoicesPage() {
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Early Access CTA */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
-              <h3 className="text-lg font-semibold mb-2">
-                Get Early Access
-              </h3>
-              <p className="text-blue-100 text-sm mb-4">
-                Be the first to know when Invoice Management launches. Early adopters get exclusive pricing and priority support.
-              </p>
-              <div className="flex items-center gap-2 text-sm">
-                <Check className="w-4 h-4" />
-                <span>No credit card required</span>
               </div>
             </div>
           </div>
