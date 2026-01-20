@@ -33,11 +33,13 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const currentUserId = session.user.id
+    const currentUserEmail = session.user.email // Use email as more reliable identifier
     const userRole = (session.user as any).role as UserRole
     const isAdmin = userRole === UserRole.ADMIN
     
     console.log("[GET /api/org/users] Session info:", {
       currentUserId,
+      currentUserEmail,
       organizationId,
       userRole,
       isAdmin
@@ -77,10 +79,10 @@ export async function GET(request: NextRequest) {
 
     // Map users with computed status and email account info
     const usersWithStatus = users.map(user => {
-      // Ensure string comparison for IDs
-      const isCurrentUser = String(user.id) === String(currentUserId)
+      // Use email comparison as primary (more reliable than ID which can mismatch)
+      const isCurrentUser = user.email.toLowerCase() === currentUserEmail?.toLowerCase()
       
-      console.log("[GET /api/org/users] Checking user:", user.id, "vs session:", currentUserId, "match:", isCurrentUser)
+      console.log("[GET /api/org/users] Checking user:", user.email, "vs session:", currentUserEmail, "match:", isCurrentUser)
       
       return {
         id: user.id,
