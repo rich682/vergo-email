@@ -5,6 +5,7 @@ import { useDropzone } from "react-dropzone"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ import {
   Mail,
   Users,
   AlertTriangle,
+  ClipboardPaste,
 } from "lucide-react"
 import {
   parseDataset,
@@ -46,10 +48,13 @@ interface UploadStepProps {
 }
 
 type UploadState = "idle" | "parsing" | "uploading" | "error"
+type InputMode = "file" | "paste"
 
 export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProps) {
   const [state, setState] = useState<UploadState>("idle")
+  const [inputMode, setInputMode] = useState<InputMode>("file")
   const [fileName, setFileName] = useState<string | null>(null)
+  const [pastedData, setPastedData] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   
   // Parsed data
@@ -62,6 +67,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
   const resetState = () => {
     setState("idle")
     setFileName(null)
+    setPastedData("")
     setError(null)
     setRawRows([])
     setHeaders([])
@@ -69,6 +75,94 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     setSelectedEmailColumn("")
     setParseResult(null)
   }
+
+  // Parse pasted tab/comma separated data from Excel
+  const parsePastedData = useCallback((text: string) => {
+    if (!text.trim()) {
+      resetState()
+      return
+    }
+
+    setState("parsing")
+    setError(null)
+
+    try {
+      // Split into lines
+      const lines = text.trim().split(/\r?\n/)
+      
+      if (lines.length < 2) {
+        setError("Need at least a header row and one data row. Make sure to include column headers.")
+        setState("error")
+        return
+      }
+
+      // Detect delimiter (tab or comma)
+      const firstLine = lines[0]
+      const tabCount = (firstLine.match(/\t/g) || []).length
+      const commaCount = (firstLine.match(/,/g) || []).length
+      const delimiter = tabCount >= commaCount ? "\t" : ","
+
+      // Parse rows
+      const rows: string[][] = lines.map(line => {
+        // Handle quoted values for comma-separated
+        if (delimiter === ",") {
+          const result: string[] = []
+          let current = ""
+          let inQuotes = false
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i]
+            if (char === '"') {
+              inQuotes = !inQuotes
+            } else if (char === "," && !inQuotes) {
+              result.push(current.trim())
+              current = ""
+            } else {
+              current += char
+            }
+          }
+          result.push(current.trim())
+          return result
+        }
+        return line.split(delimiter).map(cell => cell.trim())
+      })
+
+      // Filter out empty rows
+      const nonEmptyRows = rows.filter(row => row.some(cell => cell && cell.trim()))
+
+      if (nonEmptyRows.length < 2) {
+        setError("Need at least a header row and one data row")
+        setState("error")
+        return
+      }
+
+      // Extract headers
+      const headerRow = nonEmptyRows[0].map(h => (h || "").toString().trim())
+      setHeaders(headerRow)
+      setRawRows(nonEmptyRows)
+      setFileName("Pasted data")
+
+      // Auto-detect email column
+      const detected = detectEmailColumn(headerRow, nonEmptyRows.slice(1))
+      setDetectedEmailColumn(detected)
+      setSelectedEmailColumn(detected || "")
+
+      // Parse with detected email column
+      if (detected) {
+        const result = parseDataset(nonEmptyRows, detected)
+        if (isDatasetParseError(result)) {
+          setError(result.message)
+          setState("error")
+          return
+        }
+        setParseResult(result)
+      }
+
+      setState("idle")
+    } catch (err: any) {
+      setError(err.message || "Failed to parse pasted data")
+      setState("error")
+    }
+  }, [])
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
@@ -234,28 +328,89 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
 
   return (
     <div className="space-y-6">
-      {/* File Upload Zone */}
+      {/* Input Mode Tabs */}
       {!fileName && (
-        <div
-          {...getRootProps()}
-          className={`
-            border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-            ${isDragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 hover:border-gray-400"}
-          `}
-        >
-          <input {...getInputProps()} />
-          <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-sm text-gray-600 mb-2">
-            {isDragActive
-              ? "Drop the file here..."
-              : "Drag & drop a CSV or Excel file, or click to select"}
-          </p>
-          <p className="text-xs text-gray-500 mb-2">
-            Supports .csv, .xlsx, .xls (max 10MB, 5000 rows)
-          </p>
-          <p className="text-xs text-amber-600 font-medium">
-            Required columns: Email, First Name (or Name)
-          </p>
+        <div className="space-y-4">
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => { setInputMode("file"); resetState() }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                inputMode === "file"
+                  ? "border-orange-500 text-orange-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Upload className="w-4 h-4 inline-block mr-2" />
+              Upload File
+            </button>
+            <button
+              onClick={() => { setInputMode("paste"); resetState() }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                inputMode === "paste"
+                  ? "border-orange-500 text-orange-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <ClipboardPaste className="w-4 h-4 inline-block mr-2" />
+              Paste from Excel
+            </button>
+          </div>
+
+          {/* File Upload Zone */}
+          {inputMode === "file" && (
+            <div
+              {...getRootProps()}
+              className={`
+                border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+                ${isDragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 hover:border-gray-400"}
+              `}
+            >
+              <input {...getInputProps()} />
+              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-sm text-gray-600 mb-2">
+                {isDragActive
+                  ? "Drop the file here..."
+                  : "Drag & drop a CSV or Excel file, or click to select"}
+              </p>
+              <p className="text-xs text-gray-500 mb-2">
+                Supports .csv, .xlsx, .xls (max 10MB, 5000 rows)
+              </p>
+              <p className="text-xs text-amber-600 font-medium">
+                Required columns: Email, First Name (or Name)
+              </p>
+            </div>
+          )}
+
+          {/* Paste from Excel Zone */}
+          {inputMode === "paste" && (
+            <div className="space-y-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>How to use:</strong> Select your data in Excel (including headers), press Ctrl+C (or Cmd+C), then paste below.
+                </p>
+              </div>
+              <Textarea
+                placeholder="Paste your Excel data here...
+
+Example:
+Email	First Name	Invoice Number	Amount
+john@acme.com	John	INV-001	$1,500
+sarah@techco.com	Sarah	INV-002	$2,300"
+                value={pastedData}
+                onChange={(e) => {
+                  setPastedData(e.target.value)
+                  parsePastedData(e.target.value)
+                }}
+                className="min-h-[200px] font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                Tab-separated (from Excel) or comma-separated values accepted
+              </p>
+              <p className="text-xs text-amber-600 font-medium">
+                Required columns: Email, First Name (or Name)
+              </p>
+            </div>
+          )}
         </div>
       )}
 
