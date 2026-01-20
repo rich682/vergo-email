@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { BoardService } from "@/lib/services/board.service"
+import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
@@ -56,7 +56,7 @@ export async function GET(
  * - ownerId?: string
  * - cadence?: BoardCadence | null
  * - periodStart?: ISO date string | null
- * - periodEnd?: ISO date string | null
+ * - periodEnd?: ISO date string | null (optional - derived server-side if cadence provided)
  * - collaboratorIds?: string[]
  */
 export async function PATCH(
@@ -92,6 +92,42 @@ export async function PATCH(
       )
     }
 
+    // Validate period requirements based on cadence (only if cadence is being set/changed)
+    if (cadence !== undefined && cadence !== null && cadence !== "AD_HOC") {
+      if (periodStart === undefined) {
+        // If cadence is being set but periodStart not provided, we need to check existing board
+        // For now, allow the update - the existing periodStart will be used
+      } else if (periodStart === null) {
+        return NextResponse.json(
+          { error: `Period start date is required for ${cadence} cadence` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Process period dates with server-side derivation
+    let finalPeriodStart: Date | null | undefined = undefined
+    let finalPeriodEnd: Date | null | undefined = undefined
+
+    if (periodStart !== undefined) {
+      if (periodStart === null) {
+        finalPeriodStart = null
+        finalPeriodEnd = null
+      } else {
+        const parsedStart = new Date(periodStart)
+        // Normalize the start date based on cadence
+        const effectiveCadence = cadence !== undefined ? cadence : undefined
+        finalPeriodStart = normalizePeriodStart(effectiveCadence as BoardCadence, parsedStart) || parsedStart
+        
+        // Derive periodEnd server-side
+        const derivedEnd = derivePeriodEnd(effectiveCadence as BoardCadence, finalPeriodStart)
+        finalPeriodEnd = derivedEnd || (periodEnd ? new Date(periodEnd) : null)
+      }
+    } else if (periodEnd !== undefined) {
+      // Only periodEnd provided without periodStart - just pass it through
+      finalPeriodEnd = periodEnd ? new Date(periodEnd) : null
+    }
+
     const board = await BoardService.update(
       boardId, 
       organizationId, 
@@ -101,12 +137,8 @@ export async function PATCH(
         status: status as BoardStatus | undefined,
         ownerId,
         cadence: cadence !== undefined ? cadence as BoardCadence | null : undefined,
-        periodStart: periodStart !== undefined
-          ? periodStart ? new Date(periodStart) : null
-          : undefined,
-        periodEnd: periodEnd !== undefined
-          ? periodEnd ? new Date(periodEnd) : null
-          : undefined,
+        periodStart: finalPeriodStart,
+        periodEnd: finalPeriodEnd,
         collaboratorIds
       },
       userId

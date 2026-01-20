@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { BoardService } from "@/lib/services/board.service"
+import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
  * - ownerId?: string (defaults to current user)
  * - cadence?: BoardCadence
  * - periodStart?: ISO date string
- * - periodEnd?: ISO date string
+ * - periodEnd?: ISO date string (optional - derived server-side if not provided)
  * - collaboratorIds?: string[]
  * - duplicateFromId?: string (if duplicating)
  */
@@ -123,6 +123,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate period requirements based on cadence
+    if (cadence && cadence !== "AD_HOC" && !periodStart) {
+      return NextResponse.json(
+        { error: `Period start date is required for ${cadence} cadence` },
+        { status: 400 }
+      )
+    }
+
+    // Parse and normalize period dates
+    const parsedPeriodStart = periodStart ? new Date(periodStart) : undefined
+    const normalizedStart = normalizePeriodStart(cadence as BoardCadence, parsedPeriodStart)
+    
+    // Derive periodEnd server-side if not provided (or override client value for consistency)
+    const derivedEnd = derivePeriodEnd(cadence as BoardCadence, normalizedStart)
+    // Use client-provided periodEnd only if server derivation returns null
+    const finalPeriodEnd = derivedEnd || (periodEnd ? new Date(periodEnd) : undefined)
+
     let board
 
     // If duplicating from an existing board
@@ -134,8 +151,8 @@ export async function POST(request: NextRequest) {
         userId,
         {
           newOwnerId: ownerId,
-          newPeriodStart: periodStart ? new Date(periodStart) : undefined,
-          newPeriodEnd: periodEnd ? new Date(periodEnd) : undefined
+          newPeriodStart: normalizedStart || undefined,
+          newPeriodEnd: finalPeriodEnd || undefined
         }
       )
     } else {
@@ -146,8 +163,8 @@ export async function POST(request: NextRequest) {
         description: description?.trim() || undefined,
         ownerId: ownerId || userId, // Default to current user
         cadence: cadence as BoardCadence | undefined,
-        periodStart: periodStart ? new Date(periodStart) : undefined,
-        periodEnd: periodEnd ? new Date(periodEnd) : undefined,
+        periodStart: normalizedStart || undefined,
+        periodEnd: finalPeriodEnd || undefined,
         createdById: userId,
         collaboratorIds
       })

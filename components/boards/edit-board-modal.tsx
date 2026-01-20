@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users } from "lucide-react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -36,6 +36,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { format, startOfWeek, endOfWeek } from "date-fns"
 
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
@@ -88,13 +89,13 @@ const STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
   { value: "ARCHIVED", label: "Archived", color: "bg-amber-100 text-amber-700" },
 ]
 
-const CADENCE_OPTIONS: { value: BoardCadence; label: string }[] = [
-  { value: "MONTHLY", label: "Monthly" },
-  { value: "WEEKLY", label: "Weekly" },
-  { value: "QUARTERLY", label: "Quarterly" },
-  { value: "YEAR_END", label: "Year-End" },
-  { value: "DAILY", label: "Daily" },
-  { value: "AD_HOC", label: "Ad Hoc" },
+const CADENCE_OPTIONS: { value: BoardCadence; label: string; description: string }[] = [
+  { value: "MONTHLY", label: "Monthly", description: "e.g., January 2026 Close" },
+  { value: "WEEKLY", label: "Weekly", description: "e.g., Week of Jan 20, 2026" },
+  { value: "QUARTERLY", label: "Quarterly", description: "e.g., Q1 2026" },
+  { value: "YEAR_END", label: "Year-End", description: "e.g., Year-End Close 2026" },
+  { value: "DAILY", label: "Daily", description: "e.g., Daily Close - Jan 20, 2026" },
+  { value: "AD_HOC", label: "Ad Hoc", description: "One-off project or audit" },
 ]
 
 const MONTHS = [
@@ -116,71 +117,123 @@ function getInitials(name: string | null, email: string): string {
   return email.substring(0, 2).toUpperCase()
 }
 
-function parsePeriod(periodStart: string | null, cadence: BoardCadence | null): { month: string | null; week: number | null; quarter: string | null; year: number | null } {
-  if (!periodStart) return { month: null, week: null, quarter: null, year: null }
+// Get Monday of the week for a given date (ISO week: Monday = start)
+function getMondayOfWeek(date: Date): Date {
+  return startOfWeek(date, { weekStartsOn: 1 }) // 1 = Monday
+}
+
+// Get Sunday of the week for a given date
+function getSundayOfWeek(date: Date): Date {
+  return endOfWeek(date, { weekStartsOn: 1 })
+}
+
+// Parse existing board period into form state
+function parsePeriodFromBoard(
+  periodStart: string | null,
+  cadence: BoardCadence | null
+): {
+  selectedDate: Date | null
+  month: string | null
+  quarter: string | null
+  year: number | null
+} {
+  if (!periodStart) {
+    return {
+      selectedDate: null,
+      month: null,
+      quarter: null,
+      year: CURRENT_YEAR
+    }
+  }
   
   const date = new Date(periodStart)
   const year = date.getFullYear()
   const monthIndex = date.getMonth()
   
   switch (cadence) {
-    case "MONTHLY":
     case "DAILY":
-      return { month: MONTHS[monthIndex], week: null, quarter: null, year }
     case "WEEKLY":
-      const weekOfMonth = Math.ceil(date.getDate() / 7)
-      return { month: MONTHS[monthIndex], week: weekOfMonth, quarter: null, year }
+      return {
+        selectedDate: date,
+        month: null,
+        quarter: null,
+        year
+      }
+    case "MONTHLY":
+      return {
+        selectedDate: null,
+        month: MONTHS[monthIndex],
+        quarter: null,
+        year
+      }
     case "QUARTERLY":
       const q = Math.floor(monthIndex / 3) + 1
-      return { month: null, week: null, quarter: `Q${q}`, year }
+      return {
+        selectedDate: null,
+        month: null,
+        quarter: `Q${q}`,
+        year
+      }
     case "YEAR_END":
-      return { month: null, week: null, quarter: null, year }
+      return {
+        selectedDate: null,
+        month: null,
+        quarter: null,
+        year
+      }
     default:
-      return { month: null, week: null, quarter: null, year }
+      return {
+        selectedDate: null,
+        month: null,
+        quarter: null,
+        year
+      }
   }
 }
 
 function getPeriodDates(
   cadence: BoardCadence | null,
+  selectedDate: Date | null,
   month: string | null,
-  week: number | null,
   quarter: string | null,
   year: number | null
 ): { start: Date | null; end: Date | null } {
-  if (!cadence || !year) return { start: null, end: null }
-  
-  const monthIndex = month ? MONTHS.indexOf(month) : -1
+  if (!cadence) return { start: null, end: null }
   
   switch (cadence) {
+    case "DAILY":
+      if (!selectedDate) return { start: null, end: null }
+      return {
+        start: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()),
+        end: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
+      }
+    case "WEEKLY":
+      if (!selectedDate) return { start: null, end: null }
+      return {
+        start: getMondayOfWeek(selectedDate),
+        end: getSundayOfWeek(selectedDate)
+      }
     case "MONTHLY":
+      if (!month || !year) return { start: null, end: null }
+      const monthIndex = MONTHS.indexOf(month)
       if (monthIndex === -1) return { start: null, end: null }
       return {
         start: new Date(year, monthIndex, 1),
         end: new Date(year, monthIndex + 1, 0)
       }
-    case "WEEKLY":
-      if (monthIndex === -1 || !week) return { start: null, end: null }
-      const weekStart = new Date(year, monthIndex, 1 + (week - 1) * 7)
-      const weekEnd = new Date(weekStart)
-      weekEnd.setDate(weekStart.getDate() + 6)
-      return { start: weekStart, end: weekEnd }
     case "QUARTERLY":
-      if (!quarter) return { start: null, end: null }
+      if (!quarter || !year) return { start: null, end: null }
       const qIndex = QUARTERS.indexOf(quarter)
+      if (qIndex === -1) return { start: null, end: null }
       return {
         start: new Date(year, qIndex * 3, 1),
         end: new Date(year, (qIndex + 1) * 3, 0)
       }
     case "YEAR_END":
+      if (!year) return { start: null, end: null }
       return {
         start: new Date(year, 0, 1),
         end: new Date(year, 11, 31)
-      }
-    case "DAILY":
-      if (monthIndex === -1) return { start: null, end: null }
-      return {
-        start: new Date(year, monthIndex, 1),
-        end: new Date(year, monthIndex + 1, 0)
       }
     case "AD_HOC":
       return { start: null, end: null }
@@ -199,8 +252,8 @@ export function EditBoardModal({
   const [name, setName] = useState("")
   const [status, setStatus] = useState<BoardStatus>("NOT_STARTED")
   const [cadence, setCadence] = useState<BoardCadence | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [month, setMonth] = useState<string | null>(null)
-  const [week, setWeek] = useState<number | null>(null)
   const [quarter, setQuarter] = useState<string | null>(null)
   const [year, setYear] = useState<number | null>(CURRENT_YEAR)
   const [ownerId, setOwnerId] = useState<string | null>(null)
@@ -226,12 +279,12 @@ export function EditBoardModal({
       setOwnerId(board.owner?.id || null)
       setCollaboratorIds(board.collaborators.map(c => c.user.id))
       
-      // Parse period
-      const period = parsePeriod(board.periodStart, board.cadence)
-      setMonth(period.month)
-      setWeek(period.week)
-      setQuarter(period.quarter)
-      setYear(period.year)
+      // Parse period into form state
+      const parsed = parsePeriodFromBoard(board.periodStart, board.cadence)
+      setSelectedDate(parsed.selectedDate)
+      setMonth(parsed.month)
+      setQuarter(parsed.quarter)
+      setYear(parsed.year)
       
       fetchTeamMembers()
     }
@@ -265,6 +318,16 @@ export function EditBoardModal({
     )
   }
 
+  // Handle cadence change - reset period selectors
+  const handleCadenceChange = (newCadence: BoardCadence) => {
+    setCadence(newCadence)
+    // Reset period selectors when cadence changes
+    setSelectedDate(new Date())
+    setMonth(MONTHS[new Date().getMonth()])
+    setQuarter(`Q${Math.floor(new Date().getMonth() / 3) + 1}`)
+    setYear(CURRENT_YEAR)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!board) return
@@ -279,7 +342,7 @@ export function EditBoardModal({
     setLoading(true)
 
     try {
-      const { start, end } = getPeriodDates(cadence, month, week, quarter, year)
+      const { start, end } = getPeriodDates(cadence, selectedDate, month, quarter, year)
       
       const response = await fetch(`/api/boards/${board.id}`, {
         method: "PATCH",
@@ -316,11 +379,13 @@ export function EditBoardModal({
     onOpenChange(false)
   }
 
-  // Determine which time period selectors to show
-  const showMonthSelector = cadence && ["MONTHLY", "WEEKLY", "DAILY"].includes(cadence)
-  const showWeekSelector = cadence === "WEEKLY"
-  const showQuarterSelector = cadence === "QUARTERLY"
-  const showYearSelector = cadence && cadence !== "AD_HOC"
+  // Format the week range for display
+  const weekRangeDisplay = useMemo(() => {
+    if (!selectedDate) return ""
+    const monday = getMondayOfWeek(selectedDate)
+    const sunday = getSundayOfWeek(selectedDate)
+    return `${format(monday, "MMM d")} - ${format(sunday, "MMM d, yyyy")}`
+  }, [selectedDate])
 
   if (!board) return null
 
@@ -377,13 +442,7 @@ export function EditBoardModal({
               <Label>Cadence</Label>
               <Select
                 value={cadence || ""}
-                onValueChange={(v) => {
-                  setCadence(v as BoardCadence)
-                  // Reset period selectors when cadence changes
-                  setMonth(null)
-                  setWeek(null)
-                  setQuarter(null)
-                }}
+                onValueChange={(v) => handleCadenceChange(v as BoardCadence)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select cadence type" />
@@ -391,19 +450,68 @@ export function EditBoardModal({
                 <SelectContent>
                   {CADENCE_OPTIONS.map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      <div>
+                        <span className="font-medium">{opt.label}</span>
+                        <span className="text-gray-500 ml-2 text-xs">{opt.description}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Time Period Selectors */}
+            {/* Time Period Selectors - Cadence-specific */}
             {cadence && cadence !== "AD_HOC" && (
               <div className="grid gap-2">
-                <Label>Time Period</Label>
-                <div className="flex gap-2">
-                  {showMonthSelector && (
+                <Label>
+                  {cadence === "DAILY" && "Date"}
+                  {cadence === "WEEKLY" && "Week of"}
+                  {cadence === "MONTHLY" && "Month"}
+                  {cadence === "QUARTERLY" && "Quarter"}
+                  {cadence === "YEAR_END" && "Year"}
+                </Label>
+                
+                {/* Daily: Date picker */}
+                {cadence === "DAILY" && (
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDate(new Date(e.target.value + "T12:00:00"))
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Weekly: Date picker with week display */}
+                {cadence === "WEEKLY" && (
+                  <div className="space-y-2">
+                    <Input
+                      type="date"
+                      value={selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDate(new Date(e.target.value + "T12:00:00"))
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    {selectedDate && (
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Week: {weekRangeDisplay}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Monthly: Month + Year dropdowns */}
+                {cadence === "MONTHLY" && (
+                  <div className="flex gap-2">
                     <Select value={month || ""} onValueChange={setMonth}>
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Month" />
@@ -414,35 +522,6 @@ export function EditBoardModal({
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                  
-                  {showWeekSelector && (
-                    <Select value={week?.toString() || ""} onValueChange={(v) => setWeek(parseInt(v))}>
-                      <SelectTrigger className="w-24">
-                        <SelectValue placeholder="Week" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5].map(w => (
-                          <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {showQuarterSelector && (
-                    <Select value={quarter || ""} onValueChange={setQuarter}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Quarter" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {QUARTERS.map(q => (
-                          <SelectItem key={q} value={q}>{q}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  
-                  {showYearSelector && (
                     <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
                       <SelectTrigger className="w-28">
                         <SelectValue placeholder="Year" />
@@ -453,8 +532,48 @@ export function EditBoardModal({
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Quarterly: Quarter + Year dropdowns */}
+                {cadence === "QUARTERLY" && (
+                  <div className="flex gap-2">
+                    <Select value={quarter || ""} onValueChange={setQuarter}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Quarter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {QUARTERS.map(q => (
+                          <SelectItem key={q} value={q}>{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
+                      <SelectTrigger className="w-28">
+                        <SelectValue placeholder="Year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEARS.map(y => (
+                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Year-End: Year dropdown only */}
+                {cadence === "YEAR_END" && (
+                  <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {YEARS.map(y => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             )}
 

@@ -1,5 +1,101 @@
 import { prisma } from "@/lib/prisma"
 import { Board, BoardStatus, BoardCadence } from "@prisma/client"
+import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear } from "date-fns"
+
+/**
+ * Derive periodEnd from periodStart based on cadence type.
+ * This ensures consistent period calculations server-side.
+ * 
+ * Rules:
+ * - DAILY: periodEnd = periodStart (same day)
+ * - WEEKLY: periodEnd = Sunday of the week (ISO week, Monday start)
+ * - MONTHLY: periodEnd = last day of the month
+ * - QUARTERLY: periodEnd = last day of the quarter
+ * - YEAR_END: periodEnd = Dec 31 of the year
+ * - AD_HOC: periodEnd = null
+ */
+export function derivePeriodEnd(
+  cadence: BoardCadence | null | undefined,
+  periodStart: Date | null | undefined
+): Date | null {
+  if (!cadence || !periodStart) return null
+  
+  switch (cadence) {
+    case "DAILY":
+      // Same day
+      return new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate())
+    
+    case "WEEKLY":
+      // Sunday of the week (ISO week: Monday = start)
+      return endOfWeek(periodStart, { weekStartsOn: 1 })
+    
+    case "MONTHLY":
+      // Last day of the month
+      return endOfMonth(periodStart)
+    
+    case "QUARTERLY":
+      // Last day of the quarter
+      return endOfQuarter(periodStart)
+    
+    case "YEAR_END":
+      // December 31 of the year
+      return endOfYear(periodStart)
+    
+    case "AD_HOC":
+      return null
+    
+    default:
+      return null
+  }
+}
+
+/**
+ * Normalize periodStart based on cadence type.
+ * Ensures periodStart is set to the correct start of the period.
+ * 
+ * Rules:
+ * - DAILY: periodStart = the specific date (unchanged)
+ * - WEEKLY: periodStart = Monday of the week
+ * - MONTHLY: periodStart = 1st of the month
+ * - QUARTERLY: periodStart = 1st of the quarter
+ * - YEAR_END: periodStart = Jan 1 of the year
+ * - AD_HOC: periodStart = null
+ */
+export function normalizePeriodStart(
+  cadence: BoardCadence | null | undefined,
+  periodStart: Date | null | undefined
+): Date | null {
+  if (!cadence || !periodStart) return null
+  
+  switch (cadence) {
+    case "DAILY":
+      // Keep the specific date
+      return new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate())
+    
+    case "WEEKLY":
+      // Monday of the week (ISO week: Monday = start)
+      return startOfWeek(periodStart, { weekStartsOn: 1 })
+    
+    case "MONTHLY":
+      // First day of the month
+      return new Date(periodStart.getFullYear(), periodStart.getMonth(), 1)
+    
+    case "QUARTERLY":
+      // First day of the quarter
+      const quarterMonth = Math.floor(periodStart.getMonth() / 3) * 3
+      return new Date(periodStart.getFullYear(), quarterMonth, 1)
+    
+    case "YEAR_END":
+      // January 1 of the year
+      return new Date(periodStart.getFullYear(), 0, 1)
+    
+    case "AD_HOC":
+      return null
+    
+    default:
+      return null
+  }
+}
 
 export interface CreateBoardData {
   organizationId: string

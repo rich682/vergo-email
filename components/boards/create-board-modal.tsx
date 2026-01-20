@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users } from "lucide-react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -36,6 +36,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { format, startOfWeek, endOfWeek } from "date-fns"
 
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
 
@@ -52,11 +53,11 @@ interface CreateBoardModalProps {
 }
 
 const CADENCE_OPTIONS: { value: BoardCadence; label: string; description: string }[] = [
-  { value: "MONTHLY", label: "Monthly", description: "e.g., January Close, February Close" },
-  { value: "WEEKLY", label: "Weekly", description: "e.g., Week of Jan 20" },
-  { value: "QUARTERLY", label: "Quarterly", description: "e.g., Q1 2026, Q2 2026" },
-  { value: "YEAR_END", label: "Year-End", description: "e.g., Year-End Close 2025" },
-  { value: "DAILY", label: "Daily", description: "e.g., Daily Reconciliation Jan 20" },
+  { value: "MONTHLY", label: "Monthly", description: "e.g., January 2026 Close" },
+  { value: "WEEKLY", label: "Weekly", description: "e.g., Week of Jan 20, 2026" },
+  { value: "QUARTERLY", label: "Quarterly", description: "e.g., Q1 2026" },
+  { value: "YEAR_END", label: "Year-End", description: "e.g., Year-End Close 2026" },
+  { value: "DAILY", label: "Daily", description: "e.g., Daily Close - Jan 20, 2026" },
   { value: "AD_HOC", label: "Ad Hoc", description: "One-off project or audit" },
 ]
 
@@ -80,26 +81,51 @@ function getInitials(name: string | null, email: string): string {
   return email.substring(0, 2).toUpperCase()
 }
 
+// Get Monday of the week for a given date (ISO week: Monday = start)
+function getMondayOfWeek(date: Date): Date {
+  return startOfWeek(date, { weekStartsOn: 1 }) // 1 = Monday
+}
+
+// Get Sunday of the week for a given date
+function getSundayOfWeek(date: Date): Date {
+  return endOfWeek(date, { weekStartsOn: 1 })
+}
+
+// Get current quarter (1-4)
+function getCurrentQuarter(): string {
+  const month = new Date().getMonth()
+  return `Q${Math.floor(month / 3) + 1}`
+}
+
+// Get current month name
+function getCurrentMonth(): string {
+  return MONTHS[new Date().getMonth()]
+}
+
 function generateBoardName(
   cadence: BoardCadence | null,
+  selectedDate: Date | null,
   month: string | null,
-  week: number | null,
   quarter: string | null,
   year: number | null
 ): string {
   if (!cadence) return ""
   
   switch (cadence) {
+    case "DAILY":
+      return selectedDate ? `Daily Close - ${format(selectedDate, "MMM d, yyyy")}` : ""
+    case "WEEKLY":
+      if (selectedDate) {
+        const monday = getMondayOfWeek(selectedDate)
+        return `Weekly Tasks - Week of ${format(monday, "MMM d, yyyy")}`
+      }
+      return ""
     case "MONTHLY":
       return month && year ? `${month} ${year} Close` : ""
-    case "WEEKLY":
-      return week && month && year ? `Week ${week} ${month} ${year}` : ""
     case "QUARTERLY":
       return quarter && year ? `${quarter} ${year}` : ""
     case "YEAR_END":
       return year ? `Year-End Close ${year}` : ""
-    case "DAILY":
-      return month && year ? `Daily ${month} ${year}` : ""
     case "AD_HOC":
       return ""
     default:
@@ -109,46 +135,49 @@ function generateBoardName(
 
 function getPeriodDates(
   cadence: BoardCadence | null,
+  selectedDate: Date | null,
   month: string | null,
-  week: number | null,
   quarter: string | null,
   year: number | null
 ): { start: Date | null; end: Date | null } {
-  if (!cadence || !year) return { start: null, end: null }
-  
-  const monthIndex = month ? MONTHS.indexOf(month) : -1
+  if (!cadence) return { start: null, end: null }
   
   switch (cadence) {
+    case "DAILY":
+      if (!selectedDate) return { start: null, end: null }
+      // Daily: start and end are the same date
+      return {
+        start: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()),
+        end: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
+      }
+    case "WEEKLY":
+      if (!selectedDate) return { start: null, end: null }
+      // Weekly: Monday to Sunday of the selected week
+      return {
+        start: getMondayOfWeek(selectedDate),
+        end: getSundayOfWeek(selectedDate)
+      }
     case "MONTHLY":
+      if (!month || !year) return { start: null, end: null }
+      const monthIndex = MONTHS.indexOf(month)
       if (monthIndex === -1) return { start: null, end: null }
       return {
         start: new Date(year, monthIndex, 1),
         end: new Date(year, monthIndex + 1, 0) // Last day of month
       }
-    case "WEEKLY":
-      if (monthIndex === -1 || !week) return { start: null, end: null }
-      // Approximate: week 1 starts on 1st, each week is 7 days
-      const weekStart = new Date(year, monthIndex, 1 + (week - 1) * 7)
-      const weekEnd = new Date(weekStart)
-      weekEnd.setDate(weekStart.getDate() + 6)
-      return { start: weekStart, end: weekEnd }
     case "QUARTERLY":
-      if (!quarter) return { start: null, end: null }
+      if (!quarter || !year) return { start: null, end: null }
       const qIndex = QUARTERS.indexOf(quarter)
+      if (qIndex === -1) return { start: null, end: null }
       return {
         start: new Date(year, qIndex * 3, 1),
-        end: new Date(year, (qIndex + 1) * 3, 0)
+        end: new Date(year, (qIndex + 1) * 3, 0) // Last day of quarter
       }
     case "YEAR_END":
+      if (!year) return { start: null, end: null }
       return {
         start: new Date(year, 0, 1),
         end: new Date(year, 11, 31)
-      }
-    case "DAILY":
-      if (monthIndex === -1) return { start: null, end: null }
-      return {
-        start: new Date(year, monthIndex, 1),
-        end: new Date(year, monthIndex + 1, 0)
       }
     case "AD_HOC":
       return { start: null, end: null }
@@ -164,9 +193,9 @@ export function CreateBoardModal({
 }: CreateBoardModalProps) {
   // Form state
   const [cadence, setCadence] = useState<BoardCadence | null>(null)
-  const [month, setMonth] = useState<string | null>(null)
-  const [week, setWeek] = useState<number | null>(null)
-  const [quarter, setQuarter] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()) // For Daily and Weekly
+  const [month, setMonth] = useState<string | null>(getCurrentMonth())
+  const [quarter, setQuarter] = useState<string | null>(getCurrentQuarter())
   const [year, setYear] = useState<number | null>(CURRENT_YEAR)
   const [name, setName] = useState("")
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
@@ -191,10 +220,10 @@ export function CreateBoardModal({
   // Auto-generate name when cadence/period changes
   useEffect(() => {
     if (!nameManuallyEdited) {
-      const generated = generateBoardName(cadence, month, week, quarter, year)
+      const generated = generateBoardName(cadence, selectedDate, month, quarter, year)
       setName(generated)
     }
-  }, [cadence, month, week, quarter, year, nameManuallyEdited])
+  }, [cadence, selectedDate, month, quarter, year, nameManuallyEdited])
 
   const fetchTeamMembers = async () => {
     try {
@@ -248,10 +277,35 @@ export function CreateBoardModal({
       return
     }
 
+    // Validate period selection for non-ad-hoc cadences
+    if (cadence !== "AD_HOC") {
+      if (cadence === "DAILY" || cadence === "WEEKLY") {
+        if (!selectedDate) {
+          setError("Please select a date")
+          return
+        }
+      } else if (cadence === "MONTHLY") {
+        if (!month || !year) {
+          setError("Please select a month and year")
+          return
+        }
+      } else if (cadence === "QUARTERLY") {
+        if (!quarter || !year) {
+          setError("Please select a quarter and year")
+          return
+        }
+      } else if (cadence === "YEAR_END") {
+        if (!year) {
+          setError("Please select a year")
+          return
+        }
+      }
+    }
+
     setLoading(true)
 
     try {
-      const { start, end } = getPeriodDates(cadence, month, week, quarter, year)
+      const { start, end } = getPeriodDates(cadence, selectedDate, month, quarter, year)
       
       const response = await fetch("/api/boards", {
         method: "POST",
@@ -287,9 +341,9 @@ export function CreateBoardModal({
 
   const resetForm = () => {
     setCadence(null)
-    setMonth(null)
-    setWeek(null)
-    setQuarter(null)
+    setSelectedDate(new Date())
+    setMonth(getCurrentMonth())
+    setQuarter(getCurrentQuarter())
     setYear(CURRENT_YEAR)
     setName("")
     setNameManuallyEdited(false)
@@ -303,11 +357,25 @@ export function CreateBoardModal({
     onOpenChange(false)
   }
 
-  // Determine which time period selectors to show
-  const showMonthSelector = cadence && ["MONTHLY", "WEEKLY", "DAILY"].includes(cadence)
-  const showWeekSelector = cadence === "WEEKLY"
-  const showQuarterSelector = cadence === "QUARTERLY"
-  const showYearSelector = cadence && cadence !== "AD_HOC"
+  // Handle cadence change - reset to appropriate defaults
+  const handleCadenceChange = (newCadence: BoardCadence) => {
+    setCadence(newCadence)
+    setNameManuallyEdited(false)
+    
+    // Reset to current defaults
+    setSelectedDate(new Date())
+    setMonth(getCurrentMonth())
+    setQuarter(getCurrentQuarter())
+    setYear(CURRENT_YEAR)
+  }
+
+  // Format the week range for display
+  const weekRangeDisplay = useMemo(() => {
+    if (!selectedDate) return ""
+    const monday = getMondayOfWeek(selectedDate)
+    const sunday = getSundayOfWeek(selectedDate)
+    return `${format(monday, "MMM d")} - ${format(sunday, "MMM d, yyyy")}`
+  }, [selectedDate])
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -332,14 +400,7 @@ export function CreateBoardModal({
               <Label htmlFor="cadence">Cadence *</Label>
               <Select
                 value={cadence || ""}
-                onValueChange={(v) => {
-                  setCadence(v as BoardCadence)
-                  setNameManuallyEdited(false)
-                  // Reset period selectors when cadence changes
-                  setMonth(null)
-                  setWeek(null)
-                  setQuarter(null)
-                }}
+                onValueChange={(v) => handleCadenceChange(v as BoardCadence)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select cadence type" />
@@ -357,12 +418,58 @@ export function CreateBoardModal({
               </Select>
             </div>
 
-            {/* Time Period Selectors */}
+            {/* Time Period Selectors - Cadence-specific */}
             {cadence && cadence !== "AD_HOC" && (
               <div className="grid gap-2">
-                <Label>Time Period *</Label>
-                <div className="flex gap-2">
-                  {showMonthSelector && (
+                <Label>
+                  {cadence === "DAILY" && "Date *"}
+                  {cadence === "WEEKLY" && "Week of *"}
+                  {cadence === "MONTHLY" && "Month *"}
+                  {cadence === "QUARTERLY" && "Quarter *"}
+                  {cadence === "YEAR_END" && "Year *"}
+                </Label>
+                
+                {/* Daily: Date picker */}
+                {cadence === "DAILY" && (
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDate(new Date(e.target.value + "T12:00:00"))
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Weekly: Date picker with week display */}
+                {cadence === "WEEKLY" && (
+                  <div className="space-y-2">
+                    <Input
+                      type="date"
+                      value={selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDate(new Date(e.target.value + "T12:00:00"))
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    {selectedDate && (
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Week: {weekRangeDisplay}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Monthly: Month + Year dropdowns */}
+                {cadence === "MONTHLY" && (
+                  <div className="flex gap-2">
                     <Select value={month || ""} onValueChange={setMonth}>
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Month" />
@@ -373,35 +480,6 @@ export function CreateBoardModal({
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                  
-                  {showWeekSelector && (
-                    <Select value={week?.toString() || ""} onValueChange={(v) => setWeek(parseInt(v))}>
-                      <SelectTrigger className="w-24">
-                        <SelectValue placeholder="Week" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5].map(w => (
-                          <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {showQuarterSelector && (
-                    <Select value={quarter || ""} onValueChange={setQuarter}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Quarter" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {QUARTERS.map(q => (
-                          <SelectItem key={q} value={q}>{q}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  
-                  {showYearSelector && (
                     <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
                       <SelectTrigger className="w-28">
                         <SelectValue placeholder="Year" />
@@ -412,8 +490,48 @@ export function CreateBoardModal({
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Quarterly: Quarter + Year dropdowns */}
+                {cadence === "QUARTERLY" && (
+                  <div className="flex gap-2">
+                    <Select value={quarter || ""} onValueChange={setQuarter}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Quarter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {QUARTERS.map(q => (
+                          <SelectItem key={q} value={q}>{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
+                      <SelectTrigger className="w-28">
+                        <SelectValue placeholder="Year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEARS.map(y => (
+                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Year-End: Year dropdown only */}
+                {cadence === "YEAR_END" && (
+                  <Select value={year?.toString() || ""} onValueChange={(v) => setYear(parseInt(v))}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {YEARS.map(y => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             )}
 
@@ -424,7 +542,7 @@ export function CreateBoardModal({
                 id="name"
                 value={name}
                 onChange={handleNameChange}
-                placeholder="e.g., January 2026 Close"
+                placeholder={cadence === "AD_HOC" ? "Enter board name" : "Auto-generated or enter custom name"}
               />
               {!nameManuallyEdited && name && (
                 <p className="text-xs text-gray-500">Auto-generated from cadence and period</p>
