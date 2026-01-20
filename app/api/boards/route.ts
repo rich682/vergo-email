@@ -123,15 +123,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate period requirements based on cadence
-    if (cadence && cadence !== "AD_HOC" && !periodStart) {
-      return NextResponse.json(
-        { error: `Period start date is required for ${cadence} cadence` },
-        { status: 400 }
-      )
-    }
-
-    // Parse and normalize period dates
+    // Period fields are now optional - boards can be created without time periods
+    // Parse and normalize period dates if provided
     const parsedPeriodStart = periodStart ? new Date(periodStart) : undefined
     const normalizedStart = normalizePeriodStart(cadence as BoardCadence, parsedPeriodStart)
     

@@ -121,13 +121,14 @@ enum SubtaskStatus {
 }
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  emailDomain String?
-  features    Json?    // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  emailDomain          String?
+  features             Json?    // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
+  fiscalYearStartMonth Int      @default(1) // 1 = January, 12 = December
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   users                  User[]
   entities               Entity[]
@@ -704,6 +705,10 @@ model Board {
   cadence        BoardCadence? // Type of time period (Monthly, Weekly, etc.)
   periodStart    DateTime?     // Start of the time period
   periodEnd      DateTime?     // End of the time period
+  
+  // Automation settings (UI config, automation logic not yet implemented)
+  automationEnabled Boolean @default(false) // Auto-create next period's board
+  skipWeekends      Boolean @default(true)  // For DAILY cadence: skip weekends
   
   createdById    String
   createdAt      DateTime      @default(now())

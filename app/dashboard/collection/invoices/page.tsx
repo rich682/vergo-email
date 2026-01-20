@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { FileText, Clock, Link2, Send } from "lucide-react"
+import { FileText, Clock, Link2 } from "lucide-react"
 
 const features = [
   {
@@ -18,11 +18,6 @@ const features = [
     icon: Link2,
     title: "Accounting Software Integrations",
     description: "Connect with QuickBooks, Xero, Sage, and other accounting platforms for seamless data sync."
-  },
-  {
-    icon: Send,
-    title: "Client Billing",
-    description: "Generate and send professional invoices to clients with automatic follow-up reminders."
   }
 ]
 

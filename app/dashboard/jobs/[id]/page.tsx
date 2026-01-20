@@ -917,9 +917,9 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Top Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div className="bg-white">
+      {/* Top Bar - positioned below main header */}
+      <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
         <div className="px-8 py-3 flex items-center justify-between">
           <Link 
             href={job?.boardId ? `/dashboard/jobs?boardId=${job.boardId}` : "/dashboard/boards"} 

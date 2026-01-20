@@ -74,7 +74,18 @@ export async function PATCH(
     const boardId = params.id
     const body = await request.json()
 
-    const { name, description, status, ownerId, cadence, periodStart, periodEnd, collaboratorIds } = body
+    const { 
+      name, 
+      description, 
+      status, 
+      ownerId, 
+      cadence, 
+      periodStart, 
+      periodEnd, 
+      collaboratorIds,
+      automationEnabled,
+      skipWeekends
+    } = body
 
     // Validate status if provided
     if (status && !VALID_STATUSES.includes(status)) {
@@ -92,18 +103,7 @@ export async function PATCH(
       )
     }
 
-    // Validate period requirements based on cadence (only if cadence is being set/changed)
-    if (cadence !== undefined && cadence !== null && cadence !== "AD_HOC") {
-      if (periodStart === undefined) {
-        // If cadence is being set but periodStart not provided, we need to check existing board
-        // For now, allow the update - the existing periodStart will be used
-      } else if (periodStart === null) {
-        return NextResponse.json(
-          { error: `Period start date is required for ${cadence} cadence` },
-          { status: 400 }
-        )
-      }
-    }
+    // Period fields are now optional - no validation requirement
 
     // Process period dates with server-side derivation
     let finalPeriodStart: Date | null | undefined = undefined
@@ -139,7 +139,9 @@ export async function PATCH(
         cadence: cadence !== undefined ? cadence as BoardCadence | null : undefined,
         periodStart: finalPeriodStart,
         periodEnd: finalPeriodEnd,
-        collaboratorIds
+        collaboratorIds,
+        automationEnabled,
+        skipWeekends
       },
       userId
     )

@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Mail, Check, X, RefreshCw, RotateCcw, Building2 } from "lucide-react"
+import { Mail, Check, X, RefreshCw, RotateCcw, Building2, CalendarDays, ChevronRight } from "lucide-react"
+import Link from "next/link"
 
 function SettingsContent() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -348,6 +349,25 @@ function SettingsContent() {
               </div>
             </div>
           </div>
+
+          {/* Accounting Calendar Link */}
+          <Link 
+            href="/dashboard/settings/accounting"
+            className="block border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors"
+          >
+            <div className="px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-gray-900">Accounting Calendar</h2>
+                  <p className="text-xs text-gray-500">Configure your fiscal year and accounting periods</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </div>
+          </Link>
 
           {/* Email Signature Section */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">

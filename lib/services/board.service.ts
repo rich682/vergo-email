@@ -118,6 +118,8 @@ export interface UpdateBoardData {
   periodStart?: Date | null
   periodEnd?: Date | null
   collaboratorIds?: string[] // Replace all collaborators
+  automationEnabled?: boolean
+  skipWeekends?: boolean
 }
 
 interface BoardOwner {
@@ -380,7 +382,9 @@ export class BoardService {
         ownerId: data.ownerId,
         cadence: data.cadence,
         periodStart: data.periodStart,
-        periodEnd: data.periodEnd
+        periodEnd: data.periodEnd,
+        automationEnabled: data.automationEnabled,
+        skipWeekends: data.skipWeekends
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
