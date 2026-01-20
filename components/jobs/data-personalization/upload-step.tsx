@@ -1,8 +1,6 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useDropzone } from "react-dropzone"
-import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Upload,
   FileSpreadsheet,
   AlertCircle,
   CheckCircle,
@@ -48,12 +45,9 @@ interface UploadStepProps {
 }
 
 type UploadState = "idle" | "parsing" | "uploading" | "error"
-type InputMode = "file" | "paste"
 
 export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProps) {
   const [state, setState] = useState<UploadState>("idle")
-  const [inputMode, setInputMode] = useState<InputMode>("file")
-  const [fileName, setFileName] = useState<string | null>(null)
   const [pastedData, setPastedData] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   
@@ -63,10 +57,10 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
   const [detectedEmailColumn, setDetectedEmailColumn] = useState<string | null>(null)
   const [selectedEmailColumn, setSelectedEmailColumn] = useState<string>("")
   const [parseResult, setParseResult] = useState<DatasetParseResult | null>(null)
+  const [hasParsedData, setHasParsedData] = useState(false)
 
   const resetState = () => {
     setState("idle")
-    setFileName(null)
     setPastedData("")
     setError(null)
     setRawRows([])
@@ -74,6 +68,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     setDetectedEmailColumn(null)
     setSelectedEmailColumn("")
     setParseResult(null)
+    setHasParsedData(false)
   }
 
   // Parse pasted tab/comma separated data from Excel
@@ -139,7 +134,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
       const headerRow = nonEmptyRows[0].map(h => (h || "").toString().trim())
       setHeaders(headerRow)
       setRawRows(nonEmptyRows)
-      setFileName("Pasted data")
+      setHasParsedData(true)
 
       // Auto-detect email column
       const detected = detectEmailColumn(headerRow, nonEmptyRows.slice(1))
@@ -163,76 +158,6 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
       setState("error")
     }
   }, [])
-
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0]
-    if (!file) return
-
-    setFileName(file.name)
-    setState("parsing")
-    setError(null)
-
-    try {
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data, { type: "array" })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      const rows: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-      
-      // Filter out empty rows
-      const nonEmptyRows = rows.filter(row => row.some(cell => cell && String(cell).trim()))
-      
-      if (nonEmptyRows.length === 0) {
-        setError("The spreadsheet appears to be empty")
-        setState("error")
-        return
-      }
-
-      if (nonEmptyRows.length < 2) {
-        setError("The spreadsheet needs at least a header row and one data row")
-        setState("error")
-        return
-      }
-
-      // Extract headers
-      const headerRow = nonEmptyRows[0].map(h => (h || "").toString().trim())
-      setHeaders(headerRow)
-      setRawRows(nonEmptyRows)
-
-      // Auto-detect email column
-      const detected = detectEmailColumn(headerRow, nonEmptyRows.slice(1))
-      setDetectedEmailColumn(detected)
-      setSelectedEmailColumn(detected || "")
-
-      // Parse with detected email column
-      if (detected) {
-        const result = parseDataset(nonEmptyRows, detected)
-        if (isDatasetParseError(result)) {
-          setError(result.message)
-          setState("error")
-          return
-        }
-        setParseResult(result)
-      }
-
-      setState("idle")
-    } catch (err: any) {
-      console.error("File parsing error:", err)
-      setError(err.message || "Failed to parse file")
-      setState("error")
-    }
-  }, [])
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "text/csv": [".csv"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "application/vnd.ms-excel": [".xls"],
-    },
-    maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
-  })
 
   // Handle email column change
   const handleEmailColumnChange = (value: string) => {
@@ -268,7 +193,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     }
 
     if (!hasNameColumn) {
-      setError("Your file must include a 'First Name' or 'Name' column for personalization. Please add this column and re-upload.")
+      setError("Your data must include a 'First Name' or 'Name' column for personalization.")
       return
     }
 
@@ -300,12 +225,11 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
       try {
         data = JSON.parse(responseText)
       } catch (parseErr) {
-        console.error("Failed to parse response:", responseText)
         throw new Error("Invalid response from server. Please try again.")
       }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || "Failed to upload dataset")
+        throw new Error(data.error || data.message || "Failed to process data")
       }
       
       onUploadComplete({
@@ -316,9 +240,8 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
         validation: parseResult.validation,
       })
     } catch (err: any) {
-      console.error("Upload error:", err)
-      setError(err.message || "Failed to upload dataset")
-      setState("idle") // Reset to idle so user can try again
+      setError(err.message || "Failed to process data")
+      setState("idle")
     }
   }
 
@@ -328,102 +251,43 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
 
   return (
     <div className="space-y-6">
-      {/* Input Mode Tabs */}
-      {!fileName && (
-        <div className="space-y-4">
-          <div className="flex border-b border-gray-200">
-            <button
-              onClick={() => { setInputMode("file"); resetState() }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                inputMode === "file"
-                  ? "border-orange-500 text-orange-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <Upload className="w-4 h-4 inline-block mr-2" />
-              Upload File
-            </button>
-            <button
-              onClick={() => { setInputMode("paste"); resetState() }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                inputMode === "paste"
-                  ? "border-orange-500 text-orange-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <ClipboardPaste className="w-4 h-4 inline-block mr-2" />
-              Paste from Excel
-            </button>
+      {/* Paste Input */}
+      {!hasParsedData && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <ClipboardPaste className="w-4 h-4" />
+            <span>Copy from Excel → Paste here</span>
           </div>
-
-          {/* File Upload Zone */}
-          {inputMode === "file" && (
-            <div
-              {...getRootProps()}
-              className={`
-                border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                ${isDragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 hover:border-gray-400"}
-              `}
-            >
-              <input {...getInputProps()} />
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-sm text-gray-600 mb-2">
-                {isDragActive
-                  ? "Drop the file here..."
-                  : "Drag & drop a CSV or Excel file, or click to select"}
-              </p>
-              <p className="text-xs text-gray-500 mb-2">
-                Supports .csv, .xlsx, .xls (max 10MB, 5000 rows)
-              </p>
-              <p className="text-xs text-amber-600 font-medium">
-                Required columns: Email, First Name (or Name)
-              </p>
-            </div>
-          )}
-
-          {/* Paste from Excel Zone */}
-          {inputMode === "paste" && (
-            <div className="space-y-3">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  <strong>How to use:</strong> Select your data in Excel (including headers), press Ctrl+C (or Cmd+C), then paste below.
-                </p>
-              </div>
-              <Textarea
-                placeholder="Paste your Excel data here...
+          <Textarea
+            placeholder="Paste your Excel data here (include headers)...
 
 Example:
 Email	First Name	Invoice Number	Amount
 john@acme.com	John	INV-001	$1,500
 sarah@techco.com	Sarah	INV-002	$2,300"
-                value={pastedData}
-                onChange={(e) => {
-                  setPastedData(e.target.value)
-                  parsePastedData(e.target.value)
-                }}
-                className="min-h-[200px] font-mono text-sm"
-              />
-              <p className="text-xs text-gray-500">
-                Tab-separated (from Excel) or comma-separated values accepted
-              </p>
-              <p className="text-xs text-amber-600 font-medium">
-                Required columns: Email, First Name (or Name)
-              </p>
-            </div>
-          )}
+            value={pastedData}
+            onChange={(e) => {
+              setPastedData(e.target.value)
+              parsePastedData(e.target.value)
+            }}
+            className="min-h-[200px] font-mono text-sm"
+          />
+          <p className="text-xs text-amber-600 font-medium">
+            Required columns: Email, First Name (or Name)
+          </p>
         </div>
       )}
 
-      {/* File Selected */}
-      {fileName && (
+      {/* Data Parsed Successfully */}
+      {hasParsedData && (
         <div className="border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileSpreadsheet className="w-8 h-8 text-green-600" />
               <div>
-                <p className="font-medium text-gray-900">{fileName}</p>
+                <p className="font-medium text-gray-900">Data ready</p>
                 <p className="text-sm text-gray-500">
-                  {rawRows.length - 1} data rows, {headers.length} columns
+                  {rawRows.length - 1} rows, {headers.length} columns
                 </p>
               </div>
             </div>
@@ -438,12 +302,12 @@ sarah@techco.com	Sarah	INV-002	$2,300"
       {state === "parsing" && (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-6 h-6 text-orange-500 animate-spin mr-2" />
-          <span className="text-gray-600">Parsing file...</span>
+          <span className="text-gray-600">Parsing data...</span>
         </div>
       )}
 
       {/* Email Column Selection */}
-      {fileName && headers.length > 0 && state !== "parsing" && (
+      {hasParsedData && headers.length > 0 && state !== "parsing" && (
         <div className="space-y-4">
           <div>
             <Label className="flex items-center gap-2 mb-2">
@@ -516,7 +380,7 @@ sarah@techco.com	Sarah	INV-002	$2,300"
           {/* Data Preview */}
           {parseResult && previewRows.length > 0 && (
             <div>
-              <Label className="mb-2 block">Data Preview (first 10 rows)</Label>
+              <Label className="mb-2 block">Preview (first 10 rows)</Label>
               <div className="border rounded-lg overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -526,7 +390,6 @@ sarah@techco.com	Sarah	INV-002	$2,300"
                         {previewColumns.map((col, i) => (
                           <th key={i} className="px-3 py-2 text-left font-medium text-gray-600">
                             {col.label}
-                            <span className="ml-1 text-xs text-gray-400">({col.type})</span>
                           </th>
                         ))}
                         {parseResult.columns.length > 5 && (
@@ -568,8 +431,7 @@ sarah@techco.com	Sarah	INV-002	$2,300"
           <div>
             <p className="text-sm font-medium text-amber-800">Missing Required Column</p>
             <p className="text-sm text-amber-600">
-              Your file must include a "First Name" or "Name" column for email personalization. 
-              Please add this column to your spreadsheet and re-upload.
+              Your data must include a "First Name" or "Name" column for email personalization.
             </p>
           </div>
         </div>
@@ -598,7 +460,7 @@ sarah@techco.com	Sarah	INV-002	$2,300"
           {state === "uploading" ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Uploading...
+              Processing...
             </>
           ) : (
             <>
