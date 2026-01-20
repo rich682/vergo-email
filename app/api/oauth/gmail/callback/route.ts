@@ -9,7 +9,13 @@ export async function GET(request: Request) {
   const code = searchParams.get("code")
   const state = searchParams.get("state") // JSON with organizationId/userId
 
+  console.log("[Gmail OAuth Callback] Starting callback processing")
+  console.log("[Gmail OAuth Callback] Has code:", !!code)
+  console.log("[Gmail OAuth Callback] Has state:", !!state)
+  console.log("[Gmail OAuth Callback] Raw state value:", state)
+
   if (!code || !state) {
+    console.error("[Gmail OAuth Callback] Missing code or state - code:", !!code, "state:", !!state)
     return NextResponse.redirect(
       new URL("/dashboard/settings/team?error=oauth_failed", request.url)
     )
@@ -22,9 +28,12 @@ export async function GET(request: Request) {
       process.env.GMAIL_REDIRECT_URI
     )
 
+    console.log("[Gmail OAuth Callback] Exchanging code for tokens...")
     const { tokens } = await oauth2Client.getToken(code)
+    console.log("[Gmail OAuth Callback] Got tokens - access:", !!tokens.access_token, "refresh:", !!tokens.refresh_token)
 
     if (!tokens.access_token || !tokens.refresh_token) {
+      console.error("[Gmail OAuth Callback] Missing tokens")
       return NextResponse.redirect(
         new URL("/dashboard/settings/team?error=no_tokens", request.url)
       )
@@ -43,35 +52,82 @@ export async function GET(request: Request) {
     
     const oauth2 = google.oauth2({ version: "v2", auth: userInfoClient })
     const userInfo = await oauth2.userinfo.get()
+    console.log("[Gmail OAuth Callback] Got user email:", userInfo.data.email)
 
     if (!userInfo.data.email) {
+      console.error("[Gmail OAuth Callback] No email in user info")
       return NextResponse.redirect(
         new URL("/dashboard/settings/team?error=no_email", request.url)
       )
     }
 
-    let organizationId = state
+    // Parse state - try JSON first, then try URL-decoded JSON
+    let organizationId: string | null = null
     let userId: string | null = null
+    let parseError: string | null = null
+    
     try {
       const parsed = JSON.parse(state)
-      organizationId = parsed.organizationId || organizationId
+      organizationId = parsed.organizationId || null
       userId = parsed.userId || null
+      console.log("[Gmail OAuth Callback] State parsed successfully:", { organizationId, userId })
     } catch (e) {
-      // Fallback to legacy state (org id only)
-      organizationId = state
+      parseError = `Direct parse failed: ${e}`
+      // Try URL decoding first
+      try {
+        const decoded = decodeURIComponent(state)
+        console.log("[Gmail OAuth Callback] Trying URL-decoded state:", decoded)
+        const parsed = JSON.parse(decoded)
+        organizationId = parsed.organizationId || null
+        userId = parsed.userId || null
+        console.log("[Gmail OAuth Callback] URL-decoded state parsed successfully:", { organizationId, userId })
+        parseError = null
+      } catch (e2) {
+        parseError += ` | URL-decode parse failed: ${e2}`
+        console.error("[Gmail OAuth Callback] Failed to parse state:", parseError)
+        console.error("[Gmail OAuth Callback] Raw state was:", state)
+      }
     }
 
-    // Validate session matches state
+    // Get session
     const session = await getServerSession(authOptions)
+    console.log("[Gmail OAuth Callback] Session user:", {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      orgId: session?.user?.organizationId
+    })
+
+    // Validate session exists
     if (!session?.user?.id || !session.user.organizationId) {
+      console.error("[Gmail OAuth Callback] No session - redirecting to signin")
       return NextResponse.redirect(new URL("/auth/signin", request.url))
     }
+
+    // Validate user ID matches
     if (userId && session.user.id !== userId) {
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=oauth_failed", request.url))
+      console.error("[Gmail OAuth Callback] User ID mismatch!", {
+        stateUserId: userId,
+        sessionUserId: session.user.id
+      })
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=user_mismatch", request.url))
     }
+
+    // Validate organization ID matches
     if (organizationId && session.user.organizationId !== organizationId) {
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=oauth_failed", request.url))
+      console.error("[Gmail OAuth Callback] Org ID mismatch!", {
+        stateOrgId: organizationId,
+        sessionOrgId: session.user.organizationId
+      })
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=org_mismatch", request.url))
     }
+
+    // If we couldn't parse state at all, fail
+    if (!organizationId) {
+      console.error("[Gmail OAuth Callback] Could not extract organizationId from state")
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
+    }
+
+    console.log("[Gmail OAuth Callback] Validation passed, creating connection...")
 
     // Create connection in ConnectedEmailAccount (used by email sync)
     // Associate with the logged-in user so they can send from their own inbox

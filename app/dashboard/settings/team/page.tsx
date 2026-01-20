@@ -123,10 +123,30 @@ function TeamSettingsContent() {
       const errorMessages: Record<string, string> = {
         oauth_failed: "OAuth authentication failed. Please try again.",
         no_tokens: "Failed to get access tokens. Please try again.",
+        no_email: "Failed to get email address from provider.",
         session_mismatch: "Session mismatch - please ensure you're logged in and try again.",
+        user_mismatch: "User ID mismatch - please try again.",
+        org_mismatch: "Organization mismatch - please try again.",
+        invalid_state: "Invalid OAuth state - please try again.",
+        invalid_state_data: "Invalid OAuth state data - please try again.",
+        missing_code_or_state: "OAuth callback missing required data.",
+        token_exchange_failed: "Failed to exchange tokens with provider.",
+        no_access_token: "No access token received from provider.",
+        no_refresh_token: "No refresh token received - offline access may not be enabled.",
+        profile_fetch_failed: "Failed to fetch profile from provider.",
+        no_email_in_profile: "No email found in your account profile.",
+        missing_config: "Server configuration error - contact support.",
+        ms_access_denied: "Access denied - you may have declined permissions.",
+        ms_consent_required: "Admin consent may be required for this app.",
+        unexpected_error: "An unexpected error occurred.",
       }
-      setMessage({ type: "error", text: errorMessages[error] || `Connection error: ${error}` })
-      setTimeout(() => setMessage(null), 8000)
+      const customMessage = searchParams.get("message")
+      let errorText = errorMessages[error] || `Connection error: ${error}`
+      if (customMessage) {
+        errorText += ` (${decodeURIComponent(customMessage)})`
+      }
+      setMessage({ type: "error", text: errorText })
+      setTimeout(() => setMessage(null), 10000)
       window.history.replaceState({}, "", "/dashboard/settings/team")
     }
   }, [searchParams])

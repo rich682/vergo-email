@@ -10,48 +10,67 @@ export async function GET(request: Request) {
   const error = searchParams.get("error")
   const errorDescription = searchParams.get("error_description")
 
+  console.log("[Microsoft OAuth Callback] Starting callback processing")
+  console.log("[Microsoft OAuth Callback] Has code:", !!code)
+  console.log("[Microsoft OAuth Callback] Has state:", !!state)
+  console.log("[Microsoft OAuth Callback] Raw state value:", state)
+
   // Check if Microsoft returned an error
   if (error) {
-    console.error("Microsoft OAuth error from provider:", error, errorDescription)
+    console.error("[Microsoft OAuth Callback] Error from provider:", error, errorDescription)
     return NextResponse.redirect(
       new URL(`/dashboard/settings/team?error=ms_${error}&message=${encodeURIComponent(errorDescription || "")}`, request.url)
     )
   }
 
   if (!code || !state) {
-    console.error("Microsoft OAuth: Missing code or state")
+    console.error("[Microsoft OAuth Callback] Missing code or state - code:", !!code, "state:", !!state)
     return NextResponse.redirect(new URL("/dashboard/settings/team?error=missing_code_or_state", request.url))
   }
 
   let organizationId: string | null = null
   let userId: string | null = null
   try {
-    const parsed = JSON.parse(decodeURIComponent(state))
+    const decoded = decodeURIComponent(state)
+    console.log("[Microsoft OAuth Callback] URL-decoded state:", decoded)
+    const parsed = JSON.parse(decoded)
     organizationId = parsed.organizationId
     userId = parsed.userId
+    console.log("[Microsoft OAuth Callback] State parsed successfully:", { organizationId, userId })
   } catch (e) {
-    console.error("Microsoft OAuth: Failed to parse state:", e)
+    console.error("[Microsoft OAuth Callback] Failed to parse state:", e)
+    console.error("[Microsoft OAuth Callback] Raw state was:", state)
     return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
   }
 
   if (!organizationId || !userId) {
-    console.error("Microsoft OAuth: Missing organizationId or userId in state")
+    console.error("[Microsoft OAuth Callback] Missing organizationId or userId in state:", { organizationId, userId })
     return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state_data", request.url))
   }
 
   try {
     const session = await getServerSession(authOptions)
+    console.log("[Microsoft OAuth Callback] Session user:", {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      orgId: session?.user?.organizationId
+    })
+    
     if (!session?.user?.id || !session.user.organizationId) {
-      console.error("Microsoft OAuth: No session found")
+      console.error("[Microsoft OAuth Callback] No session found")
       return NextResponse.redirect(new URL("/auth/signin", request.url))
     }
     if (session.user.id !== userId || session.user.organizationId !== organizationId) {
-      console.error("Microsoft OAuth: Session mismatch - expected:", { userId, organizationId }, "got:", { 
-        userId: session.user.id, 
-        organizationId: session.user.organizationId 
+      console.error("[Microsoft OAuth Callback] Session mismatch!", { 
+        stateUserId: userId, 
+        sessionUserId: session.user.id,
+        stateOrgId: organizationId,
+        sessionOrgId: session.user.organizationId 
       })
       return NextResponse.redirect(new URL("/dashboard/settings/team?error=session_mismatch", request.url))
     }
+    
+    console.log("[Microsoft OAuth Callback] Validation passed, proceeding with token exchange...")
 
     // Check required env vars
     if (!process.env.MS_CLIENT_ID || !process.env.MS_CLIENT_SECRET || !process.env.MS_REDIRECT_URI) {
