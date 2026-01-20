@@ -372,6 +372,22 @@ export default function BoardsPage() {
       })
   }, [boards, statusFilter, cadenceFilter, searchQuery, sortOption])
 
+  // Split boards into recurring and ad hoc
+  const { recurringBoards, adHocBoards } = useMemo(() => {
+    const recurring: Board[] = []
+    const adHoc: Board[] = []
+    
+    filteredBoards.forEach(board => {
+      if (board.cadence === "AD_HOC" || !board.cadence) {
+        adHoc.push(board)
+      } else {
+        recurring.push(board)
+      }
+    })
+    
+    return { recurringBoards: recurring, adHocBoards: adHoc }
+  }, [filteredBoards])
+
   // Board actions
   const handleArchiveBoard = (board: Board) => {
     setArchiveConfirm({ open: true, boardId: board.id, boardName: board.name })
@@ -565,334 +581,398 @@ export default function BoardsPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {filteredBoards.map((board) => {
-            const isExpanded = expandedBoards.has(board.id)
-            const isLoadingJobs = loadingJobs.has(board.id)
-            const jobs = boardJobs[board.id] || []
-            
-            return (
-              <div key={board.id} className="border rounded-lg overflow-hidden bg-white">
-                {/* Board Header Row */}
-                <div 
-                  className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
+        <div className="space-y-6">
+          {/* Recurring Boards Section */}
+          {recurringBoards.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1 pb-2">
+                <div className="h-1 w-1 rounded-full bg-blue-500" />
+                <h3 className="text-sm font-medium text-gray-700">Recurring</h3>
+                <span className="text-xs text-gray-400">{recurringBoards.length}</span>
+              </div>
+              {recurringBoards.map((board) => {
+                const isExpanded = expandedBoards.has(board.id)
+                const isLoadingJobs = loadingJobs.has(board.id)
+                const jobs = boardJobs[board.id] || []
+                
+                return (
+                  <BoardRow 
+                    key={board.id}
+                    board={board}
+                    isExpanded={isExpanded}
+                    isLoadingJobs={isLoadingJobs}
+                    jobs={jobs}
+                    menuOpenId={menuOpenId}
+                    menuRef={menuRef}
+                    toggleBoardExpansion={toggleBoardExpansion}
+                    setMenuOpenId={setMenuOpenId}
+                    setEditingBoard={setEditingBoard}
+                    handleStatusChange={handleStatusChange}
+                    handleDuplicateBoard={handleDuplicateBoard}
+                    handleArchiveBoard={handleArchiveBoard}
+                    handleRestoreBoard={handleRestoreBoard}
+                    handleDeleteBoard={handleDeleteBoard}
+                    canDeleteBoard={canDeleteBoard}
+                    router={router}
+                  />
+                )
+              })}
+            </div>
+          )}
+
+          {/* Ad Hoc Boards Section */}
+          {adHocBoards.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1 pb-2">
+                <div className="h-1 w-1 rounded-full bg-gray-400" />
+                <h3 className="text-sm font-medium text-gray-700">Ad Hoc</h3>
+                <span className="text-xs text-gray-400">{adHocBoards.length}</span>
+              </div>
+              {adHocBoards.map((board) => {
+                const isExpanded = expandedBoards.has(board.id)
+                const isLoadingJobs = loadingJobs.has(board.id)
+                const jobs = boardJobs[board.id] || []
+                
+                return (
+                  <BoardRow 
+                    key={board.id}
+                    board={board}
+                    isExpanded={isExpanded}
+                    isLoadingJobs={isLoadingJobs}
+                    jobs={jobs}
+                    menuOpenId={menuOpenId}
+                    menuRef={menuRef}
+                    toggleBoardExpansion={toggleBoardExpansion}
+                    setMenuOpenId={setMenuOpenId}
+                    setEditingBoard={setEditingBoard}
+                    handleStatusChange={handleStatusChange}
+                    handleDuplicateBoard={handleDuplicateBoard}
+                    handleArchiveBoard={handleArchiveBoard}
+                    handleRestoreBoard={handleRestoreBoard}
+                    handleDeleteBoard={handleDeleteBoard}
+                    canDeleteBoard={canDeleteBoard}
+                    router={router}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Extracted BoardRow component for reuse
+interface BoardRowProps {
+  board: Board
+  isExpanded: boolean
+  isLoadingJobs: boolean
+  jobs: Job[]
+  menuOpenId: string | null
+  menuRef: React.RefObject<HTMLDivElement>
+  toggleBoardExpansion: (boardId: string, e: React.MouseEvent) => void
+  setMenuOpenId: (id: string | null) => void
+  setEditingBoard: (board: Board | null) => void
+  handleStatusChange: (boardId: string, newStatus: BoardStatus) => void
+  handleDuplicateBoard: (board: Board) => void
+  handleArchiveBoard: (board: Board) => void
+  handleRestoreBoard: (boardId: string) => void
+  handleDeleteBoard: (board: Board) => void
+  canDeleteBoard: (board: Board) => boolean
+  router: ReturnType<typeof useRouter>
+}
+
+function BoardRow({
+  board,
+  isExpanded,
+  isLoadingJobs,
+  jobs,
+  menuOpenId,
+  menuRef,
+  toggleBoardExpansion,
+  setMenuOpenId,
+  setEditingBoard,
+  handleStatusChange,
+  handleDuplicateBoard,
+  handleArchiveBoard,
+  handleRestoreBoard,
+  handleDeleteBoard,
+  canDeleteBoard,
+  router
+}: BoardRowProps) {
+  return (
+    <div className="border rounded-lg overflow-hidden bg-white">
+      {/* Board Header Row */}
+      <div 
+        className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+        onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
+      >
+        {/* Expand/Collapse Button */}
+        <button
+          onClick={(e) => toggleBoardExpansion(board.id, e)}
+          className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0"
+          disabled={board.jobCount === 0}
+        >
+          {board.jobCount === 0 ? (
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          ) : isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-gray-600" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-gray-600" />
+          )}
+        </button>
+
+        {/* Board Name */}
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-gray-900">{board.name}</span>
+        </div>
+
+        {/* Cadence */}
+        <div className="w-24 flex-shrink-0">
+          {getCadenceBadge(board.cadence)}
+        </div>
+
+        {/* Period */}
+        <div className="w-36 text-sm text-gray-600 flex-shrink-0">
+          {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
+        </div>
+
+        {/* Status */}
+        <div className="w-28 flex-shrink-0">
+          {getStatusBadge(board.status)}
+        </div>
+
+        {/* Owner */}
+        <div className="w-32 flex-shrink-0">
+          {board.owner ? (
+            <div className="flex items-center gap-2">
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
+                  {getInitials(board.owner.name, board.owner.email)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm text-gray-700 truncate">
+                {board.owner.name || board.owner.email.split("@")[0]}
+              </span>
+            </div>
+          ) : (
+            <span className="text-gray-400">—</span>
+          )}
+        </div>
+
+        {/* Tasks Count */}
+        <div className="w-16 text-center text-gray-600 flex-shrink-0">
+          {board.jobCount}
+        </div>
+
+        {/* Updated */}
+        <div className="w-28 text-sm text-gray-500 flex-shrink-0">
+          {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
+        </div>
+
+        {/* Actions */}
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpenId(menuOpenId === board.id ? null : board.id)
+            }}
+            className="p-1 rounded hover:bg-gray-200 transition-colors"
+          >
+            <MoreHorizontal className="w-4 h-4 text-gray-500" />
+          </button>
+
+          {/* Context menu */}
+          {menuOpenId === board.id && (
+            <div 
+              ref={menuRef}
+              className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Edit */}
+              <button
+                onClick={() => {
+                  setEditingBoard(board)
+                  setMenuOpenId(null)
+                }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Pencil className="w-4 h-4" />
+                Edit
+              </button>
+              
+              <div className="border-t my-1" />
+              
+              {/* Quick status actions */}
+              {normalizeStatus(board.status) !== "IN_PROGRESS" && normalizeStatus(board.status) !== "ARCHIVED" && (
+                <button
+                  onClick={() => handleStatusChange(board.id, "IN_PROGRESS")}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-blue-600"
                 >
-                  {/* Expand/Collapse Button */}
-                  <button
-                    onClick={(e) => toggleBoardExpansion(board.id, e)}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0"
-                    disabled={board.jobCount === 0}
-                  >
-                    {board.jobCount === 0 ? (
-                      <ChevronRight className="w-4 h-4 text-gray-300" />
-                    ) : isExpanded ? (
-                      <ChevronDown className="w-4 h-4 text-gray-600" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-600" />
-                    )}
-                  </button>
+                  <PlayCircle className="w-4 h-4" />
+                  Mark In Progress
+                </button>
+              )}
+              
+              {normalizeStatus(board.status) !== "COMPLETE" && normalizeStatus(board.status) !== "ARCHIVED" && (
+                <button
+                  onClick={() => handleStatusChange(board.id, "COMPLETE")}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Mark Complete
+                </button>
+              )}
+              
+              {normalizeStatus(board.status) !== "BLOCKED" && normalizeStatus(board.status) !== "ARCHIVED" && (
+                <button
+                  onClick={() => handleStatusChange(board.id, "BLOCKED")}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                >
+                  <PauseCircle className="w-4 h-4" />
+                  Mark Blocked
+                </button>
+              )}
+              
+              <div className="border-t my-1" />
+              
+              <button
+                onClick={() => handleDuplicateBoard(board)}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicate
+              </button>
+              
+              {normalizeStatus(board.status) === "ARCHIVED" ? (
+                <button
+                  onClick={() => handleRestoreBoard(board.id)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Restore
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleArchiveBoard(board)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Archive className="w-4 h-4" />
+                  Archive
+                </button>
+              )}
+              
+              {canDeleteBoard(board) && (
+                <button
+                  onClick={() => handleDeleteBoard(board)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
-                  {/* Board Name */}
+      {/* Expanded Jobs Section */}
+      {isExpanded && (
+        <div className="border-t">
+          {isLoadingJobs ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="py-4 px-6 text-center text-gray-500 text-sm">
+              No tasks in this board yet
+            </div>
+          ) : (
+            <div className="py-2">
+              {/* Jobs Header */}
+              <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                <div className="w-6"></div> {/* Indent spacer */}
+                <div className="flex-1 min-w-0">Item</div>
+                <div className="w-32">Person</div>
+                <div className="w-28">Status</div>
+                <div className="w-28">Date</div>
+                <div className="w-12"></div>
+              </div>
+              
+              {/* Jobs List */}
+              {jobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    router.push(`/dashboard/jobs/${job.id}`)
+                  }}
+                >
+                  <div className="w-6"></div> {/* Indent spacer */}
+                  
+                  {/* Task Name */}
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium text-gray-900">{board.name}</span>
-                  </div>
-
-                  {/* Cadence */}
-                  <div className="w-24 flex-shrink-0">
-                    {getCadenceBadge(board.cadence)}
-                  </div>
-
-                  {/* Period */}
-                  <div className="w-36 text-sm text-gray-600 flex-shrink-0">
-                    {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
-                  </div>
-
-                  {/* Status */}
-                  <div className="w-28 flex-shrink-0">
-                    {getStatusBadge(board.status)}
+                    <span className="text-sm text-gray-900 truncate block">{job.name}</span>
                   </div>
 
                   {/* Owner */}
                   <div className="w-32 flex-shrink-0">
-                    {board.owner ? (
+                    {job.owner ? (
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
-                            {getInitials(board.owner.name, board.owner.email)}
+                          <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                            {getInitials(job.owner.name, job.owner.email)}
                           </AvatarFallback>
                         </Avatar>
                         <span className="text-sm text-gray-700 truncate">
-                          {board.owner.name || board.owner.email.split("@")[0]}
+                          {job.owner.name || job.owner.email.split("@")[0]}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-gray-400 text-sm">—</span>
                     )}
                   </div>
 
-                  {/* Tasks Count */}
-                  <div className="w-16 text-center text-gray-600 flex-shrink-0">
-                    {board.jobCount}
+                  {/* Status */}
+                  <div className="w-28 flex-shrink-0">
+                    {getJobStatusBadge(job.status)}
                   </div>
 
-                  {/* Updated */}
-                  <div className="w-28 text-sm text-gray-500 flex-shrink-0">
-                    {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="relative flex-shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMenuOpenId(menuOpenId === board.id ? null : board.id)
-                      }}
-                      className="p-1 rounded hover:bg-gray-200 transition-colors"
-                    >
-                      <MoreHorizontal className="w-4 h-4 text-gray-500" />
-                    </button>
-
-                    {/* Context menu */}
-                    {menuOpenId === board.id && (
-                      <div 
-                        ref={menuRef}
-                        className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-50"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {/* Edit */}
-                        <button
-                          onClick={() => {
-                            setEditingBoard(board)
-                            setMenuOpenId(null)
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                        >
-                          <Pencil className="w-4 h-4" />
-                          Edit
-                        </button>
-                        
-                        <div className="border-t my-1" />
-                        
-                        {/* Quick status actions */}
-                        {normalizeStatus(board.status) !== "IN_PROGRESS" && normalizeStatus(board.status) !== "ARCHIVED" && (
-                          <button
-                            onClick={() => handleStatusChange(board.id, "IN_PROGRESS")}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-blue-600"
-                          >
-                            <PlayCircle className="w-4 h-4" />
-                            Mark In Progress
-                          </button>
-                        )}
-                        
-                        {normalizeStatus(board.status) !== "COMPLETE" && normalizeStatus(board.status) !== "ARCHIVED" && (
-                          <button
-                            onClick={() => handleStatusChange(board.id, "COMPLETE")}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            Mark Complete
-                          </button>
-                        )}
-                        
-                        {normalizeStatus(board.status) !== "BLOCKED" && normalizeStatus(board.status) !== "ARCHIVED" && (
-                          <button
-                            onClick={() => handleStatusChange(board.id, "BLOCKED")}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                          >
-                            <PauseCircle className="w-4 h-4" />
-                            Mark Blocked
-                          </button>
-                        )}
-                        
-                        <div className="border-t my-1" />
-                        
-                        <button
-                          onClick={() => handleDuplicateBoard(board)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                        >
-                          <Copy className="w-4 h-4" />
-                          Duplicate
-                        </button>
-                        
-                        {normalizeStatus(board.status) === "ARCHIVED" ? (
-                          <button
-                            onClick={() => handleRestoreBoard(board.id)}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                            Restore
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleArchiveBoard(board)}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <Archive className="w-4 h-4" />
-                            Archive
-                          </button>
-                        )}
-                        
-                        {canDeleteBoard(board) && (
-                          <button
-                            onClick={() => handleDeleteBoard(board)}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded Jobs Section */}
-                {isExpanded && (
-                  <div className="border-t">
-                    {isLoadingJobs ? (
-                      <div className="flex items-center justify-center py-6">
-                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                      </div>
-                    ) : jobs.length === 0 ? (
-                      <div className="py-4 px-6 text-center text-gray-500 text-sm">
-                        No tasks in this board yet
+                  {/* Due Date */}
+                  <div className="w-28 flex-shrink-0">
+                    {job.dueDate ? (
+                      <div className="flex items-center gap-1 text-sm text-gray-600">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {format(new Date(job.dueDate), "MMM d")}
                       </div>
                     ) : (
-                      <div className="py-2">
-                        {/* Jobs Header */}
-                        <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                          <div className="w-6"></div> {/* Indent spacer */}
-                          <div className="flex-1 min-w-0">Item</div>
-                          <div className="w-32">Person</div>
-                          <div className="w-28">Status</div>
-                          <div className="w-28">Date</div>
-                          <div className="w-12"></div>
-                        </div>
-                        
-                        {/* Jobs List */}
-                        {jobs.map((job) => (
-                          <div
-                            key={job.id}
-                            className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.push(`/dashboard/jobs/${job.id}`)
-                            }}
-                          >
-                            <div className="w-6"></div> {/* Indent spacer */}
-                            
-                            {/* Task Name */}
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm text-gray-900 truncate block">{job.name}</span>
-                            </div>
-
-                            {/* Owner */}
-                            <div className="w-32 flex-shrink-0">
-                              {job.owner ? (
-                                <div className="flex items-center gap-2">
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                                      {getInitials(job.owner.name, job.owner.email)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span className="text-sm text-gray-700 truncate">
-                                    {job.owner.name || job.owner.email.split("@")[0]}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-sm">—</span>
-                              )}
-                            </div>
-
-                            {/* Status */}
-                            <div className="w-28 flex-shrink-0">
-                              {getJobStatusBadge(job.status)}
-                            </div>
-
-                            {/* Due Date */}
-                            <div className="w-28 flex-shrink-0">
-                              {job.dueDate ? (
-                                <div className="flex items-center gap-1 text-sm text-gray-600">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  {format(new Date(job.dueDate), "MMM d")}
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-sm">—</span>
-                              )}
-                            </div>
-
-                            {/* Spacer for alignment with board row */}
-                            <div className="w-12"></div>
-                          </div>
-                        ))}
-                        
-                        {/* Add Task Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
-                          }}
-                          className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="w-6"></div>
-                          <Plus className="w-4 h-4" />
-                          <span>Add item</span>
-                        </button>
-                      </div>
+                      <span className="text-gray-400 text-sm">—</span>
                     )}
                   </div>
-                )}
-              </div>
-            )
-          })}
+
+                  {/* Spacer for alignment with board row */}
+                  <div className="w-12"></div>
+                </div>
+              ))}
+              
+              {/* Add Task Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
+                }}
+                className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <div className="w-6"></div>
+                <Plus className="w-4 h-4" />
+                <span>Add item</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
-
-      {/* Create Board Modal */}
-      <CreateBoardModal
-        open={isCreateBoardOpen}
-        onOpenChange={setIsCreateBoardOpen}
-        onBoardCreated={(board) => {
-          fetchBoards()
-          router.push(`/dashboard/jobs?boardId=${board.id}`)
-        }}
-      />
-
-      {/* Edit Board Modal */}
-      <EditBoardModal
-        open={!!editingBoard}
-        onOpenChange={(open) => !open && setEditingBoard(null)}
-        board={editingBoard}
-        onBoardUpdated={() => {
-          fetchBoards()
-          setEditingBoard(null)
-        }}
-      />
-
-      {/* Archive Board Confirmation */}
-      <ConfirmDialog
-        open={archiveConfirm.open}
-        onOpenChange={(open) => setArchiveConfirm({ open, boardId: open ? archiveConfirm.boardId : null, boardName: open ? archiveConfirm.boardName : "" })}
-        title="Archive Board"
-        description={`Archive "${archiveConfirm.boardName}"? You can restore it later from the Archived filter.`}
-        confirmLabel="Archive"
-        cancelLabel="Cancel"
-        variant="warning"
-        onConfirm={confirmArchiveBoard}
-      />
-
-      {/* Delete Board Confirmation */}
-      <ConfirmDialog
-        open={deleteConfirm.open}
-        onOpenChange={(open) => setDeleteConfirm({ open, boardId: open ? deleteConfirm.boardId : null, boardName: open ? deleteConfirm.boardName : "" })}
-        title="Delete Board"
-        description={`Are you sure you want to permanently delete "${deleteConfirm.boardName}"? This action cannot be undone.`}
-        confirmLabel="Delete Board"
-        cancelLabel="Cancel"
-        variant="danger"
-        onConfirm={confirmDeleteBoard}
-      />
     </div>
   )
 }
