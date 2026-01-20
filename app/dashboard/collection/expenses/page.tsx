@@ -1,28 +1,33 @@
 "use client"
 
 import { useEffect } from "react"
-import { Receipt, Zap, Shield, Link2 } from "lucide-react"
+import { CreditCard, CheckSquare, Smartphone, Shield, Zap } from "lucide-react"
 
 const features = [
   {
-    icon: Receipt,
-    title: "Automated Expense Capture",
-    description: "Automatically capture and categorize expenses from receipts, credit card statements, and bank feeds."
+    icon: CreditCard,
+    title: "Connect Any Card",
+    description: "Seamlessly connect Visa, Mastercard, or Amex cards for automatic transaction import and tracking."
   },
   {
-    icon: Zap,
-    title: "Smart Matching",
-    description: "AI-powered matching of expenses to projects, clients, and GL codes for faster reconciliation."
+    icon: CheckSquare,
+    title: "Approval Workflows",
+    description: "Customizable approval chains with automatic routing based on amount, category, or department."
+  },
+  {
+    icon: Smartphone,
+    title: "Mobile App Capture",
+    description: "Snap receipts on the go with our mobile app. AI extracts details automatically."
   },
   {
     icon: Shield,
-    title: "Policy Compliance",
-    description: "Built-in policy checks ensure expenses meet your firm's guidelines before approval."
+    title: "Controls & Policies",
+    description: "Built-in spending controls and policy checks ensure expenses meet your firm's guidelines."
   },
   {
-    icon: Link2,
-    title: "Accounting Software Integrations",
-    description: "Connect with QuickBooks, Xero, Sage, and other accounting platforms for seamless data sync."
+    icon: Zap,
+    title: "Accounting Coding Automations",
+    description: "AI-powered auto-coding of expenses to GL accounts, projects, and clients for faster reconciliation."
   }
 ]
 
