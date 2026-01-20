@@ -86,6 +86,11 @@ export interface JobWithStats {
   name: string
   description: string | null
   clientId: string | null
+  boardId: string | null  // Parent board for period-based organization
+  board?: {
+    id: string
+    name: string
+  } | null
   status: JobStatus
   dueDate: Date | null
   labels: JobLabels | null  // Structured labels with tags, period, workType
@@ -298,6 +303,12 @@ export class JobService {
           select: {
             collectedItems: true
           }
+        },
+        board: {
+          select: {
+            id: true,
+            name: true
+          }
         }
       }
     })
@@ -324,6 +335,8 @@ export class JobService {
       name: job.name,
       description: job.description,
       clientId: job.clientId,
+      boardId: job.boardId,
+      board: job.board,
       status: job.status,
       dueDate: job.dueDate,
       labels: job.labels as JobLabels | null,

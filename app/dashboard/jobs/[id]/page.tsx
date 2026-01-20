@@ -95,6 +95,8 @@ interface Job {
   status: string
   dueDate: string | null
   labels: string[] | null
+  boardId: string | null
+  board?: { id: string; name: string } | null
   stakeholders?: JobStakeholder[]
   noStakeholdersNeeded?: boolean
   createdAt: string
@@ -889,7 +891,7 @@ export default function JobDetailPage() {
           icon={<AlertCircle className="w-6 h-6" />}
           title="Item not found"
           description="This item may have been deleted or you don't have access."
-          action={{ label: "Back to Tasks", onClick: () => router.push("/dashboard/jobs") }}
+          action={{ label: "Back to Boards", onClick: () => router.push("/dashboard/boards") }}
         />
       </div>
     )
@@ -900,9 +902,14 @@ export default function JobDetailPage() {
       {/* Top Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-8 py-3 flex items-center justify-between">
-          <Link href="/dashboard/jobs" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+          <Link 
+            href={job?.boardId ? `/dashboard/jobs?boardId=${job.boardId}` : "/dashboard/boards"} 
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
             <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">Back to {UI_LABELS.jobsPageTitle}</span>
+            <span className="text-sm">
+              {job?.board ? `Back to ${job.board.name}` : "Back to Boards"}
+            </span>
           </Link>
           {permissions?.canEdit && (
             <button 

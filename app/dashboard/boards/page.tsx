@@ -749,7 +749,7 @@ export default function BoardsPage() {
 
                 {/* Expanded Jobs Section */}
                 {isExpanded && (
-                  <div className="border-t bg-gray-50">
+                  <div className="border-t">
                     {isLoadingJobs ? (
                       <div className="flex items-center justify-center py-6">
                         <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
