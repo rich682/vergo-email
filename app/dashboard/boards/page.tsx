@@ -23,7 +23,10 @@ import {
   Pencil,
   PlayCircle,
   CheckCircle2,
-  PauseCircle
+  PauseCircle,
+  ChevronRight,
+  ChevronDown,
+  Calendar
 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
@@ -34,6 +37,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 // Types
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "OPEN" | "CLOSED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
+type JobStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "STUCK" | "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
 
 interface BoardOwner {
   id: string
@@ -52,6 +56,25 @@ interface BoardCollaborator {
   }
 }
 
+interface JobOwner {
+  id: string
+  name: string | null
+  email: string
+}
+
+interface Job {
+  id: string
+  name: string
+  description: string | null
+  status: JobStatus
+  dueDate: string | null
+  owner: JobOwner
+  _count?: {
+    tasks: number
+    subtasks: number
+  }
+}
+
 interface Board {
   id: string
   name: string
@@ -64,6 +87,7 @@ interface Board {
   collaborators: BoardCollaborator[]
   updatedAt: string
   createdAt: string
+  jobs?: Job[] // Populated when expanded
 }
 
 type StatusFilter = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "ALL"
@@ -88,6 +112,20 @@ function normalizeStatus(status: BoardStatus): BoardStatus {
   return status
 }
 
+function normalizeJobStatus(status: JobStatus): string {
+  // Handle legacy statuses
+  switch (status) {
+    case "ACTIVE":
+    case "WAITING":
+      return "IN_PROGRESS"
+    case "COMPLETED":
+    case "ARCHIVED":
+      return "COMPLETE"
+    default:
+      return status
+  }
+}
+
 function getStatusBadge(status: BoardStatus) {
   const normalized = normalizeStatus(status)
   switch (normalized) {
@@ -103,6 +141,24 @@ function getStatusBadge(status: BoardStatus) {
       return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">Archived</span>
     default:
       return null
+  }
+}
+
+function getJobStatusBadge(status: JobStatus) {
+  const normalized = normalizeJobStatus(status)
+  switch (normalized) {
+    case "NOT_STARTED":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Not Started</span>
+    case "IN_PROGRESS":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">In Progress</span>
+    case "COMPLETE":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Complete</span>
+    case "BLOCKED":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-700">Blocked</span>
+    case "STUCK":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700">Stuck</span>
+    default:
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{status}</span>
   }
 }
 
@@ -178,6 +234,11 @@ export default function BoardsPage() {
   const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>("ALL")
   const [sortOption, setSortOption] = useState<SortOption>("recent")
   
+  // Expanded boards state
+  const [expandedBoards, setExpandedBoards] = useState<Set<string>>(new Set())
+  const [loadingJobs, setLoadingJobs] = useState<Set<string>>(new Set())
+  const [boardJobs, setBoardJobs] = useState<Record<string, Job[]>>({})
+  
   // Modal states
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<Board | null>(null)
@@ -200,6 +261,47 @@ export default function BoardsPage() {
       console.error("Error fetching boards:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Fetch jobs for a specific board
+  const fetchBoardJobs = async (boardId: string) => {
+    if (boardJobs[boardId]) return // Already loaded
+    
+    setLoadingJobs(prev => new Set(prev).add(boardId))
+    try {
+      const response = await fetch(`/api/boards/${boardId}?includeJobs=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setBoardJobs(prev => ({
+          ...prev,
+          [boardId]: data.board.jobs || []
+        }))
+      }
+    } catch (error) {
+      console.error("Error fetching board jobs:", error)
+    } finally {
+      setLoadingJobs(prev => {
+        const next = new Set(prev)
+        next.delete(boardId)
+        return next
+      })
+    }
+  }
+
+  // Toggle board expansion
+  const toggleBoardExpansion = async (boardId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    
+    if (expandedBoards.has(boardId)) {
+      setExpandedBoards(prev => {
+        const next = new Set(prev)
+        next.delete(boardId)
+        return next
+      })
+    } else {
+      setExpandedBoards(prev => new Set(prev).add(boardId))
+      fetchBoardJobs(boardId)
     }
   }
 
@@ -463,59 +565,56 @@ export default function BoardsPage() {
           )}
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Board Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cadence
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Period
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Owner
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Team
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tasks
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Updated
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                  
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredBoards.map((board) => (
-                <tr 
-                  key={board.id}
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+        <div className="space-y-2">
+          {filteredBoards.map((board) => {
+            const isExpanded = expandedBoards.has(board.id)
+            const isLoadingJobs = loadingJobs.has(board.id)
+            const jobs = boardJobs[board.id] || []
+            
+            return (
+              <div key={board.id} className="border rounded-lg overflow-hidden bg-white">
+                {/* Board Header Row */}
+                <div 
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
                 >
-                  <td className="px-4 py-3">
+                  {/* Expand/Collapse Button */}
+                  <button
+                    onClick={(e) => toggleBoardExpansion(board.id, e)}
+                    className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0"
+                    disabled={board.jobCount === 0}
+                  >
+                    {board.jobCount === 0 ? (
+                      <ChevronRight className="w-4 h-4 text-gray-300" />
+                    ) : isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-gray-600" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
+                    )}
+                  </button>
+
+                  {/* Board Name */}
+                  <div className="flex-1 min-w-0">
                     <span className="font-medium text-gray-900">{board.name}</span>
-                  </td>
-                  <td className="px-4 py-3">
+                  </div>
+
+                  {/* Cadence */}
+                  <div className="w-24 flex-shrink-0">
                     {getCadenceBadge(board.cadence)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 text-sm">
+                  </div>
+
+                  {/* Period */}
+                  <div className="w-36 text-sm text-gray-600 flex-shrink-0">
                     {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
-                  </td>
-                  <td className="px-4 py-3">
+                  </div>
+
+                  {/* Status */}
+                  <div className="w-28 flex-shrink-0">
                     {getStatusBadge(board.status)}
-                  </td>
-                  <td className="px-4 py-3">
+                  </div>
+
+                  {/* Owner */}
+                  <div className="w-32 flex-shrink-0">
                     {board.owner ? (
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
@@ -523,41 +622,27 @@ export default function BoardsPage() {
                             {getInitials(board.owner.name, board.owner.email)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-sm text-gray-700">
+                        <span className="text-sm text-gray-700 truncate">
                           {board.owner.name || board.owner.email.split("@")[0]}
                         </span>
                       </div>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {board.collaborators.length > 0 ? (
-                      <div className="flex -space-x-2">
-                        {board.collaborators.slice(0, 3).map((c) => (
-                          <Avatar key={c.id} className="h-6 w-6 border-2 border-white">
-                            <AvatarFallback className="text-xs bg-gray-100 text-gray-600">
-                              {getInitials(c.user.name, c.user.email)}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                        {board.collaborators.length > 3 && (
-                          <div className="h-6 w-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center">
-                            <span className="text-xs text-gray-600">+{board.collaborators.length - 3}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  </div>
+
+                  {/* Tasks Count */}
+                  <div className="w-16 text-center text-gray-600 flex-shrink-0">
                     {board.jobCount}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-sm">
+                  </div>
+
+                  {/* Updated */}
+                  <div className="w-28 text-sm text-gray-500 flex-shrink-0">
                     {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
-                  </td>
-                  <td className="px-4 py-3 text-right relative">
+                  </div>
+
+                  {/* Actions */}
+                  <div className="relative flex-shrink-0">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -572,7 +657,7 @@ export default function BoardsPage() {
                     {menuOpenId === board.id && (
                       <div 
                         ref={menuRef}
-                        className="absolute right-4 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-50"
+                        className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-50"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {/* Edit */}
@@ -659,11 +744,108 @@ export default function BoardsPage() {
                         )}
                       </div>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+
+                {/* Expanded Jobs Section */}
+                {isExpanded && (
+                  <div className="border-t bg-gray-50">
+                    {isLoadingJobs ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                      </div>
+                    ) : jobs.length === 0 ? (
+                      <div className="py-4 px-6 text-center text-gray-500 text-sm">
+                        No tasks in this board yet
+                      </div>
+                    ) : (
+                      <div className="py-2">
+                        {/* Jobs Header */}
+                        <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                          <div className="w-6"></div> {/* Indent spacer */}
+                          <div className="flex-1 min-w-0">Item</div>
+                          <div className="w-32">Person</div>
+                          <div className="w-28">Status</div>
+                          <div className="w-28">Date</div>
+                          <div className="w-12"></div>
+                        </div>
+                        
+                        {/* Jobs List */}
+                        {jobs.map((job) => (
+                          <div
+                            key={job.id}
+                            className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/dashboard/jobs/${job.id}`)
+                            }}
+                          >
+                            <div className="w-6"></div> {/* Indent spacer */}
+                            
+                            {/* Task Name */}
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm text-gray-900 truncate block">{job.name}</span>
+                            </div>
+
+                            {/* Owner */}
+                            <div className="w-32 flex-shrink-0">
+                              {job.owner ? (
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                                      {getInitials(job.owner.name, job.owner.email)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm text-gray-700 truncate">
+                                    {job.owner.name || job.owner.email.split("@")[0]}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </div>
+
+                            {/* Status */}
+                            <div className="w-28 flex-shrink-0">
+                              {getJobStatusBadge(job.status)}
+                            </div>
+
+                            {/* Due Date */}
+                            <div className="w-28 flex-shrink-0">
+                              {job.dueDate ? (
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  {format(new Date(job.dueDate), "MMM d")}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">—</span>
+                              )}
+                            </div>
+
+                            {/* Spacer for alignment with board row */}
+                            <div className="w-12"></div>
+                          </div>
+                        ))}
+                        
+                        {/* Add Task Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
+                          }}
+                          className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="w-6"></div>
+                          <Plus className="w-4 h-4" />
+                          <span>Add item</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
