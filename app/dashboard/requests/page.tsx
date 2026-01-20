@@ -50,6 +50,11 @@ interface RequestTask {
     id: string
     name: string
     ownerId: string
+    boardId: string | null
+    board?: {
+      id: string
+      name: string
+    } | null
     owner?: {
       id: string
       name: string | null
@@ -229,7 +234,8 @@ export default function RequestsPage() {
   useEffect(() => {
     const fetchBoards = async () => {
       try {
-        const response = await fetch("/api/boards?status=OPEN,CLOSED", { credentials: "include" })
+        // Fetch all active boards (exclude only ARCHIVED)
+        const response = await fetch("/api/boards?status=NOT_STARTED,IN_PROGRESS,COMPLETE,BLOCKED,OPEN,CLOSED", { credentials: "include" })
         if (response.ok) {
           const data = await response.json()
           setBoards(data.boards || [])
@@ -647,6 +653,7 @@ export default function RequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
@@ -665,6 +672,11 @@ export default function RequestsPage() {
                   className="hover:bg-gray-50 cursor-pointer"
                   onClick={() => handleOpenThread(request)}
                 >
+                  <td className="px-4 py-3">
+                    <span className="text-sm text-gray-600 truncate max-w-[150px] block">
+                      {request.job?.board?.name || "—"}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     <span className="text-sm text-gray-900 truncate max-w-[180px] block">
                       {request.job?.name || "—"}
