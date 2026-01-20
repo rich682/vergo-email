@@ -141,6 +141,7 @@ model Organization {
   subtasks               Subtask[]
   attachments            Attachment[]
   emailQueue             EmailQueue[]
+  reconciliations        Reconciliation[]
 
   @@index([slug])
 }
@@ -178,6 +179,7 @@ model User {
   uploadedAttachments Attachment[]        @relation("AttachmentUploader")
   reviewedMessages    Message[]           @relation("MessageReviewer")
   reviewAuditLogs     ReviewAuditLog[]    @relation("ReviewAuditAuthor")
+  reconciliations     Reconciliation[]    @relation("ReconciliationCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -290,9 +292,10 @@ model Job {
   tasks           Task[]            // Child tasks (requests) belonging to this job
   requests        EmailDraft[]      // Request-level association
   comments        JobComment[]      // Internal collaboration comments
-  collectedItems  CollectedItem[]   // Evidence/attachments collected for this job
-  subtasks        Subtask[]         // Checklist subitems within this job
-  attachments     Attachment[]      // Direct file attachments on this job
+  collectedItems   CollectedItem[]   // Evidence/attachments collected for this job
+  subtasks         Subtask[]         // Checklist subitems within this job
+  attachments      Attachment[]      // Direct file attachments on this job
+  reconciliations  Reconciliation[]  // Document reconciliation workflows
 
   jobLabels       JobLabel[]        // Item-scoped labels for contacts
 
@@ -953,4 +956,59 @@ model AIRecommendation {
   @@index([organizationId, createdAt])
   @@index([messageId])
   @@index([organizationId, campaignType, agreedWithAI])
+}
+
+// Reconciliation status for the LLM-powered document comparison workflow
+enum ReconciliationStatus {
+  PENDING      // Documents uploaded, waiting for processing
+  PROCESSING   // LLM is analyzing the documents
+  COMPLETED    // Analysis complete with results
+  FAILED       // Processing failed
+}
+
+// Reconciliation represents a comparison between two documents (e.g., Excel spreadsheets)
+// Used for AI-powered document reconciliation workflows in accounting
+model Reconciliation {
+  id             String               @id @default(cuid())
+  organizationId String
+  jobId          String               // Parent task (Job)
+  
+  // Document 1 (Source A)
+  document1Key   String               // Storage key (blob)
+  document1Name  String               // Original filename
+  document1Url   String?              // Cached URL for preview
+  document1Size  Int?                 // File size in bytes
+  
+  // Document 2 (Source B)
+  document2Key   String               // Storage key (blob)
+  document2Name  String               // Original filename
+  document2Url   String?              // Cached URL for preview
+  document2Size  Int?                 // File size in bytes
+  
+  // Processing status
+  status         ReconciliationStatus @default(PENDING)
+  errorMessage   String?              // Error details if failed
+  
+  // Results (populated after processing)
+  summary        String?              // Human-readable summary
+  matchedCount   Int?                 // Number of matched items
+  unmatchedCount Int?                 // Number of unmatched items
+  totalRows      Int?                 // Total rows analyzed
+  result         Json?                // Detailed reconciliation result
+  discrepancies  Json?                // List of discrepancies found
+  
+  // Metadata
+  createdById    String
+  processedAt    DateTime?            // When processing completed
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job            Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation("ReconciliationCreator", fields: [createdById], references: [id])
+  
+  @@index([organizationId])
+  @@index([jobId])
+  @@index([status])
+  @@index([organizationId, jobId])
 }

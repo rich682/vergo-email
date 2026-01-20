@@ -26,7 +26,7 @@ import {
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
-  FileText, FolderOpen
+  FileText, FolderOpen, FileSpreadsheet, ExternalLink
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours } from "date-fns"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -45,6 +45,9 @@ import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 
 // Collection components
 import { CollectionTab } from "@/components/jobs/collection/collection-tab"
+
+// Reconciliation components
+import { ReconciliationUploadModal } from "@/components/jobs/reconciliation-upload-modal"
 
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
@@ -284,6 +287,9 @@ export default function JobDetailPage() {
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(false)
+  const [reconciliationsExpanded, setReconciliationsExpanded] = useState(false)
+  const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false)
+  const [reconciliations, setReconciliations] = useState<any[]>([])
   
 
   // Stakeholder dialog
@@ -410,6 +416,18 @@ export default function JobDetailPage() {
       }
     } catch (error) {
       console.error("Error fetching comments:", error)
+    }
+  }, [jobId])
+
+  const fetchReconciliations = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/reconciliations`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setReconciliations(data.reconciliations || [])
+      }
+    } catch (error) {
+      console.error("Error fetching reconciliations:", error)
     }
   }, [jobId])
 
@@ -590,7 +608,8 @@ export default function JobDetailPage() {
     fetchStakeholderOptions()
     fetchCollaborators()
     fetchTeamMembers()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers])
+    fetchReconciliations()
+  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers, fetchReconciliations])
 
   useEffect(() => {
     if (stakeholders.length > 0) {
@@ -1534,6 +1553,131 @@ export default function JobDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Reconciliations Section */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <SectionHeader
+                    title="Reconciliations"
+                    count={reconciliations.length > 0 ? reconciliations.length : undefined}
+                    icon={<FileSpreadsheet className="w-4 h-4 text-green-600" />}
+                    collapsible
+                    expanded={reconciliationsExpanded}
+                    onToggle={() => setReconciliationsExpanded(!reconciliationsExpanded)}
+                  />
+                  {permissions?.canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsReconciliationModalOpen(true)}
+                      className="gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add
+                    </Button>
+                  )}
+                </div>
+                {reconciliationsExpanded && (
+                  <div className="mt-3">
+                    {reconciliations.length === 0 ? (
+                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500 mb-1">No reconciliations yet</p>
+                        <p className="text-xs text-gray-400">Upload two spreadsheets to compare and reconcile</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {reconciliations.map((recon) => (
+                          <div
+                            key={recon.id}
+                            className="border rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                    recon.status === "COMPLETED" ? "bg-green-100 text-green-700" :
+                                    recon.status === "PROCESSING" ? "bg-blue-100 text-blue-700" :
+                                    recon.status === "FAILED" ? "bg-red-100 text-red-700" :
+                                    "bg-amber-100 text-amber-700"
+                                  }`}>
+                                    {recon.status === "COMPLETED" ? "Completed" :
+                                     recon.status === "PROCESSING" ? "Processing..." :
+                                     recon.status === "FAILED" ? "Failed" : "Pending"}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    {formatDistanceToNow(new Date(recon.createdAt), { addSuffix: true })}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div className="flex items-center gap-2 text-gray-600 truncate">
+                                    <FileSpreadsheet className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                    <span className="truncate">{recon.document1Name}</span>
+                                    {recon.document1Url && (
+                                      <a 
+                                        href={recon.document1Url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:text-blue-700"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-gray-600 truncate">
+                                    <FileSpreadsheet className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                    <span className="truncate">{recon.document2Name}</span>
+                                    {recon.document2Url && (
+                                      <a 
+                                        href={recon.document2Url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 hover:text-blue-700"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                                {recon.summary && (
+                                  <p className="text-sm text-gray-600 mt-2">{recon.summary}</p>
+                                )}
+                                {recon.status === "COMPLETED" && recon.matchedCount !== null && (
+                                  <div className="flex items-center gap-4 mt-2 text-xs">
+                                    <span className="text-green-600">
+                                      ✓ {recon.matchedCount} matched
+                                    </span>
+                                    {recon.unmatchedCount > 0 && (
+                                      <span className="text-amber-600">
+                                        ⚠ {recon.unmatchedCount} discrepancies
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Reconciliation Upload Modal */}
+            <ReconciliationUploadModal
+              open={isReconciliationModalOpen}
+              onOpenChange={setIsReconciliationModalOpen}
+              jobId={jobId}
+              jobName={job?.name || ""}
+              onReconciliationCreated={(recon) => {
+                setReconciliations(prev => [recon, ...prev])
+              }}
+            />
 
             {/* Timeline / Comments */}
             <Card>
