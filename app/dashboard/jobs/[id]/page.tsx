@@ -1379,64 +1379,6 @@ export default function JobDetailPage() {
               />
             )}
 
-            {/* Conditional Primary Section based on Mode */}
-            {itemMode === "setup" && (
-              stakeholders.length === 0 && !noStakeholdersNeeded ? (
-                // No stakeholders and not marked as internal-only - show warning with CTA to add
-                <div className="border border-amber-200 bg-amber-50 rounded-lg p-8 text-center">
-                  <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Add stakeholders to send a request</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    You need to add stakeholders (contacts, groups, or types) before you can send a request for this item.
-                  </p>
-                  <Button
-                    onClick={() => setIsAddStakeholderOpen(true)}
-                    className="bg-gray-900 hover:bg-gray-800"
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Add Stakeholders
-                  </Button>
-                </div>
-              ) : noStakeholdersNeeded && stakeholders.length === 0 ? (
-                // Marked as no stakeholders needed - show internal item info
-                <div className="border border-gray-200 rounded-lg p-6 text-center">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Users className="w-6 h-6 text-gray-500" />
-                  </div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-1">Internal Item</h3>
-                  <p className="text-sm text-gray-500">
-                    This item has no stakeholders. You can add stakeholders anytime if needed.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAddStakeholderOpen(true)}
-                    className="mt-3"
-                  >
-                    <UserPlus className="w-3 h-3 mr-1" />
-                    Add Stakeholders
-                  </Button>
-                </div>
-              ) : (
-                // Has stakeholders - show Send Request CTA
-                <div className="border border-gray-200 rounded-lg p-8 text-center">
-                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Mail className="w-6 h-6 text-orange-500" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to send a request</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Send an email to {stakeholderContacts.filter(c => c.email).length} stakeholder{stakeholderContacts.filter(c => c.email).length !== 1 ? 's' : ''} for this item.
-                  </p>
-                  <Button
-                    onClick={() => setIsSendRequestOpen(true)}
-                    className="bg-gray-900 hover:bg-gray-800"
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Send Request
-                  </Button>
-                </div>
-              )
-            )}
 
             {itemMode === "waiting" && awaitingTasks.length > 0 && (
               <Card className="border-amber-200 bg-amber-50/30">
@@ -1486,54 +1428,67 @@ export default function JobDetailPage() {
             )}
 
 
-            {/* Requests Section (collapsed by default unless in setup mode) */}
-            {requests.length > 0 && (
-              <Card>
-                <CardContent className="p-4">
-                  <SectionHeader
-                    title="Requests"
-                    count={requests.length}
-                    icon={<Mail className="w-4 h-4 text-blue-500" />}
-                    collapsible
-                    expanded={requestsExpanded}
-                    onToggle={() => setRequestsExpanded(!requestsExpanded)}
-                    action={
-                      stakeholders.length === 0 && !noStakeholdersNeeded ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setIsAddStakeholderOpen(true)}
-                          title="Add stakeholders to send requests"
-                        >
-                          <UserPlus className="w-3 h-3 mr-1" />
-                          Add Stakeholders
-                        </Button>
-                      ) : stakeholders.length > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setIsSendRequestOpen(true)}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Button>
-                      ) : null
-                    }
-                  />
-                  {requestsExpanded && (
-                    <div className="space-y-3 mt-3">
-                      {requests.map(request => (
-                        <RequestCardExpandable
-                          key={request.id}
-                          request={request}
-                          onRefresh={fetchRequests}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+            {/* Requests Section - Always visible */}
+            <Card>
+              <CardContent className="p-4">
+                <SectionHeader
+                  title="Requests"
+                  count={requests.length > 0 ? requests.length : undefined}
+                  icon={<Mail className="w-4 h-4 text-blue-500" />}
+                  collapsible
+                  expanded={requestsExpanded}
+                  onToggle={() => setRequestsExpanded(!requestsExpanded)}
+                  action={
+                    stakeholders.length === 0 && !noStakeholdersNeeded ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsAddStakeholderOpen(true)}
+                        title="Add stakeholders first to send requests"
+                      >
+                        <UserPlus className="w-3 h-3 mr-1" />
+                        Add Stakeholders
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsSendRequestOpen(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        New
+                      </Button>
+                    )
+                  }
+                />
+                {requestsExpanded && (
+                  <div className="mt-3">
+                    {requests.length === 0 ? (
+                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <Mail className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">No requests sent yet</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {stakeholders.length === 0 && !noStakeholdersNeeded 
+                            ? "Add stakeholders first, then send your first request"
+                            : "Click \"New\" to send your first request"
+                          }
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {requests.map(request => (
+                          <RequestCardExpandable
+                            key={request.id}
+                            request={request}
+                            onRefresh={fetchRequests}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Collection Section - Evidence/Attachments */}
             <Card>
