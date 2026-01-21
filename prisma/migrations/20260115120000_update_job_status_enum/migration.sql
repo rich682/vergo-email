@@ -1,0 +1,3 @@
+-- Placeholder migration: rolled back in production database
+-- This file exists to sync local migration history with production
+-- Original migration attempted to update JobStatus enum

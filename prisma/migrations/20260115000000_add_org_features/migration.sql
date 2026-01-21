@@ -1,0 +1,3 @@
+-- Placeholder migration: already applied in production database
+-- This file exists to sync local migration history with production
+-- Original migration added organization feature flags
