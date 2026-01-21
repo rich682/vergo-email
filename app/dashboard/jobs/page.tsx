@@ -138,6 +138,7 @@ export default function JobsPage() {
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
   const [newJobStakeholders, setNewJobStakeholders] = useState<JobStakeholder[]>([])
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   
   // Team members for owner selection
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string | null; email: string; isCurrentUser: boolean }[]>([])
@@ -495,6 +496,7 @@ export default function JobsPage() {
   const handleCreateJob = async () => {
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
+    setCreateError(null)
     try {
       const isRecurring = currentBoard && currentBoard.cadence && currentBoard.cadence !== "AD_HOC"
       
@@ -513,16 +515,21 @@ export default function JobsPage() {
           createLineage: isRecurring
         })
       })
-      if (response.ok) {
-        const data = await response.json()
-        const newInstance = data.taskInstance
-        setJobs(prev => [newInstance, ...prev])
-        resetCreateForm()
-        setIsCreateOpen(false)
-        router.push(`/dashboard/jobs/${newInstance.id}`)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || errorData.message || "Failed to create task")
       }
-    } catch (error) {
+      
+      const data = await response.json()
+      const newInstance = data.taskInstance
+      setJobs(prev => [newInstance, ...prev])
+      resetCreateForm()
+      setIsCreateOpen(false)
+      router.push(`/dashboard/jobs/${newInstance.id}`)
+    } catch (error: any) {
       console.error("Error creating task instance:", error)
+      setCreateError(error.message || "Failed to create task")
     } finally {
       setCreating(false)
     }
@@ -536,6 +543,7 @@ export default function JobsPage() {
     setNewJobStakeholders([])
     setStakeholderSearchQuery("")
     setStakeholderSearchResults([])
+    setCreateError(null)
   }
 
   const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
@@ -683,285 +691,204 @@ export default function JobsPage() {
                   New Task
                 </Button>
               </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 pt-4">
-                {/* Task Type */}
-                <div className="grid grid-cols-1 gap-3">
-                  <Label>Task Type</Label>
-                  <div 
-                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'GENERIC' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
-                    onClick={() => setNewJobType('GENERIC')}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'GENERIC' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
-                        {newJobType === 'GENERIC' && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className="text-sm font-medium">Generic Task</span>
-                    </div>
-                    <p className="text-xs text-gray-500 ml-6">Track qualitative work and collect evidence.</p>
-                  </div>
-
-                  <div 
-                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'RECONCILIATION' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
-                    onClick={() => setNewJobType('RECONCILIATION')}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'RECONCILIATION' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
-                        {newJobType === 'RECONCILIATION' && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className="text-sm font-medium">Reconciliation Task</span>
-                    </div>
-                    <p className="text-xs text-gray-500 ml-6">Match two data sources to find discrepancies.</p>
-                  </div>
-
-                  <div 
-                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'TABLE' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
-                    onClick={() => setNewJobType('TABLE')}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'TABLE' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
-                        {newJobType === 'TABLE' && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className="text-sm font-medium">Table / Database Task</span>
-                    </div>
-                    <p className="text-xs text-gray-500 ml-6">Maintain a structured ledger with variance tracking.</p>
-                  </div>
+              
+              {/* Error display */}
+              {createError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
+                  {createError}
+                </div>
+              )}
+              
+              <div className="space-y-3 pt-2">
+                {/* Task Type - Compact dropdown */}
+                <div>
+                  <Label className="text-sm">Task Type</Label>
+                  <Select value={newJobType} onValueChange={(v) => setNewJobType(v as any)}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GENERIC">Generic Task</SelectItem>
+                      <SelectItem value="RECONCILIATION">Reconciliation Task</SelectItem>
+                      <SelectItem value="TABLE">Table / Database Task</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Task Name */}
                 <div>
-                  <Label htmlFor="taskName">Task Name <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
                   <Input
                     id="taskName"
                     value={newJobName}
                     onChange={(e) => setNewJobName(e.target.value)}
                     placeholder="e.g., Collect W-9 forms"
+                    className="mt-1"
                   />
                 </div>
 
-                {/* Owner */}
-                <div>
-                  <Label htmlFor="owner">Owner <span className="text-red-500">*</span></Label>
-                  <select
-                    id="owner"
-                    value={newJobOwnerId}
-                    onChange={(e) => setNewJobOwnerId(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md text-sm"
-                  >
-                    <option value="">Select owner...</option>
-                    {teamMembers.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                {/* Owner & Due Date - Side by side */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="owner" className="text-sm">Owner <span className="text-red-500">*</span></Label>
+                    <select
+                      id="owner"
+                      value={newJobOwnerId}
+                      onChange={(e) => setNewJobOwnerId(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                    >
+                      <option value="">Select...</option>
+                      {teamMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="dueDate" className="text-sm">Due Date <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="dueDate"
+                      type="date"
+                      value={newJobDueDate}
+                      onChange={(e) => setNewJobDueDate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
 
-                {/* Due Date */}
+                {/* Stakeholders - Simplified */}
                 <div>
-                  <Label htmlFor="dueDate">Due Date <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="dueDate"
-                    type="date"
-                    value={newJobDueDate}
-                    onChange={(e) => setNewJobDueDate(e.target.value)}
-                  />
-                </div>
-
-                {/* Stakeholders */}
-                <div>
-                  <Label>Stakeholders <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm">Stakeholders <span className="text-red-500">*</span></Label>
                   
                   {/* Selected stakeholders */}
                   {newJobStakeholders.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-1 mt-1 mb-2">
                       {newJobStakeholders.map((s) => (
                         <span
                           key={`${s.type}-${s.id}`}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
                         >
                           {s.name}
-                          <button
-                            onClick={() => handleRemoveStakeholder(s.type, s.id)}
-                            className="hover:text-blue-600"
-                          >
-                            ×
-                          </button>
+                          <button onClick={() => handleRemoveStakeholder(s.type, s.id)} className="hover:text-blue-600">×</button>
                         </span>
                       ))}
                     </div>
                   )}
 
-                  {/* Two-step stakeholder selection */}
-                  <div className="space-y-3 border rounded-lg p-3 bg-gray-50">
-                    {/* Step 1: Select Type */}
-                    <div>
-                      <Label className="text-xs text-gray-500 mb-1 block">Step 1: Select Type</Label>
-                      <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="contact_type">Contact Type</SelectItem>
-                          <SelectItem value="group">Group</SelectItem>
-                          <SelectItem value="individual">Individual</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Compact stakeholder selection */}
+                  <div className="flex gap-2 mt-1">
+                    <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                      <SelectTrigger className="w-32 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="contact_type">Type</SelectItem>
+                        <SelectItem value="group">Group</SelectItem>
+                        <SelectItem value="individual">Person</SelectItem>
+                      </SelectContent>
+                    </Select>
                     
-                    {/* Step 2: Select specific item based on type */}
-                    <div>
-                      <Label className="text-xs text-gray-500 mb-1 block">
-                        Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
-                      </Label>
-                      
+                    <div className="flex-1">
                       {stakeholderType === "contact_type" && (
-                        <>
-                          {availableContactTypes.length > 0 ? (
-                            <Select onValueChange={(v) => {
-                              const type = availableContactTypes.find(t => t.value === v)
-                              if (type && !newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)) {
-                                handleAddStakeholder("contact_type", type.value, type.label)
-                              }
-                            }}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a contact type..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableContactTypes.map(type => (
-                                  <SelectItem 
-                                    key={type.value} 
-                                    value={type.value}
-                                    disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}
-                                  >
-                                    {type.label} ({type.count} contacts)
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
-                              <p className="text-sm text-amber-800 mb-1">
-                                No contact types found. Add contacts with types first.
-                              </p>
-                              <a 
-                                href="/dashboard/contacts" 
-                                className="text-sm font-medium text-amber-700 hover:text-amber-900"
-                              >
-                                Go to Contacts →
-                              </a>
-                            </div>
-                          )}
-                        </>
+                        <Select onValueChange={(v) => {
+                          const type = availableContactTypes.find(t => t.value === v)
+                          if (type && !newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)) {
+                            handleAddStakeholder("contact_type", type.value, type.label)
+                          }
+                        }}>
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Select type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableContactTypes.map(type => (
+                              <SelectItem key={type.value} value={type.value} disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}>
+                                {type.label} ({type.count})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                       
                       {stakeholderType === "group" && (
-                        <>
-                          {availableGroups.length > 0 ? (
-                            <Select onValueChange={(v) => {
-                              const group = availableGroups.find(g => g.id === v)
-                              if (group && !newJobStakeholders.some(s => s.type === "group" && s.id === group.id)) {
-                                handleAddStakeholder("group", group.id, group.name)
-                              }
-                            }}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a group..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableGroups.map(group => (
-                                  <SelectItem 
-                                    key={group.id} 
-                                    value={group.id}
-                                    disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}
-                                  >
-                                    {group.name} ({group.memberCount} members)
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
-                              <p className="text-sm text-amber-800 mb-1">
-                                No groups found. Create groups in the Contacts page first.
-                              </p>
-                              <a 
-                                href="/dashboard/contacts" 
-                                className="text-sm font-medium text-amber-700 hover:text-amber-900"
-                              >
-                                Go to Contacts →
-                              </a>
-                            </div>
-                          )}
-                        </>
+                        <Select onValueChange={(v) => {
+                          const group = availableGroups.find(g => g.id === v)
+                          if (group && !newJobStakeholders.some(s => s.type === "group" && s.id === group.id)) {
+                            handleAddStakeholder("group", group.id, group.name)
+                          }
+                        }}>
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Select group..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableGroups.map(group => (
+                              <SelectItem key={group.id} value={group.id} disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}>
+                                {group.name} ({group.memberCount})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                       
                       {stakeholderType === "individual" && (
-                        <div>
+                        <div className="relative">
                           <Input
-                            placeholder="Search by name or email..."
+                            placeholder="Search contacts..."
                             value={stakeholderSearchQuery}
                             onChange={(e) => setStakeholderSearchQuery(e.target.value)}
+                            className="text-xs"
                           />
-                          <div className="max-h-32 overflow-y-auto mt-2">
-                            {stakeholderSearchQuery.length >= 2 ? (
-                              stakeholderSearchResults.length > 0 ? (
-                                <div className="border rounded-md bg-white">
-                                  {stakeholderSearchResults.map((contact) => (
-                                    <button
-                                      key={contact.id}
-                                      onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
-                                      disabled={newJobStakeholders.some(s => s.type === "individual" && s.id === contact.id)}
-                                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
-                                    >
-                                      <div className="font-medium">{contact.firstName} {contact.lastName}</div>
-                                      {contact.email && <div className="text-xs text-gray-500">{contact.email}</div>}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-gray-500 text-center py-2">No contacts found matching "{stakeholderSearchQuery}"</p>
-                              )
-                            ) : (
-                              <p className="text-sm text-gray-500 text-center py-2">Type at least 2 characters to search</p>
-                            )}
-                          </div>
+                          {stakeholderSearchQuery.length >= 2 && stakeholderSearchResults.length > 0 && (
+                            <div className="absolute z-10 w-full mt-1 max-h-32 overflow-y-auto border rounded-md bg-white shadow-lg">
+                              {stakeholderSearchResults.map((contact) => (
+                                <button
+                                  key={contact.id}
+                                  onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
+                                  disabled={newJobStakeholders.some(s => s.type === "individual" && s.id === contact.id)}
+                                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
+                                >
+                                  {contact.firstName} {contact.lastName} <span className="text-gray-400">{contact.email}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
                   </div>
                   
-                  {/* No stakeholders option */}
                   <button
                     onClick={() => handleAddStakeholder("contact_type", "NONE", "No Stakeholders (Internal)")}
                     disabled={newJobStakeholders.some(s => s.id === "NONE")}
-                    className="mt-2 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                    className="mt-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50"
                   >
                     + Internal task (no stakeholders)
                   </button>
                 </div>
 
-                {/* Description */}
+                {/* Description - Collapsible/optional */}
                 <div>
-                  <Label htmlFor="description">Description</Label>
-                  <textarea
+                  <Label htmlFor="description" className="text-sm text-gray-500">Description (optional)</Label>
+                  <Input
                     id="description"
                     value={newJobDescription}
                     onChange={(e) => setNewJobDescription(e.target.value)}
                     placeholder="Optional description..."
-                    rows={2}
-                    className="w-full px-3 py-2 border rounded-md text-sm"
+                    className="mt-1"
                   />
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <Button variant="outline" size="sm" onClick={() => { resetCreateForm(); setIsCreateOpen(false); }}>
                     Cancel
                   </Button>
                   <Button
+                    size="sm"
                     onClick={handleCreateJob}
                     disabled={!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0 || creating}
                   >
