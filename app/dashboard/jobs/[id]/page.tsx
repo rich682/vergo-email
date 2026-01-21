@@ -48,6 +48,7 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 
 // Reconciliation components
 import { ReconciliationUploadModal } from "@/components/jobs/reconciliation-upload-modal"
+import { ReconciliationResultCard } from "@/components/jobs/reconciliation-result-card"
 
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
@@ -1484,15 +1485,26 @@ export default function JobDetailPage() {
               <div className="space-y-4">
                 <SectionHeader title="Reconciliations" icon={<FileSpreadsheet className="w-4 h-4 text-green-600" />} action={<Button size="sm" variant="outline" onClick={() => setIsReconciliationModalOpen(true)}><Plus className="w-4 h-4 mr-1" /> Add</Button>} />
                 <div className="space-y-3">
-                  {reconciliations.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No reconciliations yet</p></div> : reconciliations.map(r => (
-                    <div key={r.id} className="border rounded-lg p-4 bg-white">
-                      <div className="flex items-center gap-2 mb-2">
-                        <StatusBadge status={r.status} size="sm" />
-                        <span className="text-xs text-gray-400">{formatDistanceToNow(new Date(r.createdAt), { addSuffix: true })}</span>
-                      </div>
-                      <div className="text-sm text-gray-600">{r.document1Name} vs {r.document2Name}</div>
+                  {reconciliations.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                      <FileSpreadsheet className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500 mb-2">No reconciliations yet</p>
+                      <p className="text-xs text-gray-400">Upload two Excel or CSV files to compare and reconcile</p>
                     </div>
-                  ))}
+                  ) : (
+                    reconciliations.map(r => (
+                      <ReconciliationResultCard
+                        key={r.id}
+                        reconciliation={r}
+                        jobId={jobId}
+                        onUpdate={(updated) => {
+                          setReconciliations(prev => 
+                            prev.map(rec => rec.id === updated.id ? updated : rec)
+                          )
+                        }}
+                      />
+                    ))
+                  )}
                 </div>
               </div>
             )}
