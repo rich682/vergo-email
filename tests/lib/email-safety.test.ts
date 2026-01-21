@@ -2,7 +2,7 @@
  * Email Safety Tests
  * 
  * Tests for email safety controls:
- * - Per-recipient rate limiting (max 1 email per 24 hours)
+ * - Per-recipient rate limiting (max 5 emails per 24 hours, queued when limit reached)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -14,7 +14,8 @@ const mockPrisma = {
   },
   emailSendAudit: {
     create: vi.fn(),
-    findFirst: vi.fn()
+    findFirst: vi.fn(),
+    findMany: vi.fn()
   }
 }
 
@@ -60,6 +61,12 @@ vi.mock('@/lib/services/reminder-state.service', () => ({
   }
 }))
 
+vi.mock('@/lib/services/email-queue.service', () => ({
+  EmailQueueService: {
+    enqueue: vi.fn().mockResolvedValue('queued-id-123')
+  }
+}))
+
 vi.mock('@/lib/providers/email/gmail-provider', () => ({
   GmailProvider: vi.fn().mockImplementation(() => ({
     sendEmail: vi.fn().mockResolvedValue({ messageId: 'test-msg-id', providerData: {} })
@@ -91,30 +98,37 @@ describe('Email Safety Controls', () => {
 
   describe('Per-recipient rate limiting', () => {
     it('should block email if recipient was emailed within 24 hours', async () => {
-      // Mock a recent successful send
+      // Mock 5 recent successful sends (RATE_LIMIT_MAX_EMAILS = 5)
+      // When limit is reached, email is queued instead of sent immediately
       const recentSendTime = new Date(Date.now() - 2 * 60 * 60 * 1000) // 2 hours ago
-      mockPrisma.emailSendAudit.findFirst.mockResolvedValue({
-        id: 'audit-1',
-        toEmail: 'test@example.com',
-        result: 'SUCCESS',
-        createdAt: recentSendTime
-      })
+      mockPrisma.emailSendAudit.findMany.mockResolvedValue([
+        { id: 'audit-1', toEmail: 'test@example.com', result: 'SUCCESS', createdAt: recentSendTime },
+        { id: 'audit-2', toEmail: 'test@example.com', result: 'SUCCESS', createdAt: recentSendTime },
+        { id: 'audit-3', toEmail: 'test@example.com', result: 'SUCCESS', createdAt: recentSendTime },
+        { id: 'audit-4', toEmail: 'test@example.com', result: 'SUCCESS', createdAt: recentSendTime },
+        { id: 'audit-5', toEmail: 'test@example.com', result: 'SUCCESS', createdAt: recentSendTime },
+      ])
+      // Mock the audit create for the QUEUED status
+      mockPrisma.emailSendAudit.create.mockResolvedValue({ id: 'audit-queued' })
       
       const { EmailSendingService } = await import('@/lib/services/email-sending.service')
       
-      await expect(
-        EmailSendingService.sendEmail({
-          organizationId: 'test-org',
-          to: 'test@example.com',
-          subject: 'Test',
-          body: 'Test body'
-        })
-      ).rejects.toThrow('Cannot send to test@example.com - already emailed within the last 24 hours')
+      // When rate limited, email is queued and returns with queued: prefix
+      const result = await EmailSendingService.sendEmail({
+        organizationId: 'test-org',
+        to: 'test@example.com',
+        subject: 'Test',
+        body: 'Test body'
+      })
+      
+      expect(result.taskId).toMatch(/^queued:/)
+      expect(result.threadId).toMatch(/^queued:/)
+      expect(result.messageId).toMatch(/^queued:/)
     })
 
     it('should allow email if recipient was not emailed within 24 hours', async () => {
-      // Mock no recent sends
-      mockPrisma.emailSendAudit.findFirst.mockResolvedValue(null)
+      // Mock no recent sends - findMany returns empty array
+      mockPrisma.emailSendAudit.findMany.mockResolvedValue([])
       
       const { EmailSendingService } = await import('@/lib/services/email-sending.service')
       
@@ -130,9 +144,8 @@ describe('Email Safety Controls', () => {
     })
 
     it('should allow email if last send was more than 24 hours ago', async () => {
-      // Mock an old send (25 hours ago)
-      const oldSendTime = new Date(Date.now() - 25 * 60 * 60 * 1000)
-      mockPrisma.emailSendAudit.findFirst.mockResolvedValue(null) // findFirst with gte filter returns null
+      // Mock an old send (25 hours ago) - findMany with gte filter returns empty array
+      mockPrisma.emailSendAudit.findMany.mockResolvedValue([])
       
       const { EmailSendingService } = await import('@/lib/services/email-sending.service')
       
@@ -148,13 +161,13 @@ describe('Email Safety Controls', () => {
     })
 
     it('should allow email with skipRateLimit flag', async () => {
-      // Mock a recent successful send
-      mockPrisma.emailSendAudit.findFirst.mockResolvedValue({
+      // Mock a recent successful send - but skipRateLimit should bypass check
+      mockPrisma.emailSendAudit.findMany.mockResolvedValue([{
         id: 'audit-1',
         toEmail: 'test@example.com',
         result: 'SUCCESS',
         createdAt: new Date()
-      })
+      }])
       
       const { EmailSendingService } = await import('@/lib/services/email-sending.service')
       
@@ -172,8 +185,8 @@ describe('Email Safety Controls', () => {
     })
 
     it('should fail open if rate limit check errors', async () => {
-      // Mock database error
-      mockPrisma.emailSendAudit.findFirst.mockRejectedValue(new Error('Database error'))
+      // Mock database error on findMany
+      mockPrisma.emailSendAudit.findMany.mockRejectedValue(new Error('Database error'))
       
       const { EmailSendingService } = await import('@/lib/services/email-sending.service')
       
@@ -209,7 +222,7 @@ describe('Email Safety Controls', () => {
       ).rejects.toThrow('No active email account found')
       
       // Verify rate limit was NOT checked
-      expect(mockPrisma.emailSendAudit.findFirst).not.toHaveBeenCalled()
+      expect(mockPrisma.emailSendAudit.findMany).not.toHaveBeenCalled()
     })
   })
 })
