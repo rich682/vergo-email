@@ -9,6 +9,7 @@
 "/api/boards/[id]","GET, PATCH, DELETE","WF-02b, WF-02f, WF-02g, WF-02h","PWF-02","FRONTEND","DIRECT_FETCH","app/dashboard/boards/page.tsx:273,400,416,438,474","board.service.ts","GREEN"
 "/api/boards/team-members","GET","WF-02d","PWF-02","FRONTEND","DIRECT_FETCH","components/boards/create-board-modal.tsx:175","board.service.ts","GREEN"
 "/api/task-instances","GET, POST","WF-02c, WF-03a, WF-03b, WF-03c","PWF-02, PWF-03","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/page.tsx:179,376,443,505","task-instance.service.ts","GREEN"
+"/api/task-instances/column-config","GET, PATCH","WF-02j","PWF-02","FRONTEND","DIRECT_FETCH","components/jobs/configurable-table/configurable-table.tsx:186,209","None (JobColumnConfig model)","GREEN"
 "/api/task-instances/[id]","GET, PATCH, DELETE","WF-03f, WF-03g, WF-04c, WF-04d, WF-04f, WF-04h","PWF-03, PWF-04","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/[id]/page.tsx:357,639,668","task-instance.service.ts","GREEN"
 "/api/task-instances/[id]/collaborators","GET, POST, DELETE","WF-04b","PWF-04","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/[id]/page.tsx:559,817,836","task-instance.service.ts","GREEN"
 "/api/task-instances/[id]/stakeholders","POST","WF-04a, WF-07e","PWF-04, PWF-07","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/[id]/page.tsx","task-instance.service.ts","GREEN"

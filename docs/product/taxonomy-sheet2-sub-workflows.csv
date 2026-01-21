@@ -12,6 +12,7 @@
 "WF-02g","PWF-02","Archive / Restore Board","WF-04","GREEN","User archives old boards or restores them","/dashboard/boards","PATCH /api/boards/[id]","board.service.ts","None"
 "WF-02h","PWF-02","Delete Board","WF-04","GREEN","User permanently removes a board","/dashboard/boards","DELETE /api/boards/[id]","board.service.ts","None"
 "WF-02i","PWF-02","AI Summarize Board Status","-","GREEN","AI generates summary of board completion, risks, and blockers","/dashboard/boards","GET /api/boards/[id]/ai-summary","board-summary.service.ts","None"
+"WF-02j","PWF-02","Customize Board Columns","-","GREEN","User adds, removes, reorders, or hides columns in the jobs table view","/dashboard/jobs","GET /api/task-instances/column-config, PATCH /api/task-instances/column-config","None (uses JobColumnConfig model)","None"
 "WF-03a","PWF-03","Create Generic Job","WF-06","GREEN","User creates a standard job for tracking requests","/dashboard/jobs","POST /api/task-instances","task-instance.service.ts","None"
 "WF-03b","PWF-03","Create Table Job","WF-09","YELLOW","User creates a table-type job with schema definition","/dashboard/jobs","POST /api/task-instances, PATCH /api/task-lineages/[id]/schema","task-instance.service.ts, task-lineage.service.ts","None"
 "WF-03c","PWF-03","Create Reconciliation Job","WF-12","YELLOW","User creates a reconciliation job","/dashboard/jobs","POST /api/task-instances, POST /api/task-instances/[id]/reconciliations","task-instance.service.ts","None"
