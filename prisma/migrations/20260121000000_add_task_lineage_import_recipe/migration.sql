@@ -1,3 +1,11 @@
+-- CreateEnum TaskType (if not exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TaskType') THEN
+        CREATE TYPE "TaskType" AS ENUM ('GENERIC', 'RECONCILIATION', 'TABLE');
+    END IF;
+END $$;
+
 -- CreateTable
 CREATE TABLE "TaskLineage" (
     "id" TEXT NOT NULL,
@@ -42,6 +50,17 @@ ALTER TABLE "ImportRecipe" ADD CONSTRAINT "ImportRecipe_organizationId_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "ImportRecipe" ADD CONSTRAINT "ImportRecipe_lineageId_fkey" FOREIGN KEY ("lineageId") REFERENCES "TaskLineage"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Add type column to Job table if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'Job' AND column_name = 'type'
+    ) THEN
+        ALTER TABLE "Job" ADD COLUMN "type" "TaskType" NOT NULL DEFAULT 'GENERIC';
+    END IF;
+END $$;
 
 -- Add lineageId column to Job table if it doesn't exist
 DO $$
