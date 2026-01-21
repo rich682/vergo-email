@@ -13,24 +13,62 @@
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| GREEN | 38 | 81% |
-| YELLOW | 9 | 19% |
-| RED | 0 | 0% |
-| **Total** | **47** | 100% |
+| GREEN | 38 | 63% |
+| YELLOW | 13 | 22% |
+| RED | 9 | 15% |
+| **Total** | **60** | 100% |
 
 ### By Parent Workflow
 
 | Parent ID | Parent Name | Sub-Workflows | GREEN | YELLOW | RED |
 |-----------|-------------|---------------|-------|--------|-----|
 | PWF-01 | Authentication & Onboarding | 4 | 4 | 0 | 0 |
-| PWF-02 | Board Management | 8 | 7 | 1 | 0 |
-| PWF-03 | Job Lifecycle | 7 | 5 | 2 | 0 |
+| PWF-02 | Board Management | 9 | 7 | 1 | 1 |
+| PWF-03 | Job Lifecycle | 8 | 5 | 2 | 1 |
 | PWF-04 | Job Collaboration & Governance | 8 | 7 | 1 | 0 |
-| PWF-05 | Requests & Communication | 8 | 5 | 3 | 0 |
-| PWF-06 | Evidence Collection | 4 | 4 | 0 | 0 |
+| PWF-05 | Requests & Communication | 14 | 5 | 5 | 4 |
+| PWF-06 | Evidence Collection | 5 | 4 | 0 | 1 |
 | PWF-07 | Contact Management | 6 | 6 | 0 | 0 |
 | PWF-08 | Email Account Management | 3 | 3 | 0 | 0 |
-| PWF-09 | System Automation | 4 | 4 | 0 | 0 |
+| PWF-09 | System Automation | 6 | 4 | 1 | 1 |
+
+---
+
+## CRITICAL: AI Integration Gaps
+
+The following core AI capabilities are **missing services** or **broken**, preventing AI from being the "first reviewer" of all inbound content.
+
+### P0 Blockers (Must Build)
+
+| ID | Name | Issue | Impact |
+|----|------|-------|--------|
+| WF-03h | AI Process Reconciliation | **No service exists** | Reconciliation jobs upload files but never process them |
+| WF-05m | AI Extract Attachment Content | **No service exists** | AI cannot read PDF/Excel/CSV content from submissions |
+| WF-05n | AI Determine Completion Status | **No service exists** | System cannot auto-detect if request is fulfilled |
+| WF-06e | AI Analyze Evidence Content | **No service exists** | Evidence files are stored but never analyzed |
+| WF-09f | AI First-Pass Document Review | **No service exists** | All inbound content should be AI-reviewed before human |
+
+### P1 Degraded (Currently Broken/Partial)
+
+| ID | Name | Issue | Impact |
+|----|------|-------|--------|
+| WF-05i | AI Auto-Draft Request | Env issue: `OPENAI_API_KEY` | Falls back to template (you saw this) |
+| WF-05j | AI Auto-Draft Reminder | Env issue: `OPENAI_API_KEY` | Falls back to template |
+| WF-05k | AI Auto-Draft Reply | Env issue: `OPENAI_API_KEY` | Falls back to template |
+| WF-05l | AI Analyze Inbound Email | Partial: body only | Ignores attachment content |
+| WF-09e | AI Content-Based Risk | Partial: time-based only | Risk not based on submission quality |
+
+### Missing Services to Build
+
+```
+lib/services/
+├── attachment-extraction.service.ts   # P0: PDF/Excel/CSV/Image → text
+├── reconciliation-processor.service.ts # P0: Compare Excel files
+├── completion-detection.service.ts    # P0: Is submission complete?
+├── evidence-analysis.service.ts       # P0: Analyze evidence files
+├── first-pass-review.service.ts       # P0: Inngest: AI reviews all inbound
+└── board-summary.service.ts           # P1: AI board status summary
+```
 
 ---
 
@@ -1148,6 +1186,8 @@ Parent workflow for background processes without direct user action.
 | WF-09b | Message Classification | WF-17 | GREEN |
 | WF-09c | Reminder Sending | WF-18 | GREEN |
 | WF-09d | Email Queue Processing | WF-19 | GREEN |
+| WF-09e | AI Content-Based Risk Scoring | - | YELLOW |
+| WF-09f | AI First-Pass Document Review | - | RED |
 
 ---
 
@@ -1221,6 +1261,58 @@ Parent workflow for background processes without direct user action.
 2. Verify emails queued
 3. Wait for Inngest cron
 4. Check queued emails sent
+
+---
+
+### WF-09e: AI Content-Based Risk Scoring
+
+**Legacy ID**: -  
+**Status**: YELLOW  
+**Trigger**: Inngest event (on classify-message)
+
+#### Current State
+Risk is computed based on **time since sent**, not submission content quality.
+
+#### Evidence
+- Route: `app/api/requests/detail/[id]/risk/route.ts` - Manual override exists
+- Service: `lib/services/risk-computation.service.ts` - Time-based factors only
+
+#### Blockers
+- No content extraction to analyze submission quality
+- Risk factors are: days since sent, reminder count, deadline proximity
+- **Not factored**: What was actually submitted, is it correct/complete
+
+#### To Fix
+1. Create `attachment-extraction.service.ts` to read content
+2. Extend `risk-computation.service.ts` to include content quality factors
+3. Add risk factors: missing expected documents, unclear responses, partial data
+
+---
+
+### WF-09f: AI First-Pass Document Review
+
+**Legacy ID**: -  
+**Status**: RED  
+**Trigger**: Should be Inngest event (on message receive, before human review)
+
+#### Current State
+**SERVICE DOES NOT EXIST**. Humans must manually review all inbound content.
+
+#### Missing Components
+- `lib/services/first-pass-review.service.ts` - Does not exist
+- `lib/services/attachment-extraction.service.ts` - Does not exist
+- Inngest function to orchestrate AI review - Does not exist
+
+#### Why This Matters
+AI should be the **first reviewer** of all inbound content:
+1. Extract text from email body
+2. Extract text from attachments (PDF, Excel, CSV, images)
+3. Determine if submission is complete
+4. Classify intent (data submission, question, complaint, etc.)
+5. Propose draft reply
+6. Queue for human review with AI pre-analysis
+
+Without this, every request requires full manual review, defeating the purpose of AI assistance.
 
 ---
 
