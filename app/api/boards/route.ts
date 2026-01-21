@@ -90,12 +90,17 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId || !session?.user?.id) {
+      console.error("[API/boards] Unauthorized - session:", JSON.stringify(session?.user))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+    
+    console.log("[API/boards] Creating board for user:", userId, "org:", organizationId)
+    
     const body = await request.json()
+    console.log("[API/boards] Request body:", JSON.stringify(body))
 
     const { 
       name, 
@@ -158,7 +163,7 @@ export async function POST(request: NextRequest) {
         : (automationEnabled !== undefined ? automationEnabled : true)
 
       // Create a new board
-      board = await BoardService.create({
+      const createData = {
         organizationId,
         name: name.trim(),
         description: description?.trim() || undefined,
@@ -169,14 +174,29 @@ export async function POST(request: NextRequest) {
         createdById: userId,
         collaboratorIds,
         automationEnabled: finalAutomationEnabled
-      })
+      }
+      console.log("[API/boards] Creating board with data:", JSON.stringify(createData, null, 2))
+      
+      board = await BoardService.create(createData)
+      console.log("[API/boards] Board created successfully:", board.id)
     }
 
     return NextResponse.json({ board }, { status: 201 })
   } catch (error: any) {
     console.error("[API/boards] Error creating board:", error)
+    console.error("[API/boards] Error stack:", error.stack)
+    console.error("[API/boards] Error code:", error.code)
+    
+    // Return more detailed error for debugging
+    const errorMessage = error.message || "Unknown error"
+    const errorCode = error.code || "UNKNOWN"
+    
     return NextResponse.json(
-      { error: "Failed to create board", message: error.message },
+      { 
+        error: `Failed to create board: ${errorMessage}`,
+        message: errorMessage,
+        code: errorCode
+      },
       { status: 500 }
     )
   }
