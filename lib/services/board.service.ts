@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { Board, BoardStatus, BoardCadence, TaskInstanceStatus, TaskType } from "@prisma/client"
+import { Board, BoardStatus, BoardCadence, JobStatus, TaskType } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 import { TaskInstanceService } from "./task-instance.service"
 

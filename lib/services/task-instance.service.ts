@@ -14,7 +14,7 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import { TaskInstanceStatus, TaskStatus, UserRole, TaskType } from "@prisma/client"
+import { JobStatus, TaskStatus, UserRole, TaskType } from "@prisma/client"
 
 export interface TaskInstanceStakeholder {
   type: "contact_type" | "group" | "individual"
@@ -50,7 +50,7 @@ export interface UpdateTaskInstanceInput {
   ownerId?: string  // Can transfer ownership
   boardId?: string | null  // Can move between boards
   sortOrder?: number  // Order within board
-  status?: TaskInstanceStatus
+  status?: JobStatus
   dueDate?: Date | null
   labels?: TaskInstanceLabels
   tags?: string[]
@@ -93,7 +93,7 @@ export interface TaskInstanceWithStats {
     id: string
     name: string
   } | null
-  status: TaskInstanceStatus
+  status: JobStatus
   dueDate: Date | null
   labels: TaskInstanceLabels | null
   notes?: string | null
@@ -216,7 +216,7 @@ export class TaskInstanceService {
         boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels as any,
-        status: TaskInstanceStatus.NOT_STARTED
+        status: JobStatus.NOT_STARTED
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },
@@ -281,7 +281,7 @@ export class TaskInstanceService {
     options?: {
       userId?: string
       userRole?: UserRole | string
-      status?: TaskInstanceStatus
+      status?: JobStatus
       clientId?: string
       boardId?: string
       ownerId?: string
@@ -299,8 +299,8 @@ export class TaskInstanceService {
       ...(options?.boardId && { boardId: options.boardId })
     }
 
-    if (!options?.includeArchived && options?.status !== TaskInstanceStatus.ARCHIVED) {
-      where.status = { not: TaskInstanceStatus.ARCHIVED }
+    if (!options?.includeArchived && options?.status !== JobStatus.ARCHIVED) {
+      where.status = { not: JobStatus.ARCHIVED }
       if (options?.status) {
         where.status = options.status
       }
@@ -461,7 +461,7 @@ export class TaskInstanceService {
     } else {
       await prisma.taskInstance.update({
         where: { id },
-        data: { status: TaskInstanceStatus.ARCHIVED }
+        data: { status: JobStatus.ARCHIVED }
       })
     }
 

@@ -16,7 +16,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
-import { TaskInstanceStatus, UserRole } from "@prisma/client"
+import { JobStatus, UserRole } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
 
 export async function GET(
@@ -176,11 +176,11 @@ export async function PATCH(
     let customStatus: string | null = null
     
     if (status) {
-      if (Object.values(TaskInstanceStatus).includes(status)) {
+      if (Object.values(JobStatus).includes(status)) {
         effectiveStatus = status
         customStatus = null
       } else {
-        effectiveStatus = TaskInstanceStatus.IN_PROGRESS
+        effectiveStatus = JobStatus.IN_PROGRESS
         customStatus = status
       }
     }
@@ -209,7 +209,7 @@ export async function PATCH(
         ...updatedLabels,
         customStatus
       }
-    } else if (status && Object.values(TaskInstanceStatus).includes(status)) {
+    } else if (status && Object.values(JobStatus).includes(status)) {
       updatedLabels = {
         ...updatedLabels,
         customStatus: null

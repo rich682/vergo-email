@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { TaskType, TaskInstanceStatus } from "@prisma/client"
+import { TaskType, JobStatus } from "@prisma/client"
 
 export interface PeriodMetric {
   lineageId: string

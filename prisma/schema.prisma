@@ -297,7 +297,8 @@ enum ContactType {
 
 // Job represents a persistent work container (e.g., "Tax Planning - Year End 2024")
 // Jobs own Tasks (requests), enabling aggregation and status tracking across recipients
-enum TaskInstanceStatus {
+// Note: Enum name must match database enum name "JobStatus"
+enum JobStatus {
   // New action-oriented statuses
   NOT_STARTED  // Work not yet begun
   IN_PROGRESS  // Work in progress
@@ -321,7 +322,7 @@ model TaskInstance {
   description    String?   // Optional detailed description
   clientId       String?   // Optional: primary client (Entity) for this job
   ownerId        String    // Required: accountable user for this job
-  status         TaskInstanceStatus @default(NOT_STARTED)
+  status         JobStatus @default(NOT_STARTED)
   dueDate        DateTime? // Target completion date
   labels         Json?     // Flexible tagging/categorization
   boardId        String?   // Optional: parent Board for period-based organization
@@ -349,6 +350,7 @@ model TaskInstance {
 
   taskInstanceLabels TaskInstanceLabel[]        // Item-scoped labels for contacts
 
+  @@map("Job")
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([clientId])
@@ -362,7 +364,7 @@ model TaskInstance {
 // e.g., "paid", "unpaid", "pending" with metadata schemas like invoice_number, amount
 model TaskInstanceLabel {
   id              String   @id @default(cuid())
-  taskInstanceId  String
+  taskInstanceId  String   @map("jobId")
   organizationId  String
   name            String   // "unpaid", "received", "pending"
   color           String?  // "#ef4444"
@@ -373,6 +375,7 @@ model TaskInstanceLabel {
   taskInstance  TaskInstance               @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   contactLabels TaskInstanceContactLabel[]
 
+  @@map("JobLabel")
   @@unique([taskInstanceId, name])
   @@index([taskInstanceId])
   @@index([organizationId])
@@ -382,7 +385,7 @@ model TaskInstanceLabel {
 // Stores the metadata values for that contact-label pair
 model TaskInstanceContactLabel {
   id                  String   @id @default(cuid())
-  taskInstanceLabelId String
+  taskInstanceLabelId String   @map("jobLabelId")
   entityId            String
   metadata            Json     @default("{}") // {invoice_number: "INV-001", amount: "500.00"}
   createdAt           DateTime @default(now())
@@ -391,6 +394,7 @@ model TaskInstanceContactLabel {
   taskInstanceLabel TaskInstanceLabel @relation(fields: [taskInstanceLabelId], references: [id], onDelete: Cascade)
   entity            Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
+  @@map("JobContactLabel")
   @@unique([taskInstanceLabelId, entityId])
   @@index([taskInstanceLabelId])
   @@index([entityId])
@@ -400,7 +404,7 @@ model TaskInstanceContactLabel {
 // This replaces a JSON array for better querying, indexing, and auditing
 model TaskInstanceCollaborator {
   id             String   @id @default(cuid())
-  taskInstanceId String
+  taskInstanceId String   @map("jobId")
   userId         String
   role           String   @default("collaborator") // Future: "viewer"
   addedAt        DateTime @default(now())
@@ -409,6 +413,7 @@ model TaskInstanceCollaborator {
   taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@map("JobCollaborator")
   @@unique([taskInstanceId, userId])
   @@index([userId]) // Fast "My Tasks" query
   @@index([taskInstanceId])
@@ -417,7 +422,7 @@ model TaskInstanceCollaborator {
 // TaskInstanceComment for internal team collaboration
 model TaskInstanceComment {
   id             String   @id @default(cuid())
-  taskInstanceId String
+  taskInstanceId String   @map("jobId")
   authorId       String
   content        String
   mentions       Json?    // Array of mentioned user IDs
@@ -427,13 +432,14 @@ model TaskInstanceComment {
   taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   author       User         @relation(fields: [authorId], references: [id])
 
+  @@map("JobComment")
   @@index([taskInstanceId])
   @@index([authorId])
 }
 
 model Request {
   id                       String        @id @default(cuid())
-  taskInstanceId           String? // Optional: parent TaskInstance for request-level association
+  taskInstanceId           String?       @map("jobId") // Optional: parent TaskInstance for request-level association
   entityId                 String? // Optional: contact may be deleted but request history preserved
   campaignName             String?
   campaignType             CampaignType?
@@ -475,6 +481,7 @@ model Request {
   collectedItems    CollectedItem[]    // Evidence/attachments collected for this request
   aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
+  @@map("Task")
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([entityId])
@@ -487,7 +494,7 @@ model Request {
 
 model Message {
   id               String           @id @default(cuid())
-  requestId        String
+  requestId        String           @map("taskId")
   entityId         String? // Optional: contact may be deleted but message history preserved
   direction        MessageDirection
   channel          MessageChannel   @default(EMAIL)
@@ -612,7 +619,7 @@ model EmailDraft {
   id                    String           @id @default(cuid())
   organizationId        String
   userId                String
-  taskInstanceId        String?          // Optional: parent TaskInstance
+  taskInstanceId        String?          @map("jobId") // Optional: parent TaskInstance
   prompt                String
   generatedSubject      String?
   generatedBody         String?
@@ -672,7 +679,7 @@ model PersonalizationData {
 
 model ReminderState {
   id               String    @id @default(cuid())
-  requestId        String // Link to Request (the threaded communication)
+  requestId        String    @map("taskId") // Link to Request (the threaded communication)
   entityId         String? // Recipient entity (optional: contact may be deleted)
   reminderNumber   Int // Which reminder this is (1, 2, 3, etc.)
   sentCount        Int       @default(0) // How many reminders sent (incremented when sent)
@@ -699,8 +706,8 @@ model ReminderState {
 model CollectedItem {
   id              String              @id @default(cuid())
   organizationId  String
-  taskInstanceId  String              // Parent task instance (required)
-  requestId       String?             // Optional: specific request this came from
+  taskInstanceId  String              @map("jobId") // Parent task instance (required)
+  requestId       String?             @map("taskId") // Optional: specific request this came from
   messageId       String?             // Optional: source message if from email
   
   // File metadata
@@ -801,7 +808,7 @@ model BoardCollaborator {
 model Subtask {
   id             String        @id @default(cuid())
   organizationId String
-  taskInstanceId String
+  taskInstanceId String        @map("jobId")
   title          String
   description    String?
   ownerId        String?       // Nullable - Monday allows unassigned subitems
@@ -828,7 +835,7 @@ model Subtask {
 model Attachment {
   id             String   @id @default(cuid())
   organizationId String
-  taskInstanceId String?  // One of taskInstanceId or subtaskId must be set
+  taskInstanceId String?  @map("jobId") // One of taskInstanceId or subtaskId must be set
   subtaskId      String?
   filename       String
   fileKey        String   // Storage key
@@ -872,8 +879,8 @@ model EmailQueue {
   id              String           @id @default(cuid())
   organizationId  String
   userId          String?          // User who initiated the send
-  taskInstanceId  String?          // Related task instance
-  requestId       String?          // Related request (if updating existing)
+  taskInstanceId  String?          @map("jobId") // Related task instance
+  requestId       String?          @map("taskId") // Related request (if updating existing)
   
   // Email details (stored for retry)
   toEmail         String
@@ -928,8 +935,8 @@ model EmailSendAudit {
   id              String          @id @default(cuid())
   organizationId  String
   userId          String?         // User who initiated the send (null for system sends)
-  taskInstanceId  String?         // Related task instance if applicable
-  requestId       String?         // Related request if applicable
+  taskInstanceId  String?         @map("jobId") // Related task instance if applicable
+  requestId       String?         @map("taskId") // Related request if applicable
   emailDraftId    String?         // Related email draft if applicable
   
   // Send details
@@ -983,7 +990,7 @@ model AIRecommendation {
   id                String        @id @default(cuid())
   organizationId    String
   messageId         String
-  requestId         String
+  requestId         String        @map("taskId")
   
   // Denormalized for metrics queries
   campaignType      CampaignType?
@@ -1030,7 +1037,7 @@ enum ReconciliationStatus {
 model Reconciliation {
   id             String               @id @default(cuid())
   organizationId String
-  taskInstanceId String               // Parent task instance (TaskInstance)
+  taskInstanceId String               @map("jobId") // Parent task instance (TaskInstance)
   
   // Document 1 (Source A)
   document1Key   String               // Storage key (blob)

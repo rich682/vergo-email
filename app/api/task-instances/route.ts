@@ -17,7 +17,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
-import { TaskInstanceStatus } from "@prisma/client"
+import { JobStatus } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const userRole = (session.user as any).role as string | undefined
     const { searchParams } = new URL(request.url)
     
-    const status = searchParams.get("status") as TaskInstanceStatus | null
+    const status = searchParams.get("status") as JobStatus | null
     const clientId = searchParams.get("clientId")
     const boardId = searchParams.get("boardId")  // Filter by board
     const myTasks = searchParams.get("myTasks") === "true" || searchParams.get("myJobs") === "true"
