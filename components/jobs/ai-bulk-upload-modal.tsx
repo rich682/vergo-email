@@ -275,7 +275,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
     try {
       let imported = 0
       for (const item of itemsToImport) {
-        await fetch("/api/jobs", {
+        await fetch("/api/task-instances", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -284,7 +284,8 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
             description: item.description || undefined,
             dueDate: item.dueDate || undefined,
             ownerId: item.ownerId || undefined,
-            boardId: boardId || undefined
+            boardId: boardId || undefined,
+            type: "GENERIC" // Default for AI bulk add
           })
         })
         imported++

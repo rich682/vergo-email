@@ -4,7 +4,7 @@ import { getStorageService } from "./storage.service"
 
 export interface CreateAttachmentData {
   organizationId: string
-  jobId?: string
+  taskInstanceId?: string
   subtaskId?: string
   file: Buffer
   filename: string
@@ -25,31 +25,27 @@ export class AttachmentService {
    * Create a new attachment (upload file)
    */
   static async create(data: CreateAttachmentData): Promise<AttachmentWithUploader> {
-    // Validate that exactly one of jobId or subtaskId is provided
-    if (!data.jobId && !data.subtaskId) {
-      throw new Error("Either jobId or subtaskId must be provided")
+    if (!data.taskInstanceId && !data.subtaskId) {
+      throw new Error("Either taskInstanceId or subtaskId must be provided")
     }
-    if (data.jobId && data.subtaskId) {
-      throw new Error("Only one of jobId or subtaskId should be provided")
+    if (data.taskInstanceId && data.subtaskId) {
+      throw new Error("Only one of taskInstanceId or subtaskId should be provided")
     }
 
     const storage = getStorageService()
 
-    // Generate storage key based on parent type
     const timestamp = Date.now()
     const sanitizedFilename = data.filename.replace(/[^a-zA-Z0-9.-]/g, "_")
-    const parentType = data.jobId ? "jobs" : "subtasks"
-    const parentId = data.jobId || data.subtaskId
+    const parentType = data.taskInstanceId ? "tasks" : "subtasks"
+    const parentId = data.taskInstanceId || data.subtaskId
     const fileKey = `${parentType}/${parentId}/attachments/${timestamp}-${sanitizedFilename}`
 
-    // Upload file to storage
     const { url } = await storage.upload(data.file, fileKey, data.mimeType)
 
-    // Create attachment record
     const attachment = await prisma.attachment.create({
       data: {
         organizationId: data.organizationId,
-        jobId: data.jobId || null,
+        taskInstanceId: data.taskInstanceId || null,
         subtaskId: data.subtaskId || null,
         filename: data.filename,
         fileKey,
@@ -73,37 +69,34 @@ export class AttachmentService {
   }
 
   /**
-   * Create attachment from inbound email (no uploadedById required)
-   * Used when processing email replies with attachments
+   * Create attachment from inbound email
    */
   static async createFromInboundEmail(data: {
     organizationId: string
-    jobId: string
+    taskInstanceId: string
     file: Buffer
     filename: string
     mimeType?: string
-    fileKey: string // Pre-generated storage key
+    fileKey: string
   }): Promise<Attachment> {
-    // Get a system user or the job owner to attribute the upload
-    const job = await prisma.job.findUnique({
-      where: { id: data.jobId },
+    const instance = await prisma.taskInstance.findUnique({
+      where: { id: data.taskInstanceId },
       select: { ownerId: true }
     })
 
-    if (!job) {
-      throw new Error("Job not found")
+    if (!instance) {
+      throw new Error("Task instance not found")
     }
 
-    // Create attachment record (file already uploaded to storage)
     const attachment = await prisma.attachment.create({
       data: {
         organizationId: data.organizationId,
-        jobId: data.jobId,
+        taskInstanceId: data.taskInstanceId,
         filename: data.filename,
         fileKey: data.fileKey,
         fileSize: data.file.length,
         mimeType: data.mimeType,
-        uploadedById: job.ownerId // Attribute to job owner
+        uploadedById: instance.ownerId
       }
     })
 
@@ -111,14 +104,14 @@ export class AttachmentService {
   }
 
   /**
-   * Get all attachments for a job
+   * Get all attachments for a task instance
    */
-  static async getByJobId(
-    jobId: string,
+  static async getByTaskInstanceId(
+    taskInstanceId: string,
     organizationId: string
   ): Promise<AttachmentWithUploader[]> {
     return prisma.attachment.findMany({
-      where: { jobId, organizationId },
+      where: { taskInstanceId, organizationId },
       include: {
         uploadedBy: {
           select: {
@@ -208,30 +201,27 @@ export class AttachmentService {
       throw new Error("Attachment not found")
     }
 
-    // Delete from storage
     try {
       const storage = getStorageService()
       await storage.delete(attachment.fileKey)
     } catch (error) {
       console.error("Error deleting file from storage:", error)
-      // Continue with database deletion even if storage deletion fails
     }
 
-    // Delete from database
     await prisma.attachment.delete({
       where: { id }
     })
   }
 
   /**
-   * Get attachment count for a job
+   * Get attachment count for a task instance
    */
-  static async getJobAttachmentCount(
-    jobId: string,
+  static async getTaskInstanceAttachmentCount(
+    taskInstanceId: string,
     organizationId: string
   ): Promise<number> {
     return prisma.attachment.count({
-      where: { jobId, organizationId }
+      where: { taskInstanceId, organizationId }
     })
   }
 
@@ -248,28 +238,28 @@ export class AttachmentService {
   }
 
   /**
-   * Get total attachment count for a job (including subtask attachments)
+   * Get total attachment count for a task instance (including subtask attachments)
    */
-  static async getTotalJobAttachmentCount(
-    jobId: string,
+  static async getTotalTaskInstanceAttachmentCount(
+    taskInstanceId: string,
     organizationId: string
-  ): Promise<{ jobAttachments: number; subtaskAttachments: number; total: number }> {
-    const [jobCount, subtaskCount] = await Promise.all([
+  ): Promise<{ taskInstanceAttachments: number; subtaskAttachments: number; total: number }> {
+    const [taskCount, subtaskCount] = await Promise.all([
       prisma.attachment.count({
-        where: { jobId, organizationId }
+        where: { taskInstanceId, organizationId }
       }),
       prisma.attachment.count({
         where: {
           organizationId,
-          subtask: { jobId }
+          subtask: { taskInstanceId }
         }
       })
     ])
 
     return {
-      jobAttachments: jobCount,
+      taskInstanceAttachments: taskCount,
       subtaskAttachments: subtaskCount,
-      total: jobCount + subtaskCount
+      total: taskCount + subtaskCount
     }
   }
 }

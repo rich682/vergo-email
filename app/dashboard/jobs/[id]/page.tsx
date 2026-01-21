@@ -56,6 +56,9 @@ import { RequestCardExpandable } from "@/components/jobs/request-card-expandable
 // Task AI Summary
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 
+// Table components for TABLE type tasks
+import { DataTab, CompareView } from "@/components/jobs/table"
+
 // ============================================
 // Types
 // ============================================
@@ -96,10 +99,12 @@ interface Job {
   description: string | null
   ownerId: string
   status: string
+  type: "GENERIC" | "RECONCILIATION" | "TABLE"
+  lineageId: string | null
   dueDate: string | null
-  labels: string[] | null
+  labels: any | null
   boardId: string | null
-  board?: { id: string; name: string } | null
+  board?: { id: string; name: string; cadence: string | null } | null
   stakeholders?: JobStakeholder[]
   noStakeholdersNeeded?: boolean
   createdAt: string
@@ -111,6 +116,7 @@ interface Job {
   respondedCount: number
   completedCount: number
   collectedItemCount?: number
+  isSnapshot?: boolean
 }
 
 interface Permissions {
@@ -252,6 +258,8 @@ export default function JobDetailPage() {
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "table" | "compare">("overview")
+  const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
   
   // Inline editing states
   const [editingName, setEditingName] = useState(false)
@@ -346,15 +354,17 @@ export default function JobDetailPage() {
   const fetchJob = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/jobs/${jobId}`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setJob(data.job)
+        const taskInstance = data.taskInstance
+        setJob(taskInstance)
+        setPriorSnapshotExists(taskInstance.priorSnapshotExists || false)
         setPermissions(data.permissions)
-        setEditName(data.job.name)
-        setEditDescription(data.job.description || "")
-        setEditDueDate(data.job.dueDate ? data.job.dueDate.split("T")[0] : "")
-        const jobLabels = data.job.labels
+        setEditName(taskInstance.name)
+        setEditDescription(taskInstance.description || "")
+        setEditDueDate(taskInstance.dueDate ? taskInstance.dueDate.split("T")[0] : "")
+        const jobLabels = taskInstance.labels
         if (Array.isArray(jobLabels)) {
           setEditLabels(jobLabels)
         } else if (jobLabels?.tags) {
@@ -362,9 +372,8 @@ export default function JobDetailPage() {
         } else {
           setEditLabels([])
         }
-        setStakeholders(data.job.stakeholders || [])
-        // Check if user explicitly marked this item as not needing stakeholders
-        setNoStakeholdersNeeded(data.job.noStakeholdersNeeded || jobLabels?.noStakeholdersNeeded || false)
+        setStakeholders(taskInstance.stakeholders || [])
+        setNoStakeholdersNeeded(taskInstance.noStakeholdersNeeded || jobLabels?.noStakeholdersNeeded || false)
       } else if (response.status === 404) {
         router.push("/dashboard/jobs")
       } else if (response.status === 401) {
@@ -380,10 +389,10 @@ export default function JobDetailPage() {
   const fetchTasks = useCallback(async () => {
     try {
       setTasksLoading(true)
-      const response = await fetch(`/api/tasks?jobId=${jobId}`, { credentials: "include" })
+      const response = await fetch(`/api/requests?taskInstanceId=${jobId}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setTasks(data.tasks || [])
+        setTasks(data.requests || [])
       }
     } catch (error) {
       console.error("Error fetching tasks:", error)
@@ -395,7 +404,7 @@ export default function JobDetailPage() {
   const fetchRequests = useCallback(async () => {
     try {
       setRequestsLoading(true)
-      const response = await fetch(`/api/jobs/${jobId}/requests`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}/requests`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setRequests(data.requests || [])
@@ -409,7 +418,7 @@ export default function JobDetailPage() {
 
   const fetchComments = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/comments`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}/comments`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setComments(data.comments || [])
@@ -421,7 +430,7 @@ export default function JobDetailPage() {
 
   const fetchReconciliations = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/reconciliations`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setReconciliations(data.reconciliations || [])
@@ -433,7 +442,7 @@ export default function JobDetailPage() {
 
   const fetchTimeline = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/timeline`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}/timeline`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setTimelineEvents(data.events || [])
@@ -547,7 +556,7 @@ export default function JobDetailPage() {
 
   const fetchCollaborators = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/collaborators`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances/${jobId}/collaborators`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setCollaborators(data.collaborators || [])
@@ -627,7 +636,7 @@ export default function JobDetailPage() {
   const handleSaveField = async (field: "name" | "description" | "dueDate", value: string | null) => {
     setSaving(true)
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -635,11 +644,11 @@ export default function JobDetailPage() {
       })
       if (response.ok) {
         const data = await response.json()
-        setJob(data.job)
+        setJob(data.taskInstance)
         // Update edit states
-        setEditName(data.job.name)
-        setEditDescription(data.job.description || "")
-        setEditDueDate(data.job.dueDate ? data.job.dueDate.split("T")[0] : "")
+        setEditName(data.taskInstance.name)
+        setEditDescription(data.taskInstance.description || "")
+        setEditDueDate(data.taskInstance.dueDate ? data.taskInstance.dueDate.split("T")[0] : "")
       }
     } catch (error) {
       console.error(`Error updating ${field}:`, error)
@@ -656,7 +665,7 @@ export default function JobDetailPage() {
     setIsStatusDropdownOpen(false)
     setCustomStatusInput("")
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -674,7 +683,7 @@ export default function JobDetailPage() {
     setEditLabels(newLabels)
     setNewLabelInput("")
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -690,7 +699,7 @@ export default function JobDetailPage() {
     const newLabels = displayLabels.filter((l: string) => l !== label)
     setEditLabels(newLabels)
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -711,7 +720,7 @@ export default function JobDetailPage() {
     setSearchQuery("")
     setSearchResults([])
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -727,7 +736,7 @@ export default function JobDetailPage() {
     const newStakeholders = stakeholders.filter(s => !(s.type === type && s.id === id))
     setStakeholders(newStakeholders)
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -743,7 +752,7 @@ export default function JobDetailPage() {
     if (!newComment.trim()) return
     setSubmittingComment(true)
     try {
-      const response = await fetch(`/api/jobs/${jobId}/comments`, {
+      const response = await fetch(`/api/task-instances/${jobId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -765,7 +774,6 @@ export default function JobDetailPage() {
   const handleDelete = async () => {
     const hasRequests = (job?.taskCount || 0) > 0
     
-    // Different confirmation messages based on whether task has requests
     const confirmMessage = hasRequests
       ? "This task has requests and will be archived (not permanently deleted). Continue?"
       : "Are you sure you want to permanently delete this task? This cannot be undone."
@@ -773,10 +781,9 @@ export default function JobDetailPage() {
     if (!confirm(confirmMessage)) return
     
     try {
-      // If no requests, try hard delete; otherwise archive
       const url = hasRequests 
-        ? `/api/jobs/${jobId}` 
-        : `/api/jobs/${jobId}?hard=true`
+        ? `/api/task-instances/${jobId}` 
+        : `/api/task-instances/${jobId}?hard=true`
       
       const response = await fetch(url, {
         method: "DELETE",
@@ -787,9 +794,8 @@ export default function JobDetailPage() {
         router.push("/dashboard/jobs")
       } else {
         const data = await response.json()
-        // If hard delete was blocked due to requests, fall back to archive
         if (data.code === "HAS_REQUESTS") {
-          const archiveResponse = await fetch(`/api/jobs/${jobId}`, {
+          const archiveResponse = await fetch(`/api/task-instances/${jobId}`, {
             method: "DELETE",
             credentials: "include"
           })
@@ -808,7 +814,7 @@ export default function JobDetailPage() {
   const handleAddCollaborator = async (userId: string) => {
     setAddingCollaborator(true)
     try {
-      const response = await fetch(`/api/jobs/${jobId}/collaborators`, {
+      const response = await fetch(`/api/task-instances/${jobId}/collaborators`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -827,7 +833,7 @@ export default function JobDetailPage() {
 
   const handleRemoveCollaborator = async (collaboratorId: string) => {
     try {
-      await fetch(`/api/jobs/${jobId}/collaborators?collaboratorId=${collaboratorId}`, {
+      await fetch(`/api/task-instances/${jobId}/collaborators?collaboratorId=${collaboratorId}`, {
         method: "DELETE",
         credentials: "include"
       })
@@ -840,7 +846,7 @@ export default function JobDetailPage() {
   const handleSaveNotes = async () => {
     setSavingNotes(true)
     try {
-      await fetch(`/api/jobs/${jobId}`, {
+      await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -855,12 +861,31 @@ export default function JobDetailPage() {
     }
   }
 
-  // Handle @mention in comment input
+  const handleConvertToRecurring = async () => {
+    if (!job) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ createLineage: true })
+      })
+      if (response.ok) {
+        fetchJob()
+        alert("Task converted to a recurring obligation. It will now appear in future periods of this board.")
+      }
+    } catch (error) {
+      console.error("Error converting to recurring:", error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setNewComment(value)
     
-    // Check for @mention trigger
     const lastAtIndex = value.lastIndexOf("@")
     if (lastAtIndex !== -1) {
       const textAfterAt = value.slice(lastAtIndex + 1)
@@ -891,10 +916,6 @@ export default function JobDetailPage() {
     return name.includes(mentionFilter) || email.includes(mentionFilter)
   })
 
-  // ============================================
-  // Render
-  // ============================================
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -916,9 +937,10 @@ export default function JobDetailPage() {
     )
   }
 
+  const isAdHoc = !job.board?.cadence || job.board?.cadence === "AD_HOC"
+
   return (
     <div className="bg-white">
-      {/* Top Bar - positioned below main header */}
       <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
         <div className="px-8 py-3 flex items-center justify-between">
           <Link 
@@ -953,97 +975,165 @@ export default function JobDetailPage() {
       </div>
 
       <div className="px-8 py-6">
+        <div className="flex items-center gap-6 border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "overview" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          >
+            Overview
+          </button>
+          
+          {job.type === "TABLE" && (
+            <button
+              onClick={() => setActiveTab("table")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "table" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Data
+            </button>
+          )}
+
+          {job.type === "TABLE" && (
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  if (priorSnapshotExists) {
+                    setActiveTab("compare")
+                  }
+                }}
+                disabled={!priorSnapshotExists}
+                className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "compare" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700 disabled:opacity-50"}`}
+              >
+                Compare
+              </button>
+              {!priorSnapshotExists && (
+                <div className="absolute left-0 top-full mt-1 bg-gray-900 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                  {isAdHoc ? "Comparisons unlock on recurring boards" : "No prior completed period found"}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={() => setActiveTab("requests")}
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          >
+            Requests ({requests.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("collection")}
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          >
+            Evidence ({job.collectedItemCount || 0})
+          </button>
+
+          {job.type === "RECONCILIATION" && (
+            <button
+              onClick={() => setActiveTab("reconciliation")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Reconciliation
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-12 gap-8">
-          {/* Main Content - 8 columns */}
           <div className="col-span-12 lg:col-span-8 space-y-6">
-            {/* Header Section */}
-            <div className="pb-6 border-b border-gray-100">
-                    {/* Title + Status */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          {/* Inline editable name */}
-                          {editingName ? (
-                            <Input
-                              value={editName}
-                              onChange={(e) => setEditName(e.target.value)}
-                              onBlur={() => {
+            {activeTab === "overview" && (
+              <>
+                <div className="pb-6 border-b border-gray-100">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        {editingName ? (
+                          <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            onBlur={() => {
+                              if (editName.trim() && editName !== job.name) {
+                                handleSaveField("name", editName.trim())
+                              } else {
+                                setEditName(job.name)
+                                setEditingName(false)
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
                                 if (editName.trim() && editName !== job.name) {
                                   handleSaveField("name", editName.trim())
                                 } else {
                                   setEditName(job.name)
                                   setEditingName(false)
                                 }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  if (editName.trim() && editName !== job.name) {
-                                    handleSaveField("name", editName.trim())
-                                  } else {
-                                    setEditName(job.name)
-                                    setEditingName(false)
-                                  }
-                                }
-                                if (e.key === "Escape") {
-                                  setEditName(job.name)
-                                  setEditingName(false)
-                                }
-                              }}
-                              autoFocus
-                              className="text-2xl font-semibold h-auto py-1 px-2 -ml-2"
-                            />
-                          ) : (
-                            <div className="group flex items-center gap-2">
-                              <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
-                              {permissions?.canEdit && (
-                                <button
-                                  onClick={() => setEditingName(true)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {/* Status Dropdown */}
-                          {permissions?.canEdit ? (
-                            <div className="relative">
+                              }
+                              if (e.key === "Escape") {
+                                setEditName(job.name)
+                                setEditingName(false)
+                              }
+                            }}
+                            autoFocus
+                            className="text-2xl font-semibold h-auto py-1 px-2 -ml-2"
+                          />
+                        ) : (
+                          <div className="group flex items-center gap-2">
+                            <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
+                            {permissions?.canEdit && (
                               <button
-                                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                                className="flex items-center gap-1"
+                                onClick={() => setEditingName(true)}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
                               >
-                                <StatusBadge status={job.status} />
-                                <ChevronDown className="w-3 h-3 text-gray-400" />
+                                <Edit2 className="w-4 h-4" />
                               </button>
-                              {isStatusDropdownOpen && (
-                                <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
-                                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
-                                    <div className="py-1">
-                                      {["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"].map(status => (
-                                        <button
-                                          key={status}
-                                          onClick={() => handleStatusChange(status)}
-                                          className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${job.status === status ? "bg-gray-50 font-medium" : ""}`}
-                                        >
-                                          <StatusBadge status={status} size="sm" />
-                                        </button>
-                                      ))}
-                                    </div>
+                            )}
+                          </div>
+                        )}
+                        {permissions?.canEdit ? (
+                          <div className="relative">
+                            <button
+                              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                              className="flex items-center gap-1"
+                            >
+                              <StatusBadge status={job.status} />
+                              <ChevronDown className="w-3 h-3 text-gray-400" />
+                            </button>
+                            {isStatusDropdownOpen && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
+                                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px]">
+                                  <div className="py-1">
+                                    {["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"].map(status => (
+                                      <button
+                                        key={status}
+                                        onClick={() => handleStatusChange(status)}
+                                        className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${job.status === status ? "bg-gray-50 font-medium" : ""}`}
+                                      >
+                                        <StatusBadge status={status} size="sm" />
+                                      </button>
+                                    ))}
                                   </div>
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            <StatusBadge status={job.status} />
-                          )}
-                        </div>
-                        {/* Inline editable description */}
-                        {editingDescription ? (
-                          <Input
-                            value={editDescription}
-                            onChange={(e) => setEditDescription(e.target.value)}
-                            onBlur={() => {
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <StatusBadge status={job.status} />
+                        )}
+                      </div>
+                      {editingDescription ? (
+                        <Input
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          onBlur={() => {
+                            const newDesc = editDescription.trim() || null
+                            if (newDesc !== (job.description || null)) {
+                              handleSaveField("description", newDesc)
+                            } else {
+                              setEditDescription(job.description || "")
+                              setEditingDescription(false)
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
                               const newDesc = editDescription.trim() || null
                               if (newDesc !== (job.description || null)) {
                                 handleSaveField("description", newDesc)
@@ -1051,104 +1141,28 @@ export default function JobDetailPage() {
                                 setEditDescription(job.description || "")
                                 setEditingDescription(false)
                               }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                const newDesc = editDescription.trim() || null
-                                if (newDesc !== (job.description || null)) {
-                                  handleSaveField("description", newDesc)
-                                } else {
-                                  setEditDescription(job.description || "")
-                                  setEditingDescription(false)
-                                }
-                              }
-                              if (e.key === "Escape") {
-                                setEditDescription(job.description || "")
-                                setEditingDescription(false)
-                              }
-                            }}
-                            autoFocus
-                            placeholder="Add a description..."
-                            className="text-gray-500 mb-3 h-auto py-1 px-2 -ml-2"
-                          />
-                        ) : (
-                          <div className="group flex items-center gap-2 mb-3">
-                            {job.description ? (
-                              <p className="text-gray-500">{job.description}</p>
-                            ) : (
-                              permissions?.canEdit && (
-                                <p className="text-gray-400 italic">Add a description...</p>
-                              )
-                            )}
-                            {permissions?.canEdit && (
-                              <button
-                                onClick={() => setEditingDescription(true)}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Inline editable Deadline */}
-                    <div className="flex items-center gap-2 mb-3 text-sm">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium">Deadline:</span>
-                      {editingDueDate ? (
-                        <Input
-                          type="date"
-                          value={editDueDate}
-                          onChange={(e) => setEditDueDate(e.target.value)}
-                          onBlur={() => {
-                            const newDate = editDueDate || null
-                            const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
-                            if (newDate !== currentDate) {
-                              handleSaveField("dueDate", newDate)
-                            } else {
-                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-                              setEditingDueDate(false)
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              const newDate = editDueDate || null
-                              const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
-                              if (newDate !== currentDate) {
-                                handleSaveField("dueDate", newDate)
-                              } else {
-                                setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-                                setEditingDueDate(false)
-                              }
                             }
                             if (e.key === "Escape") {
-                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-                              setEditingDueDate(false)
+                              setEditDescription(job.description || "")
+                              setEditingDescription(false)
                             }
                           }}
                           autoFocus
-                          className="w-48 h-8"
+                          placeholder="Add a description..."
+                          className="text-gray-500 mb-3 h-auto py-1 px-2 -ml-2"
                         />
                       ) : (
-                        <div className="group flex items-center gap-2">
-                          {job.dueDate ? (
-                            <span className={`${
-                              differenceInDays(new Date(job.dueDate), new Date()) < 0 
-                                ? "text-red-600 font-medium" 
-                                : differenceInDays(new Date(job.dueDate), new Date()) <= 3
-                                ? "text-amber-600 font-medium"
-                                : "text-gray-700"
-                            }`}>
-                              {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
-                            </span>
+                        <div className="group flex items-center gap-2 mb-3">
+                          {job.description ? (
+                            <p className="text-gray-500">{job.description}</p>
                           ) : (
-                            <span className="text-gray-400 italic">Not set</span>
+                            permissions?.canEdit && (
+                              <p className="text-gray-400 italic">Add a description...</p>
+                            )
                           )}
                           {permissions?.canEdit && (
                             <button
-                              onClick={() => setEditingDueDate(true)}
+                              onClick={() => setEditingDescription(true)}
                               className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
                             >
                               <Edit2 className="w-3 h-3" />
@@ -1157,685 +1171,379 @@ export default function JobDetailPage() {
                         </div>
                       )}
                     </div>
+                  </div>
 
-                    {/* Labels */}
-                    <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <Tag className="w-4 h-4 text-gray-400" />
-                      {displayLabels.map((label: string) => (
-                        <Chip
-                          key={label}
-                          label={label}
-                          color="blue"
-                          removable={permissions?.canEdit}
-                          onRemove={() => handleRemoveLabel(label)}
-                          size="sm"
-                        />
-                      ))}
-                      {permissions?.canEdit && (
-                        <Input
-                          placeholder="Add label..."
-                          value={newLabelInput}
-                          onChange={(e) => setNewLabelInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              handleAddLabel(newLabelInput)
+                  <div className="flex items-center gap-2 mb-3 text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium">Deadline:</span>
+                    {editingDueDate ? (
+                      <Input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        onBlur={() => {
+                          const newDate = editDueDate || null
+                          const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
+                          if (newDate !== currentDate) {
+                            handleSaveField("dueDate", newDate)
+                          } else {
+                            setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                            setEditingDueDate(false)
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const newDate = editDueDate || null
+                            const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
+                            if (newDate !== currentDate) {
+                              handleSaveField("dueDate", newDate)
+                            } else {
+                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                              setEditingDueDate(false)
                             }
-                          }}
-                          className="w-28 h-7 text-xs"
-                        />
-                      )}
-                    </div>
+                          }
+                          if (e.key === "Escape") {
+                            setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                            setEditingDueDate(false)
+                          }
+                        }}
+                        autoFocus
+                        className="w-48 h-8"
+                      />
+                    ) : (
+                      <div className="group flex items-center gap-2">
+                        {job.dueDate ? (
+                          <span className={`${
+                            differenceInDays(new Date(job.dueDate), new Date()) < 0 
+                              ? "text-red-600 font-medium" 
+                              : differenceInDays(new Date(job.dueDate), new Date()) <= 3
+                              ? "text-amber-600 font-medium"
+                              : "text-gray-700"
+                          }`}>
+                            {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic">Not set</span>
+                        )}
+                        {permissions?.canEdit && (
+                          <button
+                            onClick={() => setEditingDueDate(true)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                    {/* Stakeholders */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-400" />
-                      {stakeholders.map((s) => (
-                        <Chip
-                          key={`${s.type}-${s.id}`}
-                          label={s.name}
-                          color={s.type === "contact_type" ? "purple" : s.type === "group" ? "green" : "gray"}
-                          removable={permissions?.canEdit}
-                          onRemove={() => handleRemoveStakeholder(s.type, s.id)}
-                          size="sm"
-                        />
-                      ))}
-                      {permissions?.canEdit && (
-                        <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
-                          <DialogTrigger asChild>
-                            <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full border border-dashed border-gray-300">
-                              <Plus className="w-3 h-3" />
-                              Add
-                            </button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Add Stakeholder</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4 pt-4">
-                              {/* Step 1: Select Type */}
-                              <div>
-                                <Label>Step 1: Select Type</Label>
-                                <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                                  <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="contact_type">Contact Type</SelectItem>
-                                    <SelectItem value="group">Group</SelectItem>
-                                    <SelectItem value="individual">Individual</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              
-                              {/* Step 2: Select specific item based on type */}
-                              <div>
-                                <Label>
-                                  Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
-                                </Label>
-                                
-                                {stakeholderType === "contact_type" && (
-                                  <div className="mt-2">
-                                    {availableTypes.length > 0 ? (
-                                      <Select onValueChange={(v) => {
-                                        const type = availableTypes.find(t => t.value === v)
-                                        if (type) handleAddStakeholder("contact_type", type.value, type.label)
-                                      }}>
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select a contact type..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {availableTypes.map(type => (
-                                            <SelectItem key={type.value} value={type.value}>
-                                              {type.label} ({type.count} contacts)
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    ) : (
-                                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
-                                        <p className="text-sm text-gray-600 mb-2">
-                                          No contact types found. Add contacts with types first.
-                                        </p>
-                                        <a 
-                                          href="/dashboard/contacts" 
-                                          className="text-sm font-medium text-blue-600 hover:text-blue-800"
-                                        >
-                                          Go to Contacts →
-                                        </a>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                
-                                {stakeholderType === "group" && (
-                                  <div className="mt-2">
-                                    {availableGroups.length > 0 ? (
-                                      <Select onValueChange={(v) => {
-                                        const group = availableGroups.find(g => g.id === v)
-                                        if (group) handleAddStakeholder("group", group.id, group.name)
-                                      }}>
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select a group..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {availableGroups.map(group => (
-                                            <SelectItem key={group.id} value={group.id}>
-                                              {group.name} ({group.memberCount} members)
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    ) : (
-                                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
-                                        <p className="text-sm text-gray-600 mb-2">
-                                          No groups found. Create groups in the Contacts page first.
-                                        </p>
-                                        <a 
-                                          href="/dashboard/contacts" 
-                                          className="text-sm font-medium text-blue-600 hover:text-blue-800"
-                                        >
-                                          Go to Contacts →
-                                        </a>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                
-                                {stakeholderType === "individual" && (
-                                  <div className="mt-2">
-                                    <Input
-                                      placeholder="Search by name or email..."
-                                      value={searchQuery}
-                                      onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
-                                    <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
-                                      {searchingEntities ? (
-                                        <div className="flex justify-center py-4">
-                                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" />
-                                        </div>
-                                      ) : searchResults.length > 0 ? (
-                                        searchResults.map(entity => (
-                                          <button
-                                            key={entity.id}
-                                            onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
-                                            className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 border"
-                                          >
-                                            <div className="font-medium text-sm">{entity.firstName} {entity.lastName || ""}</div>
-                                            {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
-                                          </button>
-                                        ))
-                                      ) : searchQuery.length >= 2 ? (
-                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-                                          <p className="text-sm text-gray-600 mb-2">
-                                            No contacts found matching "{searchQuery}"
-                                          </p>
-                                          <a 
-                                            href="/dashboard/contacts" 
-                                            className="text-sm font-medium text-blue-600 hover:text-blue-800"
-                                          >
-                                            Add contacts →
-                                          </a>
-                                        </div>
-                                      ) : (
-                                        <p className="text-sm text-gray-500 text-center py-4">Type at least 2 characters to search</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <Tag className="w-4 h-4 text-gray-400" />
+                    {displayLabels.map((label: string) => (
+                      <Chip
+                        key={label}
+                        label={label}
+                        color="blue"
+                        removable={permissions?.canEdit}
+                        onRemove={() => handleRemoveLabel(label)}
+                        size="sm"
+                      />
+                    ))}
+                    {permissions?.canEdit && (
+                      <Input
+                        placeholder="Add label..."
+                        value={newLabelInput}
+                        onChange={(e) => setNewLabelInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleAddLabel(newLabelInput)
+                          }
+                        }}
+                        className="w-28 h-7 text-xs"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    {stakeholders.map((s) => (
+                      <Chip
+                        key={`${s.type}-${s.id}`}
+                        label={s.name}
+                        color={s.type === "contact_type" ? "purple" : s.type === "group" ? "green" : "gray"}
+                        removable={permissions?.canEdit}
+                        onRemove={() => handleRemoveStakeholder(s.type, s.id)}
+                        size="sm"
+                      />
+                    ))}
+                    {permissions?.canEdit && (
+                      <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
+                        <DialogTrigger asChild>
+                          <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full border border-dashed border-gray-300">
+                            <Plus className="w-3 h-3" />
+                            Add
+                          </button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Add Stakeholder</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 pt-4">
+                            <div>
+                              <Label>Step 1: Select Type</Label>
+                              <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
+                                <SelectTrigger className="mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="contact_type">Contact Type</SelectItem>
+                                  <SelectItem value="group">Group</SelectItem>
+                                  <SelectItem value="individual">Individual</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                    </div>
-            </div>
+                            
+                            <div>
+                              <Label>
+                                Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
+                              </Label>
+                              
+                              {stakeholderType === "contact_type" && (
+                                <div className="mt-2">
+                                  {availableTypes.length > 0 ? (
+                                    <Select onValueChange={(v) => {
+                                      const type = availableTypes.find(t => t.value === v)
+                                      if (type) handleAddStakeholder("contact_type", type.value, type.label)
+                                    }}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select a contact type..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {availableTypes.map(type => (
+                                          <SelectItem key={type.value} value={type.value}>
+                                            {type.label} ({type.count} contacts)
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
+                                      <p className="text-sm text-gray-600 mb-2">No contact types found.</p>
+                                      <a href="/dashboard/contacts" className="text-sm font-medium text-blue-600 hover:text-blue-800">Go to Contacts →</a>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {stakeholderType === "group" && (
+                                <div className="mt-2">
+                                  {availableGroups.length > 0 ? (
+                                    <Select onValueChange={(v) => {
+                                      const group = availableGroups.find(g => g.id === v)
+                                      if (group) handleAddStakeholder("group", group.id, group.name)
+                                    }}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select a group..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {availableGroups.map(group => (
+                                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
+                                      <p className="text-sm text-gray-600 mb-2">No groups found.</p>
+                                      <a href="/dashboard/contacts" className="text-sm font-medium text-blue-600 hover:text-blue-800">Go to Contacts →</a>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {stakeholderType === "individual" && (
+                                <div className="mt-2">
+                                  <Input
+                                    placeholder="Search by name or email..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                  />
+                                  <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
+                                    {searchingEntities ? (
+                                      <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" /></div>
+                                    ) : searchResults.length > 0 ? (
+                                      searchResults.map(entity => (
+                                        <button
+                                          key={entity.id}
+                                          onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
+                                          className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 border text-sm"
+                                        >
+                                          <div className="font-medium">{entity.firstName} {entity.lastName || ""}</div>
+                                          {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
+                                        </button>
+                                      ))
+                                    ) : <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
+                </div>
 
-            {/* Task AI Summary - shows when requests exist */}
-            {requests.length > 0 && (
-              <TaskAISummary
-                jobId={jobId}
-                jobName={job.name}
-                jobStatus={job.status}
-                dueDate={job.dueDate}
-                requests={requests.map(r => ({
-                  id: r.id,
-                  status: r.status,
-                  sentAt: r.sentAt,
-                  taskCount: r.taskCount,
-                  recipients: r.recipients.map(rec => ({
-                    name: rec.name,
-                    email: rec.email,
-                    status: rec.status,
-                    readStatus: rec.readStatus,
-                    hasReplied: rec.hasReplied
-                  })),
-                  reminderConfig: r.reminderConfig
-                }))}
-                stakeholderCount={stakeholders.length}
-                taskCount={job.taskCount}
-                respondedCount={job.respondedCount}
-                completedCount={job.completedCount}
+                {requests.length > 0 && (
+                  <TaskAISummary
+                    jobId={jobId}
+                    jobName={job.name}
+                    jobStatus={job.status}
+                    dueDate={job.dueDate}
+                    requests={requests.map(r => ({
+                      id: r.id,
+                      status: r.status,
+                      sentAt: r.sentAt,
+                      taskCount: r.taskCount,
+                      recipients: r.recipients.map(rec => ({
+                        name: rec.name,
+                        email: rec.email,
+                        status: rec.status,
+                        readStatus: rec.readStatus,
+                        hasReplied: rec.hasReplied
+                      })),
+                      reminderConfig: r.reminderConfig
+                    }))}
+                    stakeholderCount={stakeholders.length}
+                    taskCount={job.taskCount}
+                    respondedCount={job.respondedCount}
+                    completedCount={job.completedCount}
+                  />
+                )}
+
+                <Card>
+                  <CardContent className="p-4">
+                    <SectionHeader title="Activity" icon={<MessageSquare className="w-4 h-4 text-gray-500" />} collapsible expanded={timelineExpanded} onToggle={() => setTimelineExpanded(!timelineExpanded)} />
+                    {timelineExpanded && (
+                      <div className="mt-3">
+                        <div className="flex gap-3 mb-4">
+                          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                            {getInitials(job.owner.name, job.owner.email)}
+                          </div>
+                          <div className="flex-1 relative">
+                            <Textarea placeholder="Add a comment..." value={newComment} onChange={handleCommentChange} className="min-h-[80px] resize-none text-sm" />
+                            <div className="flex items-center justify-between mt-2">
+                              <p className="text-[10px] text-gray-400">Type @ to mention team members</p>
+                              <button onClick={handleAddComment} disabled={!newComment.trim() || submittingComment} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                                <Send className="w-3 h-3" />
+                                {submittingComment ? "Posting..." : "Post"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {comments.length === 0 ? <p className="text-sm text-gray-500 text-center py-4">No activity yet</p> : (
+                          <div className="space-y-3">
+                            {comments.map(comment => (
+                              <div key={comment.id} className="flex gap-3">
+                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">{getInitials(comment.author.name, comment.author.email)}</div>
+                                <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-medium text-xs text-gray-900">{comment.author.name || comment.author.email.split("@")[0]}</span>
+                                    <span className="text-[10px] text-gray-500">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
+                                  </div>
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
+            {activeTab === "requests" && (
+              <div className="space-y-4">
+                <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={<Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button>} />
+                <div className="space-y-3">
+                  {requests.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No requests sent yet</p></div> : requests.map(r => <RequestCardExpandable key={r.id} request={r} onRefresh={fetchRequests} />)}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "collection" && (
+              <div className="space-y-4">
+                <SectionHeader title="Evidence Collection" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
+                <CollectionTab jobId={jobId} />
+              </div>
+            )}
+
+            {activeTab === "reconciliation" && (
+              <div className="space-y-4">
+                <SectionHeader title="Reconciliations" icon={<FileSpreadsheet className="w-4 h-4 text-green-600" />} action={<Button size="sm" variant="outline" onClick={() => setIsReconciliationModalOpen(true)}><Plus className="w-4 h-4 mr-1" /> Add</Button>} />
+                <div className="space-y-3">
+                  {reconciliations.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No reconciliations yet</p></div> : reconciliations.map(r => (
+                    <div key={r.id} className="border rounded-lg p-4 bg-white">
+                      <div className="flex items-center gap-2 mb-2">
+                        <StatusBadge status={r.status} size="sm" />
+                        <span className="text-xs text-gray-400">{formatDistanceToNow(new Date(r.createdAt), { addSuffix: true })}</span>
+                      </div>
+                      <div className="text-sm text-gray-600">{r.document1Name} vs {r.document2Name}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "table" && (
+              <DataTab
+                taskInstanceId={jobId}
+                lineageId={job.lineageId}
+                isSnapshot={job.isSnapshot}
+                isAdHoc={isAdHoc}
+                onConvertToRecurring={handleConvertToRecurring}
               />
             )}
 
-
-            {itemMode === "waiting" && awaitingTasks.length > 0 && (
-              <Card className="border-amber-200 bg-amber-50/30">
-                <CardContent className="p-4">
-                  <SectionHeader
-                    title="Awaiting Response"
-                    count={awaitingTasks.length}
-                    icon={<Clock className="w-4 h-4 text-amber-500" />}
-                    action={
-                      <Button size="sm" variant="outline">
-                        <Bell className="w-3 h-3 mr-1" />
-                        Send Reminder
-                      </Button>
-                    }
-                  />
-                  <div className="space-y-2 mt-3">
-                    {awaitingTasks.slice(0, 5).map(task => {
-                      const daysWaiting = differenceInDays(new Date(), new Date(task.createdAt))
-                      const isUrgent = daysWaiting >= 7
-                      return (
-                        <div
-                          key={task.id}
-                          className={`flex items-center justify-between p-3 rounded-lg bg-white border ${isUrgent ? "border-red-200" : "border-gray-100"}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${isUrgent ? "bg-red-500" : daysWaiting >= 3 ? "bg-amber-500" : "bg-gray-300"}`} />
-                            <div>
-                              <div className="font-medium text-sm text-gray-900">
-                                {task.entity?.firstName} {task.entity?.lastName || ""}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {task.campaignName || "Request"} · {daysWaiting} day{daysWaiting !== 1 ? "s" : ""} waiting
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {awaitingTasks.length > 5 && (
-                      <p className="text-xs text-gray-500 text-center py-2">
-                        +{awaitingTasks.length - 5} more awaiting
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+            {activeTab === "compare" && (
+              <CompareView
+                taskInstanceId={jobId}
+                onRefresh={fetchJob}
+              />
             )}
-
-
-            {/* Requests Section - Always visible */}
-            <Card>
-              <CardContent className="p-4">
-                <SectionHeader
-                  title="Requests"
-                  count={requests.length > 0 ? requests.length : undefined}
-                  icon={<Mail className="w-4 h-4 text-blue-500" />}
-                  collapsible
-                  expanded={requestsExpanded}
-                  onToggle={() => setRequestsExpanded(!requestsExpanded)}
-                  action={
-                    stakeholders.length === 0 && !noStakeholdersNeeded ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsAddStakeholderOpen(true)}
-                        title="Add stakeholders first to send requests"
-                      >
-                        <UserPlus className="w-3 h-3 mr-1" />
-                        Add Stakeholders
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setIsSendRequestOpen(true)}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        New
-                      </Button>
-                    )
-                  }
-                />
-                {requestsExpanded && (
-                  <div className="mt-3">
-                    {requests.length === 0 ? (
-                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <Mail className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500">No requests sent yet</p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {stakeholders.length === 0 && !noStakeholdersNeeded 
-                            ? "Add stakeholders first, then send your first request"
-                            : "Click \"New\" to send your first request"
-                          }
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {requests.map(request => (
-                          <RequestCardExpandable
-                            key={request.id}
-                            request={request}
-                            onRefresh={fetchRequests}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Collection Section - Evidence/Attachments */}
-            <Card>
-              <CardContent className="p-4">
-                <SectionHeader
-                  title="Collection"
-                  count={job?.collectedItemCount}
-                  icon={<FolderOpen className="w-4 h-4 text-purple-500" />}
-                  collapsible
-                  expanded={collectionExpanded}
-                  onToggle={() => setCollectionExpanded(!collectionExpanded)}
-                />
-                {collectionExpanded && (
-                  <div className="mt-3">
-                    <CollectionTab jobId={jobId} />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Reconciliations Section */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <SectionHeader
-                    title="Reconciliations"
-                    count={reconciliations.length > 0 ? reconciliations.length : undefined}
-                    icon={<FileSpreadsheet className="w-4 h-4 text-green-600" />}
-                    collapsible
-                    expanded={reconciliationsExpanded}
-                    onToggle={() => setReconciliationsExpanded(!reconciliationsExpanded)}
-                  />
-                  {permissions?.canEdit && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setIsReconciliationModalOpen(true)}
-                      className="gap-1"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add
-                    </Button>
-                  )}
-                </div>
-                {reconciliationsExpanded && (
-                  <div className="mt-3">
-                    {reconciliations.length === 0 ? (
-                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                        <FileSpreadsheet className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500 mb-1">No reconciliations yet</p>
-                        <p className="text-xs text-gray-400">Upload two spreadsheets to compare and reconcile</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {reconciliations.map((recon) => (
-                          <div
-                            key={recon.id}
-                            className="border rounded-lg p-3 hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                    recon.status === "COMPLETED" ? "bg-green-100 text-green-700" :
-                                    recon.status === "PROCESSING" ? "bg-blue-100 text-blue-700" :
-                                    recon.status === "FAILED" ? "bg-red-100 text-red-700" :
-                                    "bg-amber-100 text-amber-700"
-                                  }`}>
-                                    {recon.status === "COMPLETED" ? "Completed" :
-                                     recon.status === "PROCESSING" ? "Processing..." :
-                                     recon.status === "FAILED" ? "Failed" : "Pending"}
-                                  </span>
-                                  <span className="text-xs text-gray-400">
-                                    {formatDistanceToNow(new Date(recon.createdAt), { addSuffix: true })}
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                  <div className="flex items-center gap-2 text-gray-600 truncate">
-                                    <FileSpreadsheet className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                    <span className="truncate">{recon.document1Name}</span>
-                                    {recon.document1Url && (
-                                      <a 
-                                        href={recon.document1Url} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-blue-500 hover:text-blue-700"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <ExternalLink className="w-3 h-3" />
-                                      </a>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 text-gray-600 truncate">
-                                    <FileSpreadsheet className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                                    <span className="truncate">{recon.document2Name}</span>
-                                    {recon.document2Url && (
-                                      <a 
-                                        href={recon.document2Url} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-blue-500 hover:text-blue-700"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <ExternalLink className="w-3 h-3" />
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                                {recon.summary && (
-                                  <p className="text-sm text-gray-600 mt-2">{recon.summary}</p>
-                                )}
-                                {recon.status === "COMPLETED" && recon.matchedCount !== null && (
-                                  <div className="flex items-center gap-4 mt-2 text-xs">
-                                    <span className="text-green-600">
-                                      ✓ {recon.matchedCount} matched
-                                    </span>
-                                    {recon.unmatchedCount > 0 && (
-                                      <span className="text-amber-600">
-                                        ⚠ {recon.unmatchedCount} discrepancies
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Reconciliation Upload Modal */}
-            <ReconciliationUploadModal
-              open={isReconciliationModalOpen}
-              onOpenChange={setIsReconciliationModalOpen}
-              jobId={jobId}
-              jobName={job?.name || ""}
-              onReconciliationCreated={(recon) => {
-                setReconciliations(prev => [recon, ...prev])
-              }}
-            />
-
-            {/* Timeline / Comments */}
-            <Card>
-              <CardContent className="p-4">
-                <SectionHeader
-                  title="Activity"
-                  icon={<MessageSquare className="w-4 h-4 text-gray-500" />}
-                  collapsible
-                  expanded={timelineExpanded}
-                  onToggle={() => setTimelineExpanded(!timelineExpanded)}
-                />
-                {timelineExpanded && (
-                  <div className="mt-3">
-                    {/* Comment Input with @mention support */}
-                    <div className="flex gap-3 mb-4">
-                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                        {getInitials(job.owner.name, job.owner.email)}
-                      </div>
-                      <div className="flex-1 relative">
-                        <Textarea
-                          id="comment-input"
-                          placeholder="Add a comment... Use @ to mention team members"
-                          value={newComment}
-                          onChange={handleCommentChange}
-                          onBlur={() => setTimeout(() => setShowMentionSuggestions(false), 200)}
-                          className="min-h-[80px] resize-none"
-                        />
-                        {/* @mention suggestions dropdown */}
-                        {showMentionSuggestions && filteredTeamMembers.length > 0 && (
-                          <div className="absolute left-0 right-0 bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-10">
-                            <div className="p-1">
-                              <p className="text-xs text-gray-500 px-2 py-1">Tag a team member</p>
-                              {filteredTeamMembers.slice(0, 5).map(member => (
-                                <button
-                                  key={member.id}
-                                  onClick={() => handleMentionSelect(member)}
-                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-100 text-left"
-                                >
-                                  <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                                    {getInitials(member.name, member.email)}
-                                  </div>
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {member.name || member.email.split("@")[0]}
-                                    </div>
-                                    <div className="text-xs text-gray-500">{member.email}</div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-2">
-                          <p className="text-xs text-gray-400">
-                            Type @ to mention team members
-                          </p>
-                          <button
-                            onClick={handleAddComment}
-                            disabled={!newComment.trim() || submittingComment}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                          >
-                            <Send className="w-3 h-3" />
-                            {submittingComment ? "Posting..." : "Post"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Timeline Events */}
-                    {timelineEvents.length === 0 && comments.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {comments.slice(0, 10).map(comment => (
-                          <div key={comment.id} className="flex gap-3">
-                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                              {getInitials(comment.author.name, comment.author.email)}
-                            </div>
-                            <div className="flex-1 bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-sm text-gray-900">
-                                  {comment.author.name || comment.author.email.split("@")[0]}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
-                                </span>
-                              </div>
-                              {/* Render comment with highlighted @mentions */}
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                                {comment.content.split(/(@\w+)/g).map((part, i) => 
-                                  part.startsWith("@") ? (
-                                    <span key={i} className="text-orange-600 font-medium">{part}</span>
-                                  ) : part
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
 
-          {/* Sidebar - 4 columns */}
           <div className="col-span-12 lg:col-span-4 space-y-4">
-            {/* Owner */}
             <Card>
               <CardContent className="p-4">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
+                <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-medium">
-                    {getInitials(job.owner.name, job.owner.email)}
-                  </div>
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">{getInitials(job.owner.name, job.owner.email)}</div>
                   <div>
-                    <div className="font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
-                    <div className="text-sm text-gray-500">{job.owner.email}</div>
+                    <div className="text-sm font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
+                    <div className="text-[10px] text-gray-500">{job.owner.email}</div>
                   </div>
                 </div>
-                {permissions?.isOwner && (
-                  <p className="text-xs text-orange-500 mt-2">You own this item</p>
-                )}
               </CardContent>
             </Card>
 
-            {/* Collaborators */}
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Collaborators
-                    {collaborators.length > 0 && (
-                      <span className="text-gray-400 font-normal ml-1">({collaborators.length})</span>
-                    )}
-                  </h4>
-                  {permissions?.canManageCollaborators && (
-                    <Dialog open={isAddCollaboratorOpen} onOpenChange={setIsAddCollaboratorOpen}>
-                      <DialogTrigger asChild>
-                        <button className="text-xs text-orange-500 hover:text-orange-600 flex items-center gap-1">
-                          <UserPlus className="w-3 h-3" />
-                          Add
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add Collaborator</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {teamMembers
-                            .filter(m => m.id !== job.ownerId && !collaborators.some(c => c.userId === m.id))
-                            .map(member => (
-                              <button
-                                key={member.id}
-                                onClick={() => handleAddCollaborator(member.id)}
-                                disabled={addingCollaborator}
-                                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                              >
-                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                                  {getInitials(member.name, member.email)}
-                                </div>
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {member.name || member.email.split("@")[0]}
-                                  </div>
-                                  <div className="text-xs text-gray-500">{member.email}</div>
-                                </div>
-                              </button>
-                            ))}
-                          {teamMembers.filter(m => m.id !== job.ownerId && !collaborators.some(c => c.userId === m.id)).length === 0 && (
-                            <p className="text-sm text-gray-500 text-center py-4">No team members available to add</p>
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
+                  <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Collaborators</h4>
+                  {permissions?.canManageCollaborators && <button onClick={() => setIsAddCollaboratorOpen(true)} className="text-[10px] text-orange-500 hover:text-orange-600 flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add</button>}
                 </div>
-                {collaborators.length === 0 ? (
-                  <p className="text-sm text-gray-500">No collaborators yet</p>
-                ) : (
+                {collaborators.length === 0 ? <p className="text-xs text-gray-500 italic">None yet</p> : (
                   <div className="space-y-2">
-                    {collaborators.map(collab => (
-                      <div key={collab.id} className="flex items-center justify-between p-2 rounded bg-gray-50">
+                    {collaborators.map(c => (
+                      <div key={c.id} className="flex items-center justify-between p-2 rounded bg-gray-50 text-xs">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                            {getInitials(collab.user.name, collab.user.email)}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {collab.user.name || collab.user.email.split("@")[0]}
-                            </div>
-                            <div className="text-xs text-gray-500">{collab.role}</div>
-                          </div>
+                          <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user.name, c.user.email)}</div>
+                          <span>{c.user.name || c.user.email.split("@")[0]}</span>
                         </div>
-                        {permissions?.canManageCollaborators && (
-                          <button
-                            onClick={() => handleRemoveCollaborator(collab.id)}
-                            className="text-gray-400 hover:text-red-500 p-1"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
+                        {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
                       </div>
                     ))}
                   </div>
@@ -1843,104 +1551,39 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Stakeholder Contacts */}
             {stakeholders.length > 0 && (
               <Card>
                 <CardContent className="p-4">
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                    Stakeholders
-                    <span className="text-gray-400 font-normal ml-1">
-                      ({stakeholderContacts.length})
-                    </span>
-                  </h4>
+                  <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Stakeholders ({stakeholderContacts.length})</h4>
                   <ContactLabelsTable jobId={jobId} canEdit={permissions?.canEdit} />
                 </CardContent>
               </Card>
             )}
 
-            {/* Notes (Owner's private notes) */}
             {permissions?.isOwner && (
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</h4>
-                    {!editingNotes ? (
-                      <button
-                        onClick={() => {
-                          setNotes((job?.labels as any)?.notes || "")
-                          setEditingNotes(true)
-                        }}
-                        className="text-xs text-gray-500 hover:text-gray-700"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={handleSaveNotes}
-                          disabled={savingNotes}
-                          className="text-xs text-green-600 hover:text-green-700"
-                        >
-                          <Save className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => setEditingNotes(false)}
-                          className="text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
+                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Notes</h4>
+                    {!editingNotes ? <button onClick={() => { setNotes(job.labels?.notes || ""); setEditingNotes(true); }} className="text-gray-400 hover:text-gray-600"><Edit2 className="w-3 h-3" /></button> : <div className="flex gap-2"><button onClick={handleSaveNotes} className="text-green-600"><Save className="w-3 h-3" /></button><button onClick={() => setEditingNotes(false)} className="text-gray-400"><X className="w-3 h-3" /></button></div>}
                   </div>
-                  {editingNotes ? (
-                    <Textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Add private notes about this item..."
-                      className="min-h-[100px] text-sm resize-none"
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                      {(job?.labels as any)?.notes || (
-                        <span className="text-gray-400 italic">No notes yet. Click edit to add.</span>
-                      )}
-                    </p>
-                  )}
+                  {editingNotes ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-[100px] text-sm" /> : <p className="text-xs text-gray-600">{job.labels?.notes || "No notes yet"}</p>}
                 </CardContent>
               </Card>
             )}
-
           </div>
         </div>
       </div>
 
-      {/* Send Request Modal */}
       <SendRequestModal
         open={isSendRequestOpen}
         onOpenChange={setIsSendRequestOpen}
-        job={{
-          id: job.id,
-          name: job.name,
-          description: job.description,
-          dueDate: job.dueDate,
-          labels: job.labels,
-        }}
-        stakeholderContacts={stakeholderContacts.filter(c => c.email).map(c => ({
-          id: c.id,
-          email: c.email!,
-          firstName: c.firstName,
-          lastName: c.lastName,
-          contactType: c.stakeholderType === "contact_type" ? c.stakeholderName : undefined,
-        }))}
-        onSuccess={() => {
-          // Refresh data after successful send
-          fetchJob()
-          fetchRequests()
-          fetchTasks()
-          fetchTimeline()
-        }}
+        job={{ id: job.id, name: job.name, description: job.description, dueDate: job.dueDate, labels: job.labels }}
+        stakeholderContacts={stakeholderContacts.filter(c => c.email).map(c => ({ id: c.id, email: c.email!, firstName: c.firstName, lastName: c.lastName, contactType: c.stakeholderType === "contact_type" ? c.stakeholderName : undefined }))}
+        onSuccess={() => { fetchJob(); fetchRequests(); fetchTasks(); fetchTimeline(); }}
       />
 
+      <ReconciliationUploadModal open={isReconciliationModalOpen} onOpenChange={setIsReconciliationModalOpen} jobId={jobId} jobName={job?.name || ""} onReconciliationCreated={(r) => setReconciliations(prev => [r, ...prev])} />
     </div>
   )
 }

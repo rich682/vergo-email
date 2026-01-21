@@ -47,10 +47,10 @@ export async function GET(request: NextRequest) {
 
     const where: any = {
       organizationId,
-      // Only show tasks that have a job (request-based tasks)
-      jobId: { not: null },
-      // Role-based access: only show requests from jobs user can access
-      ...(jobAccessFilter && { job: jobAccessFilter })
+      // Only show requests that have a task instance
+      taskInstanceId: { not: null },
+      // Role-based access: only show requests from task instances user can access
+      ...(jobAccessFilter && { taskInstance: jobAccessFilter })
     }
 
     // Filter by read status
@@ -69,16 +69,16 @@ export async function GET(request: NextRequest) {
       where.hasAttachments = false
     }
 
-    // Filter by board (via job.boardId)
+    // Filter by board (via taskInstance.boardId)
     if (boardId) {
-      where.job = {
-        ...where.job,
+      where.taskInstance = {
+        ...where.taskInstance,
         boardId
       }
     }
 
     if (jobId) {
-      where.jobId = jobId
+      where.taskInstanceId = jobId
     }
 
     // Handle status filter with legacy status mapping
@@ -99,20 +99,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Filter by label (label is on the job)
+    // Filter by label (label is on the taskInstance)
     if (labelId) {
-      where.job = {
-        jobLabels: {
+      where.taskInstance = {
+        taskInstanceLabels: {
           some: { id: labelId }
         }
       }
     }
 
     // Get total count for pagination
-    const totalCount = await prisma.task.count({ where })
+    const totalCount = await prisma.request.count({ where })
 
     // Build the query with pagination
-    const tasks = await prisma.task.findMany({
+    const tasks = await prisma.request.findMany({
       where,
       include: {
         entity: {
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
             companyName: true
           }
         },
-        job: {
+        taskInstance: {
           select: {
             id: true,
             name: true,
@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
                 email: true
               }
             },
-            jobLabels: {
+            taskInstanceLabels: {
               select: {
                 id: true,
                 name: true,
@@ -164,18 +164,18 @@ export async function GET(request: NextRequest) {
       take: limit
     })
 
-    // Filter by owner if specified (owner is on the job, not the task)
+    // Filter by owner if specified (owner is on the taskInstance, not the request)
     let filteredTasks = tasks
     if (ownerId) {
-      filteredTasks = tasks.filter(t => t.job?.ownerId === ownerId)
+      filteredTasks = tasks.filter(t => t.taskInstance?.ownerId === ownerId)
     }
 
-    // Get only jobs that have sent requests (tasks with jobId), filtered by access
-    const jobsWithRequests = await prisma.job.findMany({
+    // Get only task instances that have sent requests (requests with taskInstanceId), filtered by access
+    const jobsWithRequests = await prisma.taskInstance.findMany({
       where: { 
         organizationId,
-        tasks: {
-          some: {} // Has at least one task
+        requests: {
+          some: {} // Has at least one request
         },
         // Apply same access filter for dropdown
         ...(jobAccessFilter || {})
@@ -198,12 +198,12 @@ export async function GET(request: NextRequest) {
       orderBy: { name: "asc" }
     })
 
-    // Get all labels from jobs that have requests
-    const labelsFromJobs = await prisma.jobLabel.findMany({
+    // Get all labels from task instances that have requests
+    const labelsFromJobs = await prisma.taskInstanceLabel.findMany({
       where: {
-        job: {
+        taskInstance: {
           organizationId,
-          tasks: {
+          requests: {
             some: {}
           }
         }
@@ -218,11 +218,11 @@ export async function GET(request: NextRequest) {
     })
 
     // Get status counts
-    const statusCounts = await prisma.task.groupBy({
+    const statusCounts = await prisma.request.groupBy({
       by: ["status"],
       where: {
         organizationId,
-        jobId: { not: null }
+        taskInstanceId: { not: null }
       },
       _count: true
     })

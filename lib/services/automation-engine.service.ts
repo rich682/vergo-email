@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { Task, TaskStatus } from "@prisma/client"
+import { Request, TaskStatus } from "@prisma/client"
 import { EmailSendingService } from "./email-sending.service"
 import { MessageClassification } from "./ai-classification.service"
 
@@ -23,7 +23,7 @@ export interface AutomationRule {
 
 export class AutomationEngineService {
   static async executeRules(data: {
-    taskId: string
+    requestId: string
     organizationId: string
     messageClassification?: MessageClassification
     hasAttachments?: boolean
@@ -33,18 +33,17 @@ export class AutomationEngineService {
     newStatus?: TaskStatus
     autoReplied: boolean
   }> {
-    const task = await prisma.task.findUnique({
-      where: { id: data.taskId },
+    const request = await prisma.request.findUnique({
+      where: { id: data.requestId },
       include: {
         entity: true
       }
     })
 
-    if (!task) {
-      throw new Error("Task not found")
+    if (!request) {
+      throw new Error("Request not found")
     }
 
-    // Get automation rules (all rules are now global, campaign matching can be done via conditions)
     const allRules = await prisma.automationRule.findMany({
       where: {
         organizationId: data.organizationId,
@@ -60,7 +59,6 @@ export class AutomationEngineService {
       const ruleData = rule.conditions as AutomationRule["conditions"]
       const actions = rule.actions as AutomationRule["actions"]
 
-      // Check conditions
       const conditionsMet =
         (!ruleData.messageType ||
           !data.messageClassification ||
@@ -72,10 +70,9 @@ export class AutomationEngineService {
 
       if (!conditionsMet) continue
 
-      // Execute actions
       if (actions.setStatus) {
-        await prisma.task.update({
-          where: { id: data.taskId },
+        await prisma.request.update({
+          where: { id: data.requestId },
           data: { status: actions.setStatus }
         })
         statusUpdated = true
@@ -83,8 +80,8 @@ export class AutomationEngineService {
       }
 
       if (actions.autoFlag) {
-        await prisma.task.update({
-          where: { id: data.taskId },
+        await prisma.request.update({
+          where: { id: data.requestId },
           data: { status: "FLAGGED" }
         })
         statusUpdated = true
@@ -92,8 +89,8 @@ export class AutomationEngineService {
       }
 
       if (actions.autoVerify && data.verified) {
-        await prisma.task.update({
-          where: { id: data.taskId },
+        await prisma.request.update({
+          where: { id: data.requestId },
           data: {
             status: "COMPLETE",
             aiVerified: true,
@@ -108,11 +105,11 @@ export class AutomationEngineService {
         try {
           await EmailSendingService.sendEmail({
             organizationId: data.organizationId,
-            to: task.entity.email || "",
+            to: request.entity?.email || "",
             subject: actions.autoReply.subject,
             body: actions.autoReply.body,
-            campaignName: task.campaignName || undefined,
-            campaignType: task.campaignType || undefined
+            campaignName: request.campaignName || undefined,
+            campaignType: request.campaignType || undefined
           })
           autoReplied = true
         } catch (error) {

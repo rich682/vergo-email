@@ -16,13 +16,13 @@ export class OnboardingService {
    */
   static async getProgress(userId: string, organizationId: string): Promise<OnboardingProgress> {
     // Check each milestone in parallel for performance
-    const [emailAccounts, contacts, boards, tasks, sentRequests] = await Promise.all([
+    const [emailAccounts, contacts, boards, taskInstances, sentRequests] = await Promise.all([
       prisma.connectedEmailAccount.count({ where: { organizationId } }),
       prisma.entity.count({ where: { organizationId } }),
       prisma.board.count({ where: { organizationId } }),
-      prisma.job.count({ where: { organizationId } }),
-      // Count tasks that have outbound messages (requests sent)
-      prisma.task.count({ 
+      prisma.taskInstance.count({ where: { organizationId } }),
+      // Count requests that have outbound messages
+      prisma.request.count({ 
         where: { 
           organizationId,
           messages: {
@@ -39,7 +39,7 @@ export class OnboardingService {
       emailConnected: emailAccounts > 0,
       contactAdded: contacts > 0,
       boardCreated: boards > 0,
-      taskCreated: tasks > 0,
+      taskCreated: taskInstances > 0,
       requestSent: sentRequests > 0,
     }
   }

@@ -1,18 +1,10 @@
 import { prisma } from "@/lib/prisma"
-import { Board, BoardStatus, BoardCadence } from "@prisma/client"
+import { Board, BoardStatus, BoardCadence, TaskInstanceStatus, TaskType } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
+import { TaskInstanceService } from "./task-instance.service"
 
 /**
  * Derive periodEnd from periodStart based on cadence type.
- * This ensures consistent period calculations server-side.
- * 
- * Rules:
- * - DAILY: periodEnd = periodStart (same day)
- * - WEEKLY: periodEnd = Sunday of the week (ISO week, Monday start)
- * - MONTHLY: periodEnd = last day of the month
- * - QUARTERLY: periodEnd = last day of the quarter
- * - YEAR_END: periodEnd = Dec 31 of the year
- * - AD_HOC: periodEnd = null
  */
 export function derivePeriodEnd(
   cadence: BoardCadence | null | undefined,
@@ -22,28 +14,17 @@ export function derivePeriodEnd(
   
   switch (cadence) {
     case "DAILY":
-      // Same day
       return new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate())
-    
     case "WEEKLY":
-      // Sunday of the week (ISO week: Monday = start)
       return endOfWeek(periodStart, { weekStartsOn: 1 })
-    
     case "MONTHLY":
-      // Last day of the month
       return endOfMonth(periodStart)
-    
     case "QUARTERLY":
-      // Last day of the quarter
       return endOfQuarter(periodStart)
-    
     case "YEAR_END":
-      // December 31 of the year
       return endOfYear(periodStart)
-    
     case "AD_HOC":
       return null
-    
     default:
       return null
   }
@@ -51,15 +32,6 @@ export function derivePeriodEnd(
 
 /**
  * Normalize periodStart based on cadence type.
- * Ensures periodStart is set to the correct start of the period.
- * 
- * Rules:
- * - DAILY: periodStart = the specific date (unchanged)
- * - WEEKLY: periodStart = Monday of the week
- * - MONTHLY: periodStart = 1st of the month
- * - QUARTERLY: periodStart = 1st of the quarter
- * - YEAR_END: periodStart = Jan 1 of the year
- * - AD_HOC: periodStart = null
  */
 export function normalizePeriodStart(
   cadence: BoardCadence | null | undefined,
@@ -69,29 +41,18 @@ export function normalizePeriodStart(
   
   switch (cadence) {
     case "DAILY":
-      // Keep the specific date
       return new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate())
-    
     case "WEEKLY":
-      // Monday of the week (ISO week: Monday = start)
       return startOfWeek(periodStart, { weekStartsOn: 1 })
-    
     case "MONTHLY":
-      // First day of the month
       return new Date(periodStart.getFullYear(), periodStart.getMonth(), 1)
-    
     case "QUARTERLY":
-      // First day of the quarter
       const quarterMonth = Math.floor(periodStart.getMonth() / 3) * 3
       return new Date(periodStart.getFullYear(), quarterMonth, 1)
-    
     case "YEAR_END":
-      // January 1 of the year
       return new Date(periodStart.getFullYear(), 0, 1)
-    
     case "AD_HOC":
       return null
-    
     default:
       return null
   }
@@ -99,14 +60,6 @@ export function normalizePeriodStart(
 
 /**
  * Calculate the next period start date based on cadence.
- * 
- * Rules:
- * - DAILY: next day (or next Monday if skipWeekends and result is weekend)
- * - WEEKLY: Monday of next week
- * - MONTHLY: 1st of next month
- * - QUARTERLY: 1st of next quarter
- * - YEAR_END: Jan 1 of next year (or fiscal year start if provided)
- * - AD_HOC: null (no next period)
  */
 export function calculateNextPeriodStart(
   cadence: BoardCadence | null | undefined,
@@ -124,46 +77,32 @@ export function calculateNextPeriodStart(
   switch (cadence) {
     case "DAILY": {
       let nextDate = addDays(currentPeriodStart, 1)
-      // Skip weekends if configured
       if (skipWeekends && isWeekend(nextDate)) {
         nextDate = nextMonday(nextDate)
       }
       return nextDate
     }
-
     case "WEEKLY":
-      // Monday of next week
       return addWeeks(startOfWeek(currentPeriodStart, { weekStartsOn: 1 }), 1)
-
     case "MONTHLY":
-      // 1st of next month
       return addMonths(new Date(currentPeriodStart.getFullYear(), currentPeriodStart.getMonth(), 1), 1)
-
     case "QUARTERLY": {
-      // 1st of next quarter
       const quarterMonth = Math.floor(currentPeriodStart.getMonth() / 3) * 3
       const currentQuarterStart = new Date(currentPeriodStart.getFullYear(), quarterMonth, 1)
       return addMonths(currentQuarterStart, 3)
     }
-
     case "YEAR_END": {
-      // Start of next fiscal year
       const currentYear = currentPeriodStart.getFullYear()
-      // If fiscal year starts in January, just go to next calendar year
       if (fiscalYearStartMonth === 1) {
         return new Date(currentYear + 1, 0, 1)
       }
-      // Otherwise, calculate next fiscal year start
       const fiscalMonthIndex = fiscalYearStartMonth - 1
       if (currentPeriodStart.getMonth() >= fiscalMonthIndex) {
-        // Current period is in or after fiscal year start month, go to next year
         return new Date(currentYear + 1, fiscalMonthIndex, 1)
       } else {
-        // Current period is before fiscal year start month (same calendar year)
         return new Date(currentYear, fiscalMonthIndex, 1)
       }
     }
-
     default:
       return null
   }
@@ -184,16 +123,12 @@ export function generatePeriodBoardName(
   switch (cadence) {
     case "DAILY":
       return format(periodStart, "MMM d, yyyy")
-
     case "WEEKLY":
       return `Week of ${format(periodStart, "MMM d, yyyy")}`
-
     case "MONTHLY":
       return format(periodStart, "MMMM yyyy")
-
     case "QUARTERLY": {
       const quarterIndex = Math.floor(periodStart.getMonth() / 3)
-      // Adjust quarter number based on fiscal year
       let fiscalQuarter = quarterIndex + 1
       if (fiscalYearStartMonth !== 1) {
         const fiscalMonthIndex = fiscalYearStartMonth - 1
@@ -202,13 +137,10 @@ export function generatePeriodBoardName(
       }
       return `Q${fiscalQuarter} ${periodStart.getFullYear()}`
     }
-
     case "YEAR_END":
       return `Year-End ${periodStart.getFullYear()}`
-
     case "AD_HOC":
       return "Ad Hoc Board"
-
     default:
       return "New Board"
   }
@@ -218,13 +150,13 @@ export interface CreateBoardData {
   organizationId: string
   name: string
   description?: string
-  ownerId: string           // Required: accountable user
-  cadence?: BoardCadence    // Type of time period
+  ownerId: string
+  cadence?: BoardCadence
   periodStart?: Date
   periodEnd?: Date
   createdById: string
-  collaboratorIds?: string[] // Optional: team members to add
-  automationEnabled?: boolean // Auto-create next board when complete
+  collaboratorIds?: string[]
+  automationEnabled?: boolean
 }
 
 export interface UpdateBoardData {
@@ -235,7 +167,7 @@ export interface UpdateBoardData {
   cadence?: BoardCadence | null
   periodStart?: Date | null
   periodEnd?: Date | null
-  collaboratorIds?: string[] // Replace all collaborators
+  collaboratorIds?: string[]
   automationEnabled?: boolean
   skipWeekends?: boolean
 }
@@ -258,7 +190,7 @@ interface BoardCollaboratorWithUser {
 }
 
 export interface BoardWithCounts extends Board {
-  jobCount: number
+  taskInstanceCount: number
   createdBy: BoardOwner
   owner: BoardOwner | null
   collaborators: BoardCollaboratorWithUser[]
@@ -281,7 +213,6 @@ export class BoardService {
         createdById: data.createdById,
         status: "NOT_STARTED",
         automationEnabled: data.automationEnabled ?? false,
-        // Add collaborators if provided
         collaborators: data.collaboratorIds?.length ? {
           create: data.collaboratorIds.map(userId => ({
             userId,
@@ -295,13 +226,13 @@ export class BoardService {
         collaborators: {
           include: { user: { select: { id: true, name: true, email: true } } }
         },
-        _count: { select: { jobs: true } }
+        _count: { select: { taskInstances: true } }
       }
     })
 
     return {
       ...board,
-      jobCount: board._count.jobs,
+      taskInstanceCount: board._count.taskInstances,
       collaborators: board.collaborators.map(c => ({
         id: c.id,
         userId: c.userId,
@@ -320,22 +251,18 @@ export class BoardService {
       status?: BoardStatus | BoardStatus[]
       cadence?: BoardCadence | BoardCadence[]
       ownerId?: string
-      year?: number // Filter by periodStart year
-      includeJobCount?: boolean
+      year?: number
+      includeTaskInstanceCount?: boolean
     }
   ): Promise<BoardWithCounts[]> {
     const where: any = { organizationId }
 
     if (options?.status) {
-      where.status = Array.isArray(options.status)
-        ? { in: options.status }
-        : options.status
+      where.status = Array.isArray(options.status) ? { in: options.status } : options.status
     }
 
     if (options?.cadence) {
-      where.cadence = Array.isArray(options.cadence)
-        ? { in: options.cadence }
-        : options.cadence
+      where.cadence = Array.isArray(options.cadence) ? { in: options.cadence } : options.cadence
     }
 
     if (options?.ownerId) {
@@ -357,9 +284,7 @@ export class BoardService {
         collaborators: {
           include: { user: { select: { id: true, name: true, email: true } } }
         },
-        _count: options?.includeJobCount
-          ? { select: { jobs: true } }
-          : undefined
+        _count: options?.includeTaskInstanceCount ? { select: { taskInstances: true } } : undefined
       },
       orderBy: [
         { status: "asc" },
@@ -370,7 +295,7 @@ export class BoardService {
 
     return boards.map(board => ({
       ...board,
-      jobCount: (board as any)._count?.jobs ?? 0,
+      taskInstanceCount: (board as any)._count?.taskInstances ?? 0,
       collaborators: board.collaborators.map(c => ({
         id: c.id,
         userId: c.userId,
@@ -383,10 +308,7 @@ export class BoardService {
   /**
    * Get a single board by ID
    */
-  static async getById(
-    id: string,
-    organizationId: string
-  ): Promise<BoardWithCounts | null> {
+  static async getById(id: string, organizationId: string): Promise<BoardWithCounts | null> {
     const board = await prisma.board.findFirst({
       where: { id, organizationId },
       include: {
@@ -395,7 +317,7 @@ export class BoardService {
         collaborators: {
           include: { user: { select: { id: true, name: true, email: true } } }
         },
-        _count: { select: { jobs: true } }
+        _count: { select: { taskInstances: true } }
       }
     })
 
@@ -403,49 +325,7 @@ export class BoardService {
 
     return {
       ...board,
-      jobCount: board._count.jobs,
-      collaborators: board.collaborators.map(c => ({
-        id: c.id,
-        userId: c.userId,
-        role: c.role,
-        user: c.user
-      }))
-    }
-  }
-
-  /**
-   * Get a board with its jobs
-   */
-  static async getByIdWithJobs(
-    id: string,
-    organizationId: string
-  ): Promise<(BoardWithCounts & { jobs: any[] }) | null> {
-    const board = await prisma.board.findFirst({
-      where: { id, organizationId },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true } },
-        collaborators: {
-          include: { user: { select: { id: true, name: true, email: true } } }
-        },
-        jobs: {
-          include: {
-            owner: { select: { id: true, name: true, email: true } },
-            _count: { select: { tasks: true, subtasks: true } }
-          },
-          orderBy: [
-            { sortOrder: "asc" },
-            { createdAt: "desc" }
-          ]
-        }
-      }
-    })
-
-    if (!board) return null
-
-    return {
-      ...board,
-      jobCount: board.jobs.length,
+      taskInstanceCount: board._count.taskInstances,
       collaborators: board.collaborators.map(c => ({
         id: c.id,
         userId: c.userId,
@@ -464,23 +344,14 @@ export class BoardService {
     data: UpdateBoardData,
     updatedById?: string
   ): Promise<BoardWithCounts> {
-    // Verify board exists and belongs to organization
     const existing = await prisma.board.findFirst({
       where: { id, organizationId }
     })
 
-    if (!existing) {
-      throw new Error("Board not found")
-    }
+    if (!existing) throw new Error("Board not found")
 
-    // Handle collaborator updates separately if provided
     if (data.collaboratorIds !== undefined && updatedById) {
-      // Delete existing collaborators
-      await prisma.boardCollaborator.deleteMany({
-        where: { boardId: id }
-      })
-      
-      // Add new collaborators
+      await prisma.boardCollaborator.deleteMany({ where: { boardId: id } })
       if (data.collaboratorIds.length > 0) {
         await prisma.boardCollaborator.createMany({
           data: data.collaboratorIds.map(userId => ({
@@ -511,13 +382,18 @@ export class BoardService {
         collaborators: {
           include: { user: { select: { id: true, name: true, email: true } } }
         },
-        _count: { select: { jobs: true } }
+        _count: { select: { taskInstances: true } }
       }
     })
 
+    // If board is being marked as COMPLETE, trigger snapshotting and next period creation
+    if (data.status === "COMPLETE" && existing.status !== "COMPLETE") {
+      await this.handleBoardCompletion(id, organizationId, updatedById || board.createdById)
+    }
+
     return {
       ...board,
-      jobCount: board._count.jobs,
+      taskInstanceCount: board._count.taskInstances,
       collaborators: board.collaborators.map(c => ({
         id: c.id,
         userId: c.userId,
@@ -528,301 +404,58 @@ export class BoardService {
   }
 
   /**
-   * Archive a board (soft delete)
+   * Handle board completion: snapshot current instances and auto-create next period
    */
-  static async archive(id: string, organizationId: string): Promise<BoardWithCounts> {
-    return this.update(id, organizationId, { status: "ARCHIVED" })
-  }
-
-  /**
-   * Sync board status based on the statuses of its tasks (jobs).
-   * 
-   * Rules:
-   * - If board has no jobs → status unchanged
-   * - If all jobs are NOT_STARTED → Board stays NOT_STARTED
-   * - If any job is not NOT_STARTED (and not all complete) → Board becomes IN_PROGRESS
-   * - If all jobs are COMPLETE → Board becomes COMPLETE
-   * 
-   * This should be called after job status changes.
-   * 
-   * @returns The new board status if changed, null if no change needed
-   */
-  static async syncBoardStatusFromJobs(
-    boardId: string,
-    organizationId: string
-  ): Promise<{ board: BoardWithCounts; statusChanged: boolean; previousStatus: string } | null> {
-    // Get the board with its jobs
-    const board = await prisma.board.findFirst({
-      where: { id: boardId, organizationId },
-      include: {
-        jobs: {
-          select: { status: true },
-          where: {
-            status: { not: "ARCHIVED" } // Don't count archived jobs
-          }
-        }
-      }
+  private static async handleBoardCompletion(boardId: string, organizationId: string, userId: string) {
+    // 1. Mark all task instances as snapshots
+    await prisma.taskInstance.updateMany({
+      where: { boardId, organizationId },
+      data: { isSnapshot: true, status: "COMPLETE" }
     })
 
-    if (!board) return null
+    // 2. Auto-create next period board if automation enabled
+    const board = await prisma.board.findUnique({
+      where: { id: boardId },
+      include: { organization: true }
+    })
 
-    // Don't change status of archived or blocked boards
-    if (board.status === "ARCHIVED" || board.status === "BLOCKED") {
-      return null
-    }
-
-    const jobStatuses = board.jobs.map(j => j.status)
-    
-    // If no jobs, don't change status
-    if (jobStatuses.length === 0) {
-      return null
-    }
-
-    // Determine target status based on job statuses
-    // Job statuses that indicate "started": ACTIVE, IN_PROGRESS, COMPLETE, FULFILLED
-    const startedStatuses = ["ACTIVE", "IN_PROGRESS", "COMPLETE", "FULFILLED"]
-    const completeStatuses = ["COMPLETE", "FULFILLED"]
-    
-    const allNotStarted = jobStatuses.every(s => s === "NOT_STARTED")
-    const allComplete = jobStatuses.every(s => completeStatuses.includes(s))
-    const anyStarted = jobStatuses.some(s => startedStatuses.includes(s))
-
-    let targetStatus: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" = board.status as any
-    
-    if (allComplete) {
-      targetStatus = "COMPLETE"
-    } else if (anyStarted || !allNotStarted) {
-      targetStatus = "IN_PROGRESS"
-    } else {
-      targetStatus = "NOT_STARTED"
-    }
-
-    // Only update if status actually changes
-    if (targetStatus === board.status) {
-      return null
-    }
-
-    const previousStatus = board.status
-    const updatedBoard = await this.update(boardId, organizationId, { status: targetStatus })
-
-    return {
-      board: updatedBoard,
-      statusChanged: true,
-      previousStatus
+    if (board?.automationEnabled && board.cadence !== "AD_HOC") {
+      await this.createNextPeriodBoard(boardId, organizationId, userId)
     }
   }
 
   /**
-   * Delete a board (hard delete - only if no jobs)
-   */
-  static async delete(id: string, organizationId: string): Promise<void> {
-    const board = await prisma.board.findFirst({
-      where: { id, organizationId },
-      include: {
-        _count: { select: { jobs: true } }
-      }
-    })
-
-    if (!board) {
-      throw new Error("Board not found")
-    }
-
-    if (board._count.jobs > 0) {
-      throw new Error("Cannot delete board with jobs. Archive it instead or move jobs first.")
-    }
-
-    await prisma.board.delete({
-      where: { id }
-    })
-  }
-
-  /**
-   * Check if user can access board
-   */
-  static async canAccess(
-    boardId: string,
-    organizationId: string
-  ): Promise<boolean> {
-    const board = await prisma.board.findFirst({
-      where: { id: boardId, organizationId }
-    })
-    return !!board
-  }
-
-  /**
-   * Duplicate a board with all its jobs and subtasks
-   */
-  static async duplicate(
-    sourceBoardId: string,
-    organizationId: string,
-    newName: string,
-    createdById: string,
-    options?: {
-      newOwnerId?: string
-      newPeriodStart?: Date
-      newPeriodEnd?: Date
-    }
-  ): Promise<BoardWithCounts> {
-    // Get the source board with all jobs, subtasks, and collaborators
-    const sourceBoard = await prisma.board.findFirst({
-      where: { id: sourceBoardId, organizationId },
-      include: {
-        collaborators: true,
-        jobs: {
-          include: {
-            subtasks: true
-          }
-        }
-      }
-    })
-
-    if (!sourceBoard) {
-      throw new Error("Source board not found")
-    }
-
-    // Create the new board
-    const newBoard = await prisma.board.create({
-      data: {
-        organizationId,
-        name: newName,
-        description: sourceBoard.description,
-        ownerId: options?.newOwnerId || sourceBoard.ownerId || createdById,
-        cadence: sourceBoard.cadence,
-        periodStart: options?.newPeriodStart || sourceBoard.periodStart,
-        periodEnd: options?.newPeriodEnd || sourceBoard.periodEnd,
-        createdById,
-        status: "NOT_STARTED",
-        // Copy collaborators from source board
-        collaborators: sourceBoard.collaborators.length > 0 ? {
-          create: sourceBoard.collaborators.map(c => ({
-            userId: c.userId,
-            role: c.role,
-            addedBy: createdById
-          }))
-        } : undefined
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true } },
-        collaborators: {
-          include: { user: { select: { id: true, name: true, email: true } } }
-        },
-        _count: { select: { jobs: true } }
-      }
-    })
-
-    // Duplicate all jobs
-    for (const job of sourceBoard.jobs) {
-      const newJob = await prisma.job.create({
-        data: {
-          organizationId,
-          boardId: newBoard.id,
-          name: job.name,
-          description: job.description,
-          ownerId: job.ownerId,
-          status: "NOT_STARTED", // Reset status for new board
-          dueDate: job.dueDate,
-          labels: job.labels as any,
-          sortOrder: job.sortOrder
-        }
-      })
-
-      // Duplicate subtasks for this job
-      for (const subtask of job.subtasks) {
-        await prisma.subtask.create({
-          data: {
-            organizationId,
-            jobId: newJob.id,
-            title: subtask.title,
-            description: subtask.description,
-            ownerId: subtask.ownerId,
-            status: "NOT_STARTED", // Reset status
-            dueDate: subtask.dueDate,
-            sortOrder: subtask.sortOrder
-          }
-        })
-      }
-    }
-
-    return {
-      ...newBoard,
-      jobCount: newBoard._count.jobs,
-      collaborators: newBoard.collaborators.map(c => ({
-        id: c.id,
-        userId: c.userId,
-        role: c.role,
-        user: c.user
-      }))
-    }
-  }
-
-  /**
-   * Create the next period's board when a board is marked complete.
-   * Only creates if automationEnabled is true and cadence is not AD_HOC.
-   * 
-   * @param completedBoardId - ID of the board that was just completed
-   * @param organizationId - Organization ID for scoping
-   * @param createdById - User ID who triggered the completion
-   * @returns The new board if created, null if automation is disabled or not applicable
+   * Create the next period's board
    */
   static async createNextPeriodBoard(
     completedBoardId: string,
     organizationId: string,
     createdById: string
   ): Promise<BoardWithCounts | null> {
-    // Fetch the completed board with collaborators
     const completedBoard = await prisma.board.findFirst({
       where: { id: completedBoardId, organizationId },
       include: {
         collaborators: true,
-        organization: {
-          select: { fiscalYearStartMonth: true }
-        }
+        organization: { select: { fiscalYearStartMonth: true } }
       }
     })
 
-    if (!completedBoard) {
-      throw new Error("Board not found")
-    }
+    if (!completedBoard || !completedBoard.cadence) return null
 
-    // Check if automation should run
-    if (!completedBoard.automationEnabled) {
-      return null // Automation is disabled for this board
-    }
-
-    if (completedBoard.cadence === "AD_HOC" || !completedBoard.cadence) {
-      return null // AD_HOC boards never auto-create
-    }
-
-    // Calculate next period start
-    // If no periodStart exists, use today as the reference
     const referenceDate = completedBoard.periodStart || new Date()
     const fiscalYearStartMonth = completedBoard.organization?.fiscalYearStartMonth ?? 1
 
     const nextPeriodStart = calculateNextPeriodStart(
       completedBoard.cadence,
       referenceDate,
-      {
-        skipWeekends: completedBoard.skipWeekends,
-        fiscalYearStartMonth
-      }
+      { skipWeekends: completedBoard.skipWeekends, fiscalYearStartMonth }
     )
 
-    if (!nextPeriodStart) {
-      return null // Could not calculate next period
-    }
+    if (!nextPeriodStart) return null
 
-    // Derive period end
     const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart)
+    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
 
-    // Generate board name
-    const boardName = generatePeriodBoardName(
-      completedBoard.cadence,
-      nextPeriodStart,
-      { fiscalYearStartMonth }
-    )
-
-    // Create the new board
     const newBoard = await prisma.board.create({
       data: {
         organizationId,
@@ -836,7 +469,6 @@ export class BoardService {
         status: "NOT_STARTED",
         automationEnabled: completedBoard.automationEnabled,
         skipWeekends: completedBoard.skipWeekends,
-        // Copy collaborators from completed board
         collaborators: completedBoard.collaborators.length > 0 ? {
           create: completedBoard.collaborators.map(c => ({
             userId: c.userId,
@@ -844,107 +476,112 @@ export class BoardService {
             addedBy: createdById
           }))
         } : undefined
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true } },
-        collaborators: {
-          include: { user: { select: { id: true, name: true, email: true } } }
-        },
-        _count: { select: { jobs: true } }
       }
     })
 
-    // Copy tasks from the completed board to the new board
-    await this.copyTasksToBoard(completedBoardId, newBoard.id, organizationId, createdById)
+    // Copy task lineages to the new board
+    await this.spawnTaskInstancesForNextPeriod(completedBoardId, newBoard.id, organizationId)
 
-    // Re-fetch to get updated job count
-    const updatedBoard = await prisma.board.findUnique({
-      where: { id: newBoard.id },
+    return this.getById(newBoard.id, organizationId)
+  }
+
+  /**
+   * Spawn task instances for the next period based on lineages active in the previous period
+   */
+  private static async spawnTaskInstancesForNextPeriod(
+    previousBoardId: string,
+    nextBoardId: string,
+    organizationId: string
+  ): Promise<void> {
+    const previousInstances = await prisma.taskInstance.findMany({
+      where: { boardId: previousBoardId, organizationId },
       include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        owner: { select: { id: true, name: true, email: true } },
-        collaborators: {
-          include: { user: { select: { id: true, name: true, email: true } } }
-        },
-        _count: { select: { jobs: true } }
+        collaborators: true,
+        taskInstanceLabels: { include: { contactLabels: true } }
       }
     })
 
-    if (!updatedBoard) {
-      throw new Error("Failed to fetch updated board")
-    }
+    for (const prev of previousInstances) {
+      // Create new instance
+      const newInstance = await prisma.taskInstance.create({
+        data: {
+          organizationId,
+          boardId: nextBoardId,
+          lineageId: prev.lineageId,
+          type: prev.type,
+          name: prev.name,
+          description: prev.description,
+          ownerId: prev.ownerId,
+          clientId: prev.clientId,
+          status: "NOT_STARTED",
+          // Carry forward structured data for TABLE tasks as beginning balance
+          structuredData: prev.type === TaskType.TABLE ? prev.structuredData : null,
+          customFields: prev.customFields,
+          labels: prev.labels as any
+        }
+      })
 
-    return {
-      ...updatedBoard,
-      jobCount: updatedBoard._count.jobs,
-      collaborators: updatedBoard.collaborators.map(c => ({
-        id: c.id,
-        userId: c.userId,
-        role: c.role,
-        user: c.user
-      }))
+      // Copy collaborators
+      if (prev.collaborators.length > 0) {
+        await prisma.taskInstanceCollaborator.createMany({
+          data: prev.collaborators.map(c => ({
+            taskInstanceId: newInstance.id,
+            userId: c.userId,
+            role: c.role,
+            addedBy: c.addedBy
+          }))
+        })
+      }
     }
   }
 
   /**
-   * Copy all tasks (jobs) from one board to another.
-   * Copies task name, description, owner, and stakeholders.
-   * Does NOT copy: requests, replies, attachments, comments, status (resets to NOT_STARTED).
+   * Sync board status based on the statuses of its task instances
    */
-  private static async copyTasksToBoard(
-    sourceBoardId: string,
-    targetBoardId: string,
-    organizationId: string,
-    createdById: string
-  ): Promise<void> {
-    // Fetch all jobs from source board with their stakeholders and collaborators
-    const sourceJobs = await prisma.job.findMany({
-      where: {
-        boardId: sourceBoardId,
-        organizationId,
-        status: { not: "ARCHIVED" } // Don't copy archived tasks
-      },
+  static async syncStatus(
+    boardId: string,
+    organizationId: string
+  ): Promise<{ board: BoardWithCounts; statusChanged: boolean; previousStatus: string } | null> {
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, organizationId },
       include: {
-        stakeholders: true,
-        collaborators: true
+        taskInstances: {
+          select: { status: true },
+          where: {
+            status: { not: "ARCHIVED" }
+          }
+        }
       }
     })
 
-    // Create each job in the target board
-    for (const sourceJob of sourceJobs) {
-      await prisma.job.create({
-        data: {
-          organizationId,
-          boardId: targetBoardId,
-          name: sourceJob.name,
-          description: sourceJob.description,
-          ownerId: sourceJob.ownerId,
-          status: "NOT_STARTED", // Always start fresh
-          // Copy due date pattern (if source had one, shift to new period)
-          // For now, we'll leave dueDate null - users can set when needed
-          labels: sourceJob.labels,
-          notes: sourceJob.notes,
-          customFields: sourceJob.customFields,
-          createdById,
-          // Copy stakeholders
-          stakeholders: sourceJob.stakeholders.length > 0 ? {
-            create: sourceJob.stakeholders.map(s => ({
-              type: s.type,
-              contactId: s.contactId,
-              contactTypeId: s.contactTypeId,
-              groupId: s.groupId
-            }))
-          } : undefined,
-          // Copy collaborators
-          collaborators: sourceJob.collaborators.length > 0 ? {
-            create: sourceJob.collaborators.map(c => ({
-              userId: c.userId,
-              addedBy: createdById
-            }))
-          } : undefined
-        }
-      })
+    if (!board) return null
+    if (board.status === "ARCHIVED" || board.status === "BLOCKED") return null
+
+    const statuses = board.taskInstances.map(i => i.status)
+    if (statuses.length === 0) return null
+
+    const allComplete = statuses.every(s => s === "COMPLETE")
+    const anyStarted = statuses.some(s => s !== "NOT_STARTED")
+
+    let targetStatus: BoardStatus = board.status
+    
+    if (allComplete) {
+      targetStatus = "COMPLETE"
+    } else if (anyStarted) {
+      targetStatus = "IN_PROGRESS"
+    } else {
+      targetStatus = "NOT_STARTED"
+    }
+
+    if (targetStatus === board.status) return null
+
+    const previousStatus = board.status
+    const updatedBoard = await this.update(boardId, organizationId, { status: targetStatus })
+
+    return {
+      board: updatedBoard,
+      statusChanged: true,
+      previousStatus
     }
   }
 }

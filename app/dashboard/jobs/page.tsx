@@ -131,6 +131,7 @@ export default function JobsPage() {
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE">("GENERIC")
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
@@ -175,7 +176,7 @@ export default function JobsPage() {
       const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setJobs(data.jobs || [])
+        setJobs(data.taskInstances || [])
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/jobs"
       }
@@ -320,7 +321,7 @@ export default function JobsPage() {
 
   const handleStatusChange = async (jobId: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
@@ -329,37 +330,37 @@ export default function JobsPage() {
         setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: newStatus } : j))
       }
     } catch (error) {
-      console.error("Error updating job status:", error)
+      console.error("Error updating status:", error)
     }
   }
 
   const handleDelete = async (jobId: string) => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, { method: "DELETE" })
+      const response = await fetch(`/api/task-instances/${jobId}`, { method: "DELETE" })
       if (response.ok) {
         setJobs(prev => prev.filter(j => j.id !== jobId))
       }
     } catch (error) {
-      console.error("Error deleting job:", error)
+      console.error("Error deleting task instance:", error)
     }
   }
 
   // Handler for inline cell updates from ConfigurableTable
   const handleJobUpdate = async (jobId: string, updates: Record<string, any>) => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates)
       })
       if (response.ok) {
         const data = await response.json()
-        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates, owner: data.job?.owner || j.owner } : j))
+        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates, owner: data.taskInstance?.owner || j.owner } : j))
       } else {
         throw new Error("Failed to update")
       }
     } catch (error) {
-      console.error("Error updating job:", error)
+      console.error("Error updating task instance:", error)
       throw error
     }
   }
@@ -369,7 +370,7 @@ export default function JobsPage() {
     if (!job) return
     
     try {
-      const response = await fetch("/api/jobs", {
+      const response = await fetch("/api/task-instances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -379,27 +380,26 @@ export default function JobsPage() {
           dueDate: job.dueDate,
           ownerId: job.ownerId,
           labels: job.labels,
-          boardId: boardId || undefined
+          boardId: boardId || undefined,
+          type: job.type,
+          lineageId: job.lineageId
         })
       })
       if (response.ok) {
         const data = await response.json()
-        setJobs(prev => [data.job, ...prev])
+        setJobs(prev => [data.taskInstance, ...prev])
       }
     } catch (error) {
-      console.error("Error duplicating job:", error)
+      console.error("Error duplicating task instance:", error)
     }
   }
 
   // Bulk delete/archive handler
-  // Separates tasks into: deletable (0 requests) vs archive-only (>0 requests)
   const handleBulkDelete = async (jobIds: string[]) => {
-    // Separate jobs into deletable vs archive-only based on taskCount
     const selectedJobs = jobs.filter(j => jobIds.includes(j.id))
     const deletableJobs = selectedJobs.filter(j => (j.taskCount || 0) === 0)
     const archiveOnlyJobs = selectedJobs.filter(j => (j.taskCount || 0) > 0)
     
-    // Build confirmation message
     let confirmMessage = ""
     if (deletableJobs.length > 0 && archiveOnlyJobs.length > 0) {
       confirmMessage = `${deletableJobs.length} task(s) will be permanently deleted. ${archiveOnlyJobs.length} task(s) have requests and will be archived instead. Continue?`
@@ -412,24 +412,21 @@ export default function JobsPage() {
     if (!confirm(confirmMessage)) return
     
     try {
-      // Hard delete jobs with no requests
       await Promise.all(
         deletableJobs.map(j => 
-          fetch(`/api/jobs/${j.id}?hard=true`, { method: "DELETE" })
+          fetch(`/api/task-instances/${j.id}?hard=true`, { method: "DELETE" })
         )
       )
       
-      // Archive jobs with requests (soft delete)
       await Promise.all(
         archiveOnlyJobs.map(j => 
-          fetch(`/api/jobs/${j.id}`, { method: "DELETE" })
+          fetch(`/api/task-instances/${j.id}`, { method: "DELETE" })
         )
       )
       
-      // Remove all from UI (archived ones are hidden by default)
       setJobs(prev => prev.filter(j => !jobIds.includes(j.id)))
     } catch (error) {
-      console.error("Error deleting/archiving jobs:", error)
+      console.error("Error deleting/archiving tasks:", error)
     }
   }
 
@@ -440,7 +437,7 @@ export default function JobsPage() {
     try {
       const newJobs = await Promise.all(
         jobsToDuplicate.map(async (job) => {
-          const response = await fetch("/api/jobs", {
+          const response = await fetch("/api/task-instances", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
@@ -450,12 +447,14 @@ export default function JobsPage() {
               dueDate: job.dueDate,
               ownerId: job.ownerId,
               labels: job.labels,
-              boardId: boardId || undefined
+              boardId: boardId || undefined,
+              type: job.type,
+              lineageId: job.lineageId
             })
           })
           if (response.ok) {
             const data = await response.json()
-            return data.job
+            return data.taskInstance
           }
           return null
         })
@@ -464,7 +463,7 @@ export default function JobsPage() {
       const validNewJobs = newJobs.filter(j => j !== null)
       setJobs(prev => [...validNewJobs, ...prev])
     } catch (error) {
-      console.error("Error duplicating jobs:", error)
+      console.error("Error duplicating tasks:", error)
     }
   }
 
@@ -497,7 +496,9 @@ export default function JobsPage() {
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
     try {
-      const response = await fetch("/api/jobs", {
+      const isRecurring = currentBoard && currentBoard.cadence && currentBoard.cadence !== "AD_HOC"
+      
+      const response = await fetch("/api/task-instances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -507,18 +508,21 @@ export default function JobsPage() {
           dueDate: newJobDueDate,
           ownerId: newJobOwnerId,
           stakeholders: newJobStakeholders,
-          boardId: boardId || undefined  // Include current board
+          boardId: boardId || undefined,
+          type: newJobType,
+          createLineage: isRecurring
         })
       })
       if (response.ok) {
         const data = await response.json()
-        setJobs(prev => [data.job, ...prev])
+        const newInstance = data.taskInstance
+        setJobs(prev => [newInstance, ...prev])
         resetCreateForm()
         setIsCreateOpen(false)
-        router.push(`/dashboard/jobs/${data.job.id}`)
+        router.push(`/dashboard/jobs/${newInstance.id}`)
       }
     } catch (error) {
-      console.error("Error creating job:", error)
+      console.error("Error creating task instance:", error)
     } finally {
       setCreating(false)
     }
@@ -684,6 +688,49 @@ export default function JobsPage() {
                 <DialogTitle>Create New Task</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                {/* Task Type */}
+                <div className="grid grid-cols-1 gap-3">
+                  <Label>Task Type</Label>
+                  <div 
+                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'GENERIC' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
+                    onClick={() => setNewJobType('GENERIC')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'GENERIC' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
+                        {newJobType === 'GENERIC' && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm font-medium">Generic Task</span>
+                    </div>
+                    <p className="text-xs text-gray-500 ml-6">Track qualitative work and collect evidence.</p>
+                  </div>
+
+                  <div 
+                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'RECONCILIATION' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
+                    onClick={() => setNewJobType('RECONCILIATION')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'RECONCILIATION' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
+                        {newJobType === 'RECONCILIATION' && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm font-medium">Reconciliation Task</span>
+                    </div>
+                    <p className="text-xs text-gray-500 ml-6">Match two data sources to find discrepancies.</p>
+                  </div>
+
+                  <div 
+                    className={`flex flex-col gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${newJobType === 'TABLE' ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'}`}
+                    onClick={() => setNewJobType('TABLE')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${newJobType === 'TABLE' ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
+                        {newJobType === 'TABLE' && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm font-medium">Table / Database Task</span>
+                    </div>
+                    <p className="text-xs text-gray-500 ml-6">Maintain a structured ledger with variance tracking.</p>
+                  </div>
+                </div>
+
                 {/* Task Name */}
                 <div>
                   <Label htmlFor="taskName">Task Name <span className="text-red-500">*</span></Label>

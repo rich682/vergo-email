@@ -9,11 +9,11 @@ type RemindersConfig = {
 }
 
 export class ReminderStateService {
-  static async initializeForTask(taskId: string, remindersConfig?: RemindersConfig) {
+  static async initializeForRequest(requestId: string, remindersConfig?: RemindersConfig) {
     if (!remindersConfig?.enabled || !remindersConfig?.approved) return
 
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
       select: {
         id: true,
         entityId: true,
@@ -26,15 +26,15 @@ export class ReminderStateService {
       }
     })
 
-    if (!task || !task.entityId) return
+    if (!request || !request.entityId) return
 
     const startDelayHours = remindersConfig.startDelayHours ?? 48
     const frequencyHours = remindersConfig.frequencyHours ?? 72
     const maxCount = Math.min(5, remindersConfig.maxCount ?? 0)
 
-    // Persist reminder configuration on the task (idempotent)
-    await prisma.task.update({
-      where: { id: taskId },
+    // Persist reminder configuration on the request
+    await prisma.request.update({
+      where: { id: requestId },
       data: {
         remindersEnabled: remindersConfig.enabled,
         remindersApproved: remindersConfig.approved,
@@ -44,12 +44,12 @@ export class ReminderStateService {
       }
     })
 
-    // Idempotent initialization of ReminderState (one per task+entity)
+    // Idempotent initialization of ReminderState
     const existing = await prisma.reminderState.findUnique({
       where: {
-        taskId_entityId: {
-          taskId,
-          entityId: task.entityId
+        requestId_entityId: {
+          requestId,
+          entityId: request.entityId
         }
       }
     })
@@ -63,9 +63,9 @@ export class ReminderStateService {
 
     return prisma.reminderState.create({
       data: {
-        taskId,
-        entityId: task.entityId,
-        organizationId: task.organizationId,
+        requestId,
+        entityId: request.entityId,
+        organizationId: request.organizationId,
         reminderNumber: 1,
         sentCount: 0,
         nextSendAt,
@@ -75,11 +75,11 @@ export class ReminderStateService {
     })
   }
 
-  static async stopForReply(taskId: string, entityId: string) {
+  static async stopForReply(requestId: string, entityId: string) {
     try {
       await prisma.reminderState.updateMany({
         where: {
-          taskId,
+          requestId,
           entityId
         },
         data: {
@@ -92,23 +92,17 @@ export class ReminderStateService {
     }
   }
 
-  /**
-   * Stop reminders for a reply, but only if it's not a bounce or out-of-office
-   * Bounces and OOO should not stop reminders since they indicate delivery issues
-   */
   static async stopForReplyIfNotBounce(
-    taskId: string, 
+    requestId: string, 
     entityId: string, 
     classification?: string | null
   ) {
-    // Don't stop reminders for bounces or out-of-office replies
     const nonStopClassifications = ["BOUNCE", "OUT_OF_OFFICE"]
     if (classification && nonStopClassifications.includes(classification.toUpperCase())) {
-      console.log(`[ReminderStateService] Not stopping reminders for ${classification} classification (taskId: ${taskId})`)
+      console.log(`[ReminderStateService] Not stopping reminders for ${classification} classification (requestId: ${requestId})`)
       return
     }
 
-    // Stop reminders for legitimate replies
-    await this.stopForReply(taskId, entityId)
+    await this.stopForReply(requestId, entityId)
   }
 }

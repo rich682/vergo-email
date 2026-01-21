@@ -19,6 +19,12 @@ enum UserRole {
   VIEWER
 }
 
+enum TaskType {
+  GENERIC
+  RECONCILIATION
+  TABLE
+}
+
 enum TaskStatus {
   // Current active statuses
   NO_REPLY          // No reply received yet (default for new requests)
@@ -133,7 +139,9 @@ model Organization {
   users                  User[]
   entities               Entity[]
   groups                 Group[]
-  jobs                   Job[]
+  taskInstances          TaskInstance[]
+  taskLineages           TaskLineage[]
+  importRecipes          ImportRecipe[]
   connectedEmailAccounts ConnectedEmailAccount[]
   automationRules        AutomationRule[]
   emailDrafts            EmailDraft[]
@@ -145,6 +153,39 @@ model Organization {
   reconciliations        Reconciliation[]
 
   @@index([slug])
+}
+
+model TaskLineage {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  type           TaskType
+  config         Json?    // Schema for TABLE, Match rules for RECONCILIATION
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  instances    TaskInstance[]
+  importRecipes ImportRecipe[]
+
+  @@index([organizationId])
+}
+
+model ImportRecipe {
+  id             String   @id @default(cuid())
+  organizationId String
+  lineageId      String
+  name           String
+  mapping        Json     // CSV Header -> Schema Column mapping
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage      TaskLineage  @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([lineageId])
 }
 
 model User {
@@ -169,9 +210,9 @@ model User {
 
   organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   emailDrafts         EmailDraft[]
-  ownedJobs           Job[]               @relation("JobOwner")
-  jobCollaborations   JobCollaborator[]
-  jobComments         JobComment[]
+  ownedTaskInstances     TaskInstance[]      @relation("TaskInstanceOwner")
+  taskInstanceCollaborations TaskInstanceCollaborator[]
+  taskInstanceComments   TaskInstanceComment[]
   reviewedItems       CollectedItem[]     @relation("CollectedItemReviewer")
   ownedBoards         Board[]             @relation("BoardOwner")
   createdBoards       Board[]             @relation("BoardCreator")
@@ -203,11 +244,11 @@ model Entity {
 
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   groups         EntityGroup[]
-  tasks          Task[]
+  requests       Request[]
   messages       Message[]
   reminderStates ReminderState[]
-  clientJobs     Job[]             @relation("JobClient") // Jobs where this entity is the primary client
-  jobLabels      JobContactLabel[] // Item-scoped labels applied to this contact
+  clientTaskInstances TaskInstance[] @relation("TaskInstanceClient") // Task instances where this entity is the primary client
+  taskInstanceLabels  TaskInstanceContactLabel[] // Item-scoped labels applied to this contact
 
   @@index([organizationId])
   @@index([email])
@@ -256,7 +297,7 @@ enum ContactType {
 
 // Job represents a persistent work container (e.g., "Tax Planning - Year End 2024")
 // Jobs own Tasks (requests), enabling aggregation and status tracking across recipients
-enum JobStatus {
+enum TaskInstanceStatus {
   // New action-oriented statuses
   NOT_STARTED  // Work not yet begun
   IN_PROGRESS  // Work in progress
@@ -269,37 +310,44 @@ enum JobStatus {
   ARCHIVED     // @deprecated - use COMPLETE
 }
 
-model Job {
+// TaskInstance represents a persistent work container for a specific period
+// TaskInstances are spawned from TaskLineages and belong to a Board
+model TaskInstance {
   id             String    @id @default(cuid())
   organizationId String
+  lineageId      String?   // Link to parent lineage (template)
+  type           TaskType  @default(GENERIC)
   name           String    // Human-readable job name (e.g., "Tax Planning - Year End 2024")
   description    String?   // Optional detailed description
   clientId       String?   // Optional: primary client (Entity) for this job
   ownerId        String    // Required: accountable user for this job
-  status         JobStatus @default(NOT_STARTED)
+  status         TaskInstanceStatus @default(NOT_STARTED)
   dueDate        DateTime? // Target completion date
   labels         Json?     // Flexible tagging/categorization
   boardId        String?   // Optional: parent Board for period-based organization
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
   notes          String?   // User notes for this task
   customFields   Json?     // Custom column data for configurable table
+  structuredData Json?     // Row-level data for TABLE tasks or results for RECONCILIATION
+  isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client          Entity?           @relation("JobClient", fields: [clientId], references: [id], onDelete: SetNull)
-  owner           User              @relation("JobOwner", fields: [ownerId], references: [id])
+  lineage         TaskLineage?      @relation(fields: [lineageId], references: [id], onDelete: SetNull)
+  client          Entity?           @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
+  owner           User              @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
   board           Board?            @relation(fields: [boardId], references: [id], onDelete: SetNull)
-  collaborators   JobCollaborator[] // Team members who can collaborate on this job
-  tasks           Task[]            // Child tasks (requests) belonging to this job
-  requests        EmailDraft[]      // Request-level association
-  comments        JobComment[]      // Internal collaboration comments
+  collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
+  requests        Request[]         // Child tasks (requests) belonging to this job
+  emailDrafts     EmailDraft[]      // Request-level association
+  comments        TaskInstanceComment[]      // Internal collaboration comments
   collectedItems   CollectedItem[]   // Evidence/attachments collected for this job
   subtasks         Subtask[]         // Checklist subitems within this job
   attachments      Attachment[]      // Direct file attachments on this job
   reconciliations  Reconciliation[]  // Document reconciliation workflows
 
-  jobLabels       JobLabel[]        // Item-scoped labels for contacts
+  taskInstanceLabels TaskInstanceLabel[]        // Item-scoped labels for contacts
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -307,13 +355,14 @@ model Job {
   @@index([ownerId])
   @@index([organizationId, createdAt])
   @@index([boardId])
+  @@index([lineageId])
 }
 
-// JobLabel defines labels that can be applied to contacts within a specific Job
+// TaskInstanceLabel defines labels that can be applied to contacts within a specific TaskInstance
 // e.g., "paid", "unpaid", "pending" with metadata schemas like invoice_number, amount
-model JobLabel {
+model TaskInstanceLabel {
   id              String   @id @default(cuid())
-  jobId           String
+  taskInstanceId  String
   organizationId  String
   name            String   // "unpaid", "received", "pending"
   color           String?  // "#ef4444"
@@ -321,71 +370,71 @@ model JobLabel {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  job           Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  contactLabels JobContactLabel[]
+  taskInstance  TaskInstance               @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  contactLabels TaskInstanceContactLabel[]
 
-  @@unique([jobId, name])
-  @@index([jobId])
+  @@unique([taskInstanceId, name])
+  @@index([taskInstanceId])
   @@index([organizationId])
 }
 
-// JobContactLabel applies a label to a contact within a Job's context
+// TaskInstanceContactLabel applies a label to a contact within a TaskInstance's context
 // Stores the metadata values for that contact-label pair
-model JobContactLabel {
-  id          String   @id @default(cuid())
-  jobLabelId  String
-  entityId    String
-  metadata    Json     @default("{}") // {invoice_number: "INV-001", amount: "500.00"}
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model TaskInstanceContactLabel {
+  id                  String   @id @default(cuid())
+  taskInstanceLabelId String
+  entityId            String
+  metadata            Json     @default("{}") // {invoice_number: "INV-001", amount: "500.00"}
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  jobLabel JobLabel @relation(fields: [jobLabelId], references: [id], onDelete: Cascade)
-  entity   Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  taskInstanceLabel TaskInstanceLabel @relation(fields: [taskInstanceLabelId], references: [id], onDelete: Cascade)
+  entity            Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
-  @@unique([jobLabelId, entityId])
-  @@index([jobLabelId])
+  @@unique([taskInstanceLabelId, entityId])
+  @@index([taskInstanceLabelId])
   @@index([entityId])
 }
 
-// JobCollaborator join table for team collaboration on Jobs
+// TaskInstanceCollaborator join table for team collaboration on TaskInstances
 // This replaces a JSON array for better querying, indexing, and auditing
-model JobCollaborator {
-  id        String   @id @default(cuid())
-  jobId     String
-  userId    String
-  role      String   @default("collaborator") // Future: "viewer"
-  addedAt   DateTime @default(now())
-  addedBy   String   // User.id who added this collaborator
+model TaskInstanceCollaborator {
+  id             String   @id @default(cuid())
+  taskInstanceId String
+  userId         String
+  role           String   @default("collaborator") // Future: "viewer"
+  addedAt        DateTime @default(now())
+  addedBy        String   // User.id who added this collaborator
 
-  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([jobId, userId])
-  @@index([userId]) // Fast "My Jobs" query
-  @@index([jobId])
+  @@unique([taskInstanceId, userId])
+  @@index([userId]) // Fast "My Tasks" query
+  @@index([taskInstanceId])
 }
 
-// JobComment for internal team collaboration
-model JobComment {
-  id        String   @id @default(cuid())
-  jobId     String
-  authorId  String
-  content   String
-  mentions  Json?    // Array of mentioned user IDs
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// TaskInstanceComment for internal team collaboration
+model TaskInstanceComment {
+  id             String   @id @default(cuid())
+  taskInstanceId String
+  authorId       String
+  content        String
+  mentions       Json?    // Array of mentioned user IDs
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id])
+  taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id])
 
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([authorId])
 }
 
-model Task {
+model Request {
   id                       String        @id @default(cuid())
-  jobId                    String? // Optional: parent Job for task-centric workflows
-  entityId                 String? // Optional: contact may be deleted but task history preserved
+  taskInstanceId           String? // Optional: parent TaskInstance for request-level association
+  entityId                 String? // Optional: contact may be deleted but request history preserved
   campaignName             String?
   campaignType             CampaignType?
   status                   TaskStatus    @default(AWAITING_RESPONSE)
@@ -419,15 +468,15 @@ model Task {
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
 
-  job               Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  taskInstance      TaskInstance?      @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
   messages          Message[]
   reminderStates    ReminderState[]
-  collectedItems    CollectedItem[]    // Evidence/attachments collected for this task
+  collectedItems    CollectedItem[]    // Evidence/attachments collected for this request
   aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
   @@index([organizationId])
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([entityId])
   @@index([status])
   @@index([threadId])
@@ -438,7 +487,7 @@ model Task {
 
 model Message {
   id               String           @id @default(cuid())
-  taskId           String
+  requestId        String
   entityId         String? // Optional: contact may be deleted but message history preserved
   direction        MessageDirection
   channel          MessageChannel   @default(EMAIL)
@@ -468,16 +517,16 @@ model Message {
   reviewNotes      String?
 
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  task              Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  request           Request            @relation(fields: [requestId], references: [id], onDelete: Cascade)
   collectedItems    CollectedItem[]    // Evidence/attachments extracted from this message
   reviewedBy        User?              @relation("MessageReviewer", fields: [reviewedById], references: [id])
   auditLogs         ReviewAuditLog[]
   aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
-  @@index([taskId])
+  @@index([requestId])
   @@index([entityId])
   @@index([providerId])
-  @@index([taskId, createdAt])
+  @@index([requestId, createdAt])
   @@index([trackingToken])
   @@index([messageIdHeader])
   @@index([threadId])
@@ -563,7 +612,7 @@ model EmailDraft {
   id                    String           @id @default(cuid())
   organizationId        String
   userId                String
-  jobId                 String?          // Optional: parent Job for Request-level association
+  taskInstanceId        String?          // Optional: parent TaskInstance
   prompt                String
   generatedSubject      String?
   generatedBody         String?
@@ -575,7 +624,7 @@ model EmailDraft {
   availableTags         Json? // Array of available tag names
   personalizationMode   String? // "none" | "contact" | "csv"
   blockOnMissingValues  Boolean          @default(true)
-  deadlineDate          DateTime? // Deadline date for the request (set by user via date picker)
+  deadlineDate          DateTime? // Deadline date for the request
   // Legacy fields (keeping for backwards compatibility)
   suggestedRecipients   Json? // Store suggested entity/group IDs as JSON
   suggestedCampaignName String?
@@ -590,12 +639,12 @@ model EmailDraft {
 
   organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  job                 Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  taskInstance        TaskInstance?         @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   personalizationData PersonalizationData[]
 
   @@index([organizationId])
   @@index([userId])
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([status])
   @@index([idempotencyKey])
 }
@@ -623,7 +672,7 @@ model PersonalizationData {
 
 model ReminderState {
   id               String    @id @default(cuid())
-  taskId           String // Link to Task (the request)
+  requestId        String // Link to Request (the threaded communication)
   entityId         String? // Recipient entity (optional: contact may be deleted)
   reminderNumber   Int // Which reminder this is (1, 2, 3, etc.)
   sentCount        Int       @default(0) // How many reminders sent (incremented when sent)
@@ -635,13 +684,13 @@ model ReminderState {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  entity  Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
 
-  @@unique([taskId, entityId]) // One state per task+entity
-  @@index([taskId])
+  @@unique([requestId, entityId]) // One state per request+entity
+  @@index([requestId])
   @@index([entityId])
-  @@index([organizationId, nextSendAt]) // For querying tasks that need reminders
+  @@index([organizationId, nextSendAt]) // For querying requests that need reminders
   @@index([scheduledEventId]) // For idempotency checks
 }
 
@@ -650,8 +699,8 @@ model ReminderState {
 model CollectedItem {
   id              String              @id @default(cuid())
   organizationId  String
-  jobId           String              // Parent checklist item (required)
-  taskId          String?             // Optional: specific request/task this came from
+  taskInstanceId  String              // Parent task instance (required)
+  requestId       String?             // Optional: specific request this came from
   messageId       String?             // Optional: source message if from email
   
   // File metadata
@@ -680,18 +729,18 @@ model CollectedItem {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   
-  job             Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  task            Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskInstance    TaskInstance        @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  request         Request?            @relation(fields: [requestId], references: [id], onDelete: SetNull)
   message         Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
   reviewer        User?               @relation("CollectedItemReviewer", fields: [reviewedBy], references: [id])
   
   @@index([organizationId])
-  @@index([jobId])
-  @@index([taskId])
+  @@index([taskInstanceId])
+  @@index([requestId])
   @@index([messageId])
   @@index([status])
-  @@index([jobId, status])
-  @@index([organizationId, jobId])
+  @@index([taskInstanceId, status])
+  @@index([organizationId, taskInstanceId])
 }
 
 // Board represents a period-based checklist (e.g., "January 2025 Book Close")
@@ -723,7 +772,7 @@ model Board {
   owner          User?               @relation("BoardOwner", fields: [ownerId], references: [id])
   createdBy      User                @relation("BoardCreator", fields: [createdById], references: [id])
   collaborators  BoardCollaborator[]
-  jobs           Job[]
+  taskInstances  TaskInstance[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -752,50 +801,50 @@ model BoardCollaborator {
 model Subtask {
   id             String        @id @default(cuid())
   organizationId String
-  jobId          String
+  taskInstanceId String
   title          String
   description    String?
   ownerId        String?       // Nullable - Monday allows unassigned subitems
   status         SubtaskStatus @default(NOT_STARTED)
   dueDate        DateTime?
-  sortOrder      Int           @default(0) // Order within job for drag-drop reordering
+  sortOrder      Int           @default(0) // Order within task for drag-drop reordering
   completedAt    DateTime?     // Timestamp when marked as DONE
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   owner        User?        @relation("SubtaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   attachments  Attachment[]
 
   @@index([organizationId])
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([ownerId])
-  @@index([jobId, sortOrder])
+  @@index([taskInstanceId, sortOrder])
 }
 
-// Attachment represents a direct file upload on a Job or Subtask
+// Attachment represents a direct file upload on a TaskInstance or Subtask
 // Distinct from CollectedItem which is for inbound email attachments
 model Attachment {
   id             String   @id @default(cuid())
   organizationId String
-  jobId          String?  // One of jobId or subtaskId must be set (enforced in app logic)
+  taskInstanceId String?  // One of taskInstanceId or subtaskId must be set
   subtaskId      String?
   filename       String
-  fileKey        String   // Storage key (same pattern as CollectedItem)
-  fileUrl        String?  // Cached URL for quick access
+  fileKey        String   // Storage key
+  fileUrl        String?  // Cached URL
   fileSize       Int?     // Bytes
   mimeType       String?
   uploadedById   String
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  job          Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   subtask      Subtask?     @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
   uploadedBy   User         @relation("AttachmentUploader", fields: [uploadedById], references: [id])
 
   @@index([organizationId])
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([subtaskId])
 }
 
@@ -823,8 +872,8 @@ model EmailQueue {
   id              String           @id @default(cuid())
   organizationId  String
   userId          String?          // User who initiated the send
-  jobId           String?          // Related job
-  taskId          String?          // Related task (if updating existing)
+  taskInstanceId  String?          // Related task instance
+  requestId       String?          // Related request (if updating existing)
   
   // Email details (stored for retry)
   toEmail         String
@@ -879,8 +928,8 @@ model EmailSendAudit {
   id              String          @id @default(cuid())
   organizationId  String
   userId          String?         // User who initiated the send (null for system sends)
-  jobId           String?         // Related job if applicable
-  taskId          String?         // Related task if applicable
+  taskInstanceId  String?         // Related task instance if applicable
+  requestId       String?         // Related request if applicable
   emailDraftId    String?         // Related email draft if applicable
   
   // Send details
@@ -908,8 +957,8 @@ model EmailSendAudit {
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([userId])
-  @@index([jobId])
-  @@index([taskId])
+  @@index([taskInstanceId])
+  @@index([requestId])
   @@index([toEmail])
   @@index([result])
   @@index([createdAt])
@@ -934,7 +983,7 @@ model AIRecommendation {
   id                String        @id @default(cuid())
   organizationId    String
   messageId         String
-  taskId            String
+  requestId         String
   
   // Denormalized for metrics queries
   campaignType      CampaignType?
@@ -961,7 +1010,7 @@ model AIRecommendation {
   createdAt         DateTime      @default(now())
   
   message           Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  task              Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  request           Request       @relation(fields: [requestId], references: [id], onDelete: Cascade)
   
   @@index([organizationId, createdAt])
   @@index([messageId])
@@ -981,7 +1030,7 @@ enum ReconciliationStatus {
 model Reconciliation {
   id             String               @id @default(cuid())
   organizationId String
-  jobId          String               // Parent task (Job)
+  taskInstanceId String               // Parent task instance (TaskInstance)
   
   // Document 1 (Source A)
   document1Key   String               // Storage key (blob)
@@ -1014,11 +1063,11 @@ model Reconciliation {
   updatedAt      DateTime             @updatedAt
   
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  job            Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  taskInstance   TaskInstance         @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   createdBy      User                 @relation("ReconciliationCreator", fields: [createdById], references: [id])
   
   @@index([organizationId])
-  @@index([jobId])
+  @@index([taskInstanceId])
   @@index([status])
-  @@index([organizationId, jobId])
+  @@index([organizationId, taskInstanceId])
 }
