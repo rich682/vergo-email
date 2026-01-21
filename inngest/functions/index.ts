@@ -797,4 +797,111 @@ Use plain language. Be concise.`
       }
     }
   ),
+
+  // Auto-create next period boards when period ends
+  // Runs daily at midnight to check for boards whose period has ended
+  inngest.createFunction(
+    { 
+      id: "auto-create-period-boards",
+      throttle: {
+        limit: 1,
+        period: "1h"  // Prevent concurrent runs
+      }
+    },
+    { cron: "0 0 * * *" },  // Daily at midnight
+    async () => {
+      console.log("[Board Automation] Starting period board auto-creation check...")
+      
+      try {
+        const now = new Date()
+        
+        // Find all boards where:
+        // 1. automationEnabled is true
+        // 2. cadence is not AD_HOC
+        // 3. periodEnd has passed (periodEnd < now)
+        // 4. status is NOT "COMPLETE" (haven't been completed yet)
+        const boardsDue = await prisma.board.findMany({
+          where: {
+            automationEnabled: true,
+            cadence: { not: "AD_HOC" },
+            periodEnd: { lt: now },
+            status: { not: "COMPLETE" }
+          },
+          include: {
+            organization: { select: { fiscalYearStartMonth: true } },
+            collaborators: true
+          }
+        })
+        
+        if (boardsDue.length === 0) {
+          console.log("[Board Automation] No boards due for period transition")
+          return { success: true, processed: 0, created: 0 }
+        }
+        
+        console.log(`[Board Automation] Found ${boardsDue.length} boards due for period transition`)
+        
+        let created = 0
+        let failed = 0
+        const results: { boardId: string; boardName: string; newBoardId?: string; error?: string }[] = []
+        
+        for (const board of boardsDue) {
+          try {
+            console.log(`[Board Automation] Processing board: ${board.name} (${board.id})`)
+            
+            // Import BoardService dynamically to avoid circular deps
+            const { BoardService } = await import("@/lib/services/board.service")
+            
+            // Mark current board as complete
+            await prisma.board.update({
+              where: { id: board.id },
+              data: { status: "COMPLETE" }
+            })
+            
+            // Mark all task instances as snapshots
+            await prisma.taskInstance.updateMany({
+              where: { boardId: board.id, organizationId: board.organizationId },
+              data: { isSnapshot: true, status: "COMPLETE" }
+            })
+            
+            // Create next period board
+            const nextBoard = await BoardService.createNextPeriodBoard(
+              board.id,
+              board.organizationId,
+              board.ownerId || board.createdById
+            )
+            
+            if (nextBoard) {
+              created++
+              console.log(`[Board Automation] Created next period board: ${nextBoard.name} (${nextBoard.id})`)
+              results.push({ boardId: board.id, boardName: board.name, newBoardId: nextBoard.id })
+            } else {
+              console.log(`[Board Automation] No next board created for: ${board.name}`)
+              results.push({ boardId: board.id, boardName: board.name, error: "No next board created" })
+            }
+            
+          } catch (error: any) {
+            console.error(`[Board Automation] Failed to process board ${board.id}:`, error.message)
+            failed++
+            results.push({ boardId: board.id, boardName: board.name, error: error.message })
+          }
+        }
+        
+        console.log(`[Board Automation] Completed: ${created} boards created, ${failed} failed out of ${boardsDue.length} processed`)
+        
+        return {
+          success: true,
+          processed: boardsDue.length,
+          created,
+          failed,
+          results
+        }
+      } catch (error: any) {
+        console.error("[Board Automation] Error in auto-create period boards:", error)
+        return {
+          success: false,
+          error: error.message
+        }
+      }
+    }
+  ),
 ]
