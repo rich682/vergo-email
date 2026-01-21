@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectionService } from "@/lib/services/collection.service"
+import { EvidenceService } from "@/lib/services/evidence.service"
 import { getStorageService } from "@/lib/services/storage.service"
 
 export const dynamic = "force-dynamic"
@@ -45,9 +45,9 @@ export async function GET(
     }
 
     // Get the item
-    const item = await CollectionService.getById(itemId, organizationId)
+    const item = await EvidenceService.getById(itemId, organizationId)
 
-    if (!item || item.jobId !== jobId) {
+    if (!item || item.taskInstanceId !== jobId) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
@@ -62,8 +62,8 @@ export async function GET(
     // Fallback: download file from storage and stream it
     const fileBuffer = await storage.download(item.fileKey)
 
-    // Return as downloadable file
-    return new NextResponse(fileBuffer, {
+    // Return as downloadable file (convert Buffer to Uint8Array for NextResponse)
+    return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
         "Content-Type": item.mimeType || "application/octet-stream",
         "Content-Disposition": `attachment; filename="${item.filename}"`,

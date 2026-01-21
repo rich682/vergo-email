@@ -139,13 +139,13 @@ export async function POST(request: NextRequest) {
       where: {
         id: messageId,
         direction: "INBOUND",
-        task: { organizationId }
+        request: { organizationId }
       },
       include: {
-        task: {
+        request: {
           include: {
             entity: true,
-            job: {
+            taskInstance: {
               include: {
                 board: {
                   select: { id: true, name: true }
@@ -189,32 +189,32 @@ export async function POST(request: NextRequest) {
 
     // ============ MEMORY QUERIES ============
 
-    // 1. Full thread (all messages for this task)
+    // 1. Full thread (all messages for this request)
     const threadMessages = await prisma.message.findMany({
-      where: { taskId: message.taskId },
+      where: { requestId: message.requestId },
       orderBy: { createdAt: "asc" },
       select: { direction: true, body: true, subject: true, createdAt: true }
     })
 
-    // 2. Prior AIRecommendations for this task (agreement history)
+    // 2. Prior AIRecommendations for this request (agreement history)
+    // Note: existingRecommendation is null here (we returned early if it existed)
     const priorRecommendations = await prisma.aIRecommendation.findMany({
       where: { 
-        taskId: message.taskId,
-        id: { not: existingRecommendation?.id } // Exclude current if any
+        requestId: message.requestId
       },
       orderBy: { createdAt: "desc" },
       take: 5,
       select: { recommendedAction: true, humanAction: true, reasoning: true }
     })
 
-    // 3. Contact history (if entity exists) - prior tasks with this contact
+    // 3. Contact history (if entity exists) - prior requests with this contact
     let contactHistorySummary = "No prior history with this contact."
-    if (message.task.entityId) {
-      const contactHistory = await prisma.task.findMany({
+    if (message.request.entityId) {
+      const contactHistory = await prisma.request.findMany({
         where: { 
-          entityId: message.task.entityId, 
+          entityId: message.request.entityId, 
           organizationId,
-          id: { not: message.taskId } // Exclude current task
+          id: { not: message.requestId } // Exclude current request
         },
         take: 3,
         orderBy: { createdAt: "desc" },
@@ -241,17 +241,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Task/Job/Board context with deadline
-    const job = message.task.job
-    const board = job?.board
-    const deadline = message.task.deadlineDate || job?.dueDate
+    // 4. Request/TaskInstance/Board context with deadline
+    const taskInstance = message.request.taskInstance
+    const board = taskInstance?.board
+    const deadline = message.request.deadlineDate || taskInstance?.dueDate
 
     // ============ BUILD PROMPT CONTEXT ============
 
     const taskContext = [
-      job ? `Task: "${job.name}"` : null,
+      taskInstance ? `Task: "${taskInstance.name}"` : null,
       board ? `Board: "${board.name}"` : null,
-      message.task.campaignName ? `Campaign: ${message.task.campaignName}` : null,
+      message.request.campaignName ? `Campaign: ${message.request.campaignName}` : null,
       `Deadline: ${formatDate(deadline)}`
     ].filter(Boolean).join(" | ")
 
@@ -345,8 +345,8 @@ Analyze this reply and provide structured findings.`
       data: {
         organizationId,
         messageId,
-        taskId: message.taskId,
-        campaignType: message.task.campaignType,
+        requestId: message.requestId,
+        campaignType: message.request.campaignType,
         recommendedAction,
         reasoning,
         summaryBullets: summaryBullets as any,

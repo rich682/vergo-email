@@ -114,7 +114,20 @@ export async function GET(request: NextRequest) {
     // Build the query with pagination
     const tasks = await prisma.request.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        campaignName: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        remindersEnabled: true,
+        remindersFrequencyHours: true,
+        readStatus: true,
+        hasAttachments: true,
+        riskLevel: true,
+        manualRiskOverride: true,
+        riskReason: true,
+        overrideReason: true,
         entity: {
           select: {
             id: true,

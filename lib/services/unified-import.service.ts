@@ -281,7 +281,7 @@ export class UnifiedImportService {
           normalizedType.provided
             ? {
                 contactType: normalizedType.contactType,
-                contactTypeCustomLabel: normalizedType.contactTypeCustomLabel ?? null
+                contactTypeCustomLabel: normalizedType.contactTypeCustomLabel ?? undefined
               }
             : {}
         const created = await EntityService.create({

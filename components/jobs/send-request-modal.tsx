@@ -196,6 +196,14 @@ export function SendRequestModal({
   const [showPreview, setShowPreview] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
   
+  // Recipient search state
+  const [recipientSearchQuery, setRecipientSearchQuery] = useState("")
+  const [recipientSearchResults, setRecipientSearchResults] = useState<{
+    entities: Array<{ id: string; firstName: string; email: string; isInternal?: boolean }>
+  } | null>(null)
+  const [recipientSearchLoading, setRecipientSearchLoading] = useState(false)
+  const [searchTimeoutRef, setSearchTimeoutRef] = useState<NodeJS.Timeout | null>(null)
+  
   // Send confirmation state
   const [showSendConfirmation, setShowSendConfirmation] = useState(false)
   
@@ -358,6 +366,66 @@ export function SendRequestModal({
     }
   }
 
+  // Debounced recipient search
+  const handleRecipientSearch = useCallback((query: string) => {
+    setRecipientSearchQuery(query)
+    
+    // Clear previous timeout
+    if (searchTimeoutRef) {
+      clearTimeout(searchTimeoutRef)
+    }
+    
+    // Clear results if query too short
+    if (query.length < 2) {
+      setRecipientSearchResults(null)
+      return
+    }
+    
+    // Debounce the search
+    const timeout = setTimeout(async () => {
+      setRecipientSearchLoading(true)
+      try {
+        const response = await fetch(`/api/recipients/search?q=${encodeURIComponent(query)}`, {
+          credentials: "include"
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setRecipientSearchResults({ entities: data.entities || [] })
+        }
+      } catch (err) {
+        console.error("Error searching recipients:", err)
+      } finally {
+        setRecipientSearchLoading(false)
+      }
+    }, 300)
+    
+    setSearchTimeoutRef(timeout)
+  }, [searchTimeoutRef])
+
+  // Add recipient from search
+  const addRecipientFromSearch = useCallback((entity: { id: string; firstName: string; email: string }) => {
+    // Check if already in recipients
+    if (recipients.some(r => r.id === entity.id)) {
+      return
+    }
+    
+    setRecipients(prev => [
+      ...prev,
+      {
+        id: entity.id,
+        email: entity.email,
+        firstName: entity.firstName,
+        lastName: null,
+        included: true,
+        labels: []
+      }
+    ])
+    
+    // Clear search
+    setRecipientSearchQuery("")
+    setRecipientSearchResults(null)
+  }, [recipients])
+
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
@@ -380,8 +448,12 @@ export function SendRequestModal({
       setReminderPreviews([])
       setReminderPreviewIndex(0)
       setHasEmailAccount(null) // Reset so we re-check next time
+      // Reset search state
+      setRecipientSearchQuery("")
+      setRecipientSearchResults(null)
+      if (searchTimeoutRef) clearTimeout(searchTimeoutRef)
     }
-  }, [open])
+  }, [open, searchTimeoutRef])
 
   // Fetch reminder previews
   const fetchReminderPreviews = async () => {
@@ -803,8 +875,8 @@ export function SendRequestModal({
           </div>
         )}
 
-        {/* Ready/Refining/Error States - Show Form */}
-        {mode === "standard" && (state === "ready" || state === "refining" || state === "error") && (
+        {/* Ready/Refining/Error/Sending States - Show Form */}
+        {mode === "standard" && (state === "ready" || state === "refining" || state === "error" || state === "sending") && (
           <div className="space-y-4">
             {/* Error Alert */}
             {error && (
@@ -940,6 +1012,55 @@ export function SendRequestModal({
                     </svg>
                   </div>
                 </summary>
+                
+                {/* Recipient Search */}
+                <div className="mt-2 relative">
+                  <Input
+                    type="text"
+                    placeholder="Search contacts to add..."
+                    value={recipientSearchQuery}
+                    onChange={(e) => handleRecipientSearch(e.target.value)}
+                    className="w-full text-sm"
+                  />
+                  {recipientSearchLoading && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    </div>
+                  )}
+                  {recipientSearchResults && recipientSearchResults.entities.length > 0 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {recipientSearchResults.entities.map(entity => {
+                        const alreadyAdded = recipients.some(r => r.id === entity.id)
+                        return (
+                          <button
+                            key={entity.id}
+                            type="button"
+                            onClick={() => !alreadyAdded && addRecipientFromSearch(entity)}
+                            disabled={alreadyAdded}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                              alreadyAdded ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            <div>
+                              <div className="font-medium text-gray-900">{entity.firstName}</div>
+                              <div className="text-xs text-gray-500">{entity.email}</div>
+                            </div>
+                            {alreadyAdded ? (
+                              <span className="text-xs text-gray-400">Added</span>
+                            ) : (
+                              <span className="text-xs text-orange-600">+ Add</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {recipientSearchResults && recipientSearchResults.entities.length === 0 && recipientSearchQuery.length >= 2 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm text-gray-500 text-center">
+                      No contacts found
+                    </div>
+                  )}
+                </div>
                 
                 <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
                   {recipients.length === 0 ? (

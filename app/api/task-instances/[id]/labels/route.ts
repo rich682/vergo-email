@@ -41,7 +41,7 @@ export async function GET(
 
     const labelsWithStats = labels.map((label) => ({
       ...label,
-      metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+      metadataSchema: label.metadataSchema as unknown as MetadataFieldSchema[],
       contactCount: statsMap.get(label.id) || 0,
     }))
 
@@ -138,7 +138,7 @@ export async function POST(
       success: true,
       label: {
         ...label,
-        metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+        metadataSchema: label.metadataSchema as unknown as MetadataFieldSchema[],
         contactCount: 0,
       },
     })

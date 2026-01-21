@@ -27,12 +27,12 @@ export async function GET(
     const message = await prisma.message.findFirst({
       where: {
         id: messageId,
-        task: {
+        request: {
           organizationId // Access control
         }
       },
       include: {
-        task: {
+        request: {
           include: {
             entity: {
               select: {
@@ -42,7 +42,7 @@ export async function GET(
                 email: true
               }
             },
-            job: {
+            taskInstance: {
               include: {
                 board: {
                   select: {
@@ -77,7 +77,7 @@ export async function GET(
     // Fetch all messages in the thread for context
     const thread = await prisma.message.findMany({
       where: {
-        taskId: message.taskId
+        requestId: message.requestId
       },
       orderBy: { createdAt: "asc" },
       select: {
@@ -115,19 +115,19 @@ export async function GET(
         reviewNotes: message.reviewNotes
       },
       task: {
-        id: message.task.id,
-        status: message.task.status,
-        campaignName: message.task.campaignName,
-        aiSummary: message.task.aiSummary,
-        aiSummaryConfidence: message.task.aiSummaryConfidence,
-        riskLevel: message.task.riskLevel,
-        riskReason: message.task.riskReason,
-        entity: message.task.entity
+        id: message.request.id,
+        status: message.request.status,
+        campaignName: message.request.campaignName,
+        aiSummary: message.request.aiSummary,
+        aiSummaryConfidence: message.request.aiSummaryConfidence,
+        riskLevel: message.request.riskLevel,
+        riskReason: message.request.riskReason,
+        entity: message.request.entity
       },
-      job: message.task.job ? {
-        id: message.task.job.id,
-        name: message.task.job.name,
-        board: message.task.job.board
+      job: message.request.taskInstance ? {
+        id: message.request.taskInstance.id,
+        name: message.request.taskInstance.name,
+        board: message.request.taskInstance.board
       } : null,
       thread,
       attachments: message.collectedItems.map(item => ({
@@ -189,7 +189,7 @@ export async function PATCH(
       where: {
         id: messageId,
         direction: "INBOUND",
-        task: { organizationId }
+        request: { organizationId }
       }
     })
 

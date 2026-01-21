@@ -1,0 +1,2527 @@
+[
+  {
+    "route": "/api/attachments/[id]",
+    "file": "app/api/attachments/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "attachment"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/attachments/delete/[id]",
+    "file": "app/api/attachments/delete/[id]/route.ts",
+    "httpMethods": [
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "attachment"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/attachments/download/[id]",
+    "file": "app/api/attachments/download/[id]/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "attachment"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/collection",
+    "file": "app/api/collection/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "collectedItem",
+      "taskInstance",
+      "user"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/collection/preview/[id]",
+    "file": "app/api/collection/preview/[id]/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "collectedItem"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/contacts/sync",
+    "file": "app/api/contacts/sync/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-connection",
+      "entity",
+      "group"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/email-drafts/[id]",
+    "file": "app/api/email-drafts/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-draft"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/email-drafts/[id]/send",
+    "file": "app/api/email-drafts/[id]/send/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "user",
+      "emailDraft"
+    ],
+    "services": [
+      "email-draft",
+      "email-sending",
+      "entity",
+      "personalization-data",
+      "recipient-filter"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/email-drafts/generate",
+    "file": "app/api/email-drafts/generate/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [
+      "email-draft",
+      "ai-email-generation",
+      "recipient-filter"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/internal/ai-metrics/agreement",
+    "file": "app/api/internal/ai-metrics/agreement/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "aIRecommendation"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/quests/[id]",
+    "file": "app/api/quests/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "quest"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/quests/[id]/generate",
+    "file": "app/api/quests/[id]/generate/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "quest"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/quests/context",
+    "file": "app/api/quests/context/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "quest-interpreter"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/quests/interpret",
+    "file": "app/api/quests/interpret/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "quest-interpreter"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/quests/standing",
+    "file": "app/api/quests/standing/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "quest"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/recipients/search",
+    "file": "app/api/recipients/search/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "entity"
+    ],
+    "services": [
+      "group",
+      "entity",
+      "domain-detection"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/requests/detail",
+    "file": "app/api/requests/detail/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance",
+      "request",
+      "message"
+    ],
+    "services": [
+      "risk-computation"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/requests/detail/[id]/mark-read",
+    "file": "app/api/requests/detail/[id]/mark-read/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "message"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/requests/detail/[id]/reminder-draft",
+    "file": "app/api/requests/detail/[id]/reminder-draft/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "user"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/requests/detail/[id]/reminders",
+    "file": "app/api/requests/detail/[id]/reminders/route.ts",
+    "httpMethods": [
+      "GET",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "reminderState"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/requests/detail/[id]/risk",
+    "file": "app/api/requests/detail/[id]/risk/route.ts",
+    "httpMethods": [
+      "PUT"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request"
+    ],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/attachments",
+    "file": "app/api/task-instances/[id]/attachments/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "attachment"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/collection/bulk",
+    "file": "app/api/task-instances/[id]/collection/bulk/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance",
+      "collectedItem"
+    ],
+    "services": [
+      "evidence"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/collection/download",
+    "file": "app/api/task-instances/[id]/collection/download/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "evidence",
+      "storage"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/collection/export",
+    "file": "app/api/task-instances/[id]/collection/export/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "evidence"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/labels/[labelId]",
+    "file": "app/api/task-instances/[id]/labels/[labelId]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "task-instance-label"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/dataset/preview",
+    "file": "app/api/task-instances/[id]/request/dataset/preview/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "emailDraft",
+      "personalizationData"
+    ],
+    "services": [
+      "task-instance"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/cell",
+    "file": "app/api/task-instances/[id]/table/cell/route.ts",
+    "httpMethods": [
+      "PATCH"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task",
+      "task-instance"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/compare",
+    "file": "app/api/task-instances/[id]/table/compare/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/rows",
+    "file": "app/api/task-instances/[id]/table/rows/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/signoff",
+    "file": "app/api/task-instances/[id]/table/signoff/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-instances/template",
+    "file": "app/api/task-instances/template/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/task-lineages/[id]",
+    "file": "app/api/task-lineages/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "taskLineage"
+    ],
+    "services": [
+      "task-lineage"
+    ],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/templates/contacts",
+    "file": "app/api/templates/contacts/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "ORPHAN"
+  },
+  {
+    "route": "/api/admin/backfill-completion",
+    "file": "app/api/admin/backfill-completion/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "message"
+    ],
+    "services": [
+      "ai-classification"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/backfill-file-urls",
+    "file": "app/api/admin/backfill-file-urls/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "collectedItem"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/backfill-risk",
+    "file": "app/api/admin/backfill-risk/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "message"
+    ],
+    "services": [
+      "risk-computation",
+      "ai-classification"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/check-replies",
+    "file": "app/api/admin/check-replies/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "message",
+      "connectedEmailAccount",
+      "request",
+      "collectedItem"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/cleanup-requests",
+    "file": "app/api/admin/cleanup-requests/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "request",
+      "emailDraft"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug-accounts",
+    "file": "app/api/admin/debug-accounts/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "connectedEmailAccount"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug-blob",
+    "file": "app/api/admin/debug-blob/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug-collection",
+    "file": "app/api/admin/debug-collection/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "collectedItem"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug-email-sync",
+    "file": "app/api/admin/debug-email-sync/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "connectedEmailAccount"
+    ],
+    "services": [
+      "email-connection"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug-messages",
+    "file": "app/api/admin/debug-messages/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "message",
+      "connectedEmailAccount"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/debug/[taskId]",
+    "file": "app/api/admin/debug/[taskId]/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "user",
+      "request",
+      "message",
+      "reminderState"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/delete-user",
+    "file": "app/api/admin/delete-user/route.ts",
+    "httpMethods": [
+      "GET",
+      "DELETE"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "user",
+      "organization"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/health-check",
+    "file": "app/api/admin/health-check/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "connectedEmailAccount",
+      "request",
+      "taskInstance"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/migrate",
+    "file": "app/api/admin/migrate/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "organization",
+      "user",
+      "entity",
+      "group",
+      "request-creation"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/pipeline-status",
+    "file": "app/api/admin/pipeline-status/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "message",
+      "request"
+    ],
+    "services": [],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/reminders/run-once",
+    "file": "app/api/admin/reminders/run-once/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "reminder-runner"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/sync-emails",
+    "file": "app/api/admin/sync-emails/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-sync"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/admin/sync-gmail-now",
+    "file": "app/api/admin/sync-gmail-now/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-sync"
+    ],
+    "status": "ADMIN_ONLY"
+  },
+  {
+    "route": "/api/auth/[...nextauth]",
+    "file": "app/api/auth/[...nextauth]/route.ts",
+    "httpMethods": [],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/inngest",
+    "file": "app/api/inngest/route.ts",
+    "httpMethods": [],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/oauth/gmail",
+    "file": "app/api/oauth/gmail/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/oauth/gmail/callback",
+    "file": "app/api/oauth/gmail/callback/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-connection"
+    ],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/oauth/microsoft",
+    "file": "app/api/oauth/microsoft/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/oauth/microsoft/callback",
+    "file": "app/api/oauth/microsoft/callback/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [],
+    "services": [
+      "email-connection"
+    ],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/tracking/[token]",
+    "file": "app/api/tracking/[token]/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "message",
+      "request"
+    ],
+    "services": [
+      "risk-computation"
+    ],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/webhooks/gmail",
+    "file": "app/api/webhooks/gmail/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [],
+    "prismaModels": [
+      "connectedEmailAccount",
+      "message"
+    ],
+    "services": [
+      "email-reception",
+      "email-connection"
+    ],
+    "status": "EXTERNAL_ONLY"
+  },
+  {
+    "route": "/api/auth/accept-invite",
+    "file": "app/api/auth/accept-invite/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/auth/accept-invite/page.tsx",
+        "line": 42,
+        "context": "const response = await fetch(`/api/auth/accept-invite?token=${token}`)"
+      },
+      {
+        "file": "app/auth/accept-invite/page.tsx",
+        "line": 84,
+        "context": "const response = await fetch(\"/api/auth/accept-invite\", {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/auth/forgot-password",
+    "file": "app/api/auth/forgot-password/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/auth/forgot-password/page.tsx",
+        "line": 20,
+        "context": "const response = await fetch(\"/api/auth/forgot-password\", {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [
+      "auth-email"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/auth/reset-password",
+    "file": "app/api/auth/reset-password/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/auth/reset-password/page.tsx",
+        "line": 33,
+        "context": "const response = await fetch(`/api/auth/reset-password?token=${token}`)"
+      },
+      {
+        "file": "app/auth/reset-password/page.tsx",
+        "line": 69,
+        "context": "const response = await fetch(\"/api/auth/reset-password\", {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/auth/signup",
+    "file": "app/api/auth/signup/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/signup/page.tsx",
+        "line": 48,
+        "context": "const response = await fetch(\"/api/auth/signup\", {"
+      }
+    ],
+    "prismaModels": [
+      "user",
+      "organization"
+    ],
+    "services": [
+      "auth-email"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/auth/verify",
+    "file": "app/api/auth/verify/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/auth/verify-email/page.tsx",
+        "line": 27,
+        "context": "const response = await fetch(`/api/auth/verify?token=${token}`)"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/boards",
+    "file": "app/api/boards/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 255,
+        "context": "const response = await fetch(\"/api/boards\")"
+      },
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 452,
+        "context": "const response = await fetch(\"/api/boards\", {"
+      },
+      {
+        "file": "app/dashboard/collection/page.tsx",
+        "line": 135,
+        "context": "const response = await fetch(\"/api/boards?status=OPEN,CLOSED\", { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/requests/page.tsx",
+        "line": 238,
+        "context": "const response = await fetch(\"/api/boards?status=NOT_STARTED,IN_PROGRESS,COMPLETE,BLOCKED,OPEN,CLOSE"
+      },
+      {
+        "file": "components/boards/create-board-modal.tsx",
+        "line": 226,
+        "context": "const response = await fetch(\"/api/boards\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "board"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/boards/[id]",
+    "file": "app/api/boards/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 273,
+        "context": "const response = await fetch(`/api/boards/${boardId}?includeJobs=true`)"
+      },
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 400,
+        "context": "const response = await fetch(`/api/boards/${archiveConfirm.boardId}`, {"
+      },
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 416,
+        "context": "const response = await fetch(`/api/boards/${boardId}`, {"
+      },
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 438,
+        "context": "const response = await fetch(`/api/boards/${deleteConfirm.boardId}?hard=true`, {"
+      },
+      {
+        "file": "app/dashboard/boards/page.tsx",
+        "line": 474,
+        "context": "const response = await fetch(`/api/boards/${boardId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 199,
+        "context": "const response = await fetch(`/api/boards/${boardId}`)"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 481,
+        "context": "const response = await fetch(`/api/boards/${currentBoard.id}`, {"
+      },
+      {
+        "file": "components/boards/edit-board-modal.tsx",
+        "line": 222,
+        "context": "const response = await fetch(`/api/boards/${board.id}`, {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "board"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/boards/team-members",
+    "file": "app/api/boards/team-members/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/boards/create-board-modal.tsx",
+        "line": 175,
+        "context": "const response = await fetch(\"/api/boards/team-members\")"
+      },
+      {
+        "file": "components/boards/edit-board-modal.tsx",
+        "line": 182,
+        "context": "const response = await fetch(\"/api/boards/team-members\")"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/contacts/custom-types",
+    "file": "app/api/contacts/custom-types/route.ts",
+    "httpMethods": [
+      "POST",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/bulk-action-toolbar.tsx",
+        "line": 97,
+        "context": "const res = await fetch(\"/api/contacts/custom-types\", {"
+      },
+      {
+        "file": "components/contacts/types-manager.tsx",
+        "line": 73,
+        "context": "const res = await fetch(\"/api/contacts/custom-types\", {"
+      },
+      {
+        "file": "components/contacts/types-manager.tsx",
+        "line": 109,
+        "context": "const res = await fetch(`/api/contacts/custom-types?label=${encodeURIComponent(label)}`, {"
+      }
+    ],
+    "prismaModels": [
+      "entity"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/contacts/type-counts",
+    "file": "app/api/contacts/type-counts/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 523,
+        "context": "const typesRes = await fetch(\"/api/contacts/type-counts\", { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 228,
+        "context": "const typesResponse = await fetch(\"/api/contacts/type-counts\", { credentials: \"include\" })"
+      },
+      {
+        "file": "components/contacts/types-manager.tsx",
+        "line": 42,
+        "context": "const res = await fetch(\"/api/contacts/type-counts\")"
+      }
+    ],
+    "prismaModels": [
+      "entity"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/email-accounts",
+    "file": "app/api/email-accounts/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 217,
+        "context": "const response = await fetch(\"/api/email-accounts\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "email-connection"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/email-accounts/[id]",
+    "file": "app/api/email-accounts/[id]/route.ts",
+    "httpMethods": [
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/settings/team/page.tsx",
+        "line": 204,
+        "context": "const res = await fetch(`/api/email-accounts/${accountId}`, { method: \"DELETE\" })"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "email-connection"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/entities",
+    "file": "app/api/entities/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/contacts/page.tsx",
+        "line": 59,
+        "context": "const response = await fetch(`/api/entities?${params.toString()}`)"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 475,
+        "context": "const response = await fetch(`/api/entities?groupId=${stakeholder.id}`, { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 492,
+        "context": "const response = await fetch(`/api/entities?contactType=${encodeURIComponent(stakeholder.id)}`, { cr"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 589,
+        "context": "const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}`, { credentials: \"in"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 301,
+        "context": "const response = await fetch(`/api/entities?search=${encodeURIComponent(stakeholderSearchQuery)}`, {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "entity",
+      "domain-detection"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/entities/[id]",
+    "file": "app/api/entities/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/contact-list.tsx",
+        "line": 72,
+        "context": "const res = await fetch(`/api/entities/${id}`, { method: \"DELETE\" })"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "entity",
+      "domain-detection"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/entities/bulk",
+    "file": "app/api/entities/bulk/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/csv-upload.tsx",
+        "line": 64,
+        "context": "const res = await fetch(\"/api/entities/bulk\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "csv-import"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/entities/bulk-update",
+    "file": "app/api/entities/bulk-update/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/bulk-action-toolbar.tsx",
+        "line": 134,
+        "context": "const res = await fetch(\"/api/entities/bulk-update\", {"
+      }
+    ],
+    "prismaModels": [
+      "entity",
+      "group",
+      "entityGroup"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/entities/import",
+    "file": "app/api/entities/import/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/import-modal.tsx",
+        "line": 124,
+        "context": "const res = await fetch(\"/api/entities/import\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "unified-import"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/groups",
+    "file": "app/api/groups/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/contacts/page.tsx",
+        "line": 74,
+        "context": "const response = await fetch(\"/api/groups\")"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 542,
+        "context": "const groupsRes = await fetch(\"/api/groups\", { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 268,
+        "context": "const groupsResponse = await fetch(\"/api/groups\", { credentials: \"include\" })"
+      },
+      {
+        "file": "components/contacts/bulk-action-toolbar.tsx",
+        "line": 70,
+        "context": "const res = await fetch(\"/api/groups\", {"
+      },
+      {
+        "file": "components/contacts/contact-form.tsx",
+        "line": 52,
+        "context": "const groupsRes = await fetch(\"/api/groups\")"
+      },
+      {
+        "file": "components/contacts/csv-upload.tsx",
+        "line": 29,
+        "context": "const res = await fetch(\"/api/groups\")"
+      },
+      {
+        "file": "components/contacts/groups-input.tsx",
+        "line": 68,
+        "context": "const res = await fetch(\"/api/groups\", {"
+      },
+      {
+        "file": "components/contacts/groups-manager.tsx",
+        "line": 37,
+        "context": "const res = await fetch(\"/api/groups\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "group"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/groups/[id]",
+    "file": "app/api/groups/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/contacts/groups-manager.tsx",
+        "line": 63,
+        "context": "const res = await fetch(`/api/groups/${id}`, {"
+      },
+      {
+        "file": "components/contacts/groups-manager.tsx",
+        "line": 91,
+        "context": "const res = await fetch(`/api/groups/${id}`, {"
+      }
+    ],
+    "prismaModels": [
+      "group"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/org/accounting-calendar",
+    "file": "app/api/org/accounting-calendar/route.ts",
+    "httpMethods": [
+      "GET",
+      "PUT"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/settings/accounting/page.tsx",
+        "line": 44,
+        "context": "const response = await fetch(\"/api/org/accounting-calendar\")"
+      },
+      {
+        "file": "app/dashboard/settings/accounting/page.tsx",
+        "line": 61,
+        "context": "const response = await fetch(\"/api/org/accounting-calendar\", {"
+      }
+    ],
+    "prismaModels": [
+      "organization"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/org/settings",
+    "file": "app/api/org/settings/route.ts",
+    "httpMethods": [
+      "GET",
+      "PUT"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/settings/page.tsx",
+        "line": 28,
+        "context": "const response = await fetch(\"/api/org/settings\")"
+      },
+      {
+        "file": "app/dashboard/settings/page.tsx",
+        "line": 44,
+        "context": "const response = await fetch(\"/api/org/settings\", {"
+      }
+    ],
+    "prismaModels": [
+      "organization"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/org/team",
+    "file": "app/api/org/team/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 211,
+        "context": "const response = await fetch(\"/api/org/team\", { credentials: \"include\" })"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/org/users",
+    "file": "app/api/org/users/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 571,
+        "context": "const response = await fetch(\"/api/org/users\", { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/settings/team/page.tsx",
+        "line": 173,
+        "context": "const response = await fetch(\"/api/org/users\")"
+      },
+      {
+        "file": "app/dashboard/settings/team/page.tsx",
+        "line": 228,
+        "context": "const response = await fetch(\"/api/org/users\", {"
+      }
+    ],
+    "prismaModels": [
+      "user",
+      "organization"
+    ],
+    "services": [
+      "auth-email"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/org/users/[id]",
+    "file": "app/api/org/users/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/settings/team/page.tsx",
+        "line": 275,
+        "context": "const response = await fetch(`/api/org/users/${editingUser.id}`, {"
+      },
+      {
+        "file": "app/dashboard/settings/team/page.tsx",
+        "line": 313,
+        "context": "const response = await fetch(`/api/org/users/${deletingUser.id}`, {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/quests",
+    "file": "app/api/quests/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 533,
+        "context": "const createResponse = await fetch(\"/api/quests\", {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "quest"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/quests/[id]/execute",
+    "file": "app/api/quests/[id]/execute/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 562,
+        "context": "const executeResponse = await fetch(`/api/quests/${quest.id}/execute`, {"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft"
+    ],
+    "services": [
+      "quest",
+      "email-draft"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/requests",
+    "file": "app/api/requests/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 392,
+        "context": "const response = await fetch(`/api/requests?taskInstanceId=${jobId}`, { credentials: \"include\" })"
+      }
+    ],
+    "prismaModels": [
+      "request",
+      "taskInstance",
+      "user",
+      "taskInstanceLabel"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/requests/detail/[id]",
+    "file": "app/api/requests/detail/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/requests/page.tsx",
+        "line": 148,
+        "context": "const response = await fetch(`/api/requests/detail/${taskId}`, {"
+      },
+      {
+        "file": "components/jobs/request-card-expandable.tsx",
+        "line": 126,
+        "context": "const response = await fetch(`/api/requests/detail/${recipientId}`, {"
+      }
+    ],
+    "prismaModels": [
+      "request"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/requests/detail/[id]/messages",
+    "file": "app/api/requests/detail/[id]/messages/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/requests/page.tsx",
+        "line": 331,
+        "context": "const response = await fetch(`/api/requests/detail/${request.id}/messages`, {"
+      },
+      {
+        "file": "app/dashboard/requests/page.tsx",
+        "line": 385,
+        "context": "fetch(`/api/requests/detail/${request.id}/messages`, { credentials: \"include\" })"
+      },
+      {
+        "file": "components/jobs/request-card-expandable.tsx",
+        "line": 193,
+        "context": "const response = await fetch(`/api/requests/detail/${recipient.id}/messages`, {"
+      },
+      {
+        "file": "components/jobs/request-card-expandable.tsx",
+        "line": 235,
+        "context": "const response = await fetch(`/api/requests/detail/${recipient.id}/messages`, {"
+      }
+    ],
+    "prismaModels": [
+      "request",
+      "message"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/requests/detail/[id]/reply",
+    "file": "app/api/requests/detail/[id]/reply/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/reply-review/right-pane/reply-section.tsx",
+        "line": 73,
+        "context": "const response = await fetch(`/api/requests/detail/${taskId}/reply`, {"
+      },
+      {
+        "file": "components/reply-review/right-pane/review-rhs.tsx",
+        "line": 160,
+        "context": "const response = await fetch(`/api/requests/detail/${taskId}/reply`, {"
+      }
+    ],
+    "prismaModels": [
+      "request",
+      "message"
+    ],
+    "services": [
+      "email-sending"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/requests/detail/[id]/reply-draft",
+    "file": "app/api/requests/detail/[id]/reply-draft/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/reply-review/right-pane/reply-section.tsx",
+        "line": 44,
+        "context": "const response = await fetch(`/api/requests/detail/${taskId}/reply-draft`, {"
+      }
+    ],
+    "prismaModels": [
+      "request"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/review/[messageId]",
+    "file": "app/api/review/[messageId]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/reply-review/reply-review-layout.tsx",
+        "line": 87,
+        "context": "const response = await fetch(`/api/review/${messageId}`, {"
+      },
+      {
+        "file": "components/reply-review/right-pane/review-rhs.tsx",
+        "line": 173,
+        "context": "await fetch(`/api/review/${messageId}`, {"
+      },
+      {
+        "file": "components/review/review-header.tsx",
+        "line": 89,
+        "context": "const response = await fetch(`/api/review/${data.message.id}`, {"
+      }
+    ],
+    "prismaModels": [
+      "message",
+      "reviewAuditLog",
+      "aIRecommendation"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/review/analyze",
+    "file": "app/api/review/analyze/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/reply-review/right-pane/ai-summary-section.tsx",
+        "line": 38,
+        "context": "const response = await fetch(\"/api/review/analyze\", {"
+      },
+      {
+        "file": "components/reply-review/right-pane/review-rhs.tsx",
+        "line": 88,
+        "context": "const response = await fetch(\"/api/review/analyze\", {"
+      }
+    ],
+    "prismaModels": [
+      "message",
+      "aIRecommendation",
+      "request"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/review/draft-reply",
+    "file": "app/api/review/draft-reply/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/reply-review/right-pane/review-rhs.tsx",
+        "line": 120,
+        "context": "const response = await fetch(\"/api/review/draft-reply\", {"
+      }
+    ],
+    "prismaModels": [
+      "message",
+      "aIRecommendation"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances",
+    "file": "app/api/task-instances/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 179,
+        "context": "const response = await fetch(`/api/task-instances?${params.toString()}`, { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 376,
+        "context": "const response = await fetch(\"/api/task-instances\", {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 443,
+        "context": "const response = await fetch(\"/api/task-instances\", {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 505,
+        "context": "const response = await fetch(\"/api/task-instances\", {"
+      },
+      {
+        "file": "components/jobs/ai-bulk-upload-modal.tsx",
+        "line": 278,
+        "context": "await fetch(\"/api/task-instances\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "task-instance",
+      "board"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]",
+    "file": "app/api/task-instances/[id]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 357,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 639,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 668,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 686,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 702,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 723,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 739,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 798,
+        "context": "const archiveResponse = await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 849,
+        "context": "await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 868,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 327,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 342,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, { method: \"DELETE\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 354,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 420,
+        "context": "fetch(`/api/task-instances/${j.id}?hard=true`, { method: \"DELETE\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/page.tsx",
+        "line": 426,
+        "context": "fetch(`/api/task-instances/${j.id}`, { method: \"DELETE\" })"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance",
+      "taskLineage"
+    ],
+    "services": [
+      "task-instance",
+      "board"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/ai-summary",
+    "file": "app/api/task-instances/[id]/ai-summary/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/task-ai-summary.tsx",
+        "line": 67,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/ai-summary`, {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/collaborators",
+    "file": "app/api/task-instances/[id]/collaborators/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 559,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/collaborators`, { credentials: \"include\" "
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 817,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/collaborators`, {"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 836,
+        "context": "await fetch(`/api/task-instances/${jobId}/collaborators?collaboratorId=${collaboratorId}`, {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/collection",
+    "file": "app/api/task-instances/[id]/collection/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/collection/collection-upload-modal.tsx",
+        "line": 96,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/collection`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "evidence"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/collection/[itemId]",
+    "file": "app/api/task-instances/[id]/collection/[itemId]/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/collection/collection-tab.tsx",
+        "line": 189,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/collection/${itemId}`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "evidence"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/comments",
+    "file": "app/api/task-instances/[id]/comments/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 421,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/comments`, { credentials: \"include\" })"
+      },
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 755,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/comments`, {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/contact-labels",
+    "file": "app/api/task-instances/[id]/contact-labels/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST",
+      "PATCH",
+      "DELETE"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/contact-labels-table.tsx",
+        "line": 28,
+        "context": "const contactsRes = await fetch(`/api/task-instances/${jobId}/contact-labels`, { credentials: \"inclu"
+      },
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 262,
+        "context": "const response = await fetch(`/api/task-instances/${job.id}/contact-labels`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance",
+      "entity",
+      "taskInstanceContactLabel"
+    ],
+    "services": [
+      "task-instance-label"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/labels",
+    "file": "app/api/task-instances/[id]/labels/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 246,
+        "context": "const response = await fetch(`/api/task-instances/${job.id}/labels`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "task-instance-label"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/reconciliations",
+    "file": "app/api/task-instances/[id]/reconciliations/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 433,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, { credentials: \"include"
+      },
+      {
+        "file": "components/jobs/reconciliation-upload-modal.tsx",
+        "line": 105,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance",
+      "reconciliation"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/dataset",
+    "file": "app/api/task-instances/[id]/request/dataset/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/data-personalization/compose-send-step.tsx",
+        "line": 283,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset`, {"
+      },
+      {
+        "file": "components/jobs/data-personalization/compose-send-step.tsx",
+        "line": 326,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset`, {"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft",
+      "personalizationData"
+    ],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/dataset/draft",
+    "file": "app/api/task-instances/[id]/request/dataset/draft/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/data-personalization/compose-send-step.tsx",
+        "line": 161,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {"
+      },
+      {
+        "file": "components/jobs/data-personalization/compose-send-step.tsx",
+        "line": 203,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft",
+      "personalizationData",
+      "user",
+      "organization"
+    ],
+    "services": [
+      "task-instance",
+      "ai-email-generation"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/dataset/send",
+    "file": "app/api/task-instances/[id]/request/dataset/send/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/data-personalization/compose-send-step.tsx",
+        "line": 366,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset/send`, {"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft",
+      "personalizationData",
+      "entity"
+    ],
+    "services": [
+      "task-instance",
+      "email-sending"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/dataset/upload",
+    "file": "app/api/task-instances/[id]/request/dataset/upload/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/data-personalization/upload-step.tsx",
+        "line": 204,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/request/dataset/upload`, {"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft",
+      "personalizationData"
+    ],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/draft",
+    "file": "app/api/task-instances/[id]/request/draft/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 291,
+        "context": "fetch(`/api/task-instances/${job.id}/request/draft`, {"
+      }
+    ],
+    "prismaModels": [
+      "entity",
+      "user",
+      "organization"
+    ],
+    "services": [
+      "task-instance",
+      "ai-email-generation"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/refine",
+    "file": "app/api/task-instances/[id]/request/refine/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 434,
+        "context": "const response = await fetch(`/api/task-instances/${job.id}/request/refine`, {"
+      }
+    ],
+    "prismaModels": [
+      "user",
+      "organization"
+    ],
+    "services": [
+      "task-instance",
+      "ai-email-generation"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/request/reminder-preview",
+    "file": "app/api/task-instances/[id]/request/reminder-preview/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/send-request-modal.tsx",
+        "line": 397,
+        "context": "const response = await fetch(`/api/task-instances/${job.id}/request/reminder-preview`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance",
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/requests",
+    "file": "app/api/task-instances/[id]/requests/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 407,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/requests`, { credentials: \"include\" })"
+      }
+    ],
+    "prismaModels": [
+      "emailDraft",
+      "request"
+    ],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/import",
+    "file": "app/api/task-instances/[id]/table/import/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/table/import-modal.tsx",
+        "line": 328,
+        "context": "const response = await fetch(`/api/task-instances/${taskInstanceId}/table/import`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task",
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/table/preview-import",
+    "file": "app/api/task-instances/[id]/table/preview-import/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/table/import-modal.tsx",
+        "line": 297,
+        "context": "const response = await fetch(`/api/task-instances/${taskInstanceId}/table/preview-import`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskInstance"
+    ],
+    "services": [
+      "table-task"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/[id]/timeline",
+    "file": "app/api/task-instances/[id]/timeline/route.ts",
+    "httpMethods": [
+      "GET"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/jobs/[id]/page.tsx",
+        "line": 445,
+        "context": "const response = await fetch(`/api/task-instances/${jobId}/timeline`, { credentials: \"include\" })"
+      }
+    ],
+    "prismaModels": [
+      "taskInstanceComment",
+      "request",
+      "message",
+      "reminderState"
+    ],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/ai-generate",
+    "file": "app/api/task-instances/ai-generate/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/ai-bulk-upload-modal.tsx",
+        "line": 79,
+        "context": "const response = await fetch(\"/api/task-instances/ai-generate\", {"
+      }
+    ],
+    "prismaModels": [
+      "board"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/ai-summary",
+    "file": "app/api/task-instances/ai-summary/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/ai-summary-panel.tsx",
+        "line": 41,
+        "context": "const response = await fetch(\"/api/task-instances/ai-summary\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "task-instance"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/bulk-import",
+    "file": "app/api/task-instances/bulk-import/route.ts",
+    "httpMethods": [
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/ai-bulk-upload-modal.tsx",
+        "line": 217,
+        "context": "const response = await fetch(\"/api/task-instances/bulk-import\", {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-instances/column-config",
+    "file": "app/api/task-instances/column-config/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/configurable-table/configurable-table.tsx",
+        "line": 186,
+        "context": "const response = await fetch(`/api/task-instances/column-config?${params.toString()}`, {"
+      },
+      {
+        "file": "components/jobs/configurable-table/configurable-table.tsx",
+        "line": 209,
+        "context": "await fetch(\"/api/task-instances/column-config\", {"
+      }
+    ],
+    "prismaModels": [
+      "user",
+      "jobColumnConfig"
+    ],
+    "services": [],
+    "status": "USED"
+  },
+  {
+    "route": "/api/task-lineages/[id]/schema",
+    "file": "app/api/task-lineages/[id]/schema/route.ts",
+    "httpMethods": [
+      "GET",
+      "PATCH"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/jobs/table/data-tab.tsx",
+        "line": 116,
+        "context": "const response = await fetch(`/api/task-lineages/${lineageId}/schema`, {"
+      }
+    ],
+    "prismaModels": [
+      "taskLineage"
+    ],
+    "services": [
+      "table-task"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/user/onboarding",
+    "file": "app/api/user/onboarding/route.ts",
+    "httpMethods": [
+      "GET",
+      "POST"
+    ],
+    "frontendCallers": [
+      {
+        "file": "components/onboarding-checklist.tsx",
+        "line": 91,
+        "context": "const response = await fetch(\"/api/user/onboarding\", {"
+      },
+      {
+        "file": "components/onboarding-checklist.tsx",
+        "line": 109,
+        "context": "await fetch(\"/api/user/onboarding\", {"
+      }
+    ],
+    "prismaModels": [],
+    "services": [
+      "onboarding"
+    ],
+    "status": "USED"
+  },
+  {
+    "route": "/api/user/signature",
+    "file": "app/api/user/signature/route.ts",
+    "httpMethods": [
+      "GET",
+      "PUT"
+    ],
+    "frontendCallers": [
+      {
+        "file": "app/dashboard/settings/page.tsx",
+        "line": 68,
+        "context": "const response = await fetch(\"/api/user/signature\")"
+      },
+      {
+        "file": "app/dashboard/settings/page.tsx",
+        "line": 84,
+        "context": "const response = await fetch(\"/api/user/signature\", {"
+      }
+    ],
+    "prismaModels": [
+      "user"
+    ],
+    "services": [],
+    "status": "USED"
+  }
+]

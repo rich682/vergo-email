@@ -43,8 +43,8 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const reminderNumber = body.reminderNumber || 1
 
-    // Get the task with its original outbound message
-    const task = await prisma.task.findFirst({
+    // Get the request with its original outbound message
+    const task = await prisma.request.findFirst({
       where: {
         id: taskId,
         organizationId: session.user.organizationId
@@ -56,11 +56,11 @@ export async function POST(
           orderBy: { createdAt: "asc" },
           take: 1
         },
-        job: {
+        taskInstance: {
           select: {
             name: true,
             description: true,
-            deadline: true
+            dueDate: true
           }
         }
       }
@@ -136,7 +136,7 @@ Original Message Preview: ${(originalMessage.body || "").substring(0, 300)}...
 
 Recipient Name: ${recipientName}
 Days Since Original Sent: ${daysSinceSent}
-${task.job?.deadline ? `Deadline: ${new Date(task.job.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}
+${task.taskInstance?.dueDate ? `Deadline: ${new Date(task.taskInstance.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}
 
 Generate a ${reminderNumber === 1 ? 'friendly' : reminderNumber === 2 ? 'polite but direct' : 'professionally urgent'} reminder email.`
         }
@@ -210,8 +210,8 @@ export async function GET(
 
     const taskId = params.id
 
-    // Get the task with its original outbound message
-    const task = await prisma.task.findFirst({
+    // Get the request with its original outbound message
+    const task = await prisma.request.findFirst({
       where: {
         id: taskId,
         organizationId: session.user.organizationId
@@ -223,11 +223,11 @@ export async function GET(
           orderBy: { createdAt: "asc" },
           take: 1
         },
-        job: {
+        taskInstance: {
           select: {
             name: true,
             description: true,
-            deadline: true
+            dueDate: true
           }
         }
       }
@@ -282,7 +282,7 @@ Respond with JSON: { "subject": "...", "body": "...", "htmlBody": "..." }
 Subject: ${originalMessage.subject || "Request"}
 Recipient: ${recipientName}
 Days since sent: ${daysSinceSent}
-${task.job?.deadline ? `Deadline: ${new Date(task.job.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}`
+${task.taskInstance?.dueDate ? `Deadline: ${new Date(task.taskInstance.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}`
             }
           ],
           response_format: { type: "json_object" },

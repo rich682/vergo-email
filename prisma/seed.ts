@@ -3,7 +3,7 @@ import { OrganizationService } from '../lib/services/organization.service'
 import { UserService } from '../lib/services/user.service'
 import { EntityService } from '../lib/services/entity.service'
 import { GroupService } from '../lib/services/group.service'
-import { TaskCreationService } from '../lib/services/task-creation.service'
+import { RequestCreationService } from '../lib/services/request-creation.service'
 
 const prisma = new PrismaClient()
 
@@ -129,11 +129,11 @@ async function main() {
   })
   console.log(`✅ Created entity: ${client2.firstName}`)
 
-  // Create sample tasks with campaign info
-  console.log('Creating sample tasks...')
+  // Create sample requests with campaign info
+  console.log('Creating sample requests...')
   
-  // Create a sample task for W-9 collection
-  const w9Task = await TaskCreationService.createTaskFromEmail({
+  // Create a sample request for W-9 collection
+  const w9Task = await RequestCreationService.createRequestFromEmail({
     organizationId: organization.id,
     entityEmail: vendor1.email!,
     entityName: vendor1.firstName,
@@ -143,10 +143,10 @@ async function main() {
     replyToEmail: `verify+w9-${vendor1.id}@example.com`,
     subject: 'W-9 Form Request'
   })
-  console.log(`✅ Created task: ${w9Task.id}`)
+  console.log(`✅ Created request: ${w9Task.id}`)
 
-  // Create a sample task for Expense Reports
-  const expenseTask = await TaskCreationService.createTaskFromEmail({
+  // Create a sample request for Expense Reports
+  const expenseTask = await RequestCreationService.createRequestFromEmail({
     organizationId: organization.id,
     entityEmail: employee1.email!,
     entityName: employee1.firstName,
@@ -156,10 +156,10 @@ async function main() {
     replyToEmail: `verify+expense-${employee1.id}@example.com`,
     subject: 'Monthly Expense Report Request'
   })
-  console.log(`✅ Created task: ${expenseTask.id}`)
+  console.log(`✅ Created request: ${expenseTask.id}`)
 
-  // Create a sample task for COI
-  const coiTask = await TaskCreationService.createTaskFromEmail({
+  // Create a sample request for COI
+  const coiTask = await RequestCreationService.createRequestFromEmail({
     organizationId: organization.id,
     entityEmail: vendor2.email!,
     entityName: vendor2.firstName,
@@ -169,7 +169,7 @@ async function main() {
     replyToEmail: `verify+coi-${vendor2.id}@example.com`,
     subject: 'Certificate of Insurance Request'
   })
-  console.log(`✅ Created task: ${coiTask.id}`)
+  console.log(`✅ Created request: ${coiTask.id}`)
 
   console.log('\n🎉 Database seed completed successfully!')
   console.log('\n📋 Test User Credentials:')

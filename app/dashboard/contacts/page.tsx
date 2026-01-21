@@ -249,7 +249,7 @@ export default function ContactsPage() {
                 onGroupFilterChange={setSelectedGroupId}
                 onContactTypeChange={setSelectedContactType}
                 onSelectedEntitiesChange={setSelectedEntityIds}
-                onEdit={handleEdit}
+                onEdit={handleEdit as any}
                 onDelete={handleDelete}
               />
             )}

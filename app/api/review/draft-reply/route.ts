@@ -78,13 +78,13 @@ export async function POST(request: NextRequest) {
       where: {
         id: messageId,
         direction: "INBOUND",
-        task: { organizationId }
+        request: { organizationId }
       },
       include: {
-        task: {
+        request: {
           include: {
             entity: true,
-            job: {
+            taskInstance: {
               include: {
                 board: { select: { name: true } }
               }
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     // 1. All thread messages for context
     const threadMessages = await prisma.message.findMany({
-      where: { taskId: message.taskId },
+      where: { requestId: message.requestId },
       orderBy: { createdAt: "asc" },
       select: { direction: true, body: true, subject: true }
     })
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     // 2. Prior outbound messages for tone analysis
     const priorOutbound = await prisma.message.findMany({
       where: {
-        task: { organizationId },
+        request: { organizationId },
         direction: "OUTBOUND"
       },
       orderBy: { createdAt: "desc" },
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Prior AIRecommendations with findings
     const priorRecs = await prisma.aIRecommendation.findMany({
-      where: { taskId: message.taskId },
+      where: { requestId: message.requestId },
       orderBy: { createdAt: "desc" },
       take: 3,
       select: { recommendedAction: true, findings: true, reasoning: true }
@@ -155,8 +155,8 @@ export async function POST(request: NextRequest) {
     // ============ BUILD CONTEXT ============
 
     const tone = analyzeTone(priorOutbound)
-    const deadline = message.task.deadlineDate || message.task.job?.dueDate
-    const recipientName = message.task.entity?.firstName || message.fromAddress.split("@")[0]
+    const deadline = message.request.deadlineDate || message.request.taskInstance?.dueDate
+    const recipientName = message.request.entity?.firstName || message.fromAddress.split("@")[0]
     
     // Get the original request for context
     const originalRequest = threadMessages.find(m => m.direction === "OUTBOUND")

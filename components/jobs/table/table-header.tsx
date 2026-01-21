@@ -59,19 +59,19 @@ export function TableHeader({
               <div className="flex items-center gap-0.5 ml-auto">
                 {/* Identity key indicator */}
                 {column.id === identityKey && (
-                  <Key className="w-3 h-3 text-amber-500" title="Identity Key" />
+                  <span title="Identity Key"><Key className="w-3 h-3 text-amber-500" /></span>
                 )}
 
                 {/* Editable indicator */}
                 {column.editPolicy === "EDITABLE_COLLAB" ? (
-                  <Edit3 className="w-3 h-3 text-blue-400" title="Editable" />
+                  <span title="Editable"><Edit3 className="w-3 h-3 text-blue-400" /></span>
                 ) : column.editPolicy === "READ_ONLY_IMPORTED" ? (
-                  <Lock className="w-3 h-3 text-gray-400" title="Read-only (imported)" />
+                  <span title="Read-only (imported)"><Lock className="w-3 h-3 text-gray-400" /></span>
                 ) : null}
 
                 {/* Comparable indicator */}
                 {column.isComparable && (
-                  <BarChart3 className="w-3 h-3 text-purple-400" title="Comparable" />
+                  <span title="Comparable"><BarChart3 className="w-3 h-3 text-purple-400" /></span>
                 )}
 
                 {/* Sort indicator */}

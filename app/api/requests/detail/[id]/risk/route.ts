@@ -32,8 +32,8 @@ export async function PUT(
       )
     }
 
-    // Find the task
-    const task = await prisma.task.findFirst({
+    // Find the request
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
@@ -52,7 +52,7 @@ export async function PUT(
     const manualRiskOverride = riskLevel === "unknown" ? null : riskLevel
     const overrideReasonValue = manualRiskOverride ? (overrideReason || "Manual override") : null
 
-    const updatedTask = await prisma.task.update({
+    const updatedTask = await prisma.request.update({
       where: { id: task.id },
       data: {
         manualRiskOverride: manualRiskOverride as any,

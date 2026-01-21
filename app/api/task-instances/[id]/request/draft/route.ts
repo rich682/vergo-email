@@ -14,10 +14,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { JobService, JobStakeholder } from "@/lib/services/job.service"
+import { TaskInstanceService, TaskInstanceStakeholder } from "@/lib/services/task-instance.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
-import { UserRole } from "@prisma/client"
+import { UserRole, ContactType } from "@prisma/client"
 
 interface StakeholderContact {
   id: string
@@ -34,7 +34,7 @@ interface StakeholderContact {
  * Mirrors the frontend logic in fetchStakeholderContacts
  */
 async function resolveStakeholderContacts(
-  stakeholders: JobStakeholder[],
+  stakeholders: TaskInstanceStakeholder[],
   organizationId: string
 ): Promise<StakeholderContact[]> {
   if (stakeholders.length === 0) return []
@@ -82,7 +82,7 @@ async function resolveStakeholderContacts(
       const typeEntities = await prisma.entity.findMany({
         where: {
           organizationId,
-          contactType: stakeholder.id
+          contactType: stakeholder.id as ContactType
         }
       })
       for (const entity of typeEntities) {
@@ -168,8 +168,8 @@ export async function POST(
     const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
     const { id: jobId } = await params
 
-    // Fetch job with full context
-    const job = await JobService.findById(jobId, organizationId)
+    // Fetch task instance with full context
+    const job = await TaskInstanceService.findById(jobId, organizationId)
     if (!job) {
       return NextResponse.json(
         { error: "Item not found" },
@@ -178,7 +178,7 @@ export async function POST(
     }
 
     // Check view permission (required to generate draft)
-    const canView = await JobService.canUserAccessJob(userId, userRole, job, 'view')
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, job, 'view')
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
@@ -186,9 +186,9 @@ export async function POST(
       )
     }
 
-    // Extract stakeholders from job labels
+    // Extract stakeholders from task instance labels
     const labels = job.labels as any
-    const stakeholders: JobStakeholder[] = labels?.stakeholders || []
+    const stakeholders: TaskInstanceStakeholder[] = labels?.stakeholders || []
 
     // Resolve stakeholder contacts
     const recipients = await resolveStakeholderContacts(stakeholders, organizationId)

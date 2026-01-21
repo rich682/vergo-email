@@ -674,7 +674,7 @@ export default function BoardsPage() {
       <EditBoardModal
         open={!!editingBoard}
         onOpenChange={(open) => !open && setEditingBoard(null)}
-        board={editingBoard}
+        board={editingBoard as any}
         onBoardUpdated={() => {
           fetchBoards()
           setEditingBoard(null)

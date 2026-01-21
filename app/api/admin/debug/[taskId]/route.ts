@@ -41,8 +41,8 @@ export async function GET(
   }
 
   try {
-    // Fetch task with org scoping
-    const task = await prisma.task.findFirst({
+    // Fetch request with org scoping
+    const task = await prisma.request.findFirst({
       where: {
         id: params.taskId,
         organizationId: session.user.organizationId
@@ -90,7 +90,7 @@ export async function GET(
     // Get message counts (no content)
     const messageCounts = await prisma.message.groupBy({
       by: ["direction"],
-      where: { taskId: params.taskId },
+      where: { requestId: params.taskId },
       _count: { id: true }
     })
 
@@ -101,7 +101,7 @@ export async function GET(
     const classificationCounts = await prisma.message.groupBy({
       by: ["aiClassification"],
       where: { 
-        taskId: params.taskId,
+        requestId: params.taskId,
         direction: "INBOUND"
       },
       _count: { id: true }
@@ -114,7 +114,7 @@ export async function GET(
 
     // Get reminder state
     const reminderState = await prisma.reminderState.findFirst({
-      where: { taskId: params.taskId },
+      where: { requestId: params.taskId },
       select: {
         reminderNumber: true,
         sentCount: true,
@@ -127,7 +127,7 @@ export async function GET(
     // Get last outbound message metadata (no body)
     const lastOutbound = await prisma.message.findFirst({
       where: {
-        taskId: params.taskId,
+        requestId: params.taskId,
         direction: "OUTBOUND"
       },
       orderBy: { createdAt: "desc" },
@@ -145,7 +145,7 @@ export async function GET(
     // Get last inbound message metadata (no body)
     const lastInbound = await prisma.message.findFirst({
       where: {
-        taskId: params.taskId,
+        requestId: params.taskId,
         direction: "INBOUND"
       },
       orderBy: { createdAt: "desc" },

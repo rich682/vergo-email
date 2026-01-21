@@ -79,8 +79,8 @@ export async function POST(
           type: "dataset",
           emailColumn,
           emailColumnKey,
-          columns,
-          validation
+          columns: columns as any,
+          validation: validation as any
         }
       }
     })
@@ -92,10 +92,10 @@ export async function POST(
         data: validRows.map(row => ({
           emailDraftId: emailDraft.id,
           recipientEmail: row.email!.toLowerCase(),
-          contactId: null,
+          contactId: undefined,
           dataJson: row.values,
-          renderStatus: null,
-          renderErrors: null
+          renderStatus: undefined,
+          renderErrors: undefined
         })),
         skipDuplicates: true
       })

@@ -99,8 +99,8 @@ async function backfillCompletionPercentages() {
   console.log("Starting backfill of completion percentages for existing tasks...")
 
   try {
-    // Find all tasks that have inbound messages but no completionPercentage
-    const tasksWithReplies = await prisma.task.findMany({
+    // Find all requests that have inbound messages but no completionPercentage
+    const tasksWithReplies = await prisma.request.findMany({
       where: {
         completionPercentage: null,
         messages: {
@@ -200,7 +200,7 @@ async function backfillCompletionPercentages() {
           updateData.status = "FULFILLED"
         }
 
-        await prisma.task.update({
+        await prisma.request.update({
           where: { id: task.id },
           data: updateData
         })

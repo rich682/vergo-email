@@ -125,7 +125,7 @@ describe('Compare Gating Tests', () => {
 
     // Mock prisma to return null for prior snapshot search
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       // First call gets the instance, subsequent calls look for prior snapshot
       if (args.where?.id) {
         return Promise.resolve(mockTaskInstances.get(args.where.id))
@@ -135,7 +135,7 @@ describe('Compare Gating Tests', () => {
         return Promise.resolve(null)
       }
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const req = new NextRequest(`http://localhost/api/task-instances/${taskId}/table/compare`)
     const response = await GET(req, { params: Promise.resolve({ id: taskId }) })
@@ -181,7 +181,7 @@ describe('Compare Gating Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id) {
         return Promise.resolve(mockTaskInstances.get(args.where.id))
       }
@@ -190,7 +190,7 @@ describe('Compare Gating Tests', () => {
         return Promise.resolve(mockTaskInstances.get(priorTaskId))
       }
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const req = new NextRequest(`http://localhost/api/task-instances/${taskId}/table/compare`)
     const response = await GET(req, { params: Promise.resolve({ id: taskId }) })

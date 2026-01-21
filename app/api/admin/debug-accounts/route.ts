@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
         organizationId: session.user.organizationId
       },
       data: {
-        syncCursor: null
+        syncCursor: undefined
       }
     })
 

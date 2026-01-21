@@ -78,6 +78,7 @@ interface Job {
   taskCount: number
   respondedCount: number
   completedCount: number
+  lineageId?: string | null
   stakeholderCount?: number
   notes?: string | null
   customFields?: Record<string, any>
@@ -968,7 +969,7 @@ export default function JobsPage() {
         <EditBoardModal
           open={isBoardSettingsOpen}
           onOpenChange={setIsBoardSettingsOpen}
-          board={currentBoard}
+          board={currentBoard as any}
           onBoardUpdated={(updatedBoard) => {
             setCurrentBoard(updatedBoard)
             setIsBoardSettingsOpen(false)

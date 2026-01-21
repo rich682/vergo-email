@@ -33,8 +33,8 @@ export class EmailQueueService {
       data: {
         organizationId: data.organizationId,
         userId: data.userId,
-        jobId: data.jobId,
-        taskId: data.taskId,
+        taskInstanceId: data.jobId,
+        requestId: data.taskId,
         toEmail: data.toEmail.toLowerCase(),
         subject: data.subject,
         body: data.body,
@@ -42,7 +42,7 @@ export class EmailQueueService {
         accountId: data.accountId,
         status: EmailQueueStatus.PENDING,
         nextAttemptAt,
-        metadata: data.metadata || null,
+        metadata: data.metadata ?? undefined,
       }
     })
     
@@ -59,21 +59,7 @@ export class EmailQueueService {
    * Get pending emails that are ready to be processed
    * Returns emails where nextAttemptAt <= now and status is PENDING
    */
-  static async getPendingEmails(limit: number = 50): Promise<Array<{
-    id: string
-    organizationId: string
-    userId: string | null
-    jobId: string | null
-    taskId: string | null
-    toEmail: string
-    subject: string
-    body: string
-    htmlBody: string | null
-    accountId: string | null
-    attempts: number
-    maxAttempts: number
-    metadata: any
-  }>> {
+  static async getPendingEmails(limit: number = 50) {
     const now = new Date()
     
     const emails = await prisma.emailQueue.findMany({

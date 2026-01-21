@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         fileUrl: true,
         fileKey: true,
         createdAt: true,
-        task: {
+        request: {
           select: {
             id: true,
             campaignName: true
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
         hasMessage: !!i.message,
         hasFileUrl: !!i.fileUrl,
         fileKey: i.fileKey.substring(0, 50) + "...",
-        taskCampaign: i.task?.campaignName || "N/A",
+        requestCampaign: i.request?.campaignName || "N/A",
         createdAt: i.createdAt
       }))
     })

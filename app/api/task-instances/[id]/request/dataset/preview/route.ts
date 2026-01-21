@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { JobService } from "@/lib/services/job.service"
+import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { UserRole } from "@prisma/client"
 import { renderTemplate, findMissingPlaceholders } from "@/lib/utils/template-renderer"
 
@@ -40,7 +40,7 @@ export async function POST(
     const { id: jobId } = await params
 
     // Verify job exists and user has access
-    const job = await JobService.findById(jobId, organizationId)
+    const job = await TaskInstanceService.findById(jobId, organizationId)
     if (!job) {
       return NextResponse.json(
         { error: "Item not found" },
@@ -49,7 +49,7 @@ export async function POST(
     }
 
     // Check view permission
-    const canView = await JobService.canUserAccessJob(userId, userRole, job, 'view')
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, job, 'view')
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
@@ -82,7 +82,7 @@ export async function POST(
       where: {
         id: draftId,
         organizationId,
-        jobId,
+        taskInstanceId: jobId,
         personalizationMode: "dataset"
       }
     })
@@ -159,7 +159,7 @@ export async function POST(
         renderStatus,
         renderErrors: allMissingFields.length > 0 
           ? allMissingFields 
-          : null
+          : undefined
       }
     })
 
@@ -220,7 +220,7 @@ export async function GET(
     }
 
     // Verify job exists and user has access
-    const job = await JobService.findById(jobId, organizationId)
+    const job = await TaskInstanceService.findById(jobId, organizationId)
     if (!job) {
       return NextResponse.json(
         { error: "Item not found" },
@@ -229,7 +229,7 @@ export async function GET(
     }
 
     // Check view permission
-    const canView = await JobService.canUserAccessJob(userId, userRole, job, 'view')
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, job, 'view')
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
@@ -242,7 +242,7 @@ export async function GET(
       where: {
         id: draftId,
         organizationId,
-        jobId,
+        taskInstanceId: jobId,
         personalizationMode: "dataset"
       }
     })

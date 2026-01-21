@@ -23,13 +23,13 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
         lte: now
       },
       stoppedReason: null,
-      task: {
+      request: {
         remindersEnabled: true,
         remindersApproved: true
       }
     },
     include: {
-      task: {
+      request: {
         include: {
           entity: true,
           messages: {
@@ -59,8 +59,8 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
 
   for (const reminderState of dueReminders) {
     try {
-      const task = reminderState.task
-      const maxReminders = task.remindersMaxCount || 0
+      const request = reminderState.request
+      const maxReminders = request.remindersMaxCount || 0
 
       if (!maxReminders) {
         await prisma.reminderState.update({
@@ -68,7 +68,7 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
           data: { stoppedReason: "max_reached", nextSendAt: null }
         })
         remindersSkipped++
-        console.log(JSON.stringify({ event: "reminder_stopped_maxed", taskId: task.id, reminderStateId: reminderState.id }))
+        console.log(JSON.stringify({ event: "reminder_stopped_maxed", requestId: request.id, reminderStateId: reminderState.id }))
         continue
       }
 
@@ -85,14 +85,14 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
         }
       })
 
-      if (claimed === 0) {
+      if (claimed.count === 0) {
         remindersSkipped++
         console.log(JSON.stringify({ event: "reminder_skipped_claimed", reminderStateId: reminderState.id }))
         continue
       }
 
       // Stop condition: replied
-      if (task.status === "REPLIED") {
+      if (request.status === "REPLIED") {
         await prisma.reminderState.update({
           where: { id: reminderState.id },
           data: {
@@ -101,7 +101,7 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
           }
         })
         remindersSkipped++
-        console.log(JSON.stringify({ event: "reminder_skipped_replied", taskId: task.id, reminderStateId: reminderState.id }))
+        console.log(JSON.stringify({ event: "reminder_skipped_replied", requestId: request.id, reminderStateId: reminderState.id }))
         continue
       }
 
@@ -115,44 +115,44 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
           }
         })
         remindersSkipped++
-        console.log(JSON.stringify({ event: "reminder_stopped_maxed", taskId: task.id, reminderStateId: reminderState.id }))
+        console.log(JSON.stringify({ event: "reminder_stopped_maxed", requestId: request.id, reminderStateId: reminderState.id }))
         continue
       }
 
-      const originalMessage = task.messages[0]
+      const originalMessage = request.messages[0]
       if (!originalMessage) {
-        errors.push(`Task ${task.id}: No original message`)
-        console.error(JSON.stringify({ event: "reminder_send_failed", taskId: task.id, reminderStateId: reminderState.id, reason: "no_original_message" }))
+        errors.push(`Request ${request.id}: No original message`)
+        console.error(JSON.stringify({ event: "reminder_send_failed", requestId: request.id, reminderStateId: reminderState.id, reason: "no_original_message" }))
         continue
       }
 
       const reminderNumber = reminderState.sentCount + 1
       const template = ReminderTemplateService.generateReminderTemplateWithDeadline({
-        originalSubject: originalMessage.subject || task.campaignName || "Request",
+        originalSubject: originalMessage.subject || request.campaignName || "Request",
         originalBody: originalMessage.body || originalMessage.htmlBody || "",
         reminderNumber,
         maxReminders,
-        deadlineDate: task.deadlineDate
+        deadlineDate: request.deadlineDate
       })
 
       const personalizationData = {
-        "First Name": task.entity.firstName || "",
-        "Email": task.entity.email || ""
+        "First Name": request.entity?.firstName || "",
+        "Email": request.entity?.email || ""
       }
       const renderedSubject = renderTemplate(template.subject, personalizationData).rendered
       const renderedBody = renderTemplate(template.body, personalizationData).rendered
 
       await EmailSendingService.sendEmailForExistingTask({
-        taskId: task.id,
-        entityId: task.entityId,
-        organizationId: task.organizationId,
-        to: task.entity.email || "",
+        taskId: request.id,
+        entityId: request.entityId!,
+        organizationId: request.organizationId,
+        to: request.entity?.email || "",
         subject: renderedSubject,
         body: renderedBody,
         htmlBody: renderedBody
       })
 
-      const frequencyHours = task.remindersFrequencyHours || 72
+      const frequencyHours = request.remindersFrequencyHours || 72
       const newSentCount = reminderState.sentCount + 1
       const shouldContinue = newSentCount < maxReminders
 
@@ -170,7 +170,7 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
       })
 
       remindersSent++
-      console.log(JSON.stringify({ event: "reminder_sent", taskId: task.id, reminderStateId: reminderState.id, reminderNumber }))
+      console.log(JSON.stringify({ event: "reminder_sent", requestId: request.id, reminderStateId: reminderState.id, reminderNumber }))
     } catch (error: any) {
       console.error(JSON.stringify({ event: "reminder_send_failed", reminderStateId: reminderState.id, error: error?.message }))
       errors.push(`Reminder ${reminderState.id}: ${error.message}`)

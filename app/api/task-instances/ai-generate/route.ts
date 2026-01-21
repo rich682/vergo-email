@@ -59,13 +59,13 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         name: true,
-        jobs: {
+        taskInstances: {
           where: { status: { not: "ARCHIVED" } },
           select: {
             name: true,
             description: true,
             dueDate: true,
-            priority: true
+            status: true
           },
           orderBy: { createdAt: "asc" },
           take: 50 // Limit per board
@@ -78,17 +78,17 @@ export async function POST(request: NextRequest) {
     // Format existing boards/tasks as context for the AI
     let existingChecklistsContext = ""
     if (existingBoards.length > 0) {
-      const boardsWithTasks = existingBoards.filter(b => b.jobs.length > 0)
+      const boardsWithTasks = existingBoards.filter(b => b.taskInstances.length > 0)
       if (boardsWithTasks.length > 0) {
         existingChecklistsContext = `\n\nEXISTING CHECKLISTS (user can reference these to copy/replicate tasks):
 ${boardsWithTasks.map(board => {
-  const taskList = board.jobs.map(job => {
-    let taskStr = `  - ${job.name}`
-    if (job.description) taskStr += ` (${job.description})`
-    if (job.priority) taskStr += ` [${job.priority}]`
+  const taskList = board.taskInstances.map(task => {
+    let taskStr = `  - ${task.name}`
+    if (task.description) taskStr += ` (${task.description})`
+    if (task.status) taskStr += ` [${task.status}]`
     return taskStr
   }).join('\n')
-  return `\n"${board.name}" (${board.jobs.length} tasks):\n${taskList}`
+  return `\n"${board.name}" (${board.taskInstances.length} tasks):\n${taskList}`
 }).join('\n')}`
       }
     }

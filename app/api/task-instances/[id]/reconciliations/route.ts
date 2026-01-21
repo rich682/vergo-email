@@ -32,7 +32,7 @@ export async function GET(
     }
 
     const reconciliations = await prisma.reconciliation.findMany({
-      where: { jobId, organizationId },
+      where: { taskInstanceId: jobId, organizationId },
       include: {
         createdBy: {
           select: { id: true, name: true, email: true }
@@ -133,7 +133,7 @@ export async function POST(
     const reconciliation = await prisma.reconciliation.create({
       data: {
         organizationId,
-        jobId,
+        taskInstanceId: jobId,
         document1Key: blob1.url,
         document1Name: document1.name,
         document1Url: blob1.url,

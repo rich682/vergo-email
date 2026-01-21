@@ -542,10 +542,10 @@ IMPORTANT:
     // Note: Tag values functionality has been removed as part of the migration
     // to item-scoped labels. Recipients are returned without tag values.
     return result.recipientsWithReasons.map(r => ({
-      id: r.id,
+      id: r.entityId,
       email: r.email,
-      name: r.firstName || r.name,
-      contactType: r.contactType,
+      name: (r.firstName || r.name) ?? undefined,
+      contactType: r.contactType ?? undefined,
       tagValues: undefined
     }))
   }

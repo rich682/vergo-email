@@ -39,17 +39,17 @@ export async function POST(
     const organizationId = session.user.organizationId
     const { id } = await params
 
-    // Check if this quest has a jobId (Item-initiated request)
+    // Check if this quest has a taskInstanceId (Item-initiated request)
     // If so, bypass the feature flag check
     const emailDraft = await prisma.emailDraft.findFirst({
       where: { id, organizationId },
-      select: { jobId: true }
+      select: { taskInstanceId: true }
     })
 
-    const hasJobId = !!emailDraft?.jobId
+    const hasTaskInstanceId = !!emailDraft?.taskInstanceId
 
-    // Check feature flag - bypass if quest has jobId (Item-initiated request)
-    if (!isQuestUIEnabled() && !hasJobId) {
+    // Check feature flag - bypass if quest has taskInstanceId (Item-initiated request)
+    if (!isQuestUIEnabled() && !hasTaskInstanceId) {
       return NextResponse.json(
         { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
         { status: 404 }

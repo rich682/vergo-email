@@ -281,9 +281,7 @@ export class QuestService {
           senderSignature,
           deadlineDate,
           personalizationMode: "contact",
-          availableTags,
-          // Pass the selected data tags explicitly so AI knows to use them
-          selectedDataTags: selectedDataTags.length > 0 ? selectedDataTags : undefined
+          availableTags
         })
         console.log(`QuestService.generateEmail: AI service returned subject: "${generated.subject?.substring(0, 50)}"`)
       } catch (aiError: any) {
@@ -347,8 +345,8 @@ export class QuestService {
     const result = recipientResult.recipientsWithReasons.map(r => ({
       id: r.entityId,
       email: r.email,
-      name: r.firstName || r.name,
-      contactType: r.contactType,
+      name: (r.firstName || r.name) ?? undefined,
+      contactType: r.contactType ?? undefined,
       tagValues: undefined
     }))
 
@@ -368,17 +366,17 @@ export class QuestService {
       throw new Error(`Quest is not ready for execution. Current status: ${quest.status}`)
     }
 
-    // Get the jobId from the underlying EmailDraft for task association
+    // Get the taskInstanceId from the underlying EmailDraft for task association
     const emailDraft = await prisma.emailDraft.findFirst({
       where: { id, organizationId },
-      select: { jobId: true }
+      select: { taskInstanceId: true }
     })
-    const jobId = emailDraft?.jobId || null
+    const taskInstanceId = emailDraft?.taskInstanceId || null
 
     log.info("Executing quest", {
       questId: id,
-      jobId,
-      questType: quest.type,
+      taskInstanceId,
+      questType: quest.questType,
       status: quest.status
     }, { organizationId, operation: "execute" })
 
@@ -440,7 +438,7 @@ export class QuestService {
       // Send emails with personalized content
       const results = await EmailSendingService.sendBulkEmail({
         organizationId,
-        jobId,
+        jobId: taskInstanceId,
         recipients: recipientResult.recipients.map(r => ({
           email: r.email,
           name: r.firstName || r.name || undefined

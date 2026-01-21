@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select"
 import { 
   Upload, Download, FileText, Filter, RefreshCw, Trash2,
-  FileImage, FileSpreadsheet, File, Archive, Eye, X, ExternalLink
+  FileImage, FileSpreadsheet, File, Archive, Eye, X, ExternalLink,
+  CheckCircle, XCircle, RotateCcw
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { CollectionUploadModal } from "./collection-upload-modal"
@@ -159,6 +160,37 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
     }
   }
 
+  // Handle bulk status actions (approve/reject/reset/delete)
+  const handleBulkAction = async (action: "approve" | "reject" | "reset" | "delete") => {
+    if (selectedIds.length === 0) return
+    
+    if (action === "delete" && !confirm(`Are you sure you want to delete ${selectedIds.length} file(s)?`)) {
+      return
+    }
+    
+    setBulkLoading(true)
+    try {
+      const response = await fetch(`/api/task-instances/${jobId}/collection/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action, ids: selectedIds })
+      })
+      
+      if (response.ok) {
+        setSelectedIds([])
+        await fetchItems()
+      } else {
+        const data = await response.json()
+        console.error("Bulk action error:", data.error)
+      }
+    } catch (err: any) {
+      console.error("Bulk action error:", err)
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   // Handle single download
   const handleDownload = async (itemId: string, filename: string) => {
     try {
@@ -278,14 +310,62 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => handleBulkAction("approve")}
+                disabled={bulkLoading}
+                title="Approve selected"
+              >
+                <CheckCircle className="w-4 h-4 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleBulkAction("reject")}
+                disabled={bulkLoading}
+                title="Reject selected"
+              >
+                <XCircle className="w-4 h-4 text-red-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleBulkAction("reset")}
+                disabled={bulkLoading}
+                title="Reset to unreviewed"
+              >
+                <RotateCcw className="w-4 h-4 text-gray-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleBulkDownload}
                 disabled={bulkLoading}
+                title="Download selected"
               >
                 <Download className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleBulkAction("delete")}
+                disabled={bulkLoading}
+                title="Delete selected"
+              >
+                <Trash2 className="w-4 h-4 text-red-600" />
               </Button>
             </div>
           )}
 
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = `/api/task-instances/${jobId}/collection/export`
+            }}
+            disabled={items.length === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export All
+          </Button>
+          
           <Button onClick={() => setIsUploadOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Upload File

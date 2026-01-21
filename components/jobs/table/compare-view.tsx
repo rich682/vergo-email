@@ -68,6 +68,7 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
   const [data, setData] = useState<CompareData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorReason, setErrorReason] = useState<string | null>(null)
   const [filters, setFilters] = useState<VarianceFilterState>(DEFAULT_FILTERS)
   const [selectedRowIdentity, setSelectedRowIdentity] = useState<any>(null)
 
@@ -75,6 +76,7 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
   const fetchCompareData = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setErrorReason(null)
 
     try {
       const response = await fetch(
@@ -84,6 +86,7 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
 
       if (!response.ok) {
         const errorData = await response.json()
+        setErrorReason(errorData.reason || null)
         throw new Error(errorData.error || "Failed to load comparison data")
       }
 
@@ -133,15 +136,25 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
 
   // Error state
   if (error) {
+    const isNoSnapshot = errorReason === "NO_PRIOR_SNAPSHOT"
+    
     return (
       <div className="text-center py-12">
-        <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-        <h3 className="text-lg font-medium text-gray-900 mb-1">Cannot Load Comparison</h3>
-        <p className="text-sm text-gray-500 mb-4">{error}</p>
-        <Button variant="outline" onClick={fetchCompareData}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Retry
-        </Button>
+        <AlertCircle className={`w-12 h-12 mx-auto mb-3 ${isNoSnapshot ? 'text-gray-300' : 'text-amber-400'}`} />
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
+          {isNoSnapshot ? "No Prior Period Snapshot" : "Cannot Load Comparison"}
+        </h3>
+        <p className="text-sm text-gray-500 mb-4 max-w-md mx-auto">
+          {isNoSnapshot 
+            ? "To compare periods, mark the previous board as Complete. This creates a snapshot of that period's data for comparison."
+            : error}
+        </p>
+        {!isNoSnapshot && (
+          <Button variant="outline" onClick={fetchCompareData}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
+        )}
       </div>
     )
   }

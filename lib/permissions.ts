@@ -67,7 +67,7 @@ export function canAccessRoute(role: UserRole | string | undefined, path: string
 export function getJobAccessFilter(
   userId: string,
   role: UserRole | string | undefined
-): Prisma.JobWhereInput | null {
+): Prisma.TaskInstanceWhereInput | null {
   // Normalize role
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
   

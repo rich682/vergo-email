@@ -46,14 +46,14 @@ export async function GET(request: NextRequest) {
 
     const where: any = {
       organizationId,
-      // Role-based access: only show items from jobs user can access
-      ...(jobAccessFilter && { job: jobAccessFilter })
+      // Role-based access: only show items from task instances user can access
+      ...(jobAccessFilter && { taskInstance: jobAccessFilter })
     }
 
-    // Filter by board (via job.boardId) - merge with job filter
+    // Filter by board (via taskInstance.boardId) - merge with taskInstance filter
     if (boardId) {
-      where.job = {
-        ...where.job,
+      where.taskInstance = {
+        ...where.taskInstance,
         boardId
       }
     }
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (jobId) {
-      where.jobId = jobId
+      where.taskInstanceId = jobId
     }
 
     // File type filtering
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     let items = await prisma.collectedItem.findMany({
       where,
       include: {
-        job: {
+        taskInstance: {
           select: {
             id: true,
             name: true,
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        task: {
+        request: {
           select: {
             id: true,
             campaignName: true,
@@ -156,9 +156,9 @@ export async function GET(request: NextRequest) {
       take: limit
     })
 
-    // Filter by owner if specified (owner is on the job)
+    // Filter by owner if specified (owner is on the task instance)
     if (ownerId) {
-      items = items.filter(item => item.job?.ownerId === ownerId)
+      items = items.filter(item => item.taskInstance?.ownerId === ownerId)
     }
 
     // Get total count (without filters for summary)

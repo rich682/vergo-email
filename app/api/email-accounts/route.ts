@@ -16,7 +16,7 @@ export async function GET() {
 
   const userId = session.user.id
   const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
-  const isAdmin = userRole === UserRole.ADMIN || userRole === UserRole.OWNER
+  const isAdmin = userRole === UserRole.ADMIN
 
   // Get all accounts with owner info
   const accounts = await EmailConnectionService.findByOrganizationWithOwner(

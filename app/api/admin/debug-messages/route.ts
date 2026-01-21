@@ -21,13 +21,13 @@ export async function GET(request: NextRequest) {
     const outboundMessages = await prisma.message.findMany({
       where: {
         direction: "OUTBOUND",
-        task: {
+        request: {
           organizationId: session.user.organizationId
         }
       },
       select: {
         id: true,
-        taskId: true,
+        requestId: true,
         subject: true,
         toAddress: true,
         fromAddress: true,
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         providerId: true,
         providerData: true,
         createdAt: true,
-        task: {
+        request: {
           select: {
             id: true,
             campaignName: true,
@@ -54,20 +54,20 @@ export async function GET(request: NextRequest) {
     const inboundMessages = await prisma.message.findMany({
       where: {
         direction: "INBOUND",
-        task: {
+        request: {
           organizationId: session.user.organizationId
         }
       },
       select: {
         id: true,
-        taskId: true,
+        requestId: true,
         subject: true,
         fromAddress: true,
         toAddress: true,
         providerId: true,
         providerData: true,
         createdAt: true,
-        task: {
+        request: {
           select: {
             id: true,
             campaignName: true,
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
           ]
         },
         include: {
-          task: true
+          request: true
         }
       })
 
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
           threadId: String(threadId)
         },
         include: {
-          task: true
+          request: true
         }
       })
 

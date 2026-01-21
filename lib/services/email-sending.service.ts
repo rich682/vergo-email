@@ -2,7 +2,7 @@ import { google } from "googleapis"
 import nodemailer from "nodemailer"
 import { EmailConnectionService } from "./email-connection.service"
 import { TokenRefreshService } from "./token-refresh.service"
-import { TaskCreationService } from "./task-creation.service"
+import { RequestCreationService } from "./request-creation.service"
 import { TrackingPixelService } from "./tracking-pixel.service"
 import { ConnectedEmailAccount, EmailProvider, EmailSendResult } from "@prisma/client"
 import { v4 as uuidv4 } from "uuid"
@@ -48,8 +48,8 @@ async function logEmailSendAudit(data: {
       data: {
         organizationId: data.organizationId,
         userId: data.userId || null,
-        jobId: data.jobId || null,
-        taskId: data.taskId || null,
+        taskInstanceId: data.jobId || null,
+        requestId: data.taskId || null,
         emailDraftId: data.emailDraftId || null,
         fromEmail: data.fromEmail,
         toEmail: data.toEmail,
@@ -60,7 +60,7 @@ async function logEmailSendAudit(data: {
         errorCode: data.errorCode || null,
         provider: data.provider || null,
         providerId: data.providerId || null,
-        metadata: data.metadata || null
+        metadata: data.metadata ?? undefined
       }
     })
   } catch (error) {
@@ -428,10 +428,10 @@ export class EmailSendingService {
       })
     }
 
-    // Create task with jobId for direct Item association
-    const task = await TaskCreationService.createTaskFromEmail({
+    // Create request with taskInstanceId for direct association
+    const task = await RequestCreationService.createRequestFromEmail({
       organizationId: data.organizationId,
-      jobId: data.jobId || null,
+      taskInstanceId: data.jobId || null,
       entityEmail: data.to,
       entityName: data.toName,
       campaignName: data.campaignName,
@@ -444,9 +444,9 @@ export class EmailSendingService {
     })
 
     // Log outbound message with tracking token
-    await TaskCreationService.logOutboundMessage({
-      taskId: task.id,
-      entityId: task.entityId,
+    await RequestCreationService.logOutboundMessage({
+      requestId: task.id,
+      entityId: task.entityId!,
       subject: data.subject,
       body: data.body,
       htmlBody: htmlBodyWithTracking,
@@ -584,9 +584,9 @@ export class EmailSendingService {
       })
     }
 
-    // Log outbound message against existing task/entity
-    await TaskCreationService.logOutboundMessage({
-      taskId: data.taskId,
+    // Log outbound message against existing request/entity
+    await RequestCreationService.logOutboundMessage({
+      requestId: data.taskId,
       entityId: data.entityId,
       subject: data.subject,
       body: data.body,
@@ -698,15 +698,15 @@ export class EmailSendingService {
 
     // Initialize reminder state for each successfully created task (idempotent)
     if (data.remindersConfig?.enabled) {
-      const successfulTaskIds = results
+      const successfulRequestIds = results
         .map(r => r.taskId)
         .filter((id): id is string => Boolean(id))
-      if (successfulTaskIds.length > 0) {
-        for (const taskId of successfulTaskIds) {
+      if (successfulRequestIds.length > 0) {
+        for (const requestId of successfulRequestIds) {
           try {
-            await ReminderStateService.initializeForTask(taskId, data.remindersConfig)
+            await ReminderStateService.initializeForRequest(requestId, data.remindersConfig)
           } catch (error: any) {
-            log.error("Failed to initialize reminders for task", error, { taskId }, { organizationId: data.organizationId })
+            log.error("Failed to initialize reminders for request", error, { requestId }, { organizationId: data.organizationId })
           }
         }
       }

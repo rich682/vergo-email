@@ -49,12 +49,12 @@ export class ReminderTemplateService {
     
     // Remove common closings and everything after
     const closingPatterns = [
-      /\n*(Thank you for your prompt attention[^\n]*\n*Best regards,?.*)/is,
-      /\n*(Thank you[^\n]*\n*Best regards,?.*)/is,
-      /\n*(Best regards,?.*)/is,
-      /\n*(Kind regards,?.*)/is,
-      /\n*(Thanks,?.*)/is,
-      /\n*(Sincerely,?.*)/is,
+      /\n*(Thank you for your prompt attention[^\n]*\n*Best regards,?[\s\S]*)/i,
+      /\n*(Thank you[^\n]*\n*Best regards,?[\s\S]*)/i,
+      /\n*(Best regards,?[\s\S]*)/i,
+      /\n*(Kind regards,?[\s\S]*)/i,
+      /\n*(Thanks,?[\s\S]*)/i,
+      /\n*(Sincerely,?[\s\S]*)/i,
     ]
     
     for (const pattern of closingPatterns) {

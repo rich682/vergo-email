@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { JobLabelService, MetadataFieldSchema } from "@/lib/services/job-label.service"
+import { TaskInstanceLabelService, MetadataFieldSchema } from "@/lib/services/task-instance-label.service"
 import { prisma } from "@/lib/prisma"
 
 // GET /api/task-instances/[id]/labels/[labelId] - Get a single label
@@ -33,9 +33,9 @@ export async function GET(
       )
     }
 
-    const label = await JobLabelService.getLabelById(labelId, organizationId)
+    const label = await TaskInstanceLabelService.getLabelById(labelId, organizationId)
 
-    if (!label || label.jobId !== jobId) {
+    if (!label || label.taskInstanceId !== jobId) {
       return NextResponse.json(
         { error: "Label not found" },
         { status: 404 }
@@ -43,19 +43,19 @@ export async function GET(
     }
 
     // Get contact count
-    const stats = await JobLabelService.getLabelStats(jobId)
+    const stats = await TaskInstanceLabelService.getLabelStats(jobId)
     const stat = stats.find((s) => s.labelId === labelId)
 
     return NextResponse.json({
       success: true,
       label: {
         ...label,
-        metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+        metadataSchema: label.metadataSchema as unknown as MetadataFieldSchema[],
         contactCount: stat?.count || 0,
       },
     })
   } catch (error: any) {
-    console.error("Get job label error:", error)
+    console.error("Get task instance label error:", error)
     return NextResponse.json(
       { error: "Failed to get label", message: error.message },
       { status: 500 }
@@ -92,9 +92,9 @@ export async function PATCH(
       )
     }
 
-    // Verify label belongs to this job
-    const existingLabel = await JobLabelService.getLabelById(labelId, organizationId)
-    if (!existingLabel || existingLabel.jobId !== jobId) {
+    // Verify label belongs to this task instance
+    const existingLabel = await TaskInstanceLabelService.getLabelById(labelId, organizationId)
+    if (!existingLabel || existingLabel.taskInstanceId !== jobId) {
       return NextResponse.json(
         { error: "Label not found" },
         { status: 404 }
@@ -133,7 +133,7 @@ export async function PATCH(
       }
     }
 
-    const label = await JobLabelService.updateLabel(labelId, organizationId, {
+    const label = await TaskInstanceLabelService.updateLabel(labelId, organizationId, {
       name,
       color,
       metadataSchema,
@@ -147,19 +147,19 @@ export async function PATCH(
     }
 
     // Get contact count
-    const stats = await JobLabelService.getLabelStats(jobId)
+    const stats = await TaskInstanceLabelService.getLabelStats(jobId)
     const stat = stats.find((s) => s.labelId === labelId)
 
     return NextResponse.json({
       success: true,
       label: {
         ...label,
-        metadataSchema: label.metadataSchema as MetadataFieldSchema[],
+        metadataSchema: label.metadataSchema as unknown as MetadataFieldSchema[],
         contactCount: stat?.count || 0,
       },
     })
   } catch (error: any) {
-    console.error("Update job label error:", error)
+    console.error("Update task instance label error:", error)
 
     // Handle unique constraint violation
     if (error.code === "P2002") {
@@ -205,16 +205,16 @@ export async function DELETE(
       )
     }
 
-    // Verify label belongs to this job
-    const existingLabel = await JobLabelService.getLabelById(labelId, organizationId)
-    if (!existingLabel || existingLabel.jobId !== jobId) {
+    // Verify label belongs to this task instance
+    const existingLabel = await TaskInstanceLabelService.getLabelById(labelId, organizationId)
+    if (!existingLabel || existingLabel.taskInstanceId !== jobId) {
       return NextResponse.json(
         { error: "Label not found" },
         { status: 404 }
       )
     }
 
-    const deleted = await JobLabelService.deleteLabel(labelId, organizationId)
+    const deleted = await TaskInstanceLabelService.deleteLabel(labelId, organizationId)
 
     if (!deleted) {
       return NextResponse.json(
@@ -228,7 +228,7 @@ export async function DELETE(
       message: "Label deleted",
     })
   } catch (error: any) {
-    console.error("Delete job label error:", error)
+    console.error("Delete task instance label error:", error)
     return NextResponse.json(
       { error: "Failed to delete label", message: error.message },
       { status: 500 }

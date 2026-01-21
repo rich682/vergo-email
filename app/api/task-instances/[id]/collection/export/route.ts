@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectionService } from "@/lib/services/collection.service"
+import { EvidenceService } from "@/lib/services/evidence.service"
 
 export const dynamic = "force-dynamic"
 
@@ -34,7 +34,7 @@ export async function GET(
     }
 
     // Get metadata
-    const metadata = await CollectionService.exportMetadata(jobId, organizationId)
+    const metadata = await EvidenceService.exportMetadata(jobId, organizationId)
 
     // Convert to CSV
     const headers = [
@@ -68,7 +68,7 @@ export async function GET(
       escapeCSV(item.status),
       escapeCSV(item.reviewedBy),
       item.reviewedAt ? new Date(item.reviewedAt).toISOString() : "",
-      escapeCSV(item.taskName),
+      escapeCSV(item.requestName),
       escapeCSV(item.notes)
     ])
 

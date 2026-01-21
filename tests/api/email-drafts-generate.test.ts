@@ -140,7 +140,8 @@ vi.mock('@/inngest/client', () => ({
 }))
 
 // Import after mocks
-import { POST, _resetRateLimitForTesting } from '@/app/api/email-drafts/generate/route'
+import { POST } from '@/app/api/email-drafts/generate/route'
+import { _resetRateLimitForTesting } from '@/lib/utils/rate-limit'
 import { EmailDraftService } from '@/lib/services/email-draft.service'
 
 describe('POST /api/email-drafts/generate', () => {
@@ -155,10 +156,10 @@ describe('POST /api/email-drafts/generate', () => {
     
     // Set up mock implementations
     const { EmailDraftService } = await import('@/lib/services/email-draft.service')
-    vi.mocked(EmailDraftService.findByIdempotencyKey).mockImplementation(mockFindByIdempotencyKey)
-    vi.mocked(EmailDraftService.create).mockImplementation(mockCreate)
-    vi.mocked(EmailDraftService.update).mockImplementation(mockUpdate)
-    vi.mocked(EmailDraftService.findById).mockImplementation(mockFindById)
+    vi.mocked(EmailDraftService.findByIdempotencyKey).mockImplementation(mockFindByIdempotencyKey as any)
+    vi.mocked(EmailDraftService.create).mockImplementation(mockCreate as any)
+    vi.mocked(EmailDraftService.update).mockImplementation(mockUpdate as any)
+    vi.mocked(EmailDraftService.findById).mockImplementation(mockFindById as any)
   })
 
   afterEach(() => {
@@ -222,7 +223,7 @@ describe('POST /api/email-drafts/generate', () => {
     expect(draftId1).toBe(draftId2)
 
     // Assert only one draft exists (verify via mock store)
-    const foundDraft = await EmailDraftService.findByIdempotencyKey(idempotencyKey)
+    const foundDraft = await EmailDraftService.findByIdempotencyKey(idempotencyKey, testOrgId)
     expect(foundDraft).toBeDefined()
     expect(foundDraft?.id).toBe(draftId1)
   })
@@ -250,7 +251,7 @@ describe('POST /api/email-drafts/generate', () => {
     expect(uniqueIds.size).toBe(1)
 
     // Only one draft should exist (verify via mock store)
-    const foundDraft = await EmailDraftService.findByIdempotencyKey(idempotencyKey)
+    const foundDraft = await EmailDraftService.findByIdempotencyKey(idempotencyKey, testOrgId)
     expect(foundDraft).toBeDefined()
     expect(foundDraft?.id).toBe(draftIds[0])
   })
@@ -354,12 +355,12 @@ describe('POST /api/email-drafts/generate', () => {
       subject: 'Request: Test prompt for draft generation',
       body: testPrompt,
       htmlBody: `<p>${testPrompt}</p>`,
-      subjectTemplate: null,
-      bodyTemplate: null,
-      htmlBodyTemplate: null,
+      subjectTemplate: undefined,
+      bodyTemplate: undefined,
+      htmlBodyTemplate: undefined,
       suggestedRecipients: { entityIds: [], groupIds: [] },
       suggestedCampaignName: 'Test Campaign',
-      suggestedCampaignType: null
+      suggestedCampaignType: undefined
     })
 
     const req = new NextRequest('http://localhost/api/email-drafts/generate', {

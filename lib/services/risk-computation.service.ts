@@ -378,13 +378,13 @@ Analyze the risk level based on the reply content and request context.`
         response_format: { type: "json_object" },
         temperature: 0.3,
         max_tokens: 200,
-        timeout: 8000 // 8 second timeout
+        stream: false
       }),
       // Timeout fallback after 8 seconds
       new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error("LLM timeout")), 8000)
       )
-    ])
+    ]) as { choices: Array<{ message?: { content?: string | null } }> }
 
     const responseText = response.choices[0]?.message?.content
     if (!responseText) {

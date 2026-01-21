@@ -16,7 +16,7 @@ export async function GET(
     )
   }
 
-  const task = await prisma.task.findFirst({
+  const task = await prisma.request.findFirst({
     where: {
       id: params.id,
       organizationId: session.user.organizationId
@@ -32,7 +32,7 @@ export async function GET(
 
   const messages = await prisma.message.findMany({
     where: {
-      taskId: params.id
+      requestId: params.id
     },
     orderBy: {
       createdAt: "asc"

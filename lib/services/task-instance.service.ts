@@ -58,6 +58,8 @@ export interface UpdateTaskInstanceInput {
   customFields?: Record<string, any>
   structuredData?: any
   isSnapshot?: boolean
+  type?: TaskType  // For promoting to recurring
+  lineageId?: string | null  // For linking to lineage
 }
 
 export interface TaskInstanceOwner {
@@ -227,6 +229,7 @@ export class TaskInstanceService {
     return {
       ...taskInstance,
       labels: taskInstance.labels as TaskInstanceLabels | null,
+      customFields: taskInstance.customFields as Record<string, any> | null,
       collaborators: [],
       requestCount: 0,
       respondedCount: 0,
@@ -248,7 +251,7 @@ export class TaskInstanceService {
         client: { select: { id: true, firstName: true, lastName: true, email: true } },
         requests: { select: { id: true, status: true } },
         _count: { select: { collectedItems: true } },
-        board: { select: { id: true, name: true, cadence: true } }
+        board: { select: { id: true, name: true, cadence: true, periodStart: true } }
       }
     })
 
@@ -266,6 +269,7 @@ export class TaskInstanceService {
     return {
       ...taskInstance,
       labels: taskInstance.labels as TaskInstanceLabels | null,
+      customFields: taskInstance.customFields as Record<string, any> | null,
       requestCount,
       respondedCount,
       completedCount,
@@ -367,6 +371,7 @@ export class TaskInstanceService {
         return {
           ...instance,
           labels,
+          customFields: instance.customFields as Record<string, any> | null,
           requestCount,
           respondedCount,
           completedCount,
@@ -424,6 +429,7 @@ export class TaskInstanceService {
     return {
       ...instance,
       labels: instance.labels as TaskInstanceLabels | null,
+      customFields: instance.customFields as Record<string, any> | null,
       requestCount: instance.requests.length,
       respondedCount: instance.requests.filter(t => t.status === TaskStatus.REPLIED || t.status === TaskStatus.COMPLETE).length,
       completedCount: instance.requests.filter(t => t.status === TaskStatus.COMPLETE).length,
@@ -516,6 +522,51 @@ export class TaskInstanceService {
   }
 
   /**
+   * Get collaborators for a task instance
+   */
+  static async getCollaborators(
+    taskInstanceId: string,
+    organizationId: string
+  ): Promise<TaskInstanceCollaborator[]> {
+    const instance = await prisma.taskInstance.findFirst({
+      where: { id: taskInstanceId, organizationId }
+    })
+
+    if (!instance) return []
+
+    const collaborators = await prisma.taskInstanceCollaborator.findMany({
+      where: { taskInstanceId },
+      include: { user: { select: { id: true, name: true, email: true } } }
+    })
+
+    return collaborators as TaskInstanceCollaborator[]
+  }
+
+  /**
+   * Remove a collaborator
+   */
+  static async removeCollaborator(
+    taskInstanceId: string,
+    userId: string,
+    organizationId: string
+  ): Promise<boolean> {
+    const instance = await prisma.taskInstance.findFirst({
+      where: { id: taskInstanceId, organizationId }
+    })
+
+    if (!instance) return false
+
+    try {
+      await prisma.taskInstanceCollaborator.delete({
+        where: { taskInstanceId_userId: { taskInstanceId, userId } }
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Add a comment
    */
   static async addComment(
@@ -532,8 +583,57 @@ export class TaskInstanceService {
     if (!instance) return null
 
     return prisma.taskInstanceComment.create({
-      data: { taskInstanceId, authorId, content, mentions: mentions || null },
+      data: { taskInstanceId, authorId, content, mentions: mentions ?? undefined },
       include: { author: { select: { id: true, name: true, email: true } } }
     })
+  }
+
+  /**
+   * Get comments for a task instance
+   */
+  static async getComments(
+    taskInstanceId: string,
+    organizationId: string
+  ): Promise<any[]> {
+    const instance = await prisma.taskInstance.findFirst({
+      where: { id: taskInstanceId, organizationId }
+    })
+
+    if (!instance) return []
+
+    return prisma.taskInstanceComment.findMany({
+      where: { taskInstanceId },
+      include: { author: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: "desc" }
+    })
+  }
+
+  /**
+   * Delete a comment
+   */
+  static async deleteComment(
+    commentId: string,
+    authorId: string,
+    organizationId: string
+  ): Promise<boolean> {
+    const comment = await prisma.taskInstanceComment.findFirst({
+      where: { id: commentId },
+      include: { taskInstance: { select: { organizationId: true } } }
+    })
+
+    if (!comment || comment.taskInstance.organizationId !== organizationId) {
+      return false
+    }
+
+    // Only the author can delete their own comment
+    if (comment.authorId !== authorId) {
+      return false
+    }
+
+    await prisma.taskInstanceComment.delete({
+      where: { id: commentId }
+    })
+
+    return true
   }
 }

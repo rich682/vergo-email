@@ -1,0 +1,267 @@
+%% Vergo Inbox v2 - System Architecture Map
+%% Generated: 2026-01-21
+%% This diagram shows the relationship between frontend pages, API routes, services, and external systems.
+
+flowchart TB
+    subgraph FrontendPages[Frontend Pages]
+        subgraph DashboardPages[Dashboard]
+            JobsList["/dashboard/jobs"]
+            JobDetail["/dashboard/jobs/id"]
+            Boards["/dashboard/boards"]
+            Contacts["/dashboard/contacts"]
+            Requests["/dashboard/requests"]
+            Collection["/dashboard/collection"]
+            Review["/dashboard/review/msgId"]
+            Settings["/dashboard/settings"]
+            SettingsTeam["/dashboard/settings/team"]
+            SettingsAccounting["/dashboard/settings/accounting"]
+        end
+        
+        subgraph AuthPages[Authentication]
+            SignIn["/auth/signin"]
+            SignUp["/signup"]
+            AcceptInvite["/auth/accept-invite"]
+            ForgotPwd["/auth/forgot-password"]
+            ResetPwd["/auth/reset-password"]
+            VerifyEmail["/auth/verify-email"]
+        end
+        
+        subgraph InfoPages[Info/Legal]
+            Landing["/"]
+            Privacy["/privacy"]
+            Terms["/terms"]
+        end
+    end
+
+    subgraph APIRoutes[API Routes]
+        subgraph TaskAPIs[Task Instance APIs]
+            TaskInstancesAPI["/api/task-instances"]
+            TaskInstanceDetailAPI["/api/task-instances/id"]
+            TaskCommentsAPI["/api/task-instances/id/comments"]
+            TaskCollabAPI["/api/task-instances/id/collaborators"]
+            TaskCollectionAPI["/api/task-instances/id/collection"]
+            TaskReconcAPI["/api/task-instances/id/reconciliations"]
+            TaskTableAPI["/api/task-instances/id/table/*"]
+            TaskRequestAPI["/api/task-instances/id/request/*"]
+            TaskLineageAPI["/api/task-lineages/id/schema"]
+        end
+        
+        subgraph BoardAPIs[Board APIs]
+            BoardsAPI["/api/boards"]
+            BoardDetailAPI["/api/boards/id"]
+            BoardTeamAPI["/api/boards/team-members"]
+        end
+        
+        subgraph ContactAPIs[Contact APIs]
+            EntitiesAPI["/api/entities"]
+            EntityDetailAPI["/api/entities/id"]
+            GroupsAPI["/api/groups"]
+            GroupDetailAPI["/api/groups/id"]
+            ContactTypesAPI["/api/contacts/*"]
+        end
+        
+        subgraph RequestAPIs[Request APIs]
+            RequestsAPI["/api/requests"]
+            RequestDetailAPI["/api/requests/detail/id"]
+            RequestMsgsAPI["/api/requests/detail/id/messages"]
+            RequestReplyAPI["/api/requests/detail/id/reply"]
+        end
+        
+        subgraph ReviewAPIs[Review APIs]
+            ReviewMsgAPI["/api/review/msgId"]
+            ReviewAnalyzeAPI["/api/review/analyze"]
+            ReviewDraftAPI["/api/review/draft-reply"]
+        end
+        
+        subgraph OrgAPIs[Organization APIs]
+            OrgSettingsAPI["/api/org/settings"]
+            OrgUsersAPI["/api/org/users"]
+            OrgTeamAPI["/api/org/team"]
+            OrgCalendarAPI["/api/org/accounting-calendar"]
+        end
+        
+        subgraph AuthAPIs[Auth APIs]
+            AuthSignupAPI["/api/auth/signup"]
+            AuthAcceptAPI["/api/auth/accept-invite"]
+            AuthVerifyAPI["/api/auth/verify"]
+            AuthPwdAPI["/api/auth/*-password"]
+        end
+        
+        subgraph UserAPIs[User APIs]
+            UserOnboardAPI["/api/user/onboarding"]
+            UserSigAPI["/api/user/signature"]
+            EmailAccountsAPI["/api/email-accounts"]
+        end
+        
+        subgraph QuestAPIs[Quest APIs - Feature Flagged]
+            QuestsAPI["/api/quests"]
+            QuestExecAPI["/api/quests/id/execute"]
+        end
+        
+        subgraph AdminAPIs[Admin APIs]
+            AdminDebug["/api/admin/debug-*"]
+            AdminBackfill["/api/admin/backfill-*"]
+            AdminSync["/api/admin/sync-*"]
+            AdminHealth["/api/admin/health-check"]
+        end
+        
+        subgraph ExternalAPIs[External-Only APIs]
+            OAuthGmail["/api/oauth/gmail/*"]
+            OAuthMicrosoft["/api/oauth/microsoft/*"]
+            WebhookGmail["/api/webhooks/gmail"]
+            TrackingPixel["/api/tracking/token"]
+            InngestHandler["/api/inngest"]
+        end
+    end
+
+    subgraph Services[Services Layer]
+        TaskInstanceSvc[task-instance.service]
+        BoardSvc[board.service]
+        EntitySvc[entity.service]
+        GroupSvc[group.service]
+        EmailSendingSvc[email-sending.service]
+        EmailSyncSvc[email-sync.service]
+        EmailDraftSvc[email-draft.service]
+        AIEmailGenSvc[ai-email-generation.service]
+        AIClassificationSvc[ai-classification.service]
+        EvidenceSvc[evidence.service]
+        QuestSvc[quest.service]
+        ReminderSvc[reminder-runner.service]
+        RiskSvc[risk-computation.service]
+        TableTaskSvc[table-task.service]
+        AuthEmailSvc[auth-email.service]
+        OnboardingSvc[onboarding.service]
+    end
+
+    subgraph ExternalSystems[External Systems]
+        subgraph InngestFunctions[Inngest Functions]
+            ClassifyMsg["classify-message"]
+            SummarizeTask["summarize-task"]
+            SyncGmail["sync-gmail-accounts"]
+            SyncMicrosoft["sync-microsoft-accounts"]
+            SendReminders["reminder/send-due"]
+            QuestStanding["quest/execute-standing"]
+            ProcessQueue["process-email-queue"]
+        end
+        
+        subgraph EmailProviders[Email Providers]
+            GmailAPI["Gmail API"]
+            MicrosoftGraph["Microsoft Graph"]
+        end
+        
+        subgraph AIProviders[AI Providers]
+            OpenAI["OpenAI GPT-4o-mini"]
+        end
+    end
+
+    subgraph Database[Database]
+        Prisma[(PostgreSQL via Prisma)]
+    end
+
+    %% Frontend to API connections
+    JobsList --> TaskInstancesAPI
+    JobsList --> BoardsAPI
+    JobsList --> OrgTeamAPI
+    JobsList --> GroupsAPI
+    
+    JobDetail --> TaskInstanceDetailAPI
+    JobDetail --> TaskCommentsAPI
+    JobDetail --> TaskCollabAPI
+    JobDetail --> TaskCollectionAPI
+    JobDetail --> TaskReconcAPI
+    JobDetail --> TaskTableAPI
+    JobDetail --> TaskRequestAPI
+    JobDetail --> TaskLineageAPI
+    
+    Boards --> BoardsAPI
+    Boards --> BoardDetailAPI
+    Boards --> BoardTeamAPI
+    
+    Contacts --> EntitiesAPI
+    Contacts --> EntityDetailAPI
+    Contacts --> GroupsAPI
+    Contacts --> GroupDetailAPI
+    Contacts --> ContactTypesAPI
+    
+    Requests --> RequestsAPI
+    Requests --> RequestDetailAPI
+    Requests --> RequestMsgsAPI
+    
+    Review --> ReviewMsgAPI
+    Review --> ReviewAnalyzeAPI
+    Review --> ReviewDraftAPI
+    Review --> RequestReplyAPI
+    
+    Settings --> OrgSettingsAPI
+    Settings --> UserSigAPI
+    SettingsTeam --> OrgUsersAPI
+    SettingsTeam --> EmailAccountsAPI
+    SettingsAccounting --> OrgCalendarAPI
+    
+    SignUp --> AuthSignupAPI
+    AcceptInvite --> AuthAcceptAPI
+    VerifyEmail --> AuthVerifyAPI
+    ForgotPwd --> AuthPwdAPI
+    ResetPwd --> AuthPwdAPI
+
+    %% API to Service connections
+    TaskInstancesAPI --> TaskInstanceSvc
+    TaskInstanceDetailAPI --> TaskInstanceSvc
+    BoardsAPI --> BoardSvc
+    BoardDetailAPI --> BoardSvc
+    EntitiesAPI --> EntitySvc
+    GroupsAPI --> GroupSvc
+    RequestDetailAPI --> RiskSvc
+    ReviewAnalyzeAPI --> AIClassificationSvc
+    TaskRequestAPI --> EmailDraftSvc
+    TaskRequestAPI --> AIEmailGenSvc
+    TaskCollectionAPI --> EvidenceSvc
+    TaskTableAPI --> TableTaskSvc
+    QuestsAPI --> QuestSvc
+    QuestExecAPI --> QuestSvc
+    AuthSignupAPI --> AuthEmailSvc
+    UserOnboardAPI --> OnboardingSvc
+    
+    %% Service to Database connections
+    TaskInstanceSvc --> Prisma
+    BoardSvc --> Prisma
+    EntitySvc --> Prisma
+    GroupSvc --> Prisma
+    EmailSendingSvc --> Prisma
+    EmailSyncSvc --> Prisma
+    EvidenceSvc --> Prisma
+    QuestSvc --> Prisma
+    ReminderSvc --> Prisma
+    RiskSvc --> Prisma
+    TableTaskSvc --> Prisma
+
+    %% External system connections
+    InngestHandler --> ClassifyMsg
+    InngestHandler --> SummarizeTask
+    InngestHandler --> SyncGmail
+    InngestHandler --> SyncMicrosoft
+    InngestHandler --> SendReminders
+    InngestHandler --> QuestStanding
+    InngestHandler --> ProcessQueue
+    
+    ClassifyMsg --> AIClassificationSvc
+    SummarizeTask --> AIClassificationSvc
+    SyncGmail --> EmailSyncSvc
+    SyncMicrosoft --> EmailSyncSvc
+    SendReminders --> ReminderSvc
+    QuestStanding --> QuestSvc
+    ProcessQueue --> EmailSendingSvc
+    
+    EmailSyncSvc --> GmailAPI
+    EmailSyncSvc --> MicrosoftGraph
+    EmailSendingSvc --> GmailAPI
+    EmailSendingSvc --> MicrosoftGraph
+    
+    AIClassificationSvc --> OpenAI
+    AIEmailGenSvc --> OpenAI
+    RiskSvc --> OpenAI
+    
+    WebhookGmail --> EmailSyncSvc
+    OAuthGmail --> EmailSyncSvc
+    OAuthMicrosoft --> EmailSyncSvc
+    TrackingPixel --> RiskSvc

@@ -21,9 +21,9 @@ export async function POST(request: NextRequest) {
   try {
     console.log(`[Cleanup] Starting cleanup of all requests for organization ${session.user.organizationId}...`)
     
-    // Delete all tasks for this organization
+    // Delete all requests for this organization
     // Messages will be automatically deleted due to CASCADE constraint
-    const deletedTasks = await prisma.task.deleteMany({
+    const deletedTasks = await prisma.request.deleteMany({
       where: {
         organizationId: session.user.organizationId
       }

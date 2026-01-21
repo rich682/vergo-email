@@ -28,7 +28,7 @@ export class EmailDraftService {
       data: {
         organizationId: data.organizationId,
         userId: data.userId,
-        jobId: data.jobId || null,  // Persist jobId at creation time
+        taskInstanceId: data.jobId || null,  // Persist taskInstanceId at creation time
         prompt: data.prompt,
         generatedSubject: data.generatedSubject,
         generatedBody: data.generatedBody,
@@ -96,7 +96,7 @@ export class EmailDraftService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "subjectTemplate" | "bodyTemplate" | "htmlBodyTemplate" | "availableTags" | "personalizationMode" | "blockOnMissingValues" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus" | "sentAt">>
+    data: Partial<Pick<EmailDraft, "generatedSubject" | "generatedBody" | "generatedHtmlBody" | "subjectTemplate" | "bodyTemplate" | "htmlBodyTemplate" | "availableTags" | "personalizationMode" | "blockOnMissingValues" | "suggestedRecipients" | "suggestedCampaignName" | "suggestedCampaignType" | "status" | "aiGenerationStatus" | "sentAt" | "deadlineDate">>
   ): Promise<EmailDraft> {
     const updateData: any = { ...data }
     

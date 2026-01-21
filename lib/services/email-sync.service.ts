@@ -251,7 +251,7 @@ export class EmailSyncService {
       })
 
       processed++
-      if (result.taskId) {
+      if (result.requestId) {
         repliesPersisted++
       }
     }

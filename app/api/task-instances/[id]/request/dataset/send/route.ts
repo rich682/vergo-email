@@ -127,14 +127,14 @@ export async function POST(
         const sendResult = await EmailSendingService.sendEmail({
           organizationId,
           userId,
-          taskInstanceId,
+          jobId: taskInstanceId,
           to: recipient.recipientEmail,
           toName: recipientName,
           subject: subjectResult.rendered,
           body: bodyResult.rendered,
           htmlBody,
           campaignName,
-          campaignType: CampaignType.DOCUMENT_REQUEST,
+          campaignType: CampaignType.CUSTOM,
           deadlineDate: instance.dueDate || undefined,
           remindersConfig: reminderConfig?.enabled ? {
             enabled: true,

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       },
       select: {
         id: true,
-        taskId: true,
+        requestId: true,
         fromAddress: true,
         toAddress: true,
         subject: true,
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         providerData: true,
         isAutoReply: true,
         attachments: true,
-        task: {
+        request: {
           select: {
             id: true,
             organizationId: true,
@@ -54,13 +54,13 @@ export async function GET(request: NextRequest) {
     const orgInboundMessages = await prisma.message.findMany({
       where: {
         direction: "INBOUND",
-        task: {
+        request: {
           organizationId: session.user.organizationId
         }
       },
       select: {
         id: true,
-        taskId: true,
+        requestId: true,
         fromAddress: true,
         toAddress: true,
         subject: true,
@@ -78,13 +78,13 @@ export async function GET(request: NextRequest) {
     const outboundMessages = await prisma.message.findMany({
       where: {
         direction: "OUTBOUND",
-        task: {
+        request: {
           organizationId: session.user.organizationId
         }
       },
       select: {
         id: true,
-        taskId: true,
+        requestId: true,
         toAddress: true,
         subject: true,
         messageIdHeader: true,
@@ -125,8 +125,8 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Get tasks with replies
-    const tasksWithReplies = await prisma.task.findMany({
+    // Get requests with replies
+    const tasksWithReplies = await prisma.request.findMany({
       where: {
         organizationId: session.user.organizationId,
         status: {
@@ -157,8 +157,8 @@ export async function GET(request: NextRequest) {
         filename: true,
         submittedBy: true,
         receivedAt: true,
-        taskId: true,
-        jobId: true
+        requestId: true,
+        taskInstanceId: true
       },
       orderBy: {
         receivedAt: "desc"
@@ -177,14 +177,14 @@ export async function GET(request: NextRequest) {
       },
       allInboundMessages: allInboundMessages.map(m => ({
         id: m.id,
-        taskId: m.taskId,
+        requestId: m.requestId,
         from: m.fromAddress,
         to: m.toAddress,
         subject: m.subject?.substring(0, 60),
         createdAt: m.createdAt,
         isAutoReply: m.isAutoReply,
         hasAttachments: !!m.attachments,
-        taskOrgId: m.task?.organizationId,
+        taskOrgId: m.request?.organizationId,
         providerData: m.providerData ? {
           provider: (m.providerData as any)?.provider,
           inReplyTo: (m.providerData as any)?.inReplyTo,

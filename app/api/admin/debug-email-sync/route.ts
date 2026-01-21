@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
         if (resetCursor) {
           await prisma.connectedEmailAccount.update({
             where: { id: account.id },
-            data: { syncCursor: null }
+            data: { syncCursor: undefined }
           })
           result.cursorReset = true
           result.message = "Cursor reset - next sync will do a fresh 24h scan"

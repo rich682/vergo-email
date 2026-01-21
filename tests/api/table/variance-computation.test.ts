@@ -119,11 +119,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -181,11 +181,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -238,11 +238,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -287,11 +287,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -336,11 +336,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -385,11 +385,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       if (args.where?.lineageId && args.where?.isSnapshot) return Promise.resolve(mockTaskInstances.get(priorId))
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 
@@ -418,11 +418,11 @@ describe('Variance Computation Tests', () => {
     })
 
     const { prisma } = await import('@/lib/prisma')
-    vi.mocked(prisma.taskInstance.findFirst).mockImplementation((args: any) => {
+    vi.mocked(prisma.taskInstance.findFirst).mockImplementation(((args: any) => {
       if (args.where?.id === currentId) return Promise.resolve(mockTaskInstances.get(currentId))
       // No prior snapshot
       return Promise.resolve(null)
-    })
+    }) as any)
 
     const deltas = await TableTaskService.getMoMDeltas(currentId, testOrgId)
 

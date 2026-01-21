@@ -5,35 +5,7 @@ import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
-
-// In-memory rate limiting (best-effort, resets on cold start)
-// This is acceptable for serverless as it provides some protection without external dependencies
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
-const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10 // 10 requests per minute per org
-
-// Export for testing - allows resetting rate limit state between tests
-export function _resetRateLimitForTesting() {
-  rateLimitMap.clear()
-}
-
-function checkRateLimit(orgId: string): { allowed: boolean; retryAfterMs?: number } {
-  const now = Date.now()
-  const entry = rateLimitMap.get(orgId)
-  
-  if (!entry || now > entry.resetAt) {
-    // Start new window
-    rateLimitMap.set(orgId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return { allowed: true }
-  }
-  
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, retryAfterMs: entry.resetAt - now }
-  }
-  
-  entry.count++
-  return { allowed: true }
-}
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
@@ -133,7 +105,7 @@ export async function POST(request: NextRequest) {
       // If we have recipients, also derive tags from their actual contact state metadata
       if (selectedKeys.length > 0 && resolvedRecipients.recipients.length > 0) {
         for (const recipient of resolvedRecipients.recipients) {
-          const data = buildRecipientPersonalizationData(recipient, selectedKeys)
+          const data = buildRecipientPersonalizationData(recipient)
           for (const key of Object.keys(data)) {
             dataKeys.add(key)
           }

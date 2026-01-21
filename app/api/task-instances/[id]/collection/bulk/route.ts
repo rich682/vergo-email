@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectionService } from "@/lib/services/collection.service"
+import { EvidenceService } from "@/lib/services/evidence.service"
 import { CollectedItemStatus } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
@@ -50,12 +50,12 @@ export async function POST(
       )
     }
 
-    // Verify all items belong to this job
+    // Verify all items belong to this task instance
     const items = await prisma.collectedItem.findMany({
       where: {
         id: { in: ids },
         organizationId,
-        jobId
+        taskInstanceId: jobId
       },
       select: { id: true }
     })
@@ -63,20 +63,20 @@ export async function POST(
     const validIds = items.map(i => i.id)
     if (validIds.length !== ids.length) {
       return NextResponse.json(
-        { error: "Some items not found or don't belong to this job" },
+        { error: "Some items not found or don't belong to this task" },
         { status: 400 }
       )
     }
 
     switch (action) {
       case "approve": {
-        const result = await CollectionService.bulkUpdateStatus(
+        const result = await EvidenceService.bulkUpdateStatus(
           validIds,
           organizationId,
           "APPROVED" as CollectedItemStatus,
           userId
         )
-        const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+        const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
           updated: result.updated,
@@ -85,13 +85,13 @@ export async function POST(
       }
 
       case "reject": {
-        const result = await CollectionService.bulkUpdateStatus(
+        const result = await EvidenceService.bulkUpdateStatus(
           validIds,
           organizationId,
           "REJECTED" as CollectedItemStatus,
           userId
         )
-        const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+        const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
           updated: result.updated,
@@ -100,13 +100,13 @@ export async function POST(
       }
 
       case "reset": {
-        const result = await CollectionService.bulkUpdateStatus(
+        const result = await EvidenceService.bulkUpdateStatus(
           validIds,
           organizationId,
           "UNREVIEWED" as CollectedItemStatus,
           userId
         )
-        const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+        const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
           updated: result.updated,
@@ -116,7 +116,7 @@ export async function POST(
 
       case "download": {
         // Return list of files for client-side download
-        const files = await CollectionService.getBulkDownloadFiles(validIds, organizationId)
+        const files = await EvidenceService.getBulkDownloadFiles(validIds, organizationId)
         return NextResponse.json({
           success: true,
           files,
@@ -128,13 +128,13 @@ export async function POST(
         let deleted = 0
         for (const id of validIds) {
           try {
-            await CollectionService.delete(id, organizationId)
+            await EvidenceService.delete(id, organizationId)
             deleted++
           } catch (error) {
             console.error(`Error deleting item ${id}:`, error)
           }
         }
-        const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+        const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
           deleted,

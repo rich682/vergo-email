@@ -29,14 +29,14 @@ export const functions = [
     { id: "classify-message" },
     { event: "message/classify" },
     async ({ event }) => {
-      const { messageId, taskId } = event.data
+      const { messageId, taskId } = event.data // taskId is actually requestId
 
       try {
-        // Fetch the message and task
+        // Fetch the message and request
         const message = await prisma.message.findUnique({
           where: { id: messageId },
           include: {
-            task: {
+            request: {
               include: {
                 entity: true,
                 messages: {
@@ -74,19 +74,19 @@ export const functions = [
           }
         })
 
-        // Stop reminders for this recipient/task, but only if not a bounce or out-of-office
+        // Stop reminders for this recipient/request, but only if not a bounce or out-of-office
         // Bounces should NOT stop reminders since they indicate delivery issues
-        if (message.task?.entityId) {
+        if (message.request?.entityId) {
           await ReminderStateService.stopForReplyIfNotBounce(
-            message.taskId!,
-            message.task.entityId,
+            message.requestId!,
+            message.request.entityId,
             classification.classification
           )
         }
 
-        // Analyze reply intent to determine if task is fulfilled
-        if (taskId && message.task) {
-          const task = message.task
+        // Analyze reply intent to determine if request is fulfilled
+        if (taskId && message.request) {
+          const task = message.request
           const latestOutboundMessage = task.messages[0] // Already filtered to OUTBOUND and sorted desc
 
           // Build context for intent analysis
@@ -182,19 +182,19 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   : { completionAnalysis: reasoning }
               }
 
-              await prisma.task.update({
+              await prisma.request.update({
                 where: { id: taskId },
                 data: updateData
               })
               
-              console.log(`[Message Classification] Task ${taskId} completion: ${completionPercentage}% (${confidence}) - "${reasoning.substring(0, 100)}" - status NOT auto-changed`)
+              console.log(`[Message Classification] Request ${taskId} completion: ${completionPercentage}% (${confidence}) - "${reasoning.substring(0, 100)}" - status NOT auto-changed`)
 
               // NOTE: AutomationEngineService disabled - user should decide status manually
               // If automation rules are needed in the future, they should NOT auto-change status
 
               // Trigger risk recomputation after classification completes
               // Only recompute if no manual override exists (manual overrides take precedence)
-              const updatedTaskForRisk = await prisma.task.findUnique({
+              const updatedTaskForRisk = await prisma.request.findUnique({
                 where: { id: taskId },
                 include: {
                   messages: {
@@ -234,7 +234,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   })
 
                   // Persist risk computation (respecting that manual override check was already done)
-                  await prisma.task.update({
+                  await prisma.request.update({
                     where: { id: taskId },
                     data: {
                       readStatus: llmRiskResult.readStatus,
@@ -248,7 +248,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                     }
                   })
 
-                  console.log(`[Risk Computation] Task ${taskId} risk updated after reply: ${llmRiskResult.riskLevel} - ${llmRiskResult.riskReason}`)
+                  console.log(`[Risk Computation] Request ${taskId} risk updated after reply: ${llmRiskResult.riskLevel} - ${llmRiskResult.riskReason}`)
                   
                   // Structured log for RAG computation (LLM path)
                   const recipientHash = createHash('sha256').update((latestInboundForRisk.fromAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
@@ -280,7 +280,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                     deadlineDate: updatedTaskForRisk.deadlineDate || null
                   })
                   
-                  await prisma.task.update({
+                  await prisma.request.update({
                     where: { id: taskId },
                     data: {
                       readStatus: deterministicRisk.readStatus,
@@ -290,7 +290,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                     }
                   })
 
-                  console.log(`[Risk Computation] Task ${taskId} risk updated (deterministic fallback): ${deterministicRisk.riskLevel} - ${deterministicRisk.riskReason}`)
+                  console.log(`[Risk Computation] Request ${taskId} risk updated (deterministic fallback): ${deterministicRisk.riskLevel} - ${deterministicRisk.riskReason}`)
                   
                   // Structured log for RAG computation (deterministic fallback)
                   const recipientHash = createHash('sha256').update((latestInboundForRisk.fromAddress || '').toLowerCase().trim()).digest('hex').substring(0, 16)
@@ -307,7 +307,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
                   }))
                 }
               } else if (updatedTaskForRisk?.manualRiskOverride) {
-                console.log(`[Risk Computation] Task ${taskId} has manual override (${updatedTaskForRisk.manualRiskOverride}), skipping automatic risk recomputation`)
+                console.log(`[Risk Computation] Request ${taskId} has manual override (${updatedTaskForRisk.manualRiskOverride}), skipping automatic risk recomputation`)
               }
             } catch (parseError) {
               console.error(`Error parsing intent analysis for task ${taskId}:`, parseError)
@@ -333,8 +333,8 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
       const { taskId, messageId } = event.data
 
       try {
-        // Fetch task with related data
-        const task = await prisma.task.findUnique({
+        // Fetch request with related data
+        const task = await prisma.request.findUnique({
           where: { id: taskId },
           include: {
             entity: true,
@@ -346,7 +346,7 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
         })
 
         if (!task) {
-          console.error(`Task ${taskId} not found`)
+          console.error(`Request ${taskId} not found`)
           return { success: false, error: "Task not found" }
         }
 
@@ -432,8 +432,8 @@ Use plain language. Be concise.`
         // Validate confidence value
         const validConfidence = ["High", "Medium", "Low"].includes(confidence) ? confidence : "Medium"
 
-        // Update task with summary
-        await prisma.task.update({
+        // Update request with summary
+        await prisma.request.update({
           where: { id: taskId },
           data: {
             aiSummary: summary,
@@ -671,7 +671,7 @@ Use plain language. Be concise.`
             // The rate limit has already passed (that's why it's in the queue)
             await EmailSendingService.sendEmail({
               organizationId: email.organizationId,
-              jobId: email.jobId || undefined,
+              jobId: email.taskInstanceId || undefined,
               to: email.toEmail,
               subject: email.subject,
               body: email.body,

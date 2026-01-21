@@ -44,9 +44,9 @@ async function wipeData() {
     const messages = await prisma.message.deleteMany({})
     console.log(`  ✓ Deleted ${messages.count} messages`)
 
-    // 6. Delete tasks (email requests)
-    const tasks = await prisma.task.deleteMany({})
-    console.log(`  ✓ Deleted ${tasks.count} tasks`)
+    // 6. Delete requests (email requests)
+    const tasks = await prisma.request.deleteMany({})
+    console.log(`  ✓ Deleted ${tasks.count} requests`)
 
     // 7. Delete email drafts
     const emailDrafts = await prisma.emailDraft.deleteMany({})

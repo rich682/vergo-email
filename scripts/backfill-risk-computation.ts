@@ -23,7 +23,7 @@ async function backfillRiskComputation() {
     // 1. Tasks with replies but missing riskLevel OR readStatus
     // 2. Tasks with opens but missing readStatus OR riskLevel
     // 3. Skip tasks with manual overrides (they already have manual risk set)
-    const tasksNeedingRisk = await prisma.task.findMany({
+    const tasksNeedingRisk = await prisma.request.findMany({
       where: {
         manualRiskOverride: null, // Skip manually overridden tasks
         OR: [
@@ -72,7 +72,7 @@ async function backfillRiskComputation() {
     for (const task of tasksNeedingRisk) {
       try {
         // Check if manual override was set after we fetched (race condition check)
-        const currentTask = await prisma.task.findUnique({
+        const currentTask = await prisma.request.findUnique({
           where: { id: task.id },
           select: { manualRiskOverride: true }
         })
@@ -200,8 +200,8 @@ async function backfillRiskComputation() {
           lastActivityAt: latestInboundMessage?.createdAt || task.lastActivityAt || task.updatedAt
         }) || latestInboundMessage?.createdAt || lastOpenedAt || openedAt || task.updatedAt
 
-        // Update task with risk computation
-        await prisma.task.update({
+        // Update request with risk computation
+        await prisma.request.update({
           where: { id: task.id },
           data: {
             readStatus: riskResult.readStatus,

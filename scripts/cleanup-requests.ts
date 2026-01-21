@@ -14,9 +14,9 @@ async function cleanupRequests() {
   try {
     console.log("[Cleanup] Starting cleanup of all requests...")
     
-    // Delete all tasks (Messages will cascade delete automatically)
-    const deletedTasks = await prisma.task.deleteMany({})
-    console.log(`[Cleanup] Deleted ${deletedTasks.count} tasks (and their associated messages)`)
+    // Delete all requests (Messages will cascade delete automatically)
+    const deletedTasks = await prisma.request.deleteMany({})
+    console.log(`[Cleanup] Deleted ${deletedTasks.count} requests (and their associated messages)`)
 
     // Delete all email drafts (PersonalizationData will cascade delete automatically)
     const deletedDrafts = await prisma.emailDraft.deleteMany({})

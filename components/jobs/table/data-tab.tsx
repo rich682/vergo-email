@@ -7,6 +7,9 @@ import { ImportModal } from "./import-modal"
 import { ImportSummaryModal } from "./import-summary-modal"
 import { RowSidePanel } from "./row-side-panel"
 import { TableRowData } from "./table-row"
+import { Button } from "@/components/ui/button"
+import { CheckCircle, Loader2, ShieldCheck } from "lucide-react"
+import { format } from "date-fns"
 
 interface ImportMetadata {
   lastImportedAt?: string
@@ -25,6 +28,22 @@ interface ImportSummary {
   rowsUnchanged: number
   errors: Array<{ row: number; error: string }>
   filename?: string
+}
+
+interface SignoffStatus {
+  datasetSignoff: {
+    signedOffAt: string
+    signedOffBy: string
+    signedOffByEmail: string
+    signedOffByName?: string
+  } | null
+  verificationProgress: {
+    totalRows: number
+    verifiedRows: number
+    percentComplete: number
+  } | null
+  canComplete: boolean
+  completionBlockedReason: string | null
 }
 
 interface DataTabProps {
@@ -56,6 +75,10 @@ export function DataTab({
 
   // Selection state
   const [selectedRowIdentity, setSelectedRowIdentity] = useState<any>(null)
+
+  // Signoff state
+  const [signoffStatus, setSignoffStatus] = useState<SignoffStatus | null>(null)
+  const [signingOff, setSigningOff] = useState(false)
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -103,9 +126,47 @@ export function DataTab({
     }
   }, [lineageId])
 
+  // Fetch signoff status
+  const fetchSignoffStatus = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/task-instances/${taskInstanceId}/table/signoff`,
+        { credentials: "include" }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        setSignoffStatus(data)
+      }
+    } catch (err) {
+      console.error("Error fetching signoff status:", err)
+    }
+  }, [taskInstanceId])
+
+  // Handle signoff
+  const handleSignoff = async () => {
+    setSigningOff(true)
+    try {
+      const response = await fetch(
+        `/api/task-instances/${taskInstanceId}/table/signoff`,
+        {
+          method: "POST",
+          credentials: "include"
+        }
+      )
+      if (response.ok) {
+        await fetchSignoffStatus()
+      }
+    } catch (err) {
+      console.error("Error signing off:", err)
+    } finally {
+      setSigningOff(false)
+    }
+  }
+
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+    fetchSignoffStatus()
+  }, [fetchData, fetchSignoffStatus])
 
   // Handle schema save
   const handleSchemaSave = async (newSchema: TableSchema) => {
@@ -180,6 +241,56 @@ export function DataTab({
 
   return (
     <>
+      {/* Dataset Signoff Bar */}
+      {signoffStatus && !isSnapshot && (
+        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-5 h-5 text-gray-400" />
+            <div>
+              {signoffStatus.datasetSignoff ? (
+                <div>
+                  <span className="text-sm font-medium text-green-700">
+                    Dataset signed off
+                  </span>
+                  <span className="text-sm text-gray-500 ml-2">
+                    by {signoffStatus.datasetSignoff.signedOffByName || signoffStatus.datasetSignoff.signedOffByEmail}
+                    {" on "}
+                    {format(new Date(signoffStatus.datasetSignoff.signedOffAt), "MMM d, yyyy 'at' h:mm a")}
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-sm text-gray-700">
+                    Dataset requires sign-off before completion
+                  </span>
+                  {signoffStatus.verificationProgress && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      ({signoffStatus.verificationProgress.verifiedRows}/{signoffStatus.verificationProgress.totalRows} rows verified)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {!signoffStatus.datasetSignoff && (
+            <Button
+              onClick={handleSignoff}
+              disabled={signingOff}
+              size="sm"
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {signingOff ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              Sign Off Dataset
+            </Button>
+          )}
+        </div>
+      )}
+      
       <TableGrid
         schema={schema}
         rows={rows}

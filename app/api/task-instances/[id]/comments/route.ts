@@ -23,10 +23,7 @@ export async function GET(
     const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : 50
     const offset = searchParams.get("offset") ? parseInt(searchParams.get("offset")!, 10) : 0
 
-    const comments = await TaskInstanceService.getComments(id, organizationId, {
-      limit,
-      offset,
-    })
+    const comments = await TaskInstanceService.getComments(id, organizationId)
 
     return NextResponse.json({
       success: true,

@@ -16,7 +16,7 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const prompt = body.prompt || ""
 
-  const task = await prisma.task.findUnique({
+  const task = await prisma.request.findUnique({
     where: { id: taskId, organizationId: session.user.organizationId },
     include: {
       entity: true,

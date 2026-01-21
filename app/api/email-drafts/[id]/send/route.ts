@@ -160,7 +160,11 @@ export async function POST(
       }
 
       const resolved = await resolveRecipientsWithFilter(session.user.organizationId, selectedRecipients)
-      recipientList = resolved.recipients
+      recipientList = resolved.recipients.map(r => ({
+        email: r.email,
+        name: r.name ?? undefined,
+        entityId: r.entityId ?? undefined
+      }))
     }
 
     if (recipientList.length === 0) {
@@ -429,11 +433,11 @@ export async function POST(
       await PersonalizationDataService.createMany(
         personalizationDataArray.map(data => ({
           ...data,
-          renderSubject: renderedEmails.find(e => e.email === data.recipientEmail)?.subject || null,
-          renderBody: renderedEmails.find(e => e.email === data.recipientEmail)?.body || null,
-          renderHtmlBody: renderedEmails.find(e => e.email === data.recipientEmail)?.htmlBody || null,
+          renderSubject: renderedEmails.find(e => e.email === data.recipientEmail)?.subject ?? undefined,
+          renderBody: renderedEmails.find(e => e.email === data.recipientEmail)?.body ?? undefined,
+          renderHtmlBody: renderedEmails.find(e => e.email === data.recipientEmail)?.htmlBody ?? undefined,
           renderStatus: renderedEmails.find(e => e.email === data.recipientEmail)?.renderStatus || "ok",
-          renderErrors: renderedEmails.find(e => e.email === data.recipientEmail)?.renderErrors || undefined
+          renderErrors: renderedEmails.find(e => e.email === data.recipientEmail)?.renderErrors ?? undefined
         }))
       )
     } else if (personalizationMode === "csv") {
@@ -459,7 +463,7 @@ export async function POST(
     const results = await EmailSendingService.sendBulkEmail({
       organizationId: orgId,
       userId: session.user.id,  // Send from the logged-in user's inbox
-      jobId: draft.jobId || undefined,  // Link tasks directly to Item
+      jobId: draft.taskInstanceId || undefined,  // Link tasks directly to TaskInstance
       recipients: renderedEmails.map(e => ({ email: e.email, name: e.name })),
       subject: subjectTemplate, // Will be overridden per-recipient if personalization
       body: bodyTemplate, // Will be overridden per-recipient if personalization

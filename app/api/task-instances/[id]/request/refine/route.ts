@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { JobService } from "@/lib/services/job.service"
+import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
 import { UserRole } from "@prisma/client"
@@ -64,8 +64,8 @@ export async function POST(
       )
     }
 
-    // Fetch job to verify access and get context
-    const job = await JobService.findById(jobId, organizationId)
+    // Fetch task instance to verify access and get context
+    const job = await TaskInstanceService.findById(jobId, organizationId)
     if (!job) {
       return NextResponse.json(
         { error: "Item not found" },
@@ -74,7 +74,7 @@ export async function POST(
     }
 
     // Check view permission (required to refine draft)
-    const canView = await JobService.canUserAccessJob(userId, userRole, job, 'view')
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, job, 'view')
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },

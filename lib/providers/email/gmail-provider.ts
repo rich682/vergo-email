@@ -136,7 +136,7 @@ export class GmailProvider implements EmailProviderDriver {
     }
   }
 
-  async syncContacts(account: EmailAccount): Promise<ContactSyncResult> {
+  async syncContacts(account: ConnectedEmailAccount): Promise<ContactSyncResult> {
     // Minimal stub: ensure token exists and return informative message.
     if (!account.accessToken) {
       throw new Error("No access token available for Gmail contact sync")

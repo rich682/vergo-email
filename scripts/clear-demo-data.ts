@@ -35,7 +35,7 @@ async function main() {
   // Get counts before deletion
   const boardCount = await prisma.board.count({ where: { organizationId } })
   const jobCount = await prisma.taskInstance.count({ where: { organizationId } })
-  const taskCount = await prisma.task.count({ where: { organizationId } })
+  const taskCount = await prisma.request.count({ where: { organizationId } })
   const reconciliationCount = await prisma.reconciliation.count({ where: { organizationId } })
   const collectedItemCount = await prisma.collectedItem.count({ where: { organizationId } })
   const attachmentCount = await prisma.attachment.count({ where: { organizationId } })
@@ -87,23 +87,23 @@ async function main() {
   })
   console.log(`   ✓ Deleted ${deletedAIRecs.count} AI recommendations`)
 
-  // 5. Delete messages (linked to tasks)
+  // 5. Delete messages (linked to requests)
   const deletedMessages = await prisma.message.deleteMany({
-    where: { task: { organizationId } }
+    where: { request: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedMessages.count} messages`)
 
   // 6. Delete reminder states
   const deletedReminderStates = await prisma.reminderState.deleteMany({
-    where: { task: { organizationId } }
+    where: { request: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedReminderStates.count} reminder states`)
 
-  // 7. Delete tasks (requests)
-  const deletedTasks = await prisma.task.deleteMany({
+  // 7. Delete requests
+  const deletedTasks = await prisma.request.deleteMany({
     where: { organizationId }
   })
-  console.log(`   ✓ Deleted ${deletedTasks.count} tasks/requests`)
+  console.log(`   ✓ Deleted ${deletedTasks.count} requests`)
 
   // 8. Delete email drafts
   const deletedEmailDrafts = await prisma.emailDraft.deleteMany({
@@ -119,13 +119,13 @@ async function main() {
 
   // 10. Delete job comments
   const deletedJobComments = await prisma.taskInstanceComment.deleteMany({
-    where: { job: { organizationId } }
+    where: { taskInstance: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedJobComments.count} job comments`)
 
   // 11. Delete job collaborators
   const deletedJobCollaborators = await prisma.taskInstanceCollaborator.deleteMany({
-    where: { job: { organizationId } }
+    where: { taskInstance: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedJobCollaborators.count} job collaborators`)
 
@@ -159,11 +159,7 @@ async function main() {
   })
   console.log(`   ✓ Deleted ${deletedEmailAudits.count} email send audits`)
 
-  // 17. Delete job column config (reset to defaults)
-  const deletedColumnConfigs = await prisma.taskInstanceColumnConfig.deleteMany({
-    where: { organizationId }
-  })
-  console.log(`   ✓ Deleted ${deletedColumnConfigs.count} column configs`)
+  // 17. Column config cleanup skipped (model removed in schema refactor)
 
   console.log(`\n✅ Done! All data cleared except team members and contacts.`)
   console.log(`   You can now create new boards and tasks for your demo.`)

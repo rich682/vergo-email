@@ -261,7 +261,7 @@ export function ImportModal({
             // Type conversion
             if (col.type === "number" || col.type === "currency" || col.type === "amount" || col.type === "percent") {
               const num = parseFloat(value?.replace(/[^0-9.-]/g, "") || "")
-              value = isNaN(num) ? null : num
+              value = isNaN(num) ? "" : String(num)
             }
             transformed[col.id] = value
           }

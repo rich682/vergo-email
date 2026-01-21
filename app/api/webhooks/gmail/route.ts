@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       const ingestProvider = new GmailIngestProvider()
 
       // Route to correct account: Try to identify account from emailAddress attribute first
-      let accounts = []
+      let accounts: Awaited<ReturnType<typeof prisma.connectedEmailAccount.findMany>> = []
       
       if (emailAddress) {
         // Try to find account by email address from Pub/Sub notification
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
           // Advance cursor if webhook provides a newer historyId (merge existing cursor)
           if (historyId) {
             const existingCursor = (account.syncCursor as ProviderCursor) || {}
-            const currentCursor = existingCursor.gmail ? { ...existingCursor.gmail } : {}
+            const currentCursor = existingCursor.gmail
             const currentHistory =
               currentCursor?.historyId &&
               !Number.isNaN(Number(currentCursor.historyId))

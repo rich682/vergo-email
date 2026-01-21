@@ -145,14 +145,14 @@ export async function PATCH(
     // Build the schema object with defaults
     const schema: TableSchema = {
       columns: columns.map((col: Partial<TableColumn>) => ({
-        id: col.id,
-        label: col.label,
+        id: col.id || "",
+        label: col.label || "",
         type: col.type || "text",
         source: col.source || "imported",
         editPolicy: col.editPolicy || "READ_ONLY_IMPORTED",
         isIdentity: col.id === identityKey,
         isComparable: col.isComparable || false,
-        width: col.width
+        width: col.width || 150
       })),
       identityKey: identityKey || ""
     }

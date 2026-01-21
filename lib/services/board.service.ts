@@ -565,8 +565,8 @@ export class BoardService {
           clientId: prev.clientId,
           status: "NOT_STARTED",
           // Carry forward structured data for TABLE tasks as beginning balance
-          structuredData: prev.type === TaskType.TABLE ? prev.structuredData : null,
-          customFields: prev.customFields,
+          structuredData: prev.type === TaskType.TABLE ? prev.structuredData as any : undefined,
+          customFields: prev.customFields as any,
           labels: prev.labels as any
         }
       })
@@ -633,5 +633,115 @@ export class BoardService {
       statusChanged: true,
       previousStatus
     }
+  }
+
+  /**
+   * Delete a board and all its task instances
+   */
+  static async delete(boardId: string, organizationId: string): Promise<boolean> {
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, organizationId }
+    })
+    if (!board) return false
+
+    // Delete all task instances first
+    await prisma.taskInstance.deleteMany({
+      where: { boardId, organizationId }
+    })
+
+    // Delete the board
+    await prisma.board.delete({
+      where: { id: boardId }
+    })
+
+    return true
+  }
+
+  /**
+   * Archive a board by setting its status to CLOSED
+   */
+  static async archive(boardId: string, organizationId: string): Promise<Board | null> {
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, organizationId }
+    })
+    if (!board) return null
+
+    return prisma.board.update({
+      where: { id: boardId },
+      data: { status: "CLOSED" }
+    })
+  }
+
+  /**
+   * Duplicate a board with all its task instances
+   */
+  static async duplicate(
+    boardId: string,
+    organizationId: string,
+    newName?: string,
+    userId?: string,
+    options?: {
+      newOwnerId?: string
+      newPeriodStart?: Date
+      newPeriodEnd?: Date
+    }
+  ): Promise<Board | null> {
+    const board = await prisma.board.findFirst({
+      where: { id: boardId, organizationId },
+      include: {
+        taskInstances: {
+          include: {
+            collaborators: true
+          }
+        }
+      }
+    })
+    if (!board) return null
+
+    // Create new board with copied fields
+    const newBoard = await prisma.board.create({
+      data: {
+        organizationId,
+        createdById: userId || board.createdById,
+        name: newName || `${board.name} (Copy)`,
+        description: board.description,
+        status: "OPEN",
+        cadence: board.cadence,
+        periodStart: options?.newPeriodStart || board.periodStart,
+        periodEnd: options?.newPeriodEnd || board.periodEnd
+      }
+    })
+
+    // Copy task instances
+    for (const task of board.taskInstances) {
+      const newTask = await prisma.taskInstance.create({
+        data: {
+          organizationId,
+          boardId: newBoard.id,
+          name: task.name,
+          description: task.description,
+          type: task.type,
+          status: "NOT_STARTED",
+          ownerId: options?.newOwnerId || task.ownerId,
+          clientId: task.clientId,
+          labels: task.labels as any,
+          customFields: task.customFields as any
+        }
+      })
+
+      // Copy collaborators
+      if (task.collaborators.length > 0) {
+        await prisma.taskInstanceCollaborator.createMany({
+          data: task.collaborators.map(c => ({
+            taskInstanceId: newTask.id,
+            userId: c.userId,
+            role: c.role,
+            addedBy: c.addedBy
+          }))
+        })
+      }
+    }
+
+    return newBoard
   }
 }

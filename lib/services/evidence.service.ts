@@ -172,7 +172,10 @@ export class EvidenceService {
     await prisma.collectedItem.delete({ where: { id } })
   }
 
-  static async checkTaskApprovalStatus(
+  /**
+   * Check the approval status summary for a task instance
+   */
+  static async checkTaskInstanceApprovalStatus(
     taskInstanceId: string,
     organizationId: string
   ): Promise<ApprovalStatusResult> {
@@ -188,5 +191,182 @@ export class EvidenceService {
     const canComplete = total === 0 || unreviewed === 0
 
     return { total, approved, rejected, unreviewed, canComplete }
+  }
+
+  /**
+   * Bulk update status for multiple items
+   */
+  static async bulkUpdateStatus(
+    ids: string[],
+    organizationId: string,
+    status: CollectedItemStatus,
+    reviewerId: string
+  ): Promise<{ updated: number }> {
+    const result = await prisma.collectedItem.updateMany({
+      where: {
+        id: { in: ids },
+        organizationId
+      },
+      data: {
+        status,
+        reviewedBy: reviewerId,
+        reviewedAt: new Date(),
+        rejectionReason: null
+      }
+    })
+
+    return { updated: result.count }
+  }
+
+  /**
+   * Get a single collected item by ID
+   */
+  static async getById(
+    id: string,
+    organizationId: string
+  ): Promise<CollectedItem | null> {
+    return prisma.collectedItem.findFirst({
+      where: { id, organizationId },
+      include: {
+        request: {
+          select: {
+            id: true,
+            campaignName: true,
+            entity: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true
+              }
+            }
+          }
+        },
+        message: {
+          select: {
+            id: true,
+            subject: true,
+            createdAt: true
+          }
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    })
+  }
+
+  /**
+   * Get files for bulk download
+   */
+  static async getBulkDownloadFiles(
+    ids: string[],
+    organizationId: string
+  ): Promise<Array<{ id: string; filename: string; fileKey: string }>> {
+    const items = await prisma.collectedItem.findMany({
+      where: {
+        id: { in: ids },
+        organizationId
+      },
+      select: {
+        id: true,
+        filename: true,
+        fileKey: true
+      }
+    })
+
+    return items
+  }
+
+  /**
+   * Update notes on a collected item
+   */
+  static async updateNotes(
+    id: string,
+    organizationId: string,
+    notes: string | null
+  ): Promise<CollectedItem> {
+    const existing = await prisma.collectedItem.findFirst({
+      where: { id, organizationId }
+    })
+
+    if (!existing) {
+      throw new Error("Evidence item not found")
+    }
+
+    return prisma.collectedItem.update({
+      where: { id },
+      data: { notes }
+    })
+  }
+
+  /**
+   * Get download URL for a collected item
+   */
+  static async getDownloadUrl(
+    id: string,
+    organizationId: string
+  ): Promise<{ url: string; filename: string }> {
+    const item = await prisma.collectedItem.findFirst({
+      where: { id, organizationId }
+    })
+
+    if (!item) {
+      throw new Error("Evidence item not found")
+    }
+
+    const storage = getStorageService()
+    const url = await storage.getUrl(item.fileKey)
+
+    return { url, filename: item.filename }
+  }
+
+  /**
+   * Export metadata for collected items as CSV-ready data
+   */
+  static async exportMetadata(
+    taskInstanceId: string,
+    organizationId: string
+  ): Promise<Array<{
+    filename: string
+    submittedBy: string | null
+    submittedByName: string | null
+    receivedAt: Date
+    source: string
+    status: string
+    reviewedBy: string | null
+    reviewedAt: Date | null
+    requestName: string | null
+    notes: string | null
+  }>> {
+    const items = await prisma.collectedItem.findMany({
+      where: { taskInstanceId, organizationId },
+      include: {
+        request: {
+          select: { campaignName: true }
+        },
+        reviewer: {
+          select: { name: true, email: true }
+        }
+      },
+      orderBy: { receivedAt: "desc" }
+    })
+
+    return items.map(item => ({
+      filename: item.filename,
+      submittedBy: item.submittedBy,
+      submittedByName: item.submittedByName,
+      receivedAt: item.receivedAt,
+      source: item.source,
+      status: item.status,
+      reviewedBy: item.reviewer?.name || item.reviewer?.email || null,
+      reviewedAt: item.reviewedAt,
+      requestName: item.request?.campaignName || null,
+      notes: item.notes
+    }))
   }
 }

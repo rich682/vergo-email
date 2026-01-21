@@ -21,8 +21,8 @@ export async function GET(
   }
 
   try {
-    // Verify task belongs to org
-    const task = await prisma.task.findFirst({
+    // Verify request belongs to org
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
@@ -47,7 +47,7 @@ export async function GET(
     // Get reminder state
     const reminderState = await prisma.reminderState.findFirst({
       where: {
-        taskId: params.id
+        requestId: params.id
       },
       select: {
         id: true,
@@ -110,8 +110,8 @@ export async function DELETE(
   }
 
   try {
-    // Verify task belongs to org
-    const task = await prisma.task.findFirst({
+    // Verify request belongs to org
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
@@ -128,7 +128,7 @@ export async function DELETE(
     // Cancel reminders by setting stoppedReason
     await prisma.reminderState.updateMany({
       where: {
-        taskId: params.id
+        requestId: params.id
       },
       data: {
         stoppedReason: "cancelled",
@@ -136,8 +136,8 @@ export async function DELETE(
       }
     })
 
-    // Also disable reminders on the task
-    await prisma.task.update({
+    // Also disable reminders on the request
+    await prisma.request.update({
       where: { id: params.id },
       data: {
         remindersEnabled: false

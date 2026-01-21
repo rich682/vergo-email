@@ -283,9 +283,9 @@ export async function GET(request: NextRequest) {
   // 9. Task/Request statistics
   try {
     const [totalTasks, awaitingTasks, fulfilledTasks, totalJobs] = await Promise.all([
-      prisma.task.count({ where: { organizationId } }),
-      prisma.task.count({ where: { organizationId, status: "AWAITING_RESPONSE" } }),
-      prisma.task.count({ where: { organizationId, status: "FULFILLED" } }),
+      prisma.request.count({ where: { organizationId } }),
+      prisma.request.count({ where: { organizationId, status: "AWAITING_RESPONSE" } }),
+      prisma.request.count({ where: { organizationId, status: "FULFILLED" } }),
       prisma.taskInstance.count({ where: { organizationId } })
     ])
 

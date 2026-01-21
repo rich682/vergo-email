@@ -283,7 +283,7 @@ export class TaskInstanceLabelService {
         metadata: tl.metadata as Record<string, string | number | null>,
         taskInstanceLabel: {
           ...tl.taskInstanceLabel,
-          metadataSchema: tl.taskInstanceLabel.metadataSchema as MetadataFieldSchema[],
+          metadataSchema: tl.taskInstanceLabel.metadataSchema as unknown as MetadataFieldSchema[],
         },
       })),
     }))

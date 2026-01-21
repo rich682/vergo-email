@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         where: {
           direction: "OUTBOUND",
           openedAt: { not: null },
-          task: {
+          request: {
             organizationId: session.user.organizationId
           }
         },
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       prisma.message.findFirst({
         where: {
           direction: "INBOUND",
-          task: {
+          request: {
             organizationId: session.user.organizationId
           }
         },
@@ -78,11 +78,10 @@ export async function GET(request: NextRequest) {
         select: { createdAt: true }
       }),
       // Last RAG update: most recent risk level update
-      prisma.task.findFirst({
+      prisma.request.findFirst({
         where: {
           organizationId: session.user.organizationId,
-          riskLevel: { not: null },
-          updatedAt: { not: null }
+          riskLevel: { not: undefined }
         },
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true }

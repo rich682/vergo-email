@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskStatus } from "@prisma/client"
 
+// Note: Request model is @@map("Task") in Prisma schema, so prisma.request maps to Task table
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -17,7 +19,7 @@ export async function GET(
     )
   }
 
-  const task = await prisma.task.findFirst({
+  const task = await prisma.request.findFirst({
     where: {
       id: params.id,
       organizationId: session.user.organizationId
@@ -99,7 +101,7 @@ export async function PATCH(
     }
 
     // Check if task exists and belongs to user's organization
-    const task = await prisma.task.findFirst({
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
@@ -117,7 +119,7 @@ export async function PATCH(
     const newStatus: TaskStatus = status === "CLEAR" ? "AWAITING_RESPONSE" : status as TaskStatus
 
     // Update task status
-    const updatedTask = await prisma.task.update({
+    const updatedTask = await prisma.request.update({
       where: { id: params.id },
       data: { status: newStatus },
       include: {

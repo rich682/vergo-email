@@ -159,7 +159,7 @@ export class MicrosoftProvider implements EmailProviderDriver {
     }
   }
 
-  async syncContacts(account: EmailAccount): Promise<ContactSyncResult & { contacts?: Array<{ name: string; email: string }> }> {
+  async syncContacts(account: ConnectedEmailAccount): Promise<ContactSyncResult & { contacts?: Array<{ name: string; email: string }> }> {
     const { token } = await this.getAccessToken(account)
     const resp = await fetch(`${GRAPH_BASE}/me/contacts?$select=id,displayName,emailAddresses`, {
       headers: { Authorization: `Bearer ${token}` },

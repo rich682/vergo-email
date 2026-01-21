@@ -12,11 +12,11 @@ export async function GET(
     console.log(`[Tracking Pixel] Referer: ${request.headers.get('referer') || 'none'}`)
     console.log(`[Tracking Pixel] User-Agent: ${request.headers.get('user-agent') || 'none'}`)
     
-    // Find message by tracking token with task and related data
+    // Find message by tracking token with request and related data
     const message = await prisma.message.findUnique({
       where: { trackingToken: params.token },
       include: {
-        task: {
+        request: {
           include: {
             messages: {
               where: { direction: "INBOUND" },
@@ -44,9 +44,9 @@ export async function GET(
       })
     }
 
-    const task = message.task
+    const task = message.request
     if (!task) {
-      console.error(`[Tracking Pixel] Task not found for message ${message.id}`)
+      console.error(`[Tracking Pixel] Request not found for message ${message.id}`)
       // Still return pixel
       const pixel = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -96,9 +96,9 @@ export async function GET(
         deadlineDate: task.deadlineDate || null
       })
 
-      // Update task with readStatus, riskLevel, riskReason, and lastActivityAt
+      // Update request with readStatus, riskLevel, riskReason, and lastActivityAt
       // Note: readStatus is determined from openedAt + hasReplies, not stored separately
-      await prisma.task.update({
+      await prisma.request.update({
         where: { id: task.id },
         data: {
           readStatus: riskComputation.readStatus,
@@ -124,7 +124,7 @@ export async function GET(
       }))
     } else {
       // Manual override exists - only update lastActivityAt, not risk
-      await prisma.task.update({
+      await prisma.request.update({
         where: { id: task.id },
         data: {
           lastActivityAt: now

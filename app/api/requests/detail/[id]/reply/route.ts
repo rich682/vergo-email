@@ -21,7 +21,7 @@ export async function POST(
     const body = await request.json()
     const { body: replyBody } = body
 
-    const task = await prisma.task.findFirst({
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
@@ -38,7 +38,7 @@ export async function POST(
       )
     }
 
-    if (!task.entity.email) {
+    if (!task.entity?.email) {
       return NextResponse.json(
         { error: "Entity email not found" },
         { status: 400 }
@@ -48,7 +48,7 @@ export async function POST(
     // Find the last message in the conversation to get threading info
     // Prefer the most recent message (either inbound or outbound) for In-Reply-To
     const lastMessage = await prisma.message.findFirst({
-      where: { taskId: task.id },
+      where: { requestId: task.id },
       orderBy: { createdAt: "desc" }
     })
 
@@ -90,9 +90,9 @@ export async function POST(
     // Send reply using existing task method with threading headers
     const sent = await EmailSendingService.sendEmailForExistingTask({
       taskId: task.id,
-      entityId: task.entityId,
+      entityId: task.entityId!,
       organizationId: session.user.organizationId,
-      to: task.entity.email,
+      to: task.entity!.email,
       subject: replySubject,
       body: replyBody,
       htmlBody: replyBody, // Treat as HTML

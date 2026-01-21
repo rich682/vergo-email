@@ -16,6 +16,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
+import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
 
@@ -68,14 +69,15 @@ export async function GET(
 
     // Check for prior snapshot if TABLE task and in a recurring board
     let priorSnapshotExists = false
-    if (taskInstance.type === 'TABLE' && taskInstance.lineageId && taskInstance.board?.periodStart) {
+    const boardWithPeriod = taskInstance.board as { id: string; name: string; periodStart?: Date | null } | null
+    if (taskInstance.type === 'TABLE' && taskInstance.lineageId && boardWithPeriod?.periodStart) {
       const prior = await prisma.taskInstance.findFirst({
         where: {
           lineageId: taskInstance.lineageId,
           organizationId,
           isSnapshot: true,
           board: {
-            periodStart: { lt: taskInstance.board.periodStart }
+            periodStart: { lt: boardWithPeriod.periodStart }
           }
         }
       })

@@ -27,9 +27,7 @@ export async function GET(request: NextRequest) {
     {
       search: search || undefined,
       groupId: groupId || undefined,
-      contactType,
-      stateKey,
-      stateKeys
+      contactType
     }
   )
 

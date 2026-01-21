@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { CollectionService } from "@/lib/services/collection.service"
+import { EvidenceService } from "@/lib/services/evidence.service"
 import { CollectedItemStatus, CollectedItemSource } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
@@ -91,27 +91,27 @@ export async function GET(
     // Parse query params for filters
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") as CollectedItemStatus | null
-    const taskId = searchParams.get("taskId")
+    const requestId = searchParams.get("requestId")
     const source = searchParams.get("source") as CollectedItemSource | null
 
     const filters: {
       status?: CollectedItemStatus
-      taskId?: string
+      requestId?: string
       source?: CollectedItemSource
     } = {}
 
     if (status && ["UNREVIEWED", "APPROVED", "REJECTED"].includes(status)) {
       filters.status = status
     }
-    if (taskId) {
-      filters.taskId = taskId
+    if (requestId) {
+      filters.requestId = requestId
     }
     if (source && ["EMAIL_REPLY", "MANUAL_UPLOAD"].includes(source)) {
       filters.source = source
     }
 
-    const items = await CollectionService.getByJobId(jobId, organizationId, filters)
-    const approvalStatus = await CollectionService.checkJobApprovalStatus(jobId, organizationId)
+    const items = await EvidenceService.getByTaskInstanceId(jobId, organizationId, filters)
+    const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
 
     return NextResponse.json({
       success: true,
@@ -158,7 +158,7 @@ export async function POST(
     // Parse multipart form data
     const formData = await request.formData()
     const file = formData.get("file") as File | null
-    const taskId = formData.get("taskId") as string | null
+    const requestId = formData.get("requestId") as string | null
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
@@ -186,10 +186,10 @@ export async function POST(
     const buffer = Buffer.from(arrayBuffer)
 
     // Create collected item
-    const item = await CollectionService.createFromUpload({
+    const item = await EvidenceService.createFromUpload({
       organizationId,
-      jobId,
-      taskId: taskId || undefined,
+      taskInstanceId: jobId,
+      requestId: requestId || undefined,
       file: buffer,
       filename: file.name,
       mimeType: file.type || undefined,

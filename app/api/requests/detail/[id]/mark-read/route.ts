@@ -20,8 +20,8 @@ export async function POST(
   }
 
   try {
-    // Find the task
-    const task = await prisma.task.findFirst({
+    // Find the request
+    const task = await prisma.request.findFirst({
       where: {
         id: params.id,
         organizationId: session.user.organizationId
