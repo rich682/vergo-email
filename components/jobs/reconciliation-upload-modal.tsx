@@ -11,16 +11,33 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { 
   Upload, 
   FileSpreadsheet, 
+  FileImage,
+  FileText,
   X, 
   Loader2, 
   CheckCircle,
   AlertCircle,
-  Info
+  Info,
+  Plus,
+  Anchor,
+  Files
 } from "lucide-react"
-import { RECONCILIATION_LIMITS, RECONCILIATION_MESSAGES } from "@/lib/constants/reconciliation"
+import { 
+  RECONCILIATION_LIMITS, 
+  RECONCILIATION_MESSAGES,
+  ANCHOR_ROLE_OPTIONS
+} from "@/lib/constants/reconciliation"
 
 interface ReconciliationUploadModalProps {
   open: boolean
@@ -35,6 +52,27 @@ interface UploadedFile {
   preview: string
 }
 
+// Helper to get file icon based on MIME type
+function getFileIcon(mimeType: string) {
+  if (mimeType.includes("pdf")) {
+    return <FileText className="w-6 h-6 text-red-600" />
+  }
+  if (mimeType.startsWith("image/")) {
+    return <FileImage className="w-6 h-6 text-purple-600" />
+  }
+  return <FileSpreadsheet className="w-6 h-6 text-green-600" />
+}
+
+function getLargeFileIcon(mimeType: string) {
+  if (mimeType.includes("pdf")) {
+    return <FileText className="w-8 h-8 text-red-600" />
+  }
+  if (mimeType.startsWith("image/")) {
+    return <FileImage className="w-8 h-8 text-purple-600" />
+  }
+  return <FileSpreadsheet className="w-8 h-8 text-green-600" />
+}
+
 export function ReconciliationUploadModal({
   open,
   onOpenChange,
@@ -42,15 +80,23 @@ export function ReconciliationUploadModal({
   jobName,
   onReconciliationCreated
 }: ReconciliationUploadModalProps) {
-  const [document1, setDocument1] = useState<UploadedFile | null>(null)
-  const [document2, setDocument2] = useState<UploadedFile | null>(null)
+  // Anchor document (source of truth) - exactly one required
+  const [anchorDocument, setAnchorDocument] = useState<UploadedFile | null>(null)
+  // Anchor role - what kind of document is the anchor
+  const [anchorRole, setAnchorRole] = useState<string>("")
+  const [customAnchorRole, setCustomAnchorRole] = useState<string>("")
+  // Supporting documents - at least one required, can have multiple
+  const [supportingDocuments, setSupportingDocuments] = useState<UploadedFile[]>([])
+  // Intent description - optional free-text describing what user wants to reconcile
+  const [intentDescription, setIntentDescription] = useState("")
+  
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  const onDropDocument1 = useCallback((acceptedFiles: File[]) => {
+  const onDropAnchor = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setDocument1({
+      setAnchorDocument({
         file: acceptedFiles[0],
         preview: acceptedFiles[0].name
       })
@@ -58,12 +104,13 @@ export function ReconciliationUploadModal({
     }
   }, [])
 
-  const onDropDocument2 = useCallback((acceptedFiles: File[]) => {
+  const onDropSupporting = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setDocument2({
-        file: acceptedFiles[0],
-        preview: acceptedFiles[0].name
-      })
+      const newFiles = acceptedFiles.map(file => ({
+        file,
+        preview: file.name
+      }))
+      setSupportingDocuments(prev => [...prev, ...newFiles])
       setError(null)
     }
   }, [])
@@ -82,35 +129,48 @@ export function ReconciliationUploadModal({
     }
   }, [])
 
-  const dropzone1 = useDropzone({
-    onDrop: onDropDocument1,
-    onDropRejected,
+  const dropzoneConfig = {
     accept: {
+      // Excel/CSV (structured)
       "application/vnd.ms-excel": [".xls"],
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "text/csv": [".csv"]
+      "text/csv": [".csv"],
+      // PDF (unstructured - V1)
+      "application/pdf": [".pdf"],
+      // Images (unstructured - V1)
+      "image/png": [".png"],
+      "image/jpeg": [".jpg", ".jpeg"]
     },
-    maxFiles: 1,
     maxSize: RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES,
+  }
+
+  const anchorDropzone = useDropzone({
+    onDrop: onDropAnchor,
+    onDropRejected,
+    ...dropzoneConfig,
+    maxFiles: 1,
     multiple: false
   })
 
-  const dropzone2 = useDropzone({
-    onDrop: onDropDocument2,
+  const supportingDropzone = useDropzone({
+    onDrop: onDropSupporting,
     onDropRejected,
-    accept: {
-      "application/vnd.ms-excel": [".xls"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "text/csv": [".csv"]
-    },
-    maxFiles: 1,
-    maxSize: RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES,
-    multiple: false
+    ...dropzoneConfig,
+    maxFiles: 10,
+    multiple: true
   })
+
+  const removeSupporting = (index: number) => {
+    setSupportingDocuments(prev => prev.filter((_, i) => i !== index))
+  }
 
   const handleSubmit = async () => {
-    if (!document1 || !document2) {
-      setError("Please upload both documents")
+    if (!anchorDocument) {
+      setError("Please upload an anchor document (source of truth)")
+      return
+    }
+    if (supportingDocuments.length === 0) {
+      setError("Please upload at least one supporting document")
       return
     }
 
@@ -119,8 +179,22 @@ export function ReconciliationUploadModal({
 
     try {
       const formData = new FormData()
-      formData.append("document1", document1.file)
-      formData.append("document2", document2.file)
+      // Anchor document
+      formData.append("anchor", anchorDocument.file)
+      // Supporting documents (can be multiple)
+      supportingDocuments.forEach(doc => {
+        formData.append("supporting", doc.file)
+      })
+      // Anchor role
+      const resolvedAnchorRole = anchorRole === "custom" ? customAnchorRole : 
+        ANCHOR_ROLE_OPTIONS.find(o => o.value === anchorRole)?.label || ""
+      if (resolvedAnchorRole.trim()) {
+        formData.append("anchorRole", resolvedAnchorRole.trim())
+      }
+      // Intent description (optional)
+      if (intentDescription.trim()) {
+        formData.append("intentDescription", intentDescription.trim())
+      }
 
       const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, {
         method: "POST",
@@ -149,8 +223,11 @@ export function ReconciliationUploadModal({
   }
 
   const handleClose = () => {
-    setDocument1(null)
-    setDocument2(null)
+    setAnchorDocument(null)
+    setAnchorRole("")
+    setCustomAnchorRole("")
+    setSupportingDocuments([])
+    setIntentDescription("")
     setError(null)
     setSuccess(false)
     onOpenChange(false)
@@ -164,14 +241,14 @@ export function ReconciliationUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-green-600" />
             New Reconciliation
           </DialogTitle>
           <DialogDescription>
-            Upload two documents to compare and reconcile for: <strong>{jobName}</strong>
+            Upload documents to reconcile for: <strong>{jobName}</strong>
           </DialogDescription>
         </DialogHeader>
 
@@ -194,117 +271,199 @@ export function ReconciliationUploadModal({
               </div>
             )}
 
-            <div className="grid gap-4">
-              {/* Document 1 */}
+            <div className="space-y-5">
+              {/* Step 1: Anchor Document */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Document 1 (Source A)
-                </label>
-                {document1 ? (
-                  <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Anchor className="w-4 h-4 text-green-600" />
+                  <label className="text-sm font-medium text-gray-700">
+                    Step 1: Anchor Document (Source of Truth)
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Upload the primary document you are reconciling against (e.g., General Ledger, trial balance, control account)
+                </p>
+                {anchorDocument ? (
+                  <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                        {getLargeFileIcon(anchorDocument.file.type)}
                         <div>
-                          <p className="font-medium text-gray-900">{document1.file.name}</p>
-                          <p className="text-sm text-gray-500">{formatFileSize(document1.file.size)}</p>
+                          <p className="font-medium text-gray-900">{anchorDocument.file.name}</p>
+                          <p className="text-sm text-gray-500">{formatFileSize(anchorDocument.file.size)}</p>
+                          <span className="text-xs text-green-700 font-medium">Anchor (Source of Truth)</span>
                         </div>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setDocument1(null)}
+                        onClick={() => setAnchorDocument(null)}
                         disabled={uploading}
                       >
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
+                    {/* Anchor Role Selection */}
+                    <div className="pt-2 border-t border-green-200">
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">
+                        Document Role
+                      </label>
+                      <Select value={anchorRole} onValueChange={setAnchorRole}>
+                        <SelectTrigger className="w-full bg-white">
+                          <SelectValue placeholder="Select document role (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ANCHOR_ROLE_OPTIONS.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {anchorRole === "custom" && (
+                        <input
+                          type="text"
+                          placeholder="Specify document role..."
+                          value={customAnchorRole}
+                          onChange={(e) => setCustomAnchorRole(e.target.value)}
+                          className="mt-2 w-full px-3 py-2 text-sm border rounded-md bg-white"
+                          disabled={uploading}
+                        />
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div
-                    {...dropzone1.getRootProps()}
+                    {...anchorDropzone.getRootProps()}
                     className={`
-                      border-2 border-dashed rounded-lg p-6 text-center cursor-pointer
+                      border-2 border-dashed rounded-lg p-5 text-center cursor-pointer
                       transition-colors
-                      ${dropzone1.isDragActive 
+                      ${anchorDropzone.isDragActive 
                         ? "border-green-400 bg-green-50" 
-                        : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                        : "border-gray-300 hover:border-green-400 hover:bg-green-50/50"
                       }
                     `}
                   >
-                    <input {...dropzone1.getInputProps()} />
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <input {...anchorDropzone.getInputProps()} />
+                    <Anchor className="w-8 h-8 text-green-500 mx-auto mb-2" />
                     <p className="text-sm text-gray-600">
-                      Drag & drop an Excel or CSV file, or click to browse
+                      Drop anchor document here, or click to browse
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      .xlsx, .xls, or .csv (max {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB)
+                      Excel (.xlsx, .xls), CSV, PDF, or Image (.png, .jpg)
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Document 2 */}
+              {/* Step 2: Supporting Documents */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Document 2 (Source B)
-                </label>
-                {document2 ? (
-                  <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-                        <div>
-                          <p className="font-medium text-gray-900">{document2.file.name}</p>
-                          <p className="text-sm text-gray-500">{formatFileSize(document2.file.size)}</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <Files className="w-4 h-4 text-blue-600" />
+                  <label className="text-sm font-medium text-gray-700">
+                    Step 2: Supporting Documents
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Upload one or more documents to compare (e.g., bank statements, credit card statements, payroll registers). Any format supported.
+                </p>
+                
+                {/* List of uploaded supporting docs */}
+                {supportingDocuments.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {supportingDocuments.map((doc, index) => (
+                      <div 
+                        key={index}
+                        className="border rounded-lg p-3 bg-blue-50 border-blue-200"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {getFileIcon(doc.file.type)}
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{doc.file.name}</p>
+                              <p className="text-xs text-gray-500">{formatFileSize(doc.file.size)}</p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeSupporting(index)}
+                            disabled={uploading}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setDocument2(null)}
-                        disabled={uploading}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    {...dropzone2.getRootProps()}
-                    className={`
-                      border-2 border-dashed rounded-lg p-6 text-center cursor-pointer
-                      transition-colors
-                      ${dropzone2.isDragActive 
-                        ? "border-blue-400 bg-blue-50" 
-                        : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
-                      }
-                    `}
-                  >
-                    <input {...dropzone2.getInputProps()} />
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">
-                      Drag & drop an Excel or CSV file, or click to browse
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      .xlsx, .xls, or .csv (max {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB)
-                    </p>
+                    ))}
                   </div>
                 )}
-              </div>
-            </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-              <div className="flex items-start gap-2">
-                <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium">Requirements</p>
-                  <ul className="mt-1 text-xs space-y-0.5">
-                    <li>Each file must contain <strong>exactly one sheet</strong></li>
-                    <li>Max file size: {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB per file</li>
-                    <li>Max rows: {RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET.toLocaleString()} per sheet</li>
-                    <li>AI will automatically process and identify discrepancies on upload</li>
-                  </ul>
+                {/* Dropzone for adding more */}
+                <div
+                  {...supportingDropzone.getRootProps()}
+                  className={`
+                    border-2 border-dashed rounded-lg p-4 text-center cursor-pointer
+                    transition-colors
+                    ${supportingDropzone.isDragActive 
+                      ? "border-blue-400 bg-blue-50" 
+                      : "border-gray-300 hover:border-blue-400 hover:bg-blue-50/50"
+                    }
+                  `}
+                >
+                  <input {...supportingDropzone.getInputProps()} />
+                  <div className="flex items-center justify-center gap-2">
+                    <Plus className="w-5 h-5 text-blue-500" />
+                    <span className="text-sm text-gray-600">
+                      {supportingDocuments.length === 0 
+                        ? "Drop supporting documents here, or click to browse"
+                        : "Add more supporting documents"
+                      }
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Excel, CSV, PDF, or Image files
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3: Reconciliation Intent */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="w-4 h-4 text-purple-600" />
+                  <label className="text-sm font-medium text-gray-700">
+                    Step 3: Reconciliation Intent (Optional)
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Describe what you are trying to reconcile. This helps AI provide better analysis.
+                </p>
+                <Textarea
+                  placeholder="e.g., Match bank transactions to GL entries line by line, or verify that total amounts match..."
+                  value={intentDescription}
+                  onChange={(e) => setIntentDescription(e.target.value)}
+                  rows={2}
+                  className="resize-none"
+                  disabled={uploading}
+                />
+                <div className="mt-2 text-xs text-gray-400">
+                  <span className="font-medium">Examples:</span> "Match transactions line by line" | "Verify totals only" | "Reconcile detailed to monthly summary"
+                </div>
+              </div>
+
+              {/* Requirements info */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-gray-600">
+                    <p className="font-medium">Supported Formats & Limits</p>
+                    <ul className="mt-1 text-xs space-y-0.5">
+                      <li><strong>Excel/CSV:</strong> Single sheet only, max {RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET.toLocaleString()} rows</li>
+                      <li><strong>PDF:</strong> Bank statements, credit card statements, confirmations</li>
+                      <li><strong>Images:</strong> Screenshots, scanned documents</li>
+                      <li>Max file size: {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB per file</li>
+                      <li>AI will analyze each document and extract key signals (totals, dates, references)</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -318,7 +477,7 @@ export function ReconciliationUploadModal({
           {!success && (
             <Button
               onClick={handleSubmit}
-              disabled={!document1 || !document2 || uploading}
+              disabled={!anchorDocument || supportingDocuments.length === 0 || uploading}
             >
               {uploading ? (
                 <>
@@ -328,7 +487,7 @@ export function ReconciliationUploadModal({
               ) : (
                 <>
                   <Upload className="w-4 h-4 mr-2" />
-                  Upload & Compare
+                  Upload & Reconcile
                 </>
               )}
             </Button>

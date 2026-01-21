@@ -7,6 +7,60 @@
 
 ---
 
+## Core Mental Model: Jobs and Capabilities
+
+> **Jobs are containers; capabilities define behavior.**
+
+### The Job Capability Model
+
+A **Job** (TaskInstance) is the atomic unit of work in the system. It is a **container** that holds data, relationships, and state. Jobs do NOT have "types" that fundamentally change their structure.
+
+Instead, Jobs have **Capabilities** that can be enabled:
+
+| Capability | Description | Key Workflows |
+|------------|-------------|---------------|
+| **Core** | Basic job operations available to all jobs | Create, Archive, Delete, Owner, Collaborators, Notes, Status |
+| **Table** | Structured data with schema, import, variance | WF-03b, WF-03d, WF-03e |
+| **Reconciliation** | Document comparison with anchor/supporting model | WF-03c, WF-03h, WF-03i |
+| **Request** | Email communication, reminders, tracking | WF-05a through WF-05n |
+| **Evidence** | File collection, review, export | WF-06a through WF-06e |
+
+### Why This Model
+
+1. **Stability**: The Job container is frozen. Refactors target capabilities, not Jobs.
+2. **Independence**: Capabilities can evolve without affecting each other.
+3. **Safety**: No new "Job types" are introduced. Existing code continues to work.
+4. **Cursor Safety**: Reduces hallucination of new abstractions.
+
+### What Is NOT a Capability (Out of Scope)
+
+- **Approval workflows**: Will be layered separately in a future phase.
+- **Board operations**: Boards are containers for Jobs, not Job capabilities.
+- **Authentication**: System-level, not Job-related.
+- **Contacts**: Supporting data, not Job behavior.
+
+---
+
+## Developer Guardrails
+
+### CRITICAL: Job Stability Rules
+
+1. **Do NOT introduce new Job types**. Extend via capabilities instead.
+2. **Do NOT rename** `Job`, `Board`, `TaskInstance`, or `Organization`.
+3. **Do NOT refactor the Job container**. Refactors must target a specific capability.
+4. **Capabilities may change independently**. Job lifecycle must remain stable.
+5. **Approval logic is OUT OF SCOPE** for this taxonomy version.
+
+### Safe Refactoring Pattern
+
+**WRONG**: "Refactor jobs to support approval"  
+**RIGHT**: "Add Approval capability to jobs" (future phase, not in current scope)
+
+**WRONG**: "Create new ReconciliationJob type"  
+**RIGHT**: "Enable Reconciliation capability on existing Job"
+
+---
+
 ## Summary Statistics
 
 ### By Status

@@ -136,21 +136,22 @@ model Organization {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  users                  User[]
-  entities               Entity[]
-  groups                 Group[]
-  taskInstances          TaskInstance[]
-  taskLineages           TaskLineage[]
-  importRecipes          ImportRecipe[]
-  connectedEmailAccounts ConnectedEmailAccount[]
-  automationRules        AutomationRule[]
-  emailDrafts            EmailDraft[]
-  agentSchedules         AgentSchedule[]
-  boards                 Board[]
-  subtasks               Subtask[]
-  attachments            Attachment[]
-  emailQueue             EmailQueue[]
-  reconciliations        Reconciliation[]
+  users                    User[]
+  entities                 Entity[]
+  groups                   Group[]
+  taskInstances            TaskInstance[]
+  taskLineages             TaskLineage[]
+  importRecipes            ImportRecipe[]
+  connectedEmailAccounts   ConnectedEmailAccount[]
+  automationRules          AutomationRule[]
+  emailDrafts              EmailDraft[]
+  agentSchedules           AgentSchedule[]
+  boards                   Board[]
+  subtasks                 Subtask[]
+  attachments              Attachment[]
+  emailQueue               EmailQueue[]
+  reconciliations          Reconciliation[]
+  reconciliationTemplates  ReconciliationTemplate[]
 
   @@index([slug])
 }
@@ -1039,17 +1040,27 @@ model Reconciliation {
   organizationId String
   taskInstanceId String               @map("jobId") // Parent task instance (TaskInstance)
   
-  // Document 1 (Source A)
+  // ANCHOR Document (Source of Truth) - stored in document1 for backwards compatibility
   document1Key   String               // Storage key (blob)
   document1Name  String               // Original filename
   document1Url   String?              // Cached URL for preview
   document1Size  Int?                 // File size in bytes
+  document1MimeType String?           // MIME type (application/pdf, image/png, etc.)
   
-  // Document 2 (Source B)
+  // FIRST Supporting Document - stored in document2 for backwards compatibility
   document2Key   String               // Storage key (blob)
   document2Name  String               // Original filename
   document2Url   String?              // Cached URL for preview
   document2Size  Int?                 // File size in bytes
+  document2MimeType String?           // MIME type (application/pdf, image/png, etc.)
+  
+  // Additional supporting documents (beyond document2)
+  // Array of { key, name, url, size, uploadOrder, mimeType }
+  supportingDocuments Json?
+  
+  // Accounting context
+  anchorRole       String?            // "General Ledger", "Control Account", "AP Balance"
+  boardPeriodName  String?            // Cached board name + period for context
   
   // Processing status
   status         ReconciliationStatus @default(PENDING)
@@ -1060,8 +1071,16 @@ model Reconciliation {
   matchedCount   Int?                 // Number of matched items
   unmatchedCount Int?                 // Number of unmatched items
   totalRows      Int?                 // Total rows analyzed
-  result         Json?                // Detailed reconciliation result
+  result         Json?                // Detailed reconciliation result (includes reconciliationIntent)
   discrepancies  Json?                // List of discrepancies found
+  
+  // V1 Enhanced AI output
+  confidenceScore    Int?             // 0-100 accounting confidence
+  keyFindings        Json?            // Bulleted findings array
+  suggestedNextSteps Json?            // Bulleted next steps array
+  
+  // Recurring template reference
+  templateId     String?              // Links to ReconciliationTemplate
   
   // Metadata
   createdById    String
@@ -1072,9 +1091,31 @@ model Reconciliation {
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   taskInstance   TaskInstance         @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   createdBy      User                 @relation("ReconciliationCreator", fields: [createdById], references: [id])
+  template       ReconciliationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([status])
   @@index([organizationId, taskInstanceId])
+  @@index([templateId])
+}
+
+// ReconciliationTemplate - stores configuration for recurring reconciliations
+model ReconciliationTemplate {
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String   // "Monthly Bank Recon", derived from task name
+  anchorRole       String   // "General Ledger", "Control Account"
+  supportingRoles  Json     // ["Bank Statement", "Credit Card Statement"]
+  defaultIntent    String?  // "ROW_LEVEL", "TOTALS_ONLY", etc.
+  priorExplanation String?  // Reference explanation from last successful run
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reconciliations Reconciliation[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }

@@ -8,6 +8,7 @@
 
 ## Table of Contents
 
+- [Job Capabilities (Non-Schema Concept)](#job-capabilities-non-schema-concept)
 - [Section A: Page-to-Workflow Mapping](#section-a-page-to-workflow-mapping)
 - [Section B: Classification Model](#section-b-classification-model)
 - [Section C: API Route Inventory](#section-c-api-route-inventory)
@@ -15,6 +16,53 @@
 - [Section E: Top 10 Fix-Next Recommendations](#section-e-top-10-fix-next-recommendations)
 - [Section F: Rules of the Road](#section-f-rules-of-the-road)
 - [Section G: Drift Check Commands](#section-g-drift-check-commands)
+
+---
+
+## Job Capabilities (Non-Schema Concept)
+
+> **This is a documentation-only concept.** No schema changes are required. All existing code continues to work unchanged.
+
+### Core Principle
+
+**Jobs are containers; capabilities define behavior.**
+
+A Job (TaskInstance) is the atomic unit in the system. Rather than having different "types" of jobs, we think of jobs as containers that have one or more **capabilities** enabled.
+
+### Capability Definitions
+
+| Capability | Description | API Route Patterns | Workflows |
+|------------|-------------|-------------------|-----------|
+| **Core** | Basic job operations available to all jobs | `/api/task-instances/[id]`, `/api/task-instances/[id]/collaborators`, `/api/task-instances/[id]/comments` | WF-03a, WF-03f, WF-03g, WF-04a-h |
+| **Table** | Structured data, schema, import, variance | `/api/task-instances/[id]/table/*`, `/api/task-lineages/*` | WF-03b, WF-03d, WF-03e |
+| **Reconciliation** | Document comparison, anchor/supporting model | `/api/task-instances/[id]/reconciliations/*` | WF-03c, WF-03h, WF-03i |
+| **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-n |
+| **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
+
+### Why This Model
+
+1. **No new "Job types"**: Don't create `ReconciliationJob`, `TableJob`, etc. Use capabilities instead.
+2. **Capabilities are independent**: Request capability doesn't depend on Table capability.
+3. **Safe refactoring**: Target a capability without affecting the Job container.
+4. **Cursor safety**: Reduces AI hallucination of new abstractions.
+
+### What Is NOT a Capability
+
+- **Approval workflows**: OUT OF SCOPE for this taxonomy. Will be layered separately in a future phase.
+- **Board operations**: Boards contain Jobs but are not Job capabilities.
+- **Authentication/Contacts**: System-level concerns, not Job behavior.
+
+### Developer Guardrails
+
+```
+CRITICAL: Job Stability Rules
+
+1. Do NOT introduce new Job types. Extend via capabilities.
+2. Do NOT rename Job, Board, TaskInstance, or Organization.
+3. Do NOT refactor the Job container itself. Target capabilities.
+4. Capabilities may evolve independently.
+5. Approval logic is OUT OF SCOPE for this version.
+```
 
 ---
 
