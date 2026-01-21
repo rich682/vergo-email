@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import OpenAI from "openai"
 
 export const dynamic = "force-dynamic"
 
 // Current prompt version - increment when prompt changes significantly
-const PROMPT_VERSION = "v2" // Bumped for memory-aware analysis
+const PROMPT_VERSION = "v3" // Bumped for attachment content analysis
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -264,9 +265,37 @@ From: ${message.fromAddress}
 Subject: ${message.subject || "(no subject)"}
 Body: ${message.body || "(no body)"}`
 
-    const attachmentContext = message.collectedItems.length > 0
+    // ============ ATTACHMENT CONTENT EXTRACTION ============
+    let attachmentContentContext = ""
+    const attachmentMetadataContext = message.collectedItems.length > 0
       ? `Attachments received: ${message.collectedItems.map(a => `${a.filename} (${a.mimeType || "unknown type"}, ${a.fileSize ? Math.round(a.fileSize / 1024) + "KB" : "size unknown"})`).join(", ")}`
       : "No attachments received."
+
+    // Extract content from attachments for AI analysis
+    if (message.collectedItems.length > 0) {
+      try {
+        const attachmentsToExtract = message.collectedItems
+          .filter((item: any) => item.fileUrl || item.fileKey)
+          .map((item: any) => ({
+            url: item.fileUrl || item.fileKey,
+            mimeType: item.mimeType || undefined,
+            filename: item.filename || "unknown"
+          }))
+
+        if (attachmentsToExtract.length > 0) {
+          const extractionResult = await AttachmentExtractionService.extractFromMultiple(attachmentsToExtract)
+          
+          if (extractionResult.combined.trim()) {
+            // Limit content to avoid token limits (first 3000 chars)
+            const contentPreview = extractionResult.combined.substring(0, 3000)
+            attachmentContentContext = `\n\nATTACHMENT CONTENT (extracted):\n${contentPreview}${extractionResult.combined.length > 3000 ? "\n... (content truncated)" : ""}`
+          }
+        }
+      } catch (extractError: any) {
+        console.warn("[API/review/analyze] Attachment extraction failed:", extractError.message)
+        attachmentContentContext = "\n\n(Attachment content extraction failed - analyzing metadata only)"
+      }
+    }
 
     // ============ AI ANALYSIS ============
 
@@ -277,17 +306,23 @@ Body: ${message.body || "(no body)"}`
       messages: [
         {
           role: "system",
-          content: `You are an AI assistant analyzing business email replies for an accounting team. You have access to MEMORY - historical context about this task and contact.
+          content: `You are an AI assistant analyzing business email replies for an accounting team. You have access to MEMORY - historical context about this task and contact. You may also receive EXTRACTED CONTENT from any attachments (PDFs, Excel files, etc.).
 
 Your job is to:
 1. Summarize the key points of the current reply (2-3 bullets max)
 2. Identify any issues or missing items that need attention
 3. Consider the deadline and prior interactions when assessing urgency
+4. If attachment content is provided, analyze whether it fulfills the request
 
 For findings, classify severity as:
 - "info": Neutral observation, no action needed
-- "warning": Potential issue, may need follow-up (e.g., missing document, unclear response)
-- "critical": Requires immediate attention (e.g., rejection, deadline risk)
+- "warning": Potential issue, may need follow-up (e.g., missing document, unclear response, incomplete form)
+- "critical": Requires immediate attention (e.g., rejection, deadline risk, wrong document)
+
+When attachment content is available:
+- Check if the document type matches what was requested (e.g., W-9, invoice, timesheet)
+- Look for missing or incomplete fields
+- Verify dates, amounts, or other key data if relevant
 
 Use prior AI assessments and human decisions to calibrate your judgment. If humans have consistently disagreed with AI recommendations, be more conservative.
 
@@ -312,9 +347,9 @@ ${contactHistorySummary}
 
 ${currentReplyContext}
 
-${attachmentContext}
+${attachmentMetadataContext}${attachmentContentContext}
 
-Analyze this reply and provide structured findings.`
+Analyze this reply and provide structured findings. If attachments contain relevant content (like documents, forms, or data), factor that into your analysis of whether the request appears fulfilled.`
         }
       ],
       response_format: { type: "json_object" },

@@ -6,6 +6,8 @@ import { EmailSyncService } from "@/lib/services/email-sync.service"
 import { ReminderStateService } from "@/lib/services/reminder-state.service"
 import { EmailQueueService } from "@/lib/services/email-queue.service"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
+import { CompletionDetectionService } from "@/lib/services/completion-detection.service"
 import OpenAI from "openai"
 import { createHash } from "crypto"
 
@@ -32,7 +34,7 @@ export const functions = [
       const { messageId, taskId } = event.data // taskId is actually requestId
 
       try {
-        // Fetch the message and request
+        // Fetch the message and request with attachments (collectedItems)
         const message = await prisma.message.findUnique({
           where: { id: messageId },
           include: {
@@ -43,7 +45,20 @@ export const functions = [
                   where: { direction: "OUTBOUND" },
                   orderBy: { createdAt: "desc" },
                   take: 1
+                },
+                taskInstance: {
+                  select: { id: true, name: true }
                 }
+              }
+            },
+            collectedItems: {
+              select: {
+                id: true,
+                filename: true,
+                fileUrl: true,
+                fileKey: true,
+                mimeType: true,
+                fileSize: true
               }
             }
           }
@@ -84,6 +99,38 @@ export const functions = [
           )
         }
 
+        // ============ FIRST-PASS AI REVIEW: Extract attachment content ============
+        let attachmentContent = ""
+        let attachmentMetadata: Array<{ filename: string; mimeType?: string; fileSize?: number }> = []
+        
+        if (message.collectedItems && message.collectedItems.length > 0) {
+          console.log(`[First-Pass Review] Message ${messageId} has ${message.collectedItems.length} attachments, extracting content...`)
+          
+          try {
+            const attachmentsToExtract = message.collectedItems
+              .filter((item: any) => item.fileUrl || item.fileKey)
+              .map((item: any) => ({
+                url: item.fileUrl || item.fileKey,
+                mimeType: item.mimeType || undefined,
+                filename: item.filename || "unknown"
+              }))
+            
+            if (attachmentsToExtract.length > 0) {
+              const extractionResult = await AttachmentExtractionService.extractFromMultiple(attachmentsToExtract)
+              attachmentContent = extractionResult.combined
+              attachmentMetadata = message.collectedItems.map((item: any) => ({
+                filename: item.filename || "unknown",
+                mimeType: item.mimeType || undefined,
+                fileSize: item.fileSize || undefined
+              }))
+              
+              console.log(`[First-Pass Review] Extracted ${attachmentContent.length} chars from ${attachmentsToExtract.length} attachments`)
+            }
+          } catch (extractError: any) {
+            console.warn(`[First-Pass Review] Attachment extraction failed:`, extractError.message)
+          }
+        }
+
         // Analyze reply intent to determine if request is fulfilled
         if (taskId && message.request) {
           const task = message.request
@@ -97,6 +144,33 @@ export const functions = [
           const replySubject = message.subject || ""
           const replyBody = message.body || message.htmlBody || ""
           const replyPreview = replyBody.substring(0, 500) // First 500 chars
+
+          // ============ COMPLETION DETECTION: Use service if attachments present ============
+          let completionFromService: { completionPercentage: number; reasoning: string } | null = null
+          
+          if (attachmentContent || attachmentMetadata.length > 0) {
+            try {
+              const completionResult = await CompletionDetectionService.detectCompletion({
+                requestSubject: requestSubject,
+                requestBody: requestBody,
+                requestPrompt: task.campaignName || task.taskInstance?.name || undefined,
+                campaignType: task.campaignType || undefined,
+                replyBody: replyBody,
+                replySubject: replySubject,
+                attachmentContent: attachmentContent || undefined,
+                attachmentMetadata: attachmentMetadata.length > 0 ? attachmentMetadata : undefined
+              })
+              
+              completionFromService = {
+                completionPercentage: completionResult.completionPercentage,
+                reasoning: completionResult.reasoning
+              }
+              
+              console.log(`[First-Pass Review] CompletionDetection: ${completionResult.completionPercentage}% (${completionResult.confidence}) - ${completionResult.reasoning}`)
+            } catch (completionError: any) {
+              console.warn(`[First-Pass Review] Completion detection failed:`, completionError.message)
+            }
+          }
 
           // Use LLM to analyze reply intent and determine completion percentage (0-100)
           const openai = getOpenAIClient()
@@ -159,11 +233,22 @@ Analyze the reply intent and determine the completion percentage (0-100) based o
             try {
               const intentParsed = JSON.parse(intentResponse)
               let completionPercentage = Math.round(intentParsed.completionPercentage || 0)
-              const confidence = intentParsed.confidence || "Medium"
-              const reasoning = intentParsed.reasoning || "No reasoning provided"
+              let confidence = intentParsed.confidence || "Medium"
+              let reasoning = intentParsed.reasoning || "No reasoning provided"
 
               // Clamp completion percentage to 0-100
               completionPercentage = Math.max(0, Math.min(100, completionPercentage))
+
+              // If CompletionDetectionService provided a result (with attachment analysis), use it
+              // The service has more context from attachment content
+              if (completionFromService) {
+                // Use the higher of the two percentages (benefit of doubt with actual content)
+                if (completionFromService.completionPercentage > completionPercentage) {
+                  completionPercentage = completionFromService.completionPercentage
+                  reasoning = `(Content analysis) ${completionFromService.reasoning}`
+                  confidence = "High" // Content-based is more reliable
+                }
+              }
 
               // If attachments are present and verified, boost to 100% if not already high
               if (task.hasAttachments && task.aiVerified === true) {

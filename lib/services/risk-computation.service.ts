@@ -20,6 +20,9 @@ export interface RiskComputationInput {
   deadlineDate?: Date | string | null // Deadline/due date for the request
   requestSentAt?: Date | string | null // When the request email was sent (for calculating days since)
   fromAddress?: string | null // From address of the latest inbound message (for bounce detection)
+  // Content-based risk factors (Phase 6 addition)
+  attachmentContent?: string | null // Extracted text content from attachments
+  expectedDocumentType?: string | null // What document type was requested (W9, COI, etc.)
 }
 
 export interface RiskComputationResult {
@@ -98,6 +101,84 @@ export function detectOutOfOffice(input: {
   ]
   
   return oooPatterns.some(pattern => text.includes(pattern))
+}
+
+/**
+ * Check if attachment content indicates a risk based on expected document type
+ * Returns risk level and reason if there's a content-based issue
+ */
+function checkDocumentContentRisk(
+  expectedType: string,
+  content: string
+): { riskLevel: RiskLevel; reason: string } | null {
+  const contentLower = content.toLowerCase()
+  
+  switch (expectedType.toUpperCase()) {
+    case "W9":
+      // W-9 should contain taxpayer info
+      if (!contentLower.includes("taxpayer") && !contentLower.includes("w-9") && !contentLower.includes("tin")) {
+        // Check if it's clearly a different document
+        if (contentLower.includes("certificate of insurance") || contentLower.includes("invoice")) {
+          return {
+            riskLevel: "high",
+            reason: "Wrong document type - expected W-9 form"
+          }
+        }
+      }
+      // Check for incomplete W-9 (missing signature or date)
+      if (contentLower.includes("w-9") && !contentLower.includes("signature") && content.length < 500) {
+        return {
+          riskLevel: "medium",
+          reason: "W-9 may be incomplete - verify signature"
+        }
+      }
+      break
+      
+    case "COI":
+      // Certificate of Insurance should have policy info
+      if (!contentLower.includes("certificate") && !contentLower.includes("insurance") && !contentLower.includes("policy")) {
+        if (contentLower.includes("w-9") || contentLower.includes("taxpayer")) {
+          return {
+            riskLevel: "high",
+            reason: "Wrong document type - expected Certificate of Insurance"
+          }
+        }
+      }
+      // Check for expired COI
+      const expirationMatch = content.match(/expir\w*[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)
+      if (expirationMatch) {
+        const expDate = new Date(expirationMatch[1])
+        if (!isNaN(expDate.getTime()) && expDate < new Date()) {
+          return {
+            riskLevel: "high",
+            reason: "Certificate of Insurance may be expired"
+          }
+        }
+      }
+      break
+      
+    case "INVOICE":
+      // Invoice should have amount/total
+      if (!contentLower.includes("invoice") && !contentLower.includes("amount") && !contentLower.includes("total")) {
+        return {
+          riskLevel: "medium",
+          reason: "Document may not be an invoice - verify content"
+        }
+      }
+      break
+      
+    case "TIMESHEET":
+      // Timesheet should have hours/time data
+      if (!contentLower.includes("hour") && !contentLower.includes("time") && !contentLower.includes("timesheet")) {
+        return {
+          riskLevel: "medium",
+          reason: "Document may not be a timesheet - verify content"
+        }
+      }
+      break
+  }
+  
+  return null // No content-based risk detected
 }
 
 /**
@@ -189,6 +270,7 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
   if (readStatus === "replied") {
     // Check response content for risk indicators
     const responseText = (input.latestResponseText || "").toLowerCase()
+    const attachmentContent = (input.attachmentContent || "").toLowerCase()
     
     // High risk phrases
     const highRiskPhrases = [
@@ -220,14 +302,37 @@ export function computeDeterministicRisk(input: RiskComputationInput): RiskCompu
       }
     }
 
+    // ============ CONTENT-BASED RISK FACTORS (Phase 6) ============
+    // Check if attachment content matches expected document type
+    if (input.expectedDocumentType && attachmentContent) {
+      const contentRisk = checkDocumentContentRisk(input.expectedDocumentType, attachmentContent)
+      if (contentRisk) {
+        return {
+          riskLevel: contentRisk.riskLevel,
+          riskReason: contentRisk.reason,
+          readStatus
+        }
+      }
+    }
+
     // Low risk phrases (positive indicators)
     const lowRiskPhrases = ["paid", "sent", "attached", "today", "this week", "completed", "done", "received", "thank you", "confirm"]
     const hasLowRiskPhrase = lowRiskPhrases.some(phrase => responseText.includes(phrase))
     
-    if (hasLowRiskPhrase) {
+    // Check attachment content for positive indicators
+    const hasPositiveAttachmentContent = attachmentContent && (
+      (input.expectedDocumentType === "W9" && (attachmentContent.includes("request for taxpayer") || attachmentContent.includes("w-9"))) ||
+      (input.expectedDocumentType === "COI" && attachmentContent.includes("certificate of insurance")) ||
+      (input.expectedDocumentType === "INVOICE" && attachmentContent.includes("invoice")) ||
+      (input.expectedDocumentType === "TIMESHEET" && (attachmentContent.includes("timesheet") || attachmentContent.includes("hours")))
+    )
+    
+    if (hasLowRiskPhrase || hasPositiveAttachmentContent) {
       return {
         riskLevel: "low",
-        riskReason: "Positive response received",
+        riskReason: hasPositiveAttachmentContent 
+          ? "Document content matches request type" 
+          : "Positive response received",
         readStatus
       }
     }
@@ -289,6 +394,7 @@ export async function computeRiskWithLLM(input: RiskComputationInput & {
   requestBody?: string | null
   requestPrompt?: string | null // The original prompt/request name
   replyText?: string | null
+  attachmentContentPreview?: string | null // First ~500 chars of extracted attachment content
 }): Promise<RiskComputationResult> {
   // First compute deterministic baseline
   const deterministicResult = computeDeterministicRisk(input)
@@ -329,12 +435,12 @@ export async function computeRiskWithLLM(input: RiskComputationInput & {
         messages: [
           {
             role: "system",
-            content: `You are an AI assistant that assesses risk for accounting requests based on email replies.
+            content: `You are an AI assistant that assesses risk for accounting requests based on email replies and attachment content.
 
 Analyze the reply in the context of the original request and assign a risk level:
-- **HIGH**: Request is unlikely to be fulfilled (disputed, denied, confused, delayed beyond or close to deadline, unclear commitment)
-- **MEDIUM**: Request may be fulfilled but needs follow-up (partial commitment, questions, or vague responses)
-- **LOW**: Request is likely fulfilled or will be fulfilled soon (positive indicators, strong commitment, or already completed)
+- **HIGH**: Request is unlikely to be fulfilled (disputed, denied, confused, delayed beyond deadline, wrong document type, expired document)
+- **MEDIUM**: Request may be fulfilled but needs follow-up (partial commitment, questions, incomplete document, or vague responses)
+- **LOW**: Request is likely fulfilled or will be fulfilled soon (positive indicators, correct document type, strong commitment, or already completed)
 
 Consider:
 - The urgency/timeline of the original request and how it compares to the reply commitment
@@ -343,6 +449,8 @@ Consider:
 - The recipient's response indicates they will complete the request vs. they cannot/will not
 - Whether attachments were sent (indicates fulfillment)
 - Whether the reply contains concerning language (disputes, denials, delays)
+- If attachment content is provided, verify it matches the expected document type
+- Check for issues like: wrong document, expired certificates, incomplete forms, missing signatures
 
 Respond with JSON:
 {
@@ -360,6 +468,7 @@ Be realistic and nuanced - not all replies are binary fulfilled/not fulfilled.`
 Context: ${requestContext}
 Subject: ${input.requestSubject || "N/A"}
 Body: ${requestBodyPreview || "N/A"}
+Expected Document Type: ${input.expectedDocumentType || "Not specified"}
 
 Reply Received:
 ${replyPreview}
@@ -371,8 +480,9 @@ Additional Context:
 - Classification: ${input.latestInboundClassification || "N/A"}
 - Deadline Date: ${input.deadlineDate ? new Date(input.deadlineDate).toISOString().split('T')[0] : "None"}
 - Days Until Deadline (negative = overdue): ${deadlineDays !== null ? deadlineDays : "N/A"}
+${input.attachmentContentPreview ? `\nAttachment Content Preview:\n${input.attachmentContentPreview}` : ""}
 
-Analyze the risk level based on the reply content and request context.`
+Analyze the risk level based on the reply content, request context, and any attachment content provided. If attachment content is available, verify it matches the expected document type.`
           }
         ],
         response_format: { type: "json_object" },

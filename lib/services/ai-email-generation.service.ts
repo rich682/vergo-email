@@ -26,6 +26,9 @@ export interface GeneratedEmailDraft {
   }
   suggestedCampaignName?: string
   suggestedCampaignType?: CampaignType
+  // Flag to indicate if AI was used or fallback template
+  usedAI?: boolean
+  fallbackReason?: string
 }
 
 export class AIEmailGenerationError extends Error {
@@ -124,7 +127,7 @@ export class AIEmailGenerationService {
     const formattedDeadline = formatDeadline(data.deadlineDate)
     
     // Deterministic template fallback for fast completion
-    const getTemplateFallback = (): GeneratedEmailDraft => {
+    const getTemplateFallback = (reason?: string): GeneratedEmailDraft => {
       const subject = data.prompt.length > 50 
         ? data.prompt.substring(0, 47) + "..."
         : data.prompt
@@ -251,7 +254,9 @@ export class AIEmailGenerationService {
           groupIds: data.selectedRecipients?.groupIds || []
         },
         suggestedCampaignName: undefined,
-        suggestedCampaignType: undefined
+        suggestedCampaignType: undefined,
+        usedAI: false,
+        fallbackReason: reason || "AI unavailable - using template"
       }
     }
     
@@ -480,7 +485,7 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
           timestamp: new Date().toISOString(),
           usedTemplate: true
         }))
-        return getTemplateFallback()
+        return getTemplateFallback("OpenAI returned empty response")
       }
 
       // Parse JSON response with error handling
@@ -496,7 +501,7 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
           timestamp: new Date().toISOString(),
           usedTemplate: true
         }))
-        return getTemplateFallback()
+        return getTemplateFallback("Failed to parse AI response")
       }
 
       // Validate that we got a proper email body
@@ -508,7 +513,7 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
           timestamp: new Date().toISOString(),
           usedTemplate: true
         }))
-        return getTemplateFallback()
+        return getTemplateFallback("AI returned empty email body")
       }
 
       // Log successful AI generation
@@ -584,7 +589,8 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
         htmlBodyTemplate: htmlBodyTemplate, // Template without signature (for personalized)
         suggestedRecipients: validatedRecipients,
         suggestedCampaignName: parsed.suggestedCampaignName,
-        suggestedCampaignType
+        suggestedCampaignType,
+        usedAI: true
       }
     } catch (error: any) {
       if (timeoutId) {
@@ -605,7 +611,7 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
           usedTemplate: true
         }))
         // Return deterministic template immediately (not an error)
-        return getTemplateFallback()
+        return getTemplateFallback("AI request timed out")
       }
       
       console.log(JSON.stringify({
@@ -622,7 +628,11 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
       }))
       
       // On any error, return template fallback immediately (deterministic)
-      return getTemplateFallback()
+      // Include specific error message for debugging
+      const reason = error.message?.includes("OPENAI_API_KEY") 
+        ? "OPENAI_API_KEY not configured"
+        : `AI error: ${error.message || "Unknown error"}`
+      return getTemplateFallback(reason)
     }
   }
 }

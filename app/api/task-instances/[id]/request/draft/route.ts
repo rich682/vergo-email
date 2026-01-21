@@ -275,6 +275,7 @@ Number of recipients: ${recipientsWithEmail.length}`
     // Try AI generation
     let draft: { subject: string; body: string }
     let usedFallback = false
+    let fallbackReason: string | undefined
 
     try {
       const generated = await AIEmailGenerationService.generateDraft({
@@ -293,10 +294,18 @@ Number of recipients: ${recipientsWithEmail.length}`
         subject: generated.subjectTemplate || generated.subject,
         body: generated.bodyTemplate || generated.body
       }
+      
+      // Check if AI service used fallback internally
+      if (generated.usedAI === false) {
+        usedFallback = true
+        fallbackReason = generated.fallbackReason
+        console.warn(`[Request Draft] AI generation used fallback: ${fallbackReason}`)
+      }
     } catch (error: any) {
       console.error("AI draft generation failed, using fallback:", error.message)
       draft = generateFallbackDraft(job, recipientsWithEmail.length)
       usedFallback = true
+      fallbackReason = error.message
     }
 
     return NextResponse.json({
@@ -310,7 +319,8 @@ Number of recipients: ${recipientsWithEmail.length}`
         contactType: r.contactType
       })),
       itemContext,
-      usedFallback
+      usedFallback,
+      fallbackReason: usedFallback ? fallbackReason : undefined
     })
 
   } catch (error: any) {
