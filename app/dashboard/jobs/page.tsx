@@ -66,6 +66,7 @@ interface Job {
   id: string
   name: string
   description: string | null
+  type?: "GENERIC" | "RECONCILIATION" | "TABLE"
   ownerId: string
   status: string
   dueDate: string | null
@@ -576,6 +577,7 @@ export default function JobsPage() {
   const jobRows: JobRow[] = filteredJobs.map(job => ({
     id: job.id,
     name: job.name,
+    type: job.type || "GENERIC",
     status: job.status,
     ownerId: job.ownerId,
     ownerName: job.owner.name,

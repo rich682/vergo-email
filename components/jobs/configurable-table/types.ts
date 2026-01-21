@@ -1,5 +1,5 @@
 // Column types supported by the configurable table
-export type ColumnType = "text" | "status" | "person" | "date" | "notes" | "files" | "responses"
+export type ColumnType = "text" | "status" | "person" | "date" | "notes" | "files" | "responses" | "taskType"
 
 // Column definition structure
 export interface ColumnDefinition {
@@ -18,17 +18,19 @@ export interface ColumnDefinition {
 // Users can hide columns via the visibility toggle, but cannot delete them
 export const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { id: "name", type: "text", label: "Task", width: 280, visible: true, order: 0, field: "name", isSystem: true },
-  { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 1, field: "status", isSystem: true },
-  { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 2, field: "ownerId", isSystem: true },
-  { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 3, field: "dueDate", isSystem: true },
-  { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 4, field: "responses", isSystem: true },
-  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 5, field: "notes", isSystem: true },
-  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 6, field: "collectedItemCount", isSystem: true },
+  { id: "type", type: "taskType", label: "Type", width: 100, visible: true, order: 1, field: "type", isSystem: true },
+  { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 2, field: "status", isSystem: true },
+  { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 3, field: "ownerId", isSystem: true },
+  { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 4, field: "dueDate", isSystem: true },
+  { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 5, field: "responses", isSystem: true },
+  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 6, field: "notes", isSystem: true },
+  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 7, field: "collectedItemCount", isSystem: true },
 ]
 
 // Available column types for adding new columns
 export const AVAILABLE_COLUMN_TYPES: { type: ColumnType; label: string; description: string }[] = [
   { type: "text", label: "Text", description: "Single line text field" },
+  { type: "taskType", label: "Task Type", description: "Generic, Reconciliation, or Database" },
   { type: "status", label: "Status", description: "Status dropdown" },
   { type: "person", label: "Person", description: "Team member picker" },
   { type: "date", label: "Date", description: "Date picker" },
@@ -41,6 +43,7 @@ export const AVAILABLE_COLUMN_TYPES: { type: ColumnType; label: string; descript
 export interface JobRow {
   id: string
   name: string
+  type?: "GENERIC" | "RECONCILIATION" | "TABLE" // Task type
   status: string
   ownerId: string
   ownerName: string | null
