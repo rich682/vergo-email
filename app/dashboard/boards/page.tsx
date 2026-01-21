@@ -46,11 +46,16 @@ const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
 ]
 
 // Default task columns (for tasks within expanded board rows)
+// Matches the columns available in the main jobs table
 const DEFAULT_TASK_COLUMNS: BoardColumnDefinition[] = [
-  { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
-  { id: "owner", label: "Person", width: 140, visible: true, order: 1, isSystem: true },
-  { id: "status", label: "Status", width: 120, visible: true, order: 2, isSystem: true },
-  { id: "dueDate", label: "Date", width: 120, visible: true, order: 3, isSystem: true },
+  { id: "name", label: "Task", width: 280, visible: true, order: 0, isSystem: true },
+  { id: "status", label: "Status", width: 130, visible: true, order: 1, isSystem: true },
+  { id: "type", label: "Type", width: 120, visible: true, order: 2, isSystem: true },
+  { id: "owner", label: "Owner", width: 120, visible: true, order: 3, isSystem: true },
+  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 4, isSystem: true },
+  { id: "responses", label: "Responses", width: 100, visible: true, order: 5, isSystem: true },
+  { id: "notes", label: "Notes", width: 150, visible: true, order: 6, isSystem: true },
+  { id: "files", label: "Files", width: 80, visible: true, order: 7, isSystem: true },
 ]
 
 // Types
@@ -85,9 +90,13 @@ interface Job {
   id: string
   name: string
   description: string | null
+  type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABASE"
   status: JobStatus
   dueDate: string | null
+  notes: string | null
   owner: JobOwner
+  taskCount?: number // Number of requests/responses
+  collectedItemCount?: number // Number of files/evidence
   _count?: {
     tasks: number
     subtasks: number
@@ -178,6 +187,21 @@ function getJobStatusBadge(status: JobStatus) {
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700">Stuck</span>
     default:
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{status}</span>
+  }
+}
+
+function getTaskTypeBadge(type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABASE" | undefined) {
+  switch (type) {
+    case "GENERIC":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Generic</span>
+    case "TABLE":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">Table</span>
+    case "RECONCILIATION":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">Reconciliation</span>
+    case "DATABASE":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Database</span>
+    default:
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Generic</span>
   }
 }
 
@@ -1111,9 +1135,21 @@ function BoardRow({
                             <span className="text-sm text-gray-900 truncate block">{job.name}</span>
                           </div>
                         )
+                      case "status":
+                        return (
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 130 }}>
+                            {getJobStatusBadge(job.status)}
+                          </div>
+                        )
+                      case "type":
+                        return (
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
+                            {getTaskTypeBadge(job.type)}
+                          </div>
+                        )
                       case "owner":
                         return (
-                          <div key={column.id} className="w-32 flex-shrink-0" style={{ width: column.width || 140 }}>
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
                             {job.owner ? (
                               <div className="flex items-center gap-2">
                                 <Avatar className="h-6 w-6">
@@ -1130,15 +1166,9 @@ function BoardRow({
                             )}
                           </div>
                         )
-                      case "status":
-                        return (
-                          <div key={column.id} className="w-28 flex-shrink-0" style={{ width: column.width || 120 }}>
-                            {getJobStatusBadge(job.status)}
-                          </div>
-                        )
                       case "dueDate":
                         return (
-                          <div key={column.id} className="w-28 flex-shrink-0" style={{ width: column.width || 120 }}>
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
                             {job.dueDate ? (
                               <div className="flex items-center gap-1 text-sm text-gray-600">
                                 <Calendar className="w-3.5 h-3.5" />
@@ -1147,6 +1177,32 @@ function BoardRow({
                             ) : (
                               <span className="text-gray-400 text-sm">—</span>
                             )}
+                          </div>
+                        )
+                      case "responses":
+                        return (
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
+                            <span className="text-sm text-gray-600">
+                              {job.taskCount || 0}
+                            </span>
+                          </div>
+                        )
+                      case "notes":
+                        return (
+                          <div key={column.id} className="flex-shrink-0 truncate" style={{ width: column.width || 150 }}>
+                            {job.notes ? (
+                              <span className="text-sm text-gray-600 truncate block">{job.notes}</span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">—</span>
+                            )}
+                          </div>
+                        )
+                      case "files":
+                        return (
+                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 80 }}>
+                            <span className="text-sm text-gray-600">
+                              {job.collectedItemCount || 0}
+                            </span>
                           </div>
                         )
                       default:

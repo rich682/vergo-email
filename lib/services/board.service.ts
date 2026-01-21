@@ -353,7 +353,7 @@ export class BoardService {
             collaborators: {
               include: { user: { select: { id: true, name: true, email: true } } }
             },
-            _count: { select: { requests: true } }
+            _count: { select: { requests: true, collectedItems: true } }
           },
           orderBy: { createdAt: "desc" }
         },
@@ -375,6 +375,7 @@ export class BoardService {
       jobs: board.taskInstances.map(ti => ({
         ...ti,
         taskCount: ti._count.requests,
+        collectedItemCount: ti._count.collectedItems,
         collaborators: ti.collaborators.map(c => ({
           id: c.id,
           userId: c.userId,

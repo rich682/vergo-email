@@ -14,11 +14,16 @@ const DEFAULT_BOARD_COLUMNS = [
 ]
 
 // Default column configuration for tasks within expanded board rows
+// Matches the columns available in the main jobs table
 const DEFAULT_TASK_COLUMNS = [
-  { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
-  { id: "owner", label: "Person", width: 140, visible: true, order: 1, isSystem: true },
-  { id: "status", label: "Status", width: 120, visible: true, order: 2, isSystem: true },
-  { id: "dueDate", label: "Date", width: 120, visible: true, order: 3, isSystem: true },
+  { id: "name", label: "Task", width: 280, visible: true, order: 0, isSystem: true },
+  { id: "status", label: "Status", width: 130, visible: true, order: 1, isSystem: true },
+  { id: "type", label: "Type", width: 120, visible: true, order: 2, isSystem: true },
+  { id: "owner", label: "Owner", width: 120, visible: true, order: 3, isSystem: true },
+  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 4, isSystem: true },
+  { id: "responses", label: "Responses", width: 100, visible: true, order: 5, isSystem: true },
+  { id: "notes", label: "Notes", width: 150, visible: true, order: 6, isSystem: true },
+  { id: "files", label: "Files", width: 80, visible: true, order: 7, isSystem: true },
 ]
 
 // Merge saved config with default columns to include any new system columns

@@ -32,12 +32,19 @@ interface BoardColumnHeaderProps {
 }
 
 const COLUMN_TYPE_ICONS: Record<string, typeof Type> = {
+  // Board columns
   name: LayoutList,
   cadence: Clock,
   period: Calendar,
   status: CheckSquare,
   owner: User,
   updatedAt: Calendar,
+  // Task columns
+  type: LayoutList,
+  dueDate: Calendar,
+  responses: Type, // Message icon would be better but using Type as fallback
+  notes: Type,
+  files: Type,
 }
 
 export function BoardColumnHeader({ columns, onColumnsChange }: BoardColumnHeaderProps) {
