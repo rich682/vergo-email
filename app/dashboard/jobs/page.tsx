@@ -173,7 +173,7 @@ export default function JobsPage() {
       // Always include archived - they appear in their own "Archived" group section
       params.set("includeArchived", "true")
       
-      const response = await fetch(`/api/jobs?${params.toString()}`, { credentials: "include" })
+      const response = await fetch(`/api/task-instances?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setJobs(data.taskInstances || [])

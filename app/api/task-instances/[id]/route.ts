@@ -1,9 +1,9 @@
 /**
  * Job Detail API Endpoints
  * 
- * GET /api/jobs/[id] - Get job details
- * PATCH /api/jobs/[id] - Update job
- * DELETE /api/jobs/[id] - Delete/archive job
+ * GET /api/task-instances/[id] - Get job details
+ * PATCH /api/task-instances/[id] - Update job
+ * DELETE /api/task-instances/[id] - Delete/archive job
  * 
  * Permission Model:
  * - All org members can view (visible by default)

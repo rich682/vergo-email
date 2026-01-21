@@ -158,7 +158,7 @@ export function ComposeSendStep({
     setError(null)
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset/draft`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -200,7 +200,7 @@ export function ComposeSendStep({
     setError(null)
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset/draft`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -280,7 +280,7 @@ export function ComposeSendStep({
     setError(null)
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -323,7 +323,7 @@ export function ComposeSendStep({
   // Save draft before send
   const saveDraft = async () => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -363,7 +363,7 @@ export function ComposeSendStep({
     }
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset/send`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

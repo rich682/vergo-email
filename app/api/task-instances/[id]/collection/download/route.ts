@@ -8,7 +8,7 @@ import { getStorageService } from "@/lib/services/storage.service"
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/jobs/[id]/collection/download?itemId=xxx
+ * GET /api/task-instances/[id]/collection/download?itemId=xxx
  * Download a single collected item
  * 
  * For Vercel Blob storage, redirects to the public URL for efficient download.

@@ -1,7 +1,7 @@
 /**
  * Jobs Bulk Import Endpoint
  * 
- * POST /api/jobs/bulk-import - Interpret spreadsheet data using AI
+ * POST /api/task-instances/bulk-import - Interpret spreadsheet data using AI
  * 
  * Takes raw spreadsheet rows and uses GPT to extract:
  * - Item name

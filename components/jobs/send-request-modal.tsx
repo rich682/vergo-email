@@ -243,7 +243,7 @@ export function SendRequestModal({
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
     try {
-      const response = await fetch(`/api/jobs/${job.id}/labels`, {
+      const response = await fetch(`/api/task-instances/${job.id}/labels`, {
         credentials: "include",
       })
       if (response.ok) {
@@ -259,7 +259,7 @@ export function SendRequestModal({
   const fetchContactLabels = useCallback(async (): Promise<Map<string, ContactLabelInfo[]>> => {
     const labelMap = new Map<string, ContactLabelInfo[]>()
     try {
-      const response = await fetch(`/api/jobs/${job.id}/contact-labels`, {
+      const response = await fetch(`/api/task-instances/${job.id}/contact-labels`, {
         credentials: "include",
       })
       if (response.ok) {
@@ -288,7 +288,7 @@ export function SendRequestModal({
     try {
       // Fetch labels and contact labels in parallel with draft
       const [draftResponse, contactLabelsMap] = await Promise.all([
-        fetch(`/api/jobs/${job.id}/request/draft`, {
+        fetch(`/api/task-instances/${job.id}/request/draft`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -394,7 +394,7 @@ export function SendRequestModal({
     setShowReminderPreview(true)
     
     try {
-      const response = await fetch(`/api/jobs/${job.id}/request/reminder-preview`, {
+      const response = await fetch(`/api/task-instances/${job.id}/request/reminder-preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -431,7 +431,7 @@ export function SendRequestModal({
     setError(null)
     
     try {
-      const response = await fetch(`/api/jobs/${job.id}/request/refine`, {
+      const response = await fetch(`/api/task-instances/${job.id}/request/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

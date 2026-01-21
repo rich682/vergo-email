@@ -38,7 +38,7 @@ export function AISummaryPanel({ boardId }: AISummaryPanelProps) {
     setError(null)
     
     try {
-      const response = await fetch("/api/jobs/ai-summary", {
+      const response = await fetch("/api/task-instances/ai-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

@@ -25,7 +25,7 @@ export function ContactLabelsTable({ jobId, canEdit = true }: ContactLabelsTable
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const contactsRes = await fetch(`/api/jobs/${jobId}/contact-labels`, { credentials: "include" })
+      const contactsRes = await fetch(`/api/task-instances/${jobId}/contact-labels`, { credentials: "include" })
 
       if (contactsRes.ok) {
         const data = await contactsRes.json()

@@ -123,7 +123,7 @@ function RecipientStatusDropdown({
     
     setUpdating(true)
     try {
-      const response = await fetch(`/api/tasks/${recipientId}`, {
+      const response = await fetch(`/api/requests/detail/${recipientId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -190,7 +190,7 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
       const messageIds: Record<string, string> = {}
       for (const recipient of repliedRecipients) {
         try {
-          const response = await fetch(`/api/tasks/${recipient.id}/messages`, {
+          const response = await fetch(`/api/requests/detail/${recipient.id}/messages`, {
             credentials: "include"
           })
           if (response.ok) {
@@ -232,7 +232,7 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
 
     // Try to fetch the latest message for this recipient's task
     try {
-      const response = await fetch(`/api/tasks/${recipient.id}/messages`, {
+      const response = await fetch(`/api/requests/detail/${recipient.id}/messages`, {
         credentials: "include"
       })
       if (response.ok) {

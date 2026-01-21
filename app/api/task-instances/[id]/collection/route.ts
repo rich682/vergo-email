@@ -63,7 +63,7 @@ function isAllowedFile(filename: string, mimeType: string | undefined): { allowe
 }
 
 /**
- * GET /api/jobs/[id]/collection
+ * GET /api/task-instances/[id]/collection
  * List all collected items for a job
  */
 export async function GET(
@@ -128,7 +128,7 @@ export async function GET(
 }
 
 /**
- * POST /api/jobs/[id]/collection
+ * POST /api/task-instances/[id]/collection
  * Upload a new file to the collection (manual upload)
  */
 export async function POST(

@@ -8,7 +8,7 @@ import { CollectedItemStatus } from "@prisma/client"
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/jobs/[id]/collection/[itemId]
+ * GET /api/task-instances/[id]/collection/[itemId]
  * Get a single collected item
  */
 export async function GET(
@@ -58,7 +58,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/jobs/[id]/collection/[itemId]
+ * PATCH /api/task-instances/[id]/collection/[itemId]
  * Update a collected item (status, notes)
  */
 export async function PATCH(
@@ -133,7 +133,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/jobs/[id]/collection/[itemId]
+ * DELETE /api/task-instances/[id]/collection/[itemId]
  * Delete a collected item
  */
 export async function DELETE(

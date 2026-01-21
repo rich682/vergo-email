@@ -8,7 +8,7 @@ import { CollectedItemStatus } from "@prisma/client"
 export const dynamic = "force-dynamic"
 
 /**
- * POST /api/jobs/[id]/collection/bulk
+ * POST /api/task-instances/[id]/collection/bulk
  * Perform bulk operations on collected items
  * 
  * Actions:

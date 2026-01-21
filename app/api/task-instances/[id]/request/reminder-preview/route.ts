@@ -22,7 +22,7 @@ interface ReminderPreview {
 }
 
 /**
- * POST /api/jobs/[id]/request/reminder-preview
+ * POST /api/task-instances/[id]/request/reminder-preview
  * Generate preview of what reminder emails will look like BEFORE sending
  * This is used in the SendRequestModal to show users what reminders will say
  * 

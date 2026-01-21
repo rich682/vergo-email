@@ -7,7 +7,7 @@ import { CollectionService } from "@/lib/services/collection.service"
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/jobs/[id]/collection/export
+ * GET /api/task-instances/[id]/collection/export
  * Export collection metadata as CSV
  */
 export async function GET(

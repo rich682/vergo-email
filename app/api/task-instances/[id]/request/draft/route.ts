@@ -1,7 +1,7 @@
 /**
  * Job Request Draft Endpoint
  * 
- * POST /api/jobs/[id]/request/draft - Generate draft email from Item context
+ * POST /api/task-instances/[id]/request/draft - Generate draft email from Item context
  * 
  * This is a thin helper that generates subject/body using Item context.
  * It does NOT create any EmailDraft/Quest/Task records.

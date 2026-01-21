@@ -145,7 +145,7 @@ function StatusDropdown({
     
     setUpdating(true)
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
+      const response = await fetch(`/api/requests/detail/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -328,7 +328,7 @@ export default function RequestsPage() {
         if (replyMessageIds[request.id]) continue
         
         try {
-          const response = await fetch(`/api/tasks/${request.id}/messages`, {
+          const response = await fetch(`/api/requests/detail/${request.id}/messages`, {
             credentials: "include"
           })
           if (response.ok) {
@@ -382,7 +382,7 @@ export default function RequestsPage() {
     // If request has replies but we're still loading message ID, fetch and navigate
     if (hasReplies && !messageId) {
       // Fetch the message ID and navigate
-      fetch(`/api/tasks/${request.id}/messages`, { credentials: "include" })
+      fetch(`/api/requests/detail/${request.id}/messages`, { credentials: "include" })
         .then(res => res.json())
         .then(messages => {
           const inboundMessage = messages

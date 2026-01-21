@@ -1,7 +1,7 @@
 /**
  * Jobs Import Template Endpoint
  * 
- * GET /api/jobs/template - Download a CSV template for bulk import
+ * GET /api/task-instances/template - Download a CSV template for bulk import
  */
 
 import { NextRequest, NextResponse } from "next/server"

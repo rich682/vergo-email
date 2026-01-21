@@ -1,7 +1,7 @@
 /**
  * Task AI Summary Endpoint
  * 
- * POST /api/jobs/[id]/ai-summary - Generate AI summary for a specific task
+ * POST /api/task-instances/[id]/ai-summary - Generate AI summary for a specific task
  * 
  * Analyzes requests, response tracking, and status
  */

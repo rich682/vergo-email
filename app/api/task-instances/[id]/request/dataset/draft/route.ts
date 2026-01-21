@@ -1,7 +1,7 @@
 /**
  * Dataset Draft Generation API Endpoint
  * 
- * POST /api/jobs/[id]/request/dataset/draft
+ * POST /api/task-instances/[id]/request/dataset/draft
  * 
  * Generates an AI-drafted email using Item context and dataset schema.
  * Returns subject/body with merge fields and column usage analysis.

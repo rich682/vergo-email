@@ -7,7 +7,7 @@ import { put } from "@vercel/blob"
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/jobs/[id]/reconciliations - List all reconciliations for a job
+ * GET /api/task-instances/[id]/reconciliations - List all reconciliations for a job
  */
 export async function GET(
   request: NextRequest,
@@ -52,7 +52,7 @@ export async function GET(
 }
 
 /**
- * POST /api/jobs/[id]/reconciliations - Create a new reconciliation
+ * POST /api/task-instances/[id]/reconciliations - Create a new reconciliation
  * Expects multipart form data with exactly 2 files: document1 and document2
  */
 export async function POST(

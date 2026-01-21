@@ -1,7 +1,7 @@
 /**
  * Job Requests API Endpoint
  * 
- * GET /api/jobs/[id]/requests - Get EmailDrafts (Requests) associated with a Job
+ * GET /api/task-instances/[id]/requests - Get EmailDrafts (Requests) associated with a Job
  * 
  * Returns a list of EmailDrafts that have jobId set to this job.
  * Tasks are linked directly via jobId.

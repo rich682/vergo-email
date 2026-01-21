@@ -1,7 +1,7 @@
 /**
  * Dataset Update API Endpoint
  * 
- * PATCH /api/jobs/[id]/request/dataset
+ * PATCH /api/task-instances/[id]/request/dataset
  * 
  * Updates dataset structure or row values:
  * - add_column: Add a new column to the dataset
@@ -302,7 +302,7 @@ export async function PATCH(
 }
 
 /**
- * GET /api/jobs/[id]/request/dataset
+ * GET /api/task-instances/[id]/request/dataset
  * 
  * Retrieves dataset information for a draft
  */

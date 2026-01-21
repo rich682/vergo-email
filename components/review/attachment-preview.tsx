@@ -58,7 +58,7 @@ export function AttachmentPreview({ attachment }: AttachmentPreviewProps) {
         // Use collected item download endpoint
         const jobId = attachment.fileKey.split('/')[1] // Extract jobId from fileKey
         const response = await fetch(
-          `/api/jobs/${jobId}/collection/download?itemId=${attachment.id}`,
+          `/api/task-instances/${jobId}/collection/download?itemId=${attachment.id}`,
           { credentials: "include" }
         )
 

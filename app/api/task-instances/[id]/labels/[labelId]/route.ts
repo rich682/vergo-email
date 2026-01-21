@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { JobLabelService, MetadataFieldSchema } from "@/lib/services/job-label.service"
 import { prisma } from "@/lib/prisma"
 
-// GET /api/jobs/[id]/labels/[labelId] - Get a single label
+// GET /api/task-instances/[id]/labels/[labelId] - Get a single label
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; labelId: string }> }
@@ -63,7 +63,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/jobs/[id]/labels/[labelId] - Update a label
+// PATCH /api/task-instances/[id]/labels/[labelId] - Update a label
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; labelId: string }> }
@@ -176,7 +176,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/jobs/[id]/labels/[labelId] - Delete a label
+// DELETE /api/task-instances/[id]/labels/[labelId] - Delete a label
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; labelId: string }> }

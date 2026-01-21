@@ -183,7 +183,7 @@ export function ConfigurableTable({
         const params = new URLSearchParams()
         if (boardId) params.set("boardId", boardId)
         
-        const response = await fetch(`/api/jobs/column-config?${params.toString()}`, {
+        const response = await fetch(`/api/task-instances/column-config?${params.toString()}`, {
           credentials: "include"
         })
         
@@ -206,7 +206,7 @@ export function ConfigurableTable({
   // Save column configuration when columns change
   const saveColumnConfig = useCallback(async (newColumns: ColumnDefinition[]) => {
     try {
-      await fetch("/api/jobs/column-config", {
+      await fetch("/api/task-instances/column-config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

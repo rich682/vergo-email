@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 /**
- * GET /api/tasks/[id]/reminders
+ * GET /api/requests/detail/[id]/reminders
  * Returns reminder state for a task
  */
 export async function GET(
@@ -93,7 +93,7 @@ export async function GET(
 }
 
 /**
- * DELETE /api/tasks/[id]/reminders
+ * DELETE /api/requests/detail/[id]/reminders
  * Cancel upcoming reminders for a task
  */
 export async function DELETE(

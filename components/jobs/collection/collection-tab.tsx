@@ -116,7 +116,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
       if (sourceFilter !== "all") params.set("source", sourceFilter)
       
       const response = await fetch(
-        `/api/jobs/${jobId}/collection?${params.toString()}`,
+        `/api/task-instances/${jobId}/collection?${params.toString()}`,
         { credentials: "include" }
       )
       
@@ -163,7 +163,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
   const handleDownload = async (itemId: string, filename: string) => {
     try {
       const response = await fetch(
-        `/api/jobs/${jobId}/collection/download?itemId=${itemId}`,
+        `/api/task-instances/${jobId}/collection/download?itemId=${itemId}`,
         { credentials: "include" }
       )
       
@@ -186,7 +186,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
     if (!confirm("Are you sure you want to delete this file?")) return
     
     try {
-      const response = await fetch(`/api/jobs/${jobId}/collection/${itemId}`, {
+      const response = await fetch(`/api/task-instances/${jobId}/collection/${itemId}`, {
         method: "DELETE",
         credentials: "include"
       })

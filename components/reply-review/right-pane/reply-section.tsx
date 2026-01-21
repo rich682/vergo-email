@@ -41,7 +41,7 @@ export function ReplySection({
     setGeneratingDraft(true)
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}/reply-draft`, {
+      const response = await fetch(`/api/requests/detail/${taskId}/reply-draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -70,7 +70,7 @@ export function ReplySection({
     setSendSuccess(false)
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}/reply`, {
+      const response = await fetch(`/api/requests/detail/${taskId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

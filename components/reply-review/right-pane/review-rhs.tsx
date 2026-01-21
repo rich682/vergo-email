@@ -157,7 +157,7 @@ export function ReviewRHS({
     setSendSuccess(false)
     
     try {
-      const response = await fetch(`/api/tasks/${taskId}/reply`, {
+      const response = await fetch(`/api/requests/detail/${taskId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

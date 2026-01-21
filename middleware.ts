@@ -101,7 +101,7 @@ export default withAuth(
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/api/tasks/:path*",
+    "/api/requests/detail/:path*",
     "/api/email-drafts/:path*",
     "/api/email-accounts/:path*",
     "/api/oauth/:path*",

@@ -1,7 +1,7 @@
 /**
  * Dataset Preview API Endpoint
  * 
- * POST /api/jobs/[id]/request/dataset/preview
+ * POST /api/task-instances/[id]/request/dataset/preview
  * 
  * Renders the email template for a specific recipient, resolving merge fields.
  * Returns rendered content and highlights missing fields.
@@ -185,7 +185,7 @@ export async function POST(
 }
 
 /**
- * GET /api/jobs/[id]/request/dataset/preview
+ * GET /api/task-instances/[id]/request/dataset/preview
  * 
  * Batch preview for all recipients (returns summary, not full renders)
  */

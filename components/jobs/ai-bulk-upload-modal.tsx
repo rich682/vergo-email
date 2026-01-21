@@ -76,7 +76,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
     setError(null)
 
     try {
-      const response = await fetch("/api/jobs/ai-generate", {
+      const response = await fetch("/api/task-instances/ai-generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -214,7 +214,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
       const nonEmptyRows = rows.filter(row => row.some(cell => cell && cell.trim()))
 
       // Send to AI for interpretation
-      const response = await fetch("/api/jobs/bulk-import", {
+      const response = await fetch("/api/task-instances/bulk-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -307,7 +307,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
   }
 
   const handleDownloadTemplate = () => {
-    window.open("/api/jobs/template", "_blank")
+    window.open("/api/task-instances/template", "_blank")
   }
 
   const handleClose = () => {

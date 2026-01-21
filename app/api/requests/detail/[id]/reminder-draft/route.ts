@@ -23,7 +23,7 @@ interface ReminderDraft {
 }
 
 /**
- * POST /api/tasks/[id]/reminder-draft
+ * POST /api/requests/detail/[id]/reminder-draft
  * Generate an AI-powered reminder email draft that varies from the original
  * 
  * Input: { reminderNumber?: number } (optional, defaults to 1)
@@ -194,7 +194,7 @@ Generate a ${reminderNumber === 1 ? 'friendly' : reminderNumber === 2 ? 'polite 
 }
 
 /**
- * GET /api/tasks/[id]/reminder-draft
+ * GET /api/requests/detail/[id]/reminder-draft
  * Preview what reminder emails will look like for a task
  * Returns drafts for reminders 1, 2, and 3
  */

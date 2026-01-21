@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 
 /**
  * Update risk level for a task (manual override)
- * PUT /api/tasks/[id]/risk
+ * PUT /api/requests/detail/[id]/risk
  * Body: { riskLevel: "high" | "medium" | "low", overrideReason?: string }
  */
 export async function PUT(

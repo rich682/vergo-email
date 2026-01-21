@@ -201,7 +201,7 @@ export function UploadStep({ jobId, onUploadComplete, onCancel }: UploadStepProp
     setError(null)
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/request/dataset/upload`, {
+      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

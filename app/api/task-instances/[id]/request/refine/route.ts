@@ -1,7 +1,7 @@
 /**
  * Job Request Refine Endpoint
  * 
- * POST /api/jobs/[id]/request/refine - Refine draft email based on user instruction
+ * POST /api/task-instances/[id]/request/refine - Refine draft email based on user instruction
  * 
  * This is a thin helper that revises subject/body based on user instruction.
  * It does NOT create any EmailDraft/Quest/Task records.

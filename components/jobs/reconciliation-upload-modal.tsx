@@ -102,7 +102,7 @@ export function ReconciliationUploadModal({
       formData.append("document1", document1.file)
       formData.append("document2", document2.file)
 
-      const response = await fetch(`/api/jobs/${jobId}/reconciliations`, {
+      const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, {
         method: "POST",
         body: formData,
         credentials: "include"

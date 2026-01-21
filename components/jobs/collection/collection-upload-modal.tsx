@@ -93,7 +93,7 @@ export function CollectionUploadModal({
           formData.append("taskId", taskId)
         }
 
-        const response = await fetch(`/api/jobs/${jobId}/collection`, {
+        const response = await fetch(`/api/task-instances/${jobId}/collection`, {
           method: "POST",
           credentials: "include",
           body: formData

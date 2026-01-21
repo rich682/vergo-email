@@ -1,7 +1,7 @@
 /**
  * Jobs AI Generate Endpoint
  * 
- * POST /api/jobs/ai-generate - Generate a checklist from a natural language prompt
+ * POST /api/task-instances/ai-generate - Generate a checklist from a natural language prompt
  * 
  * Takes a prompt like "create me a month end checklist" and uses AI to generate
  * a list of tasks with suggested due dates.

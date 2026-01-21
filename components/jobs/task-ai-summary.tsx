@@ -64,7 +64,7 @@ export function TaskAISummary({
     setError(null)
     
     try {
-      const response = await fetch(`/api/jobs/${jobId}/ai-summary`, {
+      const response = await fetch(`/api/task-instances/${jobId}/ai-summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
