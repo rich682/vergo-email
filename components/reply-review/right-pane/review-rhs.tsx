@@ -84,6 +84,9 @@ export function ReviewRHS({
   const [sending, setSending] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  
+  // Document analysis state
+  const [reanalyzingDocs, setReanalyzingDocs] = useState(false)
 
   const replySubject = originalSubject?.startsWith("Re:") 
     ? originalSubject 
@@ -150,6 +153,31 @@ export function ReviewRHS({
       setRegenerating(false)
     }
   }, [messageId, isInbound, recipientName])
+
+  // Reanalyze documents (force regeneration)
+  const reanalyzeDocuments = useCallback(async () => {
+    if (!isInbound) return
+    
+    try {
+      setReanalyzingDocs(true)
+      const response = await fetch("/api/review/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ messageId, forceReanalyze: true })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setAssessment(data)
+        setShowDocuments(true) // Auto-expand to show results
+      }
+    } catch (error) {
+      console.error("Failed to reanalyze documents:", error)
+    } finally {
+      setReanalyzingDocs(false)
+    }
+  }, [messageId, isInbound])
 
   // Load assessment and then draft
   useEffect(() => {
@@ -356,38 +384,52 @@ export function ReviewRHS({
                     </div>
                   )}
 
-                  {/* Findings */}
-                  {assessment.findings.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                        Findings
-                      </h4>
-                      <div className="space-y-2">
-                        {assessment.findings.map((finding, i) => (
-                          <div
-                            key={i}
-                            className={`p-2 rounded text-sm ${
-                              finding.severity === "critical"
-                                ? "bg-red-50 border border-red-200"
-                                : finding.severity === "warning"
-                                ? "bg-amber-50 border border-amber-200"
-                                : "bg-gray-50 border border-gray-200"
-                            }`}
-                          >
-                            <div className="font-medium">{finding.title}</div>
-                            <div className="text-xs text-gray-600 mt-0.5">
-                              {finding.explanation}
-                            </div>
-                            {finding.suggestedAction && (
-                              <div className="text-xs text-gray-500 mt-1 italic">
-                                → {finding.suggestedAction}
+                  {/* Findings - filter out attachment-related ones since we have Document Analysis section */}
+                  {(() => {
+                    // Filter out attachment verification findings - these are handled by Document Analysis
+                    const filteredFindings = assessment.findings.filter(f => {
+                      const title = f.title.toLowerCase()
+                      const explanation = f.explanation.toLowerCase()
+                      const isAttachmentRelated = 
+                        title.includes("attachment") ||
+                        title.includes("document verification") ||
+                        title.includes("verification needed") ||
+                        (explanation.includes("attachment") && explanation.includes("verify"))
+                      return !isAttachmentRelated
+                    })
+                    
+                    return filteredFindings.length > 0 ? (
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                          Findings
+                        </h4>
+                        <div className="space-y-2">
+                          {filteredFindings.map((finding, i) => (
+                            <div
+                              key={i}
+                              className={`p-2 rounded text-sm ${
+                                finding.severity === "critical"
+                                  ? "bg-red-50 border border-red-200"
+                                  : finding.severity === "warning"
+                                  ? "bg-amber-50 border border-amber-200"
+                                  : "bg-gray-50 border border-gray-200"
+                              }`}
+                            >
+                              <div className="font-medium">{finding.title}</div>
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                {finding.explanation}
                               </div>
-                            )}
-                          </div>
-                        ))}
+                              {finding.suggestedAction && (
+                                <div className="text-xs text-gray-500 mt-1 italic">
+                                  → {finding.suggestedAction}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    ) : null
+                  })()}
                 </div>
               )}
             </div>
@@ -400,11 +442,16 @@ export function ReviewRHS({
       {/* Document Analysis Section - only shown when attachments exist */}
       {assessment?.hasAttachments && (
         <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setShowDocuments(!showDocuments)}
-            className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors"
-          >
-            <div className="flex items-center gap-2">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <button
+              onClick={() => setShowDocuments(!showDocuments)}
+              className="flex items-center gap-2 hover:text-gray-700"
+            >
+              {showDocuments ? (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              )}
               <FileText className="w-4 h-4 text-blue-500" />
               <span className="text-sm font-medium text-gray-900">Document Analysis</span>
               {assessment.attachmentSummaries && assessment.attachmentSummaries.length > 0 && (
@@ -412,13 +459,25 @@ export function ReviewRHS({
                   {assessment.attachmentSummaries.length} file{assessment.attachmentSummaries.length !== 1 ? "s" : ""}
                 </span>
               )}
-            </div>
-            {showDocuments ? (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            )}
-          </button>
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                reanalyzeDocuments()
+              }}
+              disabled={reanalyzingDocs}
+              className="h-6 text-xs text-gray-500"
+            >
+              {reanalyzingDocs ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3 mr-1" />
+              )}
+              {reanalyzingDocs ? "Analyzing..." : "Re-analyze"}
+            </Button>
+          </div>
 
           {showDocuments && (
             <div className="p-4 bg-white space-y-4">
@@ -471,9 +530,23 @@ export function ReviewRHS({
                   </div>
                 ))
               ) : (
-                <div className="text-sm text-gray-500 text-center py-4">
+                <div className="text-sm text-gray-500 text-center py-6">
+                  <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                   <p>Attachment content not yet analyzed.</p>
-                  <p className="text-xs mt-1">Re-analyze to extract document details.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={reanalyzeDocuments}
+                    disabled={reanalyzingDocs}
+                    className="mt-3"
+                  >
+                    {reanalyzingDocs ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                    )}
+                    Analyze Documents
+                  </Button>
                 </div>
               )}
             </div>

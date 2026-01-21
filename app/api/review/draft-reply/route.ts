@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
     const body = await request.json()
     const { messageId, regenerate = false } = body
 
@@ -71,6 +72,31 @@ export async function POST(request: NextRequest) {
         { error: "messageId is required" },
         { status: 400 }
       )
+    }
+
+    // Fetch user's signature for appending to draft
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, signature: true }
+    })
+    
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true }
+    })
+    
+    // Build signature - use custom if available, otherwise build from user/org data
+    let userSignature = ""
+    if (user?.signature && user.signature.trim() !== "") {
+      userSignature = user.signature
+    } else {
+      // Build fallback signature from user/org data
+      const signatureParts: string[] = []
+      if (user?.name) signatureParts.push(user.name)
+      if (organization?.name) signatureParts.push(organization.name)
+      if (signatureParts.length > 0) {
+        userSignature = signatureParts.join("\n")
+      }
     }
 
     // Fetch the message with context
@@ -187,7 +213,8 @@ Rules:
 - Do NOT use generic phrases like "I hope this email finds you well"
 - If attachments were received, acknowledge them specifically
 - If items are missing, list them clearly
-- Match the tone of prior emails from this organization`
+- Match the tone of prior emails from this organization
+- Do NOT include a signature - end with just "Best regards" or similar closing (signature will be added automatically)`
 
     const userPrompt = isFollowUp 
       ? `The recipient replied but we need to follow up for missing items.
@@ -217,10 +244,18 @@ Draft a brief thank-you acknowledgment. Keep it to 1-2 sentences.`
       max_tokens: 300
     })
 
-    const draft = completion.choices[0]?.message?.content?.trim() || 
+    let draft = completion.choices[0]?.message?.content?.trim() || 
       (isFollowUp 
         ? `Hi ${recipientName},\n\nThank you for your response. Could you please provide the missing items at your earliest convenience?\n\nBest regards`
         : `Hi ${recipientName},\n\nThank you for sending this over. I've received everything.\n\nBest regards`)
+
+    // Append user signature if available
+    if (userSignature) {
+      // Clean up the draft ending and add signature
+      // Remove any trailing "Best regards" variations without a name
+      draft = draft.replace(/\n*(Best regards|Kind regards|Regards|Thanks|Thank you),?\s*$/i, "")
+      draft = draft.trim() + "\n\nBest regards,\n" + userSignature
+    }
 
     // ============ PERSIST DRAFT ============
 

@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const body = await request.json()
-    const { messageId } = body
+    const { messageId, forceReanalyze = false } = body
 
     if (!messageId) {
       return NextResponse.json(
@@ -176,28 +176,31 @@ export async function POST(request: NextRequest) {
     }
 
     // IDEMPOTENCY: Check if recommendation already exists for this message + prompt version
-    const existingRecommendation = await prisma.aIRecommendation.findFirst({
-      where: {
-        messageId,
-        promptVersion: PROMPT_VERSION
-      },
-      orderBy: { createdAt: "desc" }
-    })
-
-    if (existingRecommendation) {
-      // Return existing recommendation
-      // Note: attachmentSummaries not stored in DB, so re-analyze needed for those
-      return NextResponse.json({
-        id: existingRecommendation.id,
-        summaryBullets: existingRecommendation.summaryBullets || [],
-        findings: existingRecommendation.findings || [],
-        attachmentSummaries: [], // Will trigger re-analysis if user wants document details
-        recommendedAction: existingRecommendation.recommendedAction,
-        reasoning: existingRecommendation.reasoning,
-        confidence: "medium",
-        isExisting: true,
-        hasAttachments: message.collectedItems.length > 0
+    // Skip cached results if forceReanalyze is true (user wants fresh document analysis)
+    if (!forceReanalyze) {
+      const existingRecommendation = await prisma.aIRecommendation.findFirst({
+        where: {
+          messageId,
+          promptVersion: PROMPT_VERSION
+        },
+        orderBy: { createdAt: "desc" }
       })
+
+      if (existingRecommendation) {
+        // Return existing recommendation
+        // Note: attachmentSummaries not stored in DB, so re-analyze needed for those
+        return NextResponse.json({
+          id: existingRecommendation.id,
+          summaryBullets: existingRecommendation.summaryBullets || [],
+          findings: existingRecommendation.findings || [],
+          attachmentSummaries: [], // Will trigger re-analysis if user wants document details
+          recommendedAction: existingRecommendation.recommendedAction,
+          reasoning: existingRecommendation.reasoning,
+          confidence: "medium",
+          isExisting: true,
+          hasAttachments: message.collectedItems.length > 0
+        })
+      }
     }
 
     // ============ MEMORY QUERIES ============
