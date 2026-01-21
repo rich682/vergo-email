@@ -13,13 +13,21 @@ const DEFAULT_BOARD_COLUMNS = [
   { id: "updatedAt", label: "Date", width: 120, visible: true, order: 5, isSystem: true },
 ]
 
+// Default column configuration for tasks within expanded board rows
+const DEFAULT_TASK_COLUMNS = [
+  { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
+  { id: "owner", label: "Person", width: 140, visible: true, order: 1, isSystem: true },
+  { id: "status", label: "Status", width: 120, visible: true, order: 2, isSystem: true },
+  { id: "dueDate", label: "Date", width: 120, visible: true, order: 3, isSystem: true },
+]
+
 // Merge saved config with default columns to include any new system columns
-function mergeWithDefaults(savedColumns: any[]): any[] {
+function mergeWithDefaults(savedColumns: any[], defaultColumns: any[]): any[] {
   const savedIds = new Set(savedColumns.map(c => c.id))
   const maxOrder = Math.max(...savedColumns.map(c => c.order), -1)
   
   // Find any default system columns that are missing from saved config
-  const missingColumns = DEFAULT_BOARD_COLUMNS.filter(
+  const missingColumns = defaultColumns.filter(
     dc => dc.isSystem && !savedIds.has(dc.id)
   ).map((col, index) => ({
     ...col,
@@ -54,14 +62,19 @@ export async function GET(request: NextRequest) {
 
     const features = (org?.features as Record<string, any>) || {}
     
+    // Get board columns (for board rows)
+    let columns = DEFAULT_BOARD_COLUMNS
     if (features.boardColumns && Array.isArray(features.boardColumns)) {
-      // Merge with defaults to include any new system columns
-      const mergedColumns = mergeWithDefaults(features.boardColumns)
-      return NextResponse.json({ columns: mergedColumns })
+      columns = mergeWithDefaults(features.boardColumns, DEFAULT_BOARD_COLUMNS)
     }
 
-    // Return default columns if no config found
-    return NextResponse.json({ columns: DEFAULT_BOARD_COLUMNS })
+    // Get task columns (for tasks within expanded boards)
+    let taskColumns = DEFAULT_TASK_COLUMNS
+    if (features.boardTaskColumns && Array.isArray(features.boardTaskColumns)) {
+      taskColumns = mergeWithDefaults(features.boardTaskColumns, DEFAULT_TASK_COLUMNS)
+    }
+
+    return NextResponse.json({ columns, taskColumns })
 
   } catch (error) {
     console.error("Error fetching board column config:", error)
@@ -87,11 +100,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { columns } = body
-
-    if (!columns || !Array.isArray(columns)) {
-      return NextResponse.json({ error: "Invalid columns data" }, { status: 400 })
-    }
+    const { columns, taskColumns } = body
 
     // Get current features
     const org = await prisma.organization.findUnique({
@@ -100,19 +109,31 @@ export async function PATCH(request: NextRequest) {
     })
 
     const currentFeatures = (org?.features as Record<string, any>) || {}
+    const updatedFeatures = { ...currentFeatures }
 
-    // Update features with new boardColumns
+    // Update board columns if provided
+    if (columns && Array.isArray(columns)) {
+      updatedFeatures.boardColumns = columns
+    }
+
+    // Update task columns if provided
+    if (taskColumns && Array.isArray(taskColumns)) {
+      updatedFeatures.boardTaskColumns = taskColumns
+    }
+
+    // Save updated features
     await prisma.organization.update({
       where: { id: user.organizationId },
       data: {
-        features: {
-          ...currentFeatures,
-          boardColumns: columns
-        }
+        features: updatedFeatures
       }
     })
 
-    return NextResponse.json({ success: true, columns })
+    return NextResponse.json({ 
+      success: true, 
+      columns: updatedFeatures.boardColumns || DEFAULT_BOARD_COLUMNS,
+      taskColumns: updatedFeatures.boardTaskColumns || DEFAULT_TASK_COLUMNS
+    })
 
   } catch (error) {
     console.error("Error saving board column config:", error)

@@ -45,6 +45,14 @@ const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
   { id: "updatedAt", label: "Date", width: 120, visible: true, order: 5, isSystem: true },
 ]
 
+// Default task columns (for tasks within expanded board rows)
+const DEFAULT_TASK_COLUMNS: BoardColumnDefinition[] = [
+  { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
+  { id: "owner", label: "Person", width: 140, visible: true, order: 1, isSystem: true },
+  { id: "status", label: "Status", width: 120, visible: true, order: 2, isSystem: true },
+  { id: "dueDate", label: "Date", width: 120, visible: true, order: 3, isSystem: true },
+]
+
 // Types
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "OPEN" | "CLOSED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
@@ -257,12 +265,14 @@ export default function BoardsPage() {
   const [archiveConfirm, setArchiveConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   
-  // Column configuration state
+  // Column configuration state (for board rows)
   const [columns, setColumns] = useState<BoardColumnDefinition[]>(DEFAULT_BOARD_COLUMNS)
+  // Column configuration state (for task rows within expanded boards)
+  const [taskColumns, setTaskColumns] = useState<BoardColumnDefinition[]>(DEFAULT_TASK_COLUMNS)
   
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Fetch column configuration on mount
+  // Fetch column configurations on mount
   useEffect(() => {
     const fetchColumnConfig = async () => {
       try {
@@ -274,6 +284,9 @@ export default function BoardsPage() {
           if (data.columns && data.columns.length > 0) {
             setColumns(data.columns)
           }
+          if (data.taskColumns && data.taskColumns.length > 0) {
+            setTaskColumns(data.taskColumns)
+          }
         }
       } catch (error) {
         console.error("Error fetching board column config:", error)
@@ -283,23 +296,31 @@ export default function BoardsPage() {
   }, [])
 
   // Save column configuration when columns change
-  const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[]) => {
+  const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[], newTaskColumns?: BoardColumnDefinition[]) => {
     try {
       await fetch("/api/boards/column-config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ columns: newColumns })
+        body: JSON.stringify({ 
+          columns: newColumns,
+          taskColumns: newTaskColumns || taskColumns
+        })
       })
     } catch (error) {
       console.error("Error saving board column config:", error)
     }
-  }, [])
+  }, [taskColumns])
 
   const handleColumnsChange = useCallback((newColumns: BoardColumnDefinition[]) => {
     setColumns(newColumns)
-    saveColumnConfig(newColumns)
-  }, [saveColumnConfig])
+    saveColumnConfig(newColumns, taskColumns)
+  }, [saveColumnConfig, taskColumns])
+
+  const handleTaskColumnsChange = useCallback((newTaskColumns: BoardColumnDefinition[]) => {
+    setTaskColumns(newTaskColumns)
+    saveColumnConfig(columns, newTaskColumns)
+  }, [saveColumnConfig, columns])
 
   // Filter visible columns and sort by order
   const visibleColumns = useMemo(() => {
@@ -307,6 +328,13 @@ export default function BoardsPage() {
       .filter(col => col.visible)
       .sort((a, b) => a.order - b.order)
   }, [columns])
+
+  // Filter visible task columns and sort by order
+  const visibleTaskColumns = useMemo(() => {
+    return taskColumns
+      .filter(col => col.visible)
+      .sort((a, b) => a.order - b.order)
+  }, [taskColumns])
 
   // Fetch all boards
   const fetchBoards = async () => {
@@ -667,6 +695,9 @@ export default function BoardsPage() {
                     visibleColumns={visibleColumns}
                     columns={columns}
                     onColumnsChange={handleColumnsChange}
+                    visibleTaskColumns={visibleTaskColumns}
+                    taskColumns={taskColumns}
+                    onTaskColumnsChange={handleTaskColumnsChange}
                     toggleBoardExpansion={toggleBoardExpansion}
                     setMenuOpenId={setMenuOpenId}
                     setEditingBoard={setEditingBoard}
@@ -708,6 +739,9 @@ export default function BoardsPage() {
                     visibleColumns={visibleColumns}
                     columns={columns}
                     onColumnsChange={handleColumnsChange}
+                    visibleTaskColumns={visibleTaskColumns}
+                    taskColumns={taskColumns}
+                    onTaskColumnsChange={handleTaskColumnsChange}
                     toggleBoardExpansion={toggleBoardExpansion}
                     setMenuOpenId={setMenuOpenId}
                     setEditingBoard={setEditingBoard}
@@ -785,6 +819,9 @@ interface BoardRowProps {
   visibleColumns: BoardColumnDefinition[]
   columns: BoardColumnDefinition[]
   onColumnsChange: (columns: BoardColumnDefinition[]) => void
+  visibleTaskColumns: BoardColumnDefinition[]
+  taskColumns: BoardColumnDefinition[]
+  onTaskColumnsChange: (columns: BoardColumnDefinition[]) => void
   toggleBoardExpansion: (boardId: string, e: React.MouseEvent) => void
   setMenuOpenId: (id: string | null) => void
   setEditingBoard: (board: Board | null) => void
@@ -807,6 +844,9 @@ function BoardRow({
   visibleColumns,
   columns,
   onColumnsChange,
+  visibleTaskColumns,
+  taskColumns,
+  onTaskColumnsChange,
   toggleBoardExpansion,
   setMenuOpenId,
   setEditingBoard,
@@ -1034,11 +1074,21 @@ function BoardRow({
               {/* Jobs Header */}
               <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
                 <div className="w-6"></div> {/* Indent spacer */}
-                <div className="flex-1 min-w-0">Item</div>
-                <div className="w-32">Person</div>
-                <div className="w-28">Status</div>
-                <div className="w-28">Date</div>
-                <div className="w-12"></div>
+                {visibleTaskColumns.map((column) => (
+                  <div 
+                    key={column.id} 
+                    className={column.id === "name" ? "flex-1 min-w-0" : "w-28 flex-shrink-0"}
+                    style={column.id !== "name" ? { width: column.width || 120 } : undefined}
+                  >
+                    {column.label}
+                  </div>
+                ))}
+                <div className="w-12 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <BoardColumnHeader
+                    columns={taskColumns}
+                    onColumnsChange={onTaskColumnsChange}
+                  />
+                </div>
               </div>
               
               {/* Jobs List */}
@@ -1053,47 +1103,58 @@ function BoardRow({
                 >
                   <div className="w-6"></div> {/* Indent spacer */}
                   
-                  {/* Task Name */}
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm text-gray-900 truncate block">{job.name}</span>
-                  </div>
+                  {visibleTaskColumns.map((column) => {
+                    switch (column.id) {
+                      case "name":
+                        return (
+                          <div key={column.id} className="flex-1 min-w-0">
+                            <span className="text-sm text-gray-900 truncate block">{job.name}</span>
+                          </div>
+                        )
+                      case "owner":
+                        return (
+                          <div key={column.id} className="w-32 flex-shrink-0" style={{ width: column.width || 140 }}>
+                            {job.owner ? (
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                                    {getInitials(job.owner.name, job.owner.email)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm text-gray-700 truncate">
+                                  {job.owner.name || job.owner.email.split("@")[0]}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-sm">—</span>
+                            )}
+                          </div>
+                        )
+                      case "status":
+                        return (
+                          <div key={column.id} className="w-28 flex-shrink-0" style={{ width: column.width || 120 }}>
+                            {getJobStatusBadge(job.status)}
+                          </div>
+                        )
+                      case "dueDate":
+                        return (
+                          <div key={column.id} className="w-28 flex-shrink-0" style={{ width: column.width || 120 }}>
+                            {job.dueDate ? (
+                              <div className="flex items-center gap-1 text-sm text-gray-600">
+                                <Calendar className="w-3.5 h-3.5" />
+                                {format(new Date(job.dueDate), "MMM d")}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-sm">—</span>
+                            )}
+                          </div>
+                        )
+                      default:
+                        return null
+                    }
+                  })}
 
-                  {/* Owner */}
-                  <div className="w-32 flex-shrink-0">
-                    {job.owner ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                            {getInitials(job.owner.name, job.owner.email)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm text-gray-700 truncate">
-                          {job.owner.name || job.owner.email.split("@")[0]}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">—</span>
-                    )}
-                  </div>
-
-                  {/* Status */}
-                  <div className="w-28 flex-shrink-0">
-                    {getJobStatusBadge(job.status)}
-                  </div>
-
-                  {/* Due Date */}
-                  <div className="w-28 flex-shrink-0">
-                    {job.dueDate ? (
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {format(new Date(job.dueDate), "MMM d")}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">—</span>
-                    )}
-                  </div>
-
-                  {/* Spacer for alignment with board row */}
+                  {/* Spacer for alignment */}
                   <div className="w-12"></div>
                 </div>
               ))}
