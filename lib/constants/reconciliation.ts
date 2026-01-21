@@ -27,5 +27,6 @@ export const RECONCILIATION_MESSAGES = {
   FILE_TOO_LARGE: `File size exceeds the maximum limit of ${RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB`,
   TOO_MANY_ROWS: `File exceeds the maximum limit of ${RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET.toLocaleString()} rows per sheet`,
   TOO_MANY_COLUMNS: `File exceeds the maximum limit of ${RECONCILIATION_LIMITS.MAX_COLUMNS} columns`,
-  INVALID_FILE_TYPE: `Invalid file type. Allowed types: ${RECONCILIATION_LIMITS.ALLOWED_EXTENSIONS.join(", ")}`
+  INVALID_FILE_TYPE: `Invalid file type. Allowed types: ${RECONCILIATION_LIMITS.ALLOWED_EXTENSIONS.join(", ")}`,
+  MULTIPLE_SHEETS: "File contains multiple sheets. Please upload a file with only one sheet for reconciliation."
 }

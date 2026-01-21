@@ -179,10 +179,10 @@ export function ReconciliationUploadModal({
           <div className="py-8 text-center">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Documents Uploaded Successfully
+              Reconciliation Complete
             </h3>
             <p className="text-gray-500">
-              Your reconciliation is ready for processing.
+              Documents uploaded and processed. View results below.
             </p>
           </div>
         ) : (
@@ -298,11 +298,12 @@ export function ReconciliationUploadModal({
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-blue-800">
-                  <p className="font-medium">File Limits</p>
+                  <p className="font-medium">Requirements</p>
                   <ul className="mt-1 text-xs space-y-0.5">
+                    <li>Each file must contain <strong>exactly one sheet</strong></li>
                     <li>Max file size: {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB per file</li>
                     <li>Max rows: {RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET.toLocaleString()} per sheet</li>
-                    <li>AI will automatically match columns and identify discrepancies</li>
+                    <li>AI will automatically process and identify discrepancies on upload</li>
                   </ul>
                 </div>
               </div>
@@ -322,7 +323,7 @@ export function ReconciliationUploadModal({
               {uploading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Uploading...
+                  Processing...
                 </>
               ) : (
                 <>

@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { put } from "@vercel/blob"
 import { RECONCILIATION_LIMITS, RECONCILIATION_MESSAGES } from "@/lib/constants/reconciliation"
+import { ReconciliationProcessorService } from "@/lib/services/reconciliation-processor.service"
+import * as XLSX from "xlsx"
 
 export const dynamic = "force-dynamic"
 
@@ -128,6 +130,36 @@ export async function POST(
       )
     }
 
+    // Validate sheet count for Excel files (must have exactly 1 sheet)
+    const validateSheetCount = async (file: File, docName: string): Promise<string | null> => {
+      const ext = file.name.split(".").pop()?.toLowerCase()
+      if (ext === "csv") return null // CSV files don't have multiple sheets
+      
+      try {
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: "array", bookSheets: true })
+        const sheetCount = workbook.SheetNames.length
+        
+        if (sheetCount > 1) {
+          return `${docName} contains ${sheetCount} sheets. ${RECONCILIATION_MESSAGES.MULTIPLE_SHEETS}`
+        }
+        return null
+      } catch (error) {
+        // If we can't parse it, let the processor handle the error
+        return null
+      }
+    }
+
+    const doc1SheetError = await validateSheetCount(document1, "Document 1")
+    if (doc1SheetError) {
+      return NextResponse.json({ error: doc1SheetError }, { status: 400 })
+    }
+
+    const doc2SheetError = await validateSheetCount(document2, "Document 2")
+    if (doc2SheetError) {
+      return NextResponse.json({ error: doc2SheetError }, { status: 400 })
+    }
+
     // Upload documents to blob storage
     const timestamp = Date.now()
     const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9.-]/g, "_")
@@ -168,7 +200,42 @@ export async function POST(
       }
     })
 
-    return NextResponse.json({ reconciliation }, { status: 201 })
+    // Auto-run reconciliation processing
+    let processingResult = null
+    let processingError = null
+    try {
+      processingResult = await ReconciliationProcessorService.processReconciliation(
+        reconciliation.id
+      )
+    } catch (error: any) {
+      console.error("[API/reconciliations] Auto-processing failed:", error.message)
+      processingError = error.message
+    }
+
+    // Fetch updated reconciliation with results
+    const updatedReconciliation = await prisma.reconciliation.findUnique({
+      where: { id: reconciliation.id },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true }
+        }
+      }
+    })
+
+    return NextResponse.json({ 
+      reconciliation: updatedReconciliation,
+      autoProcessed: true,
+      processingResult: processingResult?.success ? {
+        summary: processingResult.summary,
+        matchedCount: processingResult.matchedCount,
+        unmatchedCount: processingResult.unmatchedCount,
+        totalRows: processingResult.totalRows,
+        discrepancies: processingResult.discrepancies,
+        columnMappings: processingResult.columnMappings,
+        keyColumn: processingResult.keyColumn
+      } : null,
+      processingError: processingError || (processingResult?.error || null)
+    }, { status: 201 })
   } catch (error: any) {
     console.error("[API/jobs/[id]/reconciliations] Error creating:", error)
     return NextResponse.json(
