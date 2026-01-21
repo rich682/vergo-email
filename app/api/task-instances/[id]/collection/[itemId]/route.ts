@@ -25,7 +25,7 @@ export async function GET(
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -76,7 +76,7 @@ export async function PATCH(
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -150,7 +150,7 @@ export async function DELETE(
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 

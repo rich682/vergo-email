@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
       prisma.task.count({ where: { organizationId } }),
       prisma.task.count({ where: { organizationId, status: "AWAITING_RESPONSE" } }),
       prisma.task.count({ where: { organizationId, status: "FULFILLED" } }),
-      prisma.job.count({ where: { organizationId } })
+      prisma.taskInstance.count({ where: { organizationId } })
     ])
 
     checks.push({

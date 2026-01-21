@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Get unique jobs for filter dropdown, filtered by access
-    const jobs = await prisma.job.findMany({
+    const jobs = await prisma.taskInstance.findMany({
       where: { 
         organizationId,
         ...(jobAccessFilter || {})

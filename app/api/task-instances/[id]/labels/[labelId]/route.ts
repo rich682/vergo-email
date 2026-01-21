@@ -22,7 +22,7 @@ export async function GET(
     const organizationId = session.user.organizationId
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId },
     })
 
@@ -81,7 +81,7 @@ export async function PATCH(
     const organizationId = session.user.organizationId
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId },
     })
 
@@ -194,7 +194,7 @@ export async function DELETE(
     const organizationId = session.user.organizationId
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId },
     })
 

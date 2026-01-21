@@ -338,7 +338,7 @@ export class BoardService {
   /**
    * Get a single board by ID with its task instances (jobs)
    */
-  static async getByIdWithJobs(id: string, organizationId: string): Promise<(BoardWithCounts & { taskInstances: any[] }) | null> {
+  static async getByIdWithJobs(id: string, organizationId: string): Promise<(BoardWithCounts & { jobs: any[] }) | null> {
     const board = await prisma.board.findFirst({
       where: { id, organizationId },
       include: {
@@ -372,7 +372,7 @@ export class BoardService {
         role: c.role,
         user: c.user
       })),
-      taskInstances: board.taskInstances.map(ti => ({
+      jobs: board.taskInstances.map(ti => ({
         ...ti,
         taskCount: ti._count.requests,
         collaborators: ti.collaborators.map(c => ({

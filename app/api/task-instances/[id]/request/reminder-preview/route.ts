@@ -51,7 +51,7 @@ export async function POST(
     }
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: {
         id: jobId,
         organizationId: session.user.organizationId

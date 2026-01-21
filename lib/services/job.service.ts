@@ -142,7 +142,7 @@ export class JobService {
     if (job.ownerId === userId) return true
     
     // Collaborators can view, execute, and comment
-    const isCollaborator = await prisma.jobCollaborator.findUnique({
+    const isCollaborator = await prisma.taskInstanceCollaborator.findUnique({
       where: { jobId_userId: { jobId: job.id, userId } }
     })
     
@@ -215,7 +215,7 @@ export class JobService {
       }
     }
 
-    const job = await prisma.job.create({
+    const job = await prisma.taskInstance.create({
       data: {
         organizationId: input.organizationId,
         ownerId: input.ownerId,
@@ -261,7 +261,7 @@ export class JobService {
    * Includes owner and collaborators
    */
   static async findById(id: string, organizationId: string): Promise<JobWithStats | null> {
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: {
         id,
         organizationId
@@ -440,7 +440,7 @@ export class JobService {
     }
 
     const [jobs, total] = await Promise.all([
-      prisma.job.findMany({
+      prisma.taskInstance.findMany({
         where,
         include: {
           owner: {
@@ -485,7 +485,7 @@ export class JobService {
         take: options?.limit || 50,
         skip: options?.offset || 0
       }),
-      prisma.job.count({ where })
+      prisma.taskInstance.count({ where })
     ])
 
     // Process jobs with stakeholder counts
@@ -547,13 +547,13 @@ export class JobService {
     input: UpdateJobInput
   ): Promise<JobWithStats | null> {
     // Verify job exists and belongs to organization
-    const existing = await prisma.job.findFirst({
+    const existing = await prisma.taskInstance.findFirst({
       where: { id, organizationId }
     })
 
     if (!existing) return null
 
-    const job = await prisma.job.update({
+    const job = await prisma.taskInstance.update({
       where: { id },
       data: {
         ...(input.name !== undefined && { name: input.name }),
@@ -651,7 +651,7 @@ export class JobService {
     options?: { hard?: boolean }
   ): Promise<{ success: boolean; taskCount?: number; error?: string }> {
     // Fetch job with task count
-    const existing = await prisma.job.findFirst({
+    const existing = await prisma.taskInstance.findFirst({
       where: { id, organizationId },
       include: {
         _count: {
@@ -677,12 +677,12 @@ export class JobService {
 
     if (options?.hard) {
       // Hard delete - only allowed when taskCount == 0
-      await prisma.job.delete({
+      await prisma.taskInstance.delete({
         where: { id }
       })
     } else {
       // Soft delete - archive the job (always allowed)
-      await prisma.job.update({
+      await prisma.taskInstance.update({
         where: { id },
         data: { status: JobStatus.ARCHIVED }
       })
@@ -723,7 +723,7 @@ export class JobService {
     organizationId: string
   ): Promise<number> {
     // Verify job exists
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -780,7 +780,7 @@ export class JobService {
     role: string = "collaborator"
   ): Promise<JobCollaborator | null> {
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -801,7 +801,7 @@ export class JobService {
     }
 
     // Create or update collaborator
-    const collaborator = await prisma.jobCollaborator.upsert({
+    const collaborator = await prisma.taskInstanceCollaborator.upsert({
       where: {
         jobId_userId: { jobId, userId }
       },
@@ -839,14 +839,14 @@ export class JobService {
     organizationId: string
   ): Promise<boolean> {
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
     if (!job) return false
 
     try {
-      await prisma.jobCollaborator.delete({
+      await prisma.taskInstanceCollaborator.delete({
         where: {
           jobId_userId: { jobId, userId }
         }
@@ -865,13 +865,13 @@ export class JobService {
     jobId: string,
     organizationId: string
   ): Promise<JobCollaborator[]> {
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
     if (!job) return []
 
-    const collaborators = await prisma.jobCollaborator.findMany({
+    const collaborators = await prisma.taskInstanceCollaborator.findMany({
       where: { jobId },
       include: {
         user: {
@@ -897,7 +897,7 @@ export class JobService {
     organizationId: string
   ): Promise<JobWithStats | null> {
     // Verify job exists
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -913,7 +913,7 @@ export class JobService {
     }
 
     // If new owner was a collaborator, remove them from collaborators
-    await prisma.jobCollaborator.deleteMany({
+    await prisma.taskInstanceCollaborator.deleteMany({
       where: { jobId, userId: newOwnerId }
     })
 
@@ -944,13 +944,13 @@ export class JobService {
     author: { id: string; name: string | null; email: string }
   } | null> {
     // Verify job exists
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
     if (!job) return null
 
-    const comment = await prisma.jobComment.create({
+    const comment = await prisma.taskInstanceComment.create({
       data: {
         jobId,
         authorId,
@@ -990,13 +990,13 @@ export class JobService {
     createdAt: Date
     author: { id: string; name: string | null; email: string }
   }>> {
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
     if (!job) return []
 
-    const comments = await prisma.jobComment.findMany({
+    const comments = await prisma.taskInstanceComment.findMany({
       where: { jobId },
       include: {
         author: {
@@ -1027,7 +1027,7 @@ export class JobService {
     organizationId: string
   ): Promise<boolean> {
     // Verify comment exists and belongs to author
-    const comment = await prisma.jobComment.findFirst({
+    const comment = await prisma.taskInstanceComment.findFirst({
       where: { id: commentId },
       include: {
         job: {
@@ -1045,7 +1045,7 @@ export class JobService {
       return false
     }
 
-    await prisma.jobComment.delete({
+    await prisma.taskInstanceComment.delete({
       where: { id: commentId }
     })
 

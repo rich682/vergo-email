@@ -106,7 +106,7 @@ async function main() {
   const dueDate = new Date()
   dueDate.setDate(dueDate.getDate() + 7) // Due in 7 days
 
-  const job = await prisma.job.create({
+  const job = await prisma.taskInstance.create({
     data: {
       name: 'Q1 Tax Documents Collection',
       description: 'Collect all required tax documents from clients for Q1 filing',

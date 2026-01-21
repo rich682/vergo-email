@@ -170,10 +170,10 @@ async function main() {
   let tasksCreated = 0
   for (let i = 0; i < tasksData.length; i++) {
     const t = tasksData[i]
-    const existing = await prisma.job.findFirst({ where: { name: t.name, boardId: t.boardId, organizationId: orgId } })
+    const existing = await prisma.taskInstance.findFirst({ where: { name: t.name, boardId: t.boardId, organizationId: orgId } })
     if (!existing) {
       const dueDate = new Date(now.getTime() + t.days * 24 * 60 * 60 * 1000)
-      await prisma.job.create({
+      await prisma.taskInstance.create({
         data: {
           name: t.name,
           description: t.desc,

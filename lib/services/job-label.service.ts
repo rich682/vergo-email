@@ -51,7 +51,7 @@ export class JobLabelService {
     // Normalize the name (lowercase, trim)
     const normalizedName = name.trim().toLowerCase()
 
-    return prisma.jobLabel.create({
+    return prisma.taskInstanceLabel.create({
       data: {
         jobId,
         organizationId,
@@ -66,7 +66,7 @@ export class JobLabelService {
    * Get all labels for a job
    */
   static async getLabelsForJob(jobId: string): Promise<JobLabel[]> {
-    return prisma.jobLabel.findMany({
+    return prisma.taskInstanceLabel.findMany({
       where: { jobId },
       orderBy: { name: "asc" },
     })
@@ -79,7 +79,7 @@ export class JobLabelService {
     labelId: string,
     organizationId: string
   ): Promise<JobLabel | null> {
-    return prisma.jobLabel.findFirst({
+    return prisma.taskInstanceLabel.findFirst({
       where: {
         id: labelId,
         organizationId,
@@ -95,7 +95,7 @@ export class JobLabelService {
     organizationId: string,
     input: UpdateLabelInput
   ): Promise<JobLabel | null> {
-    const existing = await prisma.jobLabel.findFirst({
+    const existing = await prisma.taskInstanceLabel.findFirst({
       where: { id: labelId, organizationId },
     })
 
@@ -112,7 +112,7 @@ export class JobLabelService {
       updateData.metadataSchema = input.metadataSchema
     }
 
-    return prisma.jobLabel.update({
+    return prisma.taskInstanceLabel.update({
       where: { id: labelId },
       data: updateData,
     })
@@ -125,13 +125,13 @@ export class JobLabelService {
     labelId: string,
     organizationId: string
   ): Promise<boolean> {
-    const existing = await prisma.jobLabel.findFirst({
+    const existing = await prisma.taskInstanceLabel.findFirst({
       where: { id: labelId, organizationId },
     })
 
     if (!existing) return false
 
-    await prisma.jobLabel.delete({
+    await prisma.taskInstanceLabel.delete({
       where: { id: labelId },
     })
 
@@ -149,7 +149,7 @@ export class JobLabelService {
     // Use upsert to handle both new and existing associations
     const results = await Promise.all(
       entityIds.map((entityId) =>
-        prisma.jobContactLabel.upsert({
+        prisma.taskInstanceContactLabel.upsert({
           where: {
             jobLabelId_entityId: {
               jobLabelId,
@@ -178,7 +178,7 @@ export class JobLabelService {
     contactLabelId: string,
     metadata: Record<string, string | number | null>
   ): Promise<JobContactLabel | null> {
-    return prisma.jobContactLabel.update({
+    return prisma.taskInstanceContactLabel.update({
       where: { id: contactLabelId },
       data: { metadata: metadata as any },
     })
@@ -192,7 +192,7 @@ export class JobLabelService {
     entityId: string
   ): Promise<boolean> {
     try {
-      await prisma.jobContactLabel.delete({
+      await prisma.taskInstanceContactLabel.delete({
         where: {
           jobLabelId_entityId: {
             jobLabelId,
@@ -215,7 +215,7 @@ export class JobLabelService {
     organizationId: string
   ): Promise<ContactWithLabels[]> {
     // First, get the job to access stakeholders
-    const job = await prisma.job.findUnique({
+    const job = await prisma.taskInstance.findUnique({
       where: { id: jobId },
       select: { labels: true },
     })
@@ -302,7 +302,7 @@ export class JobLabelService {
     jobLabelId: string,
     organizationId: string
   ): Promise<Entity[]> {
-    const contactLabels = await prisma.jobContactLabel.findMany({
+    const contactLabels = await prisma.taskInstanceContactLabel.findMany({
       where: { jobLabelId },
       include: {
         entity: true,
@@ -320,7 +320,7 @@ export class JobLabelService {
   static async getLabelStats(
     jobId: string
   ): Promise<Array<{ labelId: string; name: string; count: number }>> {
-    const labels = await prisma.jobLabel.findMany({
+    const labels = await prisma.taskInstanceLabel.findMany({
       where: { jobId },
       include: {
         _count: {

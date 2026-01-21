@@ -34,7 +34,7 @@ async function main() {
 
   // Get counts before deletion
   const boardCount = await prisma.board.count({ where: { organizationId } })
-  const jobCount = await prisma.job.count({ where: { organizationId } })
+  const jobCount = await prisma.taskInstance.count({ where: { organizationId } })
   const taskCount = await prisma.task.count({ where: { organizationId } })
   const reconciliationCount = await prisma.reconciliation.count({ where: { organizationId } })
   const collectedItemCount = await prisma.collectedItem.count({ where: { organizationId } })
@@ -112,19 +112,19 @@ async function main() {
   console.log(`   ✓ Deleted ${deletedEmailDrafts.count} email drafts`)
 
   // 9. Delete job labels
-  const deletedJobLabels = await prisma.jobLabel.deleteMany({
+  const deletedJobLabels = await prisma.taskInstanceLabel.deleteMany({
     where: { organizationId }
   })
   console.log(`   ✓ Deleted ${deletedJobLabels.count} job labels`)
 
   // 10. Delete job comments
-  const deletedJobComments = await prisma.jobComment.deleteMany({
+  const deletedJobComments = await prisma.taskInstanceComment.deleteMany({
     where: { job: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedJobComments.count} job comments`)
 
   // 11. Delete job collaborators
-  const deletedJobCollaborators = await prisma.jobCollaborator.deleteMany({
+  const deletedJobCollaborators = await prisma.taskInstanceCollaborator.deleteMany({
     where: { job: { organizationId } }
   })
   console.log(`   ✓ Deleted ${deletedJobCollaborators.count} job collaborators`)
@@ -136,7 +136,7 @@ async function main() {
   console.log(`   ✓ Deleted ${deletedSubtasks.count} subtasks`)
 
   // 13. Delete jobs
-  const deletedJobs = await prisma.job.deleteMany({
+  const deletedJobs = await prisma.taskInstance.deleteMany({
     where: { organizationId }
   })
   console.log(`   ✓ Deleted ${deletedJobs.count} jobs`)
@@ -160,7 +160,7 @@ async function main() {
   console.log(`   ✓ Deleted ${deletedEmailAudits.count} email send audits`)
 
   // 17. Delete job column config (reset to defaults)
-  const deletedColumnConfigs = await prisma.jobColumnConfig.deleteMany({
+  const deletedColumnConfigs = await prisma.taskInstanceColumnConfig.deleteMany({
     where: { organizationId }
   })
   console.log(`   ✓ Deleted ${deletedColumnConfigs.count} column configs`)

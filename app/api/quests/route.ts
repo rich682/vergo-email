@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     // Validate jobId if provided (must belong to same organization)
     if (jobId) {
-      const job = await prisma.job.findFirst({
+      const job = await prisma.taskInstance.findFirst({
         where: { id: jobId, organizationId },
         select: { id: true }
       })

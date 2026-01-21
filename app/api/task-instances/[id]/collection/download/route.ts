@@ -36,7 +36,7 @@ export async function GET(
     }
 
     // Verify job exists and belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 

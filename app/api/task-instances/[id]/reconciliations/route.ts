@@ -23,7 +23,7 @@ export async function GET(
     const jobId = params.id
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
@@ -70,7 +70,7 @@ export async function POST(
     const jobId = params.id
 
     // Verify job belongs to organization
-    const job = await prisma.job.findFirst({
+    const job = await prisma.taskInstance.findFirst({
       where: { id: jobId, organizationId }
     })
 
