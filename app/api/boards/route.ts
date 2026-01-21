@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       cadence,
       ownerId,
       year,
-      includeJobCount: true
+      includeTaskInstanceCount: true
     })
 
     return NextResponse.json({ boards })

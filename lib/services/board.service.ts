@@ -336,6 +336,56 @@ export class BoardService {
   }
 
   /**
+   * Get a single board by ID with its task instances (jobs)
+   */
+  static async getByIdWithJobs(id: string, organizationId: string): Promise<(BoardWithCounts & { taskInstances: any[] }) | null> {
+    const board = await prisma.board.findFirst({
+      where: { id, organizationId },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, name: true, email: true } },
+        collaborators: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        taskInstances: {
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+            collaborators: {
+              include: { user: { select: { id: true, name: true, email: true } } }
+            },
+            _count: { select: { requests: true } }
+          },
+          orderBy: { createdAt: "desc" }
+        },
+        _count: { select: { taskInstances: true } }
+      }
+    })
+
+    if (!board) return null
+
+    return {
+      ...board,
+      taskInstanceCount: board._count.taskInstances,
+      collaborators: board.collaborators.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        role: c.role,
+        user: c.user
+      })),
+      taskInstances: board.taskInstances.map(ti => ({
+        ...ti,
+        taskCount: ti._count.requests,
+        collaborators: ti.collaborators.map(c => ({
+          id: c.id,
+          userId: c.userId,
+          role: c.role,
+          user: c.user
+        }))
+      }))
+    }
+  }
+
+  /**
    * Update a board
    */
   static async update(
