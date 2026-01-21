@@ -25,6 +25,10 @@ Instead, Jobs have **Capabilities** that can be enabled:
 | **Request** | Email communication, reminders, tracking | WF-05a through WF-05n |
 | **Evidence** | File collection, review, export | WF-06a through WF-06e |
 
+### UI Terminology Note
+
+The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to reflect accounting terminology. This is a user-facing language change only—backend enums and APIs remain unchanged.
+
 ### Why This Model
 
 1. **Stability**: The Job container is frozen. Refactors target capabilities, not Jobs.

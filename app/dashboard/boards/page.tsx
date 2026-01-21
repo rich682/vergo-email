@@ -199,7 +199,7 @@ function getTaskTypeBadge(type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABA
     case "RECONCILIATION":
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">Reconciliation</span>
     case "DATABASE":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Database</span>
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Variance</span>
     default:
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Generic</span>
   }

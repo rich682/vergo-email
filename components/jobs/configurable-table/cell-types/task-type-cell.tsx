@@ -20,7 +20,7 @@ const TYPE_CONFIG = {
     textColor: "text-purple-700",
   },
   TABLE: {
-    label: "Database",
+    label: "Variance",
     icon: Database,
     bgColor: "bg-blue-100",
     textColor: "text-blue-700",

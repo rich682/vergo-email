@@ -39,6 +39,17 @@ A Job (TaskInstance) is the atomic unit in the system. Rather than having differ
 | **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-n |
 | **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
 
+### UI Terminology Mapping
+
+Some internal terms differ from user-facing labels to reflect accounting workflows:
+
+| Internal Term | User-Facing Label | Notes |
+|--------------|-------------------|-------|
+| `TaskType.DATABASE` | **Variance** | Displays as "Variance" in badges, dropdowns, and UI. Internal enum remains `DATABASE`. |
+| `TaskType.TABLE` | **Table / Variance Task** | Combined option in job creation. |
+
+> **Important**: This is a **language change only**. Backend enums, API payloads, and service logic remain unchanged.
+
 ### Why This Model
 
 1. **No new "Job types"**: Don't create `ReconciliationJob`, `TableJob`, etc. Use capabilities instead.

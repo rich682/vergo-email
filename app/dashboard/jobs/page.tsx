@@ -717,7 +717,7 @@ export default function JobsPage() {
                     <SelectContent>
                       <SelectItem value="GENERIC">Generic Task</SelectItem>
                       <SelectItem value="RECONCILIATION">Reconciliation Task</SelectItem>
-                      <SelectItem value="TABLE">Table / Database Task</SelectItem>
+                      <SelectItem value="TABLE">Table / Variance Task</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
