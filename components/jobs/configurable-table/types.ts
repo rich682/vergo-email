@@ -27,18 +27,6 @@ export const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 7, field: "collectedItemCount", isSystem: true },
 ]
 
-// Available column types for adding new columns
-export const AVAILABLE_COLUMN_TYPES: { type: ColumnType; label: string; description: string }[] = [
-  { type: "text", label: "Text", description: "Single line text field" },
-  { type: "taskType", label: "Task Type", description: "Generic, Reconciliation, or Database" },
-  { type: "status", label: "Status", description: "Status dropdown" },
-  { type: "person", label: "Person", description: "Team member picker" },
-  { type: "date", label: "Date", description: "Date picker" },
-  { type: "notes", label: "Notes", description: "Multi-line text" },
-  { type: "files", label: "Files", description: "File attachments" },
-  { type: "responses", label: "Responses", description: "Request response tracking" },
-]
-
 // Job data structure expected by the table
 export interface JobRow {
   id: string
