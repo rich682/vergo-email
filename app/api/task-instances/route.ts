@@ -150,18 +150,10 @@ export async function POST(request: NextRequest) {
 
     let finalLineageId = lineageId
 
-    // 1. Handle TaskLineage creation if requested
+    // Note: TaskLineage table not yet migrated to production
+    // Skip lineage creation for now - lineageId is optional on TaskInstance
     if (createLineage && !lineageId) {
-      const lineage = await prisma.taskLineage.create({
-        data: {
-          organizationId,
-          name: name.trim(),
-          description: description?.trim() || undefined,
-          type: type || "GENERIC",
-          config: {}
-        }
-      })
-      finalLineageId = lineage.id
+      console.log("[TaskInstance] Skipping lineage creation - table not migrated")
     }
 
     // 2. Create the TaskInstance
