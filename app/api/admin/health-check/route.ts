@@ -166,22 +166,54 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  // 4. OpenAI API key
+  // 4. OpenAI API key - with live test
   if (process.env.OPENAI_API_KEY) {
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-      // Just check if we can create a client - don't make an actual API call to save costs
-      checks.push({
-        name: "openai",
-        status: "ok",
-        message: "OpenAI API key configured"
-      })
+      
+      // Check if test parameter is passed to actually call the API
+      const url = new URL(request.url)
+      const testOpenAI = url.searchParams.get("test_openai") === "true"
+      
+      if (testOpenAI) {
+        // Make a minimal API call to verify the key works
+        const testStart = Date.now()
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: "Say 'OK'" }],
+          max_tokens: 5
+        })
+        const testDuration = Date.now() - testStart
+        
+        checks.push({
+          name: "openai",
+          status: "ok",
+          message: "OpenAI API key verified and working",
+          details: {
+            testDuration: `${testDuration}ms`,
+            response: completion.choices[0]?.message?.content,
+            model: "gpt-4o-mini"
+          }
+        })
+      } else {
+        // Just check if the key is present
+        checks.push({
+          name: "openai",
+          status: "ok",
+          message: "OpenAI API key configured (add ?test_openai=true to verify)"
+        })
+      }
     } catch (error: any) {
       checks.push({
         name: "openai",
         status: "error",
-        message: "OpenAI configuration error",
-        details: error.message
+        message: "OpenAI API error",
+        details: {
+          errorType: error.name,
+          errorMessage: error.message,
+          errorCode: error.code,
+          errorStatus: error.status
+        }
       })
     }
   } else {
