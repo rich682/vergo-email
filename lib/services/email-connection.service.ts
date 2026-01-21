@@ -482,39 +482,6 @@ export class EmailConnectionService {
     })
   }
 
-  /**
-   * Create a Microsoft connection for an organization.
-   */
-  static async createMicrosoftConnection(data: {
-    organizationId: string
-    email: string
-    accessToken: string
-    refreshToken: string
-    tokenExpiresAt: Date
-  }): Promise<ConnectedEmailAccount> {
-    const encryptedAccessToken = encrypt(data.accessToken)
-    const encryptedRefreshToken = encrypt(data.refreshToken)
-
-    const existingConnections = await prisma.connectedEmailAccount.count({
-      where: {
-        organizationId: data.organizationId,
-        isActive: true
-      }
-    })
-
-    return prisma.connectedEmailAccount.create({
-      data: {
-        organizationId: data.organizationId,
-        email: data.email,
-        provider: "MICROSOFT",
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
-        tokenExpiresAt: data.tokenExpiresAt,
-        isPrimary: existingConnections === 0,
-        isActive: true
-      }
-    })
-  }
 }
 
 
