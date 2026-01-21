@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma"
 import { ReconciliationStatus } from "@prisma/client"
 import { AttachmentExtractionService, SheetData, ExcelExtractionResult } from "./attachment-extraction.service"
 import OpenAI from "openai"
+import { RECONCILIATION_LIMITS, RECONCILIATION_MESSAGES } from "@/lib/constants/reconciliation"
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -112,8 +113,45 @@ export class ReconciliationProcessorService {
       const sheet1 = doc1Sheets[0]
       const sheet2 = doc2Sheets[0]
 
-      // Detect column mappings
-      const columnMappings = this.detectColumnMappings(sheet1, sheet2)
+      // Validate row counts
+      if (sheet1.rowCount > RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET) {
+        throw new Error(
+          `Document 1 has ${sheet1.rowCount.toLocaleString()} rows. ${RECONCILIATION_MESSAGES.TOO_MANY_ROWS}`
+        )
+      }
+      if (sheet2.rowCount > RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET) {
+        throw new Error(
+          `Document 2 has ${sheet2.rowCount.toLocaleString()} rows. ${RECONCILIATION_MESSAGES.TOO_MANY_ROWS}`
+        )
+      }
+
+      // Validate column counts
+      if (sheet1.columns.length > RECONCILIATION_LIMITS.MAX_COLUMNS) {
+        throw new Error(
+          `Document 1 has ${sheet1.columns.length} columns. ${RECONCILIATION_MESSAGES.TOO_MANY_COLUMNS}`
+        )
+      }
+      if (sheet2.columns.length > RECONCILIATION_LIMITS.MAX_COLUMNS) {
+        throw new Error(
+          `Document 2 has ${sheet2.columns.length} columns. ${RECONCILIATION_MESSAGES.TOO_MANY_COLUMNS}`
+        )
+      }
+
+      // Detect column mappings (deterministic first, then AI enhancement)
+      const deterministicMappings = this.detectColumnMappings(sheet1, sheet2)
+      
+      // Enhance with AI-powered semantic matching for unmatched columns
+      let columnMappings: ColumnMapping[]
+      try {
+        columnMappings = await this.detectColumnMappingsWithAI(
+          sheet1,
+          sheet2,
+          deterministicMappings
+        )
+      } catch (aiError: any) {
+        console.warn("[ReconciliationProcessor] AI column matching failed, using deterministic only:", aiError.message)
+        columnMappings = deterministicMappings
+      }
 
       // Find key column (usually first mapped column or ID-like column)
       const keyColumn = this.detectKeyColumn(sheet1, sheet2, columnMappings)
@@ -240,6 +278,117 @@ export class ReconciliationProcessorService {
     }
 
     return mappings
+  }
+
+  /**
+   * Enhance column mappings with AI-powered semantic matching
+   * For columns that weren't matched deterministically, uses AI to suggest matches
+   */
+  static async detectColumnMappingsWithAI(
+    sheet1: SheetData,
+    sheet2: SheetData,
+    deterministicMappings: ColumnMapping[]
+  ): Promise<ColumnMapping[]> {
+    // Start with deterministic mappings
+    const mappings = [...deterministicMappings]
+    const usedDoc1Columns = new Set(mappings.map(m => m.doc1Column))
+    const usedDoc2Columns = new Set(mappings.map(m => m.doc2Column))
+
+    // Find unmatched columns
+    const unmatchedDoc1 = sheet1.columns.filter(c => !usedDoc1Columns.has(c))
+    const unmatchedDoc2 = sheet2.columns.filter(c => !usedDoc2Columns.has(c))
+
+    // If no unmatched columns on either side, return as-is
+    if (unmatchedDoc1.length === 0 || unmatchedDoc2.length === 0) {
+      return mappings
+    }
+
+    try {
+      const openai = getOpenAIClient()
+
+      // Build sample data for context (first 3 values from each column)
+      const doc1Samples: Record<string, string[]> = {}
+      const doc2Samples: Record<string, string[]> = {}
+
+      for (const col of unmatchedDoc1) {
+        doc1Samples[col] = sheet1.rows
+          .slice(0, 3)
+          .map(r => String(r[col] || ""))
+          .filter(v => v)
+      }
+      for (const col of unmatchedDoc2) {
+        doc2Samples[col] = sheet2.rows
+          .slice(0, 3)
+          .map(r => String(r[col] || ""))
+          .filter(v => v)
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a data matching expert. Given two lists of column names with sample values, identify which columns likely represent the same data despite different names.
+
+Common patterns to look for:
+- Abbreviations: "Amt" = "Amount", "Acct" = "Account", "Desc" = "Description"
+- Synonyms: "Vendor" = "Supplier", "Customer" = "Client"
+- Naming conventions: "account_id" = "AccountID" = "Account Number"
+
+Respond with JSON array of matches:
+[{"doc1Column": "...", "doc2Column": "...", "confidence": 0.6-0.8}]
+
+Only include matches you're reasonably confident about. Empty array if no good matches.`
+          },
+          {
+            role: "user",
+            content: `Document 1 columns (with sample values):
+${Object.entries(doc1Samples).map(([col, samples]) => `- "${col}": ${samples.slice(0, 2).join(", ") || "(empty)"}`).join("\n")}
+
+Document 2 columns (with sample values):
+${Object.entries(doc2Samples).map(([col, samples]) => `- "${col}": ${samples.slice(0, 2).join(", ") || "(empty)"}`).join("\n")}
+
+Which columns likely match?`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 500
+      })
+
+      const response = completion.choices[0]?.message?.content
+      if (!response) {
+        return mappings
+      }
+
+      const parsed = JSON.parse(response)
+      const aiMatches = Array.isArray(parsed) ? parsed : parsed.matches || []
+
+      // Add AI-suggested matches
+      for (const match of aiMatches) {
+        if (
+          match.doc1Column &&
+          match.doc2Column &&
+          unmatchedDoc1.includes(match.doc1Column) &&
+          unmatchedDoc2.includes(match.doc2Column) &&
+          !usedDoc2Columns.has(match.doc2Column)
+        ) {
+          mappings.push({
+            doc1Column: match.doc1Column,
+            doc2Column: match.doc2Column,
+            confidence: Math.min(0.75, match.confidence || 0.65),
+            matchType: "ai_suggested"
+          })
+          usedDoc2Columns.add(match.doc2Column)
+        }
+      }
+
+      return mappings
+    } catch (error: any) {
+      console.warn("[ReconciliationProcessor] AI column matching failed:", error.message)
+      // Return deterministic mappings as fallback
+      return deterministicMappings
+    }
   }
 
   /**

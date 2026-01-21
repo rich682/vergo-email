@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { put } from "@vercel/blob"
+import { RECONCILIATION_LIMITS, RECONCILIATION_MESSAGES } from "@/lib/constants/reconciliation"
 
 export const dynamic = "force-dynamic"
 
@@ -107,8 +108,23 @@ export async function POST(
 
     if (!isValidType(document1) || !isValidType(document2)) {
       return NextResponse.json(
-        { error: "Only Excel (.xls, .xlsx) or CSV files are allowed" },
+        { error: RECONCILIATION_MESSAGES.INVALID_FILE_TYPE },
         { status: 400 }
+      )
+    }
+
+    // Validate file sizes
+    if (document1.size > RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `Document 1: ${RECONCILIATION_MESSAGES.FILE_TOO_LARGE}` },
+        { status: 413 }
+      )
+    }
+
+    if (document2.size > RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `Document 2: ${RECONCILIATION_MESSAGES.FILE_TOO_LARGE}` },
+        { status: 413 }
       )
     }
 

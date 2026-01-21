@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, FileRejection } from "react-dropzone"
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,10 @@ import {
   X, 
   Loader2, 
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Info
 } from "lucide-react"
+import { RECONCILIATION_LIMITS, RECONCILIATION_MESSAGES } from "@/lib/constants/reconciliation"
 
 interface ReconciliationUploadModalProps {
   open: boolean
@@ -66,25 +68,43 @@ export function ReconciliationUploadModal({
     }
   }, [])
 
+  const onDropRejected = useCallback((rejections: FileRejection[]) => {
+    const rejection = rejections[0]
+    if (rejection) {
+      const errorCode = rejection.errors[0]?.code
+      if (errorCode === "file-too-large") {
+        setError(RECONCILIATION_MESSAGES.FILE_TOO_LARGE)
+      } else if (errorCode === "file-invalid-type") {
+        setError(RECONCILIATION_MESSAGES.INVALID_FILE_TYPE)
+      } else {
+        setError(rejection.errors[0]?.message || "File rejected")
+      }
+    }
+  }, [])
+
   const dropzone1 = useDropzone({
     onDrop: onDropDocument1,
+    onDropRejected,
     accept: {
       "application/vnd.ms-excel": [".xls"],
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
       "text/csv": [".csv"]
     },
     maxFiles: 1,
+    maxSize: RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES,
     multiple: false
   })
 
   const dropzone2 = useDropzone({
     onDrop: onDropDocument2,
+    onDropRejected,
     accept: {
       "application/vnd.ms-excel": [".xls"],
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
       "text/csv": [".csv"]
     },
     maxFiles: 1,
+    maxSize: RECONCILIATION_LIMITS.MAX_FILE_SIZE_BYTES,
     multiple: false
   })
 
@@ -218,7 +238,7 @@ export function ReconciliationUploadModal({
                       Drag & drop an Excel or CSV file, or click to browse
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      .xlsx, .xls, or .csv
+                      .xlsx, .xls, or .csv (max {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB)
                     </p>
                   </div>
                 )}
@@ -267,17 +287,25 @@ export function ReconciliationUploadModal({
                       Drag & drop an Excel or CSV file, or click to browse
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      .xlsx, .xls, or .csv
+                      .xlsx, .xls, or .csv (max {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB)
                     </p>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
-              <p className="text-sm text-amber-800">
-                <strong>Coming soon:</strong> AI-powered reconciliation will automatically compare these documents and highlight discrepancies.
-              </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium">File Limits</p>
+                  <ul className="mt-1 text-xs space-y-0.5">
+                    <li>Max file size: {RECONCILIATION_LIMITS.MAX_FILE_SIZE_MB}MB per file</li>
+                    <li>Max rows: {RECONCILIATION_LIMITS.MAX_ROWS_PER_SHEET.toLocaleString()} per sheet</li>
+                    <li>AI will automatically match columns and identify discrepancies</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </>
         )}

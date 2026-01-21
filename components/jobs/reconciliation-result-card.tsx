@@ -12,9 +12,19 @@ import {
   Download,
   ChevronDown,
   ChevronUp,
-  Clock
+  Clock,
+  Columns,
+  Key,
+  Sparkles
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+
+interface ColumnMapping {
+  doc1Column: string
+  doc2Column: string
+  confidence: number
+  matchType: "exact" | "fuzzy" | "ai_suggested"
+}
 
 interface Discrepancy {
   type: "missing_in_doc1" | "missing_in_doc2" | "value_mismatch"
@@ -33,6 +43,8 @@ interface Reconciliation {
   unmatchedCount?: number | null
   totalRows?: number | null
   discrepancies?: Discrepancy[] | null
+  columnMappings?: ColumnMapping[] | null
+  keyColumn?: string | null
   errorMessage?: string | null
   createdAt: string
   updatedAt?: string
@@ -48,6 +60,52 @@ interface ReconciliationResultCardProps {
   onUpdate?: (updated: Reconciliation) => void
 }
 
+// Expandable discrepancy row component
+function DiscrepancyRow({ discrepancy }: { discrepancy: Discrepancy }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const isLongDetails = discrepancy.details.length > 80
+
+  return (
+    <tr className="hover:bg-gray-50 align-top">
+      <td className="px-3 py-2">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+          discrepancy.type === "missing_in_doc1" 
+            ? "bg-orange-100 text-orange-700" 
+            : discrepancy.type === "missing_in_doc2"
+            ? "bg-purple-100 text-purple-700"
+            : "bg-red-100 text-red-700"
+        }`}>
+          {discrepancy.type === "missing_in_doc1" && "Missing Doc 1"}
+          {discrepancy.type === "missing_in_doc2" && "Missing Doc 2"}
+          {discrepancy.type === "value_mismatch" && "Mismatch"}
+        </span>
+      </td>
+      <td className="px-3 py-2">
+        <span className="font-mono text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded break-all">
+          {discrepancy.keyValue}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-600">
+        {isLongDetails ? (
+          <>
+            <span className={isExpanded ? "" : "line-clamp-2"}>
+              {discrepancy.details}
+            </span>
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-blue-600 hover:text-blue-700 text-xs mt-1 block"
+            >
+              {isExpanded ? "Show less" : "Show more"}
+            </button>
+          </>
+        ) : (
+          discrepancy.details
+        )}
+      </td>
+    </tr>
+  )
+}
+
 export function ReconciliationResultCard({
   reconciliation,
   jobId,
@@ -55,6 +113,7 @@ export function ReconciliationResultCard({
 }: ReconciliationResultCardProps) {
   const [processing, setProcessing] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [showColumnMappings, setShowColumnMappings] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleProcess = async () => {
@@ -87,7 +146,9 @@ export function ReconciliationResultCard({
         matchedCount: data.matchedCount,
         unmatchedCount: data.unmatchedCount,
         totalRows: data.totalRows,
-        discrepancies: data.discrepancies
+        discrepancies: data.discrepancies,
+        columnMappings: data.columnMappings,
+        keyColumn: data.keyColumn
       })
 
       setExpanded(true)
@@ -264,6 +325,72 @@ export function ReconciliationResultCard({
             </div>
           </div>
         )}
+
+        {/* Key Column indicator */}
+        {reconciliation.status === "COMPLETED" && reconciliation.keyColumn && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+            <Key className="w-4 h-4 text-gray-400" />
+            <span>Key Column: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{reconciliation.keyColumn}</span></span>
+          </div>
+        )}
+
+        {/* Column Mappings toggle */}
+        {reconciliation.status === "COMPLETED" && reconciliation.columnMappings && reconciliation.columnMappings.length > 0 && (
+          <div className="mt-3">
+            <button
+              onClick={() => setShowColumnMappings(!showColumnMappings)}
+              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              <Columns className="w-4 h-4" />
+              {showColumnMappings ? "Hide" : "Show"} Column Mappings ({reconciliation.columnMappings.length})
+              {showColumnMappings ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            
+            {showColumnMappings && (
+              <div className="mt-2 border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Document 1</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Document 2</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Match Type</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {reconciliation.columnMappings.map((mapping, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono text-xs">{mapping.doc1Column}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{mapping.doc2Column}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                            mapping.matchType === "exact"
+                              ? "bg-green-100 text-green-700"
+                              : mapping.matchType === "fuzzy"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}>
+                            {mapping.matchType === "ai_suggested" && <Sparkles className="w-3 h-3" />}
+                            {mapping.matchType === "exact" ? "Exact" : mapping.matchType === "fuzzy" ? "Fuzzy" : "AI Suggested"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs font-medium ${
+                            mapping.confidence >= 0.9 ? "text-green-600" :
+                            mapping.confidence >= 0.7 ? "text-yellow-600" :
+                            "text-orange-600"
+                          }`}>
+                            {Math.round(mapping.confidence * 100)}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Expanded discrepancies */}
@@ -275,38 +402,18 @@ export function ReconciliationResultCard({
               Discrepancies ({discrepancies.length})
             </h4>
           </div>
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Key</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-28">Type</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-40">Key</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {discrepancies.slice(0, 50).map((d, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        d.type === "missing_in_doc1" 
-                          ? "bg-orange-100 text-orange-700" 
-                          : d.type === "missing_in_doc2"
-                          ? "bg-purple-100 text-purple-700"
-                          : "bg-red-100 text-red-700"
-                      }`}>
-                        {d.type === "missing_in_doc1" && "Missing Doc 1"}
-                        {d.type === "missing_in_doc2" && "Missing Doc 2"}
-                        {d.type === "value_mismatch" && "Mismatch"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs text-gray-600">
-                      {d.keyValue}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-600 max-w-md truncate">
-                      {d.details}
-                    </td>
-                  </tr>
+                  <DiscrepancyRow key={i} discrepancy={d} />
                 ))}
               </tbody>
             </table>
