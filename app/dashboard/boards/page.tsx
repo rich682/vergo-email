@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,17 @@ import { CreateBoardModal } from "@/components/boards/create-board-modal"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { BoardColumnHeader, BoardColumnDefinition } from "@/components/boards/board-column-header"
+
+// Default board columns
+const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
+  { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
+  { id: "cadence", label: "Cadence", width: 100, visible: true, order: 1, isSystem: true },
+  { id: "period", label: "Period", width: 140, visible: true, order: 2, isSystem: true },
+  { id: "status", label: "Status", width: 120, visible: true, order: 3, isSystem: true },
+  { id: "owner", label: "Person", width: 140, visible: true, order: 4, isSystem: true },
+  { id: "updatedAt", label: "Date", width: 120, visible: true, order: 5, isSystem: true },
+]
 
 // Types
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "OPEN" | "CLOSED"
@@ -246,7 +257,56 @@ export default function BoardsPage() {
   const [archiveConfirm, setArchiveConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   
+  // Column configuration state
+  const [columns, setColumns] = useState<BoardColumnDefinition[]>(DEFAULT_BOARD_COLUMNS)
+  
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Fetch column configuration on mount
+  useEffect(() => {
+    const fetchColumnConfig = async () => {
+      try {
+        const response = await fetch("/api/boards/column-config", {
+          credentials: "include"
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.columns && data.columns.length > 0) {
+            setColumns(data.columns)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching board column config:", error)
+      }
+    }
+    fetchColumnConfig()
+  }, [])
+
+  // Save column configuration when columns change
+  const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[]) => {
+    try {
+      await fetch("/api/boards/column-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ columns: newColumns })
+      })
+    } catch (error) {
+      console.error("Error saving board column config:", error)
+    }
+  }, [])
+
+  const handleColumnsChange = useCallback((newColumns: BoardColumnDefinition[]) => {
+    setColumns(newColumns)
+    saveColumnConfig(newColumns)
+  }, [saveColumnConfig])
+
+  // Filter visible columns and sort by order
+  const visibleColumns = useMemo(() => {
+    return columns
+      .filter(col => col.visible)
+      .sort((a, b) => a.order - b.order)
+  }, [columns])
 
   // Fetch all boards
   const fetchBoards = async () => {
@@ -604,6 +664,9 @@ export default function BoardsPage() {
                     jobs={jobs}
                     menuOpenId={menuOpenId}
                     menuRef={menuRef}
+                    visibleColumns={visibleColumns}
+                    columns={columns}
+                    onColumnsChange={handleColumnsChange}
                     toggleBoardExpansion={toggleBoardExpansion}
                     setMenuOpenId={setMenuOpenId}
                     setEditingBoard={setEditingBoard}
@@ -642,6 +705,9 @@ export default function BoardsPage() {
                     jobs={jobs}
                     menuOpenId={menuOpenId}
                     menuRef={menuRef}
+                    visibleColumns={visibleColumns}
+                    columns={columns}
+                    onColumnsChange={handleColumnsChange}
                     toggleBoardExpansion={toggleBoardExpansion}
                     setMenuOpenId={setMenuOpenId}
                     setEditingBoard={setEditingBoard}
@@ -716,6 +782,9 @@ interface BoardRowProps {
   jobs: Job[]
   menuOpenId: string | null
   menuRef: React.RefObject<HTMLDivElement>
+  visibleColumns: BoardColumnDefinition[]
+  columns: BoardColumnDefinition[]
+  onColumnsChange: (columns: BoardColumnDefinition[]) => void
   toggleBoardExpansion: (boardId: string, e: React.MouseEvent) => void
   setMenuOpenId: (id: string | null) => void
   setEditingBoard: (board: Board | null) => void
@@ -735,6 +804,9 @@ function BoardRow({
   jobs,
   menuOpenId,
   menuRef,
+  visibleColumns,
+  columns,
+  onColumnsChange,
   toggleBoardExpansion,
   setMenuOpenId,
   setEditingBoard,
@@ -746,6 +818,63 @@ function BoardRow({
   canDeleteBoard,
   router
 }: BoardRowProps) {
+  // Render a column value based on column id
+  const renderColumnValue = (columnId: string) => {
+    switch (columnId) {
+      case "name":
+        return (
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-gray-900">{board.name}</span>
+          </div>
+        )
+      case "cadence":
+        return (
+          <div className="w-24 flex-shrink-0">
+            {getCadenceBadge(board.cadence)}
+          </div>
+        )
+      case "period":
+        return (
+          <div className="w-36 text-sm text-gray-600 flex-shrink-0">
+            {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
+          </div>
+        )
+      case "status":
+        return (
+          <div className="w-28 flex-shrink-0">
+            {getStatusBadge(board.status)}
+          </div>
+        )
+      case "owner":
+        return (
+          <div className="w-32 flex-shrink-0">
+            {board.owner ? (
+              <div className="flex items-center gap-2">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
+                    {getInitials(board.owner.name, board.owner.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm text-gray-700 truncate">
+                  {board.owner.name || board.owner.email.split("@")[0]}
+                </span>
+              </div>
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </div>
+        )
+      case "updatedAt":
+        return (
+          <div className="w-28 text-sm text-gray-500 flex-shrink-0">
+            {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="border rounded-lg bg-white">
       {/* Board Header Row */}
@@ -768,52 +897,19 @@ function BoardRow({
           )}
         </button>
 
-        {/* Board Name */}
-        <div className="flex-1 min-w-0">
-          <span className="font-medium text-gray-900">{board.name}</span>
-        </div>
+        {/* Render visible columns */}
+        {visibleColumns.map((column) => (
+          <div key={column.id}>
+            {renderColumnValue(column.id)}
+          </div>
+        ))}
 
-        {/* Cadence */}
-        <div className="w-24 flex-shrink-0">
-          {getCadenceBadge(board.cadence)}
-        </div>
-
-        {/* Period */}
-        <div className="w-36 text-sm text-gray-600 flex-shrink-0">
-          {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
-        </div>
-
-        {/* Status */}
-        <div className="w-28 flex-shrink-0">
-          {getStatusBadge(board.status)}
-        </div>
-
-        {/* Owner */}
-        <div className="w-32 flex-shrink-0">
-          {board.owner ? (
-            <div className="flex items-center gap-2">
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
-                  {getInitials(board.owner.name, board.owner.email)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm text-gray-700 truncate">
-                {board.owner.name || board.owner.email.split("@")[0]}
-              </span>
-            </div>
-          ) : (
-            <span className="text-gray-400">—</span>
-          )}
-        </div>
-
-        {/* Tasks Count */}
-        <div className="w-16 text-center text-gray-600 flex-shrink-0">
-          {board.jobCount}
-        </div>
-
-        {/* Updated */}
-        <div className="w-28 text-sm text-gray-500 flex-shrink-0">
-          {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
+        {/* Column Settings */}
+        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <BoardColumnHeader
+            columns={columns}
+            onColumnsChange={onColumnsChange}
+          />
         </div>
 
         {/* Actions */}

@@ -1,6 +1,6 @@
 "Parent ID","Parent Name","Description","Sub-Workflow Count","Job Capabilities","Status Summary","Primary Entry Points","Product Owner","Engineering Owner"
 "PWF-01","Authentication & Onboarding","User account creation, authentication, and team onboarding flows","4","N/A","4 GREEN, 0 YELLOW, 0 RED","/signup, /auth/*","TBD","TBD"
-"PWF-02","Board Management","Period-based organization of jobs through boards including recurring period automation","14","N/A","13 GREEN, 1 YELLOW, 0 RED","/dashboard/boards, /dashboard/jobs","TBD","TBD"
+"PWF-02","Board Management","Period-based organization of jobs through boards including recurring period automation","14","N/A","14 GREEN, 0 YELLOW, 0 RED","/dashboard/boards, /dashboard/jobs","TBD","TBD"
 "PWF-03","Job Lifecycle","Creation and management of the Job container. Jobs are containers; capabilities define behavior.","9","Core, Table, Reconciliation","8 GREEN, 1 YELLOW, 0 RED","/dashboard/jobs, /dashboard/jobs/[id]","TBD","TBD"
 "PWF-04","Job Collaboration & Governance","Team collaboration, ownership, and governance controls on jobs (Core capability)","8 (1 removed)","Core","7 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id]","TBD","TBD"
 "PWF-05","Requests & Communication","Sending, tracking, and responding to email requests + AI assistance (Request capability)","14 (1 removed)","Request","13 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id], /dashboard/requests, /dashboard/review/*","TBD","TBD"
