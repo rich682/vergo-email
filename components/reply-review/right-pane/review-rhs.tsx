@@ -9,7 +9,9 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
-  Loader2
+  Loader2,
+  FileText,
+  File
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -29,12 +31,22 @@ interface Finding {
   suggestedAction?: string
 }
 
+interface AttachmentSummary {
+  filename: string
+  documentType: string
+  summary: string
+  keyDetails: string[]
+  accountingRelevance?: string
+}
+
 interface AIAssessment {
   id: string
   recommendedAction: "REVIEWED" | "NEEDS_FOLLOW_UP"
   reasoning: string
   summaryBullets: string[]
   findings: Finding[]
+  attachmentSummaries?: AttachmentSummary[]
+  hasAttachments?: boolean
   isExisting: boolean
 }
 
@@ -61,6 +73,7 @@ export function ReviewRHS({
   const [assessment, setAssessment] = useState<AIAssessment | null>(null)
   const [assessmentLoading, setAssessmentLoading] = useState(true)
   const [showDetails, setShowDetails] = useState(false)
+  const [showDocuments, setShowDocuments] = useState(false)
 
   // Draft reply state
   const [draft, setDraft] = useState("")
@@ -383,6 +396,90 @@ export function ReviewRHS({
           )}
         </div>
       </div>
+
+      {/* Document Analysis Section - only shown when attachments exist */}
+      {assessment?.hasAttachments && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowDocuments(!showDocuments)}
+            className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-medium text-gray-900">Document Analysis</span>
+              {assessment.attachmentSummaries && assessment.attachmentSummaries.length > 0 && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                  {assessment.attachmentSummaries.length} file{assessment.attachmentSummaries.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            {showDocuments ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+
+          {showDocuments && (
+            <div className="p-4 bg-white space-y-4">
+              {assessment.attachmentSummaries && assessment.attachmentSummaries.length > 0 ? (
+                assessment.attachmentSummaries.map((doc, i) => (
+                  <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                    {/* Document header */}
+                    <div className="flex items-start gap-2 mb-2">
+                      <File className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {doc.filename}
+                          </span>
+                          <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                            {doc.documentType}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Document summary */}
+                    <p className="text-sm text-gray-600 mb-2">{doc.summary}</p>
+                    
+                    {/* Key details */}
+                    {doc.keyDetails && doc.keyDetails.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Key Details
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {doc.keyDetails.map((detail, j) => (
+                            <span
+                              key={j}
+                              className="inline-flex text-xs bg-white border border-gray-200 px-2 py-1 rounded text-gray-700"
+                            >
+                              {detail}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Accounting relevance note */}
+                    {doc.accountingRelevance && (
+                      <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1.5 rounded">
+                        💡 {doc.accountingRelevance}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-gray-500 text-center py-4">
+                  <p>Attachment content not yet analyzed.</p>
+                  <p className="text-xs mt-1">Re-analyze to extract document details.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Draft Reply Section */}
       <div className="border border-gray-200 rounded-lg p-4 space-y-3">

@@ -31,9 +31,18 @@ interface Finding {
   suggestedAction?: string
 }
 
+interface AttachmentSummary {
+  filename: string
+  documentType: string
+  summary: string
+  keyDetails: string[]
+  accountingRelevance?: string
+}
+
 interface AnalysisResult {
   summaryBullets: string[]
   findings: Finding[]
+  attachmentSummaries?: AttachmentSummary[]
   confidence: "high" | "medium" | "low"
 }
 
@@ -177,14 +186,17 @@ export async function POST(request: NextRequest) {
 
     if (existingRecommendation) {
       // Return existing recommendation
+      // Note: attachmentSummaries not stored in DB, so re-analyze needed for those
       return NextResponse.json({
         id: existingRecommendation.id,
         summaryBullets: existingRecommendation.summaryBullets || [],
         findings: existingRecommendation.findings || [],
+        attachmentSummaries: [], // Will trigger re-analysis if user wants document details
         recommendedAction: existingRecommendation.recommendedAction,
         reasoning: existingRecommendation.reasoning,
         confidence: "medium",
-        isExisting: true
+        isExisting: true,
+        hasAttachments: message.collectedItems.length > 0
       })
     }
 
@@ -323,12 +335,19 @@ When attachment content is available:
 - Check if the document type matches what was requested (e.g., W-9, invoice, timesheet)
 - Look for missing or incomplete fields
 - Verify dates, amounts, or other key data if relevant
+- Create an accounting-friendly summary of each document's contents
 
 Use prior AI assessments and human decisions to calibrate your judgment. If humans have consistently disagreed with AI recommendations, be more conservative.
 
 Respond with a JSON object containing:
 - summaryBullets: string[] (2-3 key points from the reply)
 - findings: array of { severity, title, explanation, suggestedAction? }
+- attachmentSummaries: array of { filename, documentType, summary, keyDetails, accountingRelevance? } - one per attachment with content
+  - filename: the attachment filename
+  - documentType: detected type (e.g., "W-9 Form", "Invoice", "Bank Statement", "Receipt", "PDF Document", "Excel Spreadsheet")
+  - summary: 1-2 sentence accounting-friendly summary of what the document contains
+  - keyDetails: array of key fields/values found (e.g., "Total Amount: $5,000", "Tax ID: XXX-XX-1234", "Invoice #12345", "Period: Jan 2026")
+  - accountingRelevance: optional note about how this relates to typical accounting workflows
 - confidence: "high" | "medium" | "low"`
         },
         {
@@ -372,6 +391,13 @@ Analyze this reply and provide structured findings. If attachments contain relev
     }))
 
     const summaryBullets = parsed.summaryBullets || []
+    const attachmentSummaries: AttachmentSummary[] = (parsed.attachmentSummaries || []).map((s: any) => ({
+      filename: s.filename || "Unknown",
+      documentType: s.documentType || "Document",
+      summary: s.summary || "",
+      keyDetails: s.keyDetails || [],
+      accountingRelevance: s.accountingRelevance
+    }))
     const recommendedAction = deriveRecommendedAction(findings)
     const reasoning = generateReasoning(findings, recommendedAction)
 
@@ -395,10 +421,12 @@ Analyze this reply and provide structured findings. If attachments contain relev
       id: recommendation.id,
       summaryBullets,
       findings,
+      attachmentSummaries,
       recommendedAction,
       reasoning,
       confidence: parsed.confidence || "medium",
-      isExisting: false
+      isExisting: false,
+      hasAttachments: message.collectedItems.length > 0
     })
   } catch (error: any) {
     console.error("[API/review/analyze] Error:", error)
