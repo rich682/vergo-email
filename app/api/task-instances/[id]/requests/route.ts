@@ -6,7 +6,8 @@
  *   - includeDrafts=true|false (default: false) - Include draft requests in response
  * 
  * POST /api/task-instances/[id]/requests - Draft operations
- *   Body: { requestId: string, action: "send" | "update", ...actionParams }
+ *   Body: { requestId?: string, action: "send" | "update" | "create_draft", ...actionParams }
+ *   - action: "create_draft" - Create a new draft request (for scheduled sending)
  *   - action: "send" - Send a draft request (activates it)
  *   - action: "update" - Update draft content
  * 
@@ -325,12 +326,19 @@ export async function POST(
     const body = await request.json()
     const { requestId, action } = body
 
-    if (!requestId) {
-      return NextResponse.json({ error: "requestId is required" }, { status: 400 })
+    // Validate action
+    if (!action || !["send", "update", "create_draft"].includes(action)) {
+      return NextResponse.json({ error: "action must be 'send', 'update', or 'create_draft'" }, { status: 400 })
     }
 
-    if (!action || !["send", "update"].includes(action)) {
-      return NextResponse.json({ error: "action must be 'send' or 'update'" }, { status: 400 })
+    // Handle create_draft action (doesn't require requestId)
+    if (action === "create_draft") {
+      return handleCreateDraft(taskInstanceId, organizationId, userId, body)
+    }
+
+    // Other actions require requestId
+    if (!requestId) {
+      return NextResponse.json({ error: "requestId is required" }, { status: 400 })
     }
 
     // Handle update action
@@ -413,6 +421,123 @@ export async function DELETE(
 }
 
 // ==================== Helper Functions ====================
+
+/**
+ * Create a new draft request for scheduled sending
+ */
+async function handleCreateDraft(
+  taskInstanceId: string,
+  organizationId: string,
+  userId: string,
+  body: any
+): Promise<NextResponse> {
+  const { 
+    entityId, 
+    subject, 
+    body: bodyContent, 
+    htmlBody,
+    scheduleConfig,
+    remindersEnabled = false,
+    remindersFrequencyHours,
+    remindersMaxCount
+  } = body
+
+  // Validate required fields
+  if (!entityId) {
+    return NextResponse.json({ error: "entityId is required" }, { status: 400 })
+  }
+  if (!subject || !bodyContent) {
+    return NextResponse.json({ error: "subject and body are required" }, { status: 400 })
+  }
+
+  // Verify entity exists and belongs to organization
+  const entity = await prisma.entity.findFirst({
+    where: { id: entityId, organizationId }
+  })
+  if (!entity) {
+    return NextResponse.json({ error: "Entity not found" }, { status: 404 })
+  }
+
+  // Get task instance with board for period-aware scheduling
+  const taskInstance = await prisma.taskInstance.findFirst({
+    where: { id: taskInstanceId, organizationId },
+    include: {
+      board: {
+        select: { id: true, periodStart: true, periodEnd: true }
+      }
+    }
+  })
+
+  if (!taskInstance) {
+    return NextResponse.json({ error: "Task instance not found" }, { status: 404 })
+  }
+
+  // Compute scheduledSendAt if period-aware scheduling
+  let scheduledSendAt: Date | null = null
+  const config = scheduleConfig as ScheduleConfig | null
+  if (config?.mode === "period_aware" && taskInstance.board) {
+    scheduledSendAt = BusinessDayService.computeFromConfig(
+      config,
+      taskInstance.board.periodStart,
+      taskInstance.board.periodEnd
+    )
+  }
+
+  // Generate a unique threadId
+  const threadId = `draft-${Date.now()}-${Math.random().toString(36).substring(7)}`
+
+  // Create the draft request
+  const draft = await prisma.request.create({
+    data: {
+      organizationId,
+      taskInstanceId,
+      entityId,
+      userId,
+      threadId,
+      campaignName: subject,
+      campaignType: "SCHEDULED_REQUEST",
+      status: "NO_REPLY",
+      isDraft: true,
+      
+      // Store content directly (no source request to copy from)
+      draftEditedSubject: subject,
+      draftEditedBody: bodyContent,
+      draftEditedHtmlBody: htmlBody || null,
+      
+      // Schedule config
+      scheduleConfig: scheduleConfig || null,
+      scheduledSendAt,
+      deadlineDate: scheduledSendAt || taskInstance.dueDate,
+      
+      // Reminder config (disabled for scheduled drafts for now)
+      remindersEnabled: false, // remindersEnabled,
+      remindersFrequencyHours: null, // remindersFrequencyHours || 168,
+      remindersMaxCount: null, // remindersMaxCount || 3,
+      remindersApproved: false
+    },
+    include: {
+      entity: {
+        select: { id: true, firstName: true, lastName: true, email: true }
+      }
+    }
+  })
+
+  return NextResponse.json({
+    success: true,
+    message: "Draft request created",
+    draft: {
+      id: draft.id,
+      entityId: draft.entityId,
+      entity: draft.entity,
+      subject,
+      body: bodyContent,
+      scheduleConfig,
+      scheduledSendAt: draft.scheduledSendAt,
+      isDraft: true,
+      createdAt: draft.createdAt
+    }
+  })
+}
 
 async function handleUpdateDraft(
   requestId: string,

@@ -471,6 +471,20 @@ model Request {
   remindersFrequencyHours  Int? // Hours/days between reminders (converted to hours)
   remindersMaxCount        Int? // Maximum reminders (1-5)
   remindersApproved        Boolean       @default(false) // Whether user approved the sequence
+  
+  // Period-aware scheduling (collapsed into JSON for minimal schema footprint)
+  // scheduleConfig: { mode: "ad_hoc"|"period_aware", anchor?: "period_start"|"period_end",
+  //                   offsetDays?: number, weekendRule?: "previous"|"next", sendTime?: "HH:mm" }
+  scheduleConfig           Json?         // Scheduling recipe
+  scheduledSendAt          DateTime?     // Computed absolute send datetime (for display/audit)
+  
+  // Draft request fields (copy-on-write pattern for recurring request drafts)
+  isDraft                  Boolean       @default(false) // True = draft copied from prior period, not yet sent
+  draftSourceRequestId     String?       // Link to source request from prior period (for content + audit)
+  draftEditedSubject       String?       // Only populated if user edits the draft subject
+  draftEditedBody          String?       @db.Text // Only populated if user edits the draft body
+  draftEditedHtmlBody      String?       @db.Text // Only populated if user edits the draft HTML body
+  
   organizationId           String
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
@@ -491,6 +505,8 @@ model Request {
   @@index([organizationId, status])
   @@index([organizationId, campaignName])
   @@index([organizationId, campaignType])
+  @@index([organizationId, isDraft]) // For filtering draft vs active requests
+  @@index([draftSourceRequestId]) // For looking up source request content
 }
 
 model Message {

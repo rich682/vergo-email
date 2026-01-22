@@ -107,7 +107,7 @@ interface Job {
   dueDate: string | null
   labels: any | null
   boardId: string | null
-  board?: { id: string; name: string; cadence: string | null } | null
+  board?: { id: string; name: string; cadence: string | null; periodStart: string | null; periodEnd: string | null } | null
   stakeholders?: JobStakeholder[]
   noStakeholdersNeeded?: boolean
   createdAt: string
@@ -1667,9 +1667,22 @@ export default function JobDetailPage() {
       <SendRequestModal
         open={isSendRequestOpen}
         onOpenChange={setIsSendRequestOpen}
-        job={{ id: job.id, name: job.name, description: job.description, dueDate: job.dueDate, labels: job.labels }}
+        job={{ 
+          id: job.id, 
+          name: job.name, 
+          description: job.description, 
+          dueDate: job.dueDate, 
+          labels: job.labels,
+          board: job.board ? {
+            id: job.board.id,
+            name: job.board.name,
+            cadence: job.board.cadence,
+            periodStart: job.board.periodStart,
+            periodEnd: job.board.periodEnd
+          } : null
+        }}
         stakeholderContacts={stakeholderContacts.filter(c => c.email).map(c => ({ id: c.id, email: c.email!, firstName: c.firstName, lastName: c.lastName, contactType: c.stakeholderType === "contact_type" ? c.stakeholderName : undefined }))}
-        onSuccess={() => { fetchJob(); fetchRequests(); fetchTasks(); fetchTimeline(); }}
+        onSuccess={() => { fetchJob(); fetchRequests(); fetchTasks(); fetchTimeline(); fetchDraftRequests(); }}
       />
 
       <ReconciliationUploadModal open={isReconciliationModalOpen} onOpenChange={setIsReconciliationModalOpen} jobId={jobId} jobName={job?.name || ""} onReconciliationCreated={(r) => setReconciliations(prev => [r, ...prev])} />

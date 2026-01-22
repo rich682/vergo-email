@@ -251,7 +251,7 @@ export class TaskInstanceService {
         client: { select: { id: true, firstName: true, lastName: true, email: true } },
         requests: { select: { id: true, status: true } },
         _count: { select: { collectedItems: true } },
-        board: { select: { id: true, name: true, cadence: true, periodStart: true } }
+        board: { select: { id: true, name: true, cadence: true, periodStart: true, periodEnd: true } }
       }
     })
 

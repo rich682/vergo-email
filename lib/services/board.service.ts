@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { Board, BoardStatus, BoardCadence, JobStatus, TaskType } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 import { TaskInstanceService } from "./task-instance.service"
+import { RequestDraftCopyService } from "./request-draft-copy.service"
 
 /**
  * Derive periodEnd from periodStart based on cadence type.
@@ -353,7 +354,17 @@ export class BoardService {
             collaborators: {
               include: { user: { select: { id: true, name: true, email: true } } }
             },
-            _count: { select: { requests: true, collectedItems: true } }
+            _count: { 
+              select: { 
+                requests: { where: { isDraft: false } }, // Active requests only
+                collectedItems: true 
+              } 
+            },
+            // Also count draft requests separately
+            requests: {
+              where: { isDraft: true },
+              select: { id: true }
+            }
           },
           orderBy: { createdAt: "desc" }
         },
@@ -376,6 +387,7 @@ export class BoardService {
         ...ti,
         taskCount: ti._count.requests,
         collectedItemCount: ti._count.collectedItems,
+        draftRequestCount: ti.requests.length, // Count of draft requests
         collaborators: ti.collaborators.map(c => ({
           id: c.id,
           userId: c.userId,
@@ -537,7 +549,8 @@ export class BoardService {
   }
 
   /**
-   * Spawn task instances for the next period based on lineages active in the previous period
+   * Spawn task instances for the next period based on lineages active in the previous period.
+   * Also copies requests as drafts for recurring request workflows.
    */
   private static async spawnTaskInstancesForNextPeriod(
     previousBoardId: string,
@@ -548,7 +561,18 @@ export class BoardService {
       where: { boardId: previousBoardId, organizationId },
       include: {
         collaborators: true,
-        taskInstanceLabels: { include: { contactLabels: true } }
+        taskInstanceLabels: { include: { contactLabels: true } },
+        // Include requests with their first outbound message for draft copying
+        requests: {
+          where: { isDraft: false }, // Only copy from active (non-draft) requests
+          include: {
+            messages: {
+              where: { direction: "OUTBOUND" },
+              orderBy: { createdAt: "asc" },
+              take: 1
+            }
+          }
+        }
       }
     })
 
@@ -582,6 +606,25 @@ export class BoardService {
             addedBy: c.addedBy
           }))
         })
+      }
+
+      // Copy requests as drafts (recurring request drafts feature)
+      if (prev.requests.length > 0) {
+        try {
+          const copiedCount = await RequestDraftCopyService.copyRequestsAsDrafts({
+            previousTaskInstanceId: prev.id,
+            newTaskInstanceId: newInstance.id,
+            newBoardId: nextBoardId,
+            organizationId,
+            previousRequests: prev.requests
+          })
+          if (copiedCount > 0) {
+            console.log(`[BoardService] Copied ${copiedCount} request(s) as drafts for task instance ${newInstance.id}`)
+          }
+        } catch (error) {
+          // Log but don't fail the entire operation if draft copying fails
+          console.error(`[BoardService] Failed to copy requests as drafts for task instance ${newInstance.id}:`, error)
+        }
       }
     }
   }

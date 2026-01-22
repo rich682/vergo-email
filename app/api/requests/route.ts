@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
       organizationId,
       // Only show requests that have a task instance
       taskInstanceId: { not: null },
+      // Exclude draft requests from standard listing (isDraft requests need explicit review)
+      isDraft: false,
       // Role-based access: only show requests from task instances user can access
       ...(jobAccessFilter && { taskInstance: jobAccessFilter })
     }
@@ -183,12 +185,12 @@ export async function GET(request: NextRequest) {
       filteredTasks = tasks.filter(t => t.taskInstance?.ownerId === ownerId)
     }
 
-    // Get only task instances that have sent requests (requests with taskInstanceId), filtered by access
+    // Get only task instances that have sent requests (exclude drafts), filtered by access
     const jobsWithRequests = await prisma.taskInstance.findMany({
       where: { 
         organizationId,
         requests: {
-          some: {} // Has at least one request
+          some: { isDraft: false } // Has at least one active (non-draft) request
         },
         // Apply same access filter for dropdown
         ...(jobAccessFilter || {})
@@ -211,13 +213,13 @@ export async function GET(request: NextRequest) {
       orderBy: { name: "asc" }
     })
 
-    // Get all labels from task instances that have requests
+    // Get all labels from task instances that have active requests (not drafts)
     const labelsFromJobs = await prisma.taskInstanceLabel.findMany({
       where: {
         taskInstance: {
           organizationId,
           requests: {
-            some: {}
+            some: { isDraft: false }
           }
         }
       },
@@ -230,12 +232,13 @@ export async function GET(request: NextRequest) {
       orderBy: { name: "asc" }
     })
 
-    // Get status counts
+    // Get status counts (exclude drafts from counts)
     const statusCounts = await prisma.request.groupBy({
       by: ["status"],
       where: {
         organizationId,
-        taskInstanceId: { not: null }
+        taskInstanceId: { not: null },
+        isDraft: false
       },
       _count: true
     })

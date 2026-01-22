@@ -21,10 +21,11 @@ export class OnboardingService {
       prisma.entity.count({ where: { organizationId } }),
       prisma.board.count({ where: { organizationId } }),
       prisma.taskInstance.count({ where: { organizationId } }),
-      // Count requests that have outbound messages
+      // Count requests that have outbound messages (exclude drafts)
       prisma.request.count({ 
         where: { 
           organizationId,
+          isDraft: false,
           messages: {
             some: {
               direction: "OUTBOUND"

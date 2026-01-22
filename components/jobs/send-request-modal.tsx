@@ -46,6 +46,8 @@ import {
   Bell,
   Settings,
   ArrowRight,
+  Calendar,
+  CalendarClock,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -80,6 +82,13 @@ interface Job {
   description: string | null
   dueDate: string | null
   labels: any
+  board?: {
+    id: string
+    name: string
+    cadence: string | null
+    periodStart: string | null
+    periodEnd: string | null
+  } | null
 }
 
 interface SendRequestModalProps {
@@ -101,6 +110,8 @@ type ModalState =
   | "error"
 
 type RequestMode = "standard" | "data_personalization"
+
+type SendTiming = "immediate" | "scheduled"
 
 interface DraftResponse {
   success: boolean
@@ -179,10 +190,19 @@ export function SendRequestModal({
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [refinementInstruction, setRefinementInstruction] = useState("")
+  const [sendTiming, setSendTiming] = useState<SendTiming>("immediate")
   const [remindersEnabled, setRemindersEnabled] = useState(false)
   const [reminderDays, setReminderDays] = useState(7) // Default to weekly
   const [usedFallback, setUsedFallback] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Computed: is this a recurring board (non-AD_HOC cadence with period dates)?
+  const isRecurringBoard = Boolean(
+    job.board?.cadence && 
+    job.board.cadence !== "AD_HOC" && 
+    job.board.periodStart && 
+    job.board.periodEnd
+  )
   
   // Recipients with exclusion toggles
   const [recipients, setRecipients] = useState<Array<StakeholderContact & { included: boolean }>>([])
@@ -434,6 +454,7 @@ export function SendRequestModal({
       setSubject("")
       setBody("")
       setRefinementInstruction("")
+      setSendTiming("immediate")
       setRemindersEnabled(false)
       setReminderDays(7)
       setUsedFallback(false)
@@ -572,26 +593,28 @@ export function SendRequestModal({
       const contactTypes = [...new Set(includedRecipients.map(r => r.contactType).filter(Boolean))] as string[]
       const entityIds = includedRecipients.map(r => r.id)
 
+      const isScheduled = sendTiming === "scheduled"
+
       const interpretation = {
         recipientSelection: {
           contactTypes: contactTypes.length > 0 ? contactTypes : undefined,
           entityIds: entityIds,
         },
         scheduleIntent: {
-          sendTiming: "immediate" as const,
+          sendTiming: isScheduled ? "scheduled" as const : "immediate" as const,
           deadline: job.dueDate || undefined,
         },
         reminderIntent: {
-          enabled: remindersEnabled,
-          frequency: remindersEnabled ? "custom" : undefined,
-          customDays: remindersEnabled ? reminderDays : undefined,
+          enabled: isScheduled ? false : remindersEnabled, // Reminders disabled for scheduled
+          frequency: remindersEnabled && !isScheduled ? "custom" : undefined,
+          customDays: remindersEnabled && !isScheduled ? reminderDays : undefined,
           stopCondition: "reply_or_deadline" as const,
         },
         requestType: "one-off" as const,
         confidence: "high" as const,
         interpretationSummary: {
           audienceDescription: `${includedRecipients.length} stakeholder${includedRecipients.length !== 1 ? "s" : ""}`,
-          scheduleDescription: "Send immediately",
+          scheduleDescription: isScheduled ? "Scheduled (saved as draft)" : "Send immediately",
           assumptions: ["Auto-drafted from Item context"],
         },
         warnings: [],
@@ -601,6 +624,49 @@ export function SendRequestModal({
         },
       }
 
+      // For scheduled sends, create a draft request directly
+      if (isScheduled) {
+        // Create draft request via the task-instances requests endpoint
+        const draftResponse = await fetch(`/api/task-instances/${job.id}/requests`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            action: "create_draft",
+            entityId: includedRecipients[0]?.id, // Primary recipient
+            subject: subject.trim(),
+            body: body.trim(),
+            scheduleConfig: isRecurringBoard ? {
+              mode: "period_aware",
+              anchor: "period_end",
+              offsetDays: -5, // Default: 5 business days before period end
+              weekendRule: "previous",
+              sendTime: "09:00"
+            } : {
+              mode: "ad_hoc"
+            },
+            // Reminders disabled for now (coming soon)
+            remindersEnabled: false,
+          }),
+        })
+
+        if (!draftResponse.ok) {
+          const data = await draftResponse.json()
+          throw new Error(data.error || "Failed to create draft request")
+        }
+
+        console.log("Draft request created for scheduled sending")
+        setState("success")
+        
+        // Auto-close after success
+        setTimeout(() => {
+          onOpenChange(false)
+          onSuccess()
+        }, 1500)
+        return
+      }
+
+      // For immediate sends, use the Quest flow
       // 1. Create Quest via existing endpoint
       const createResponse = await fetch("/api/quests", {
         method: "POST",
@@ -865,12 +931,23 @@ export function SendRequestModal({
         {/* Success State */}
         {mode === "standard" && state === "success" && (
           <div className="flex flex-col items-center justify-center py-12">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle className="w-8 h-8 text-green-500" />
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+              sendTiming === "scheduled" ? "bg-blue-100" : "bg-green-100"
+            }`}>
+              {sendTiming === "scheduled" ? (
+                <CalendarClock className="w-8 h-8 text-blue-500" />
+              ) : (
+                <CheckCircle className="w-8 h-8 text-green-500" />
+              )}
             </div>
-            <h3 className="mt-4 font-medium text-gray-900">Request Sent!</h3>
+            <h3 className="mt-4 font-medium text-gray-900">
+              {sendTiming === "scheduled" ? "Draft Saved!" : "Request Sent!"}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Sent to {includedCount} recipient{includedCount !== 1 ? "s" : ""}
+              {sendTiming === "scheduled" 
+                ? "Review and send from the Requests tab"
+                : `Sent to ${includedCount} recipient${includedCount !== 1 ? "s" : ""}`
+              }
             </p>
           </div>
         )}
@@ -1255,17 +1332,107 @@ export function SendRequestModal({
               </div>
             </div>
 
-            {/* Reminders Section */}
+            {/* Schedule Section */}
             <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <Label>When to send</Label>
+              </div>
+              
+              <div className="space-y-2">
+                {/* Send Now Option */}
+                <label 
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    sendTiming === "immediate" 
+                      ? "border-orange-500 bg-orange-50" 
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="sendTiming"
+                    value="immediate"
+                    checked={sendTiming === "immediate"}
+                    onChange={() => setSendTiming("immediate")}
+                    className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-4 h-4 text-gray-600" />
+                      <span className="font-medium text-gray-900">Send now</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">Emails go out immediately</p>
+                  </div>
+                </label>
+
+                {/* Schedule Option */}
+                <label 
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    sendTiming === "scheduled" 
+                      ? "border-orange-500 bg-orange-50" 
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="sendTiming"
+                    value="scheduled"
+                    checked={sendTiming === "scheduled"}
+                    onChange={() => setSendTiming("scheduled")}
+                    className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <CalendarClock className="w-4 h-4 text-gray-600" />
+                      <span className="font-medium text-gray-900">Schedule for later</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {isRecurringBoard 
+                        ? "Save timing for this recurring task" 
+                        : "Schedule relative to the period"}
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Schedule Options - shown when scheduled is selected */}
+              {sendTiming === "scheduled" && (
+                <div className="mt-3 ml-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <CalendarClock className="w-4 h-4 text-blue-600 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">Period-aware scheduling</p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        {isRecurringBoard 
+                          ? `This request will be saved as a draft and scheduled relative to each period's dates. It will automatically copy to future periods.`
+                          : `This request will be saved as a draft. You can review and send it from the Requests tab.`
+                        }
+                      </p>
+                      {job.board?.periodEnd && (
+                        <p className="text-xs text-blue-600 mt-2">
+                          Current period ends: {new Date(job.board.periodEnd).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Reminders Section */}
+            <div className={`border-t border-gray-200 pt-4 ${sendTiming === "scheduled" ? "opacity-50" : ""}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-gray-500" />
                   <div>
-                    <Label htmlFor="reminders" className="cursor-pointer">
+                    <Label htmlFor="reminders" className={sendTiming === "scheduled" ? "cursor-not-allowed" : "cursor-pointer"}>
                       Send reminders
                     </Label>
                     <p className="text-xs text-gray-500">
-                      Automatic follow-ups until reply or deadline
+                      {sendTiming === "scheduled" 
+                        ? "Coming soon for scheduled requests"
+                        : "Automatic follow-ups until reply or deadline"
+                      }
                     </p>
                   </div>
                 </div>
@@ -1273,24 +1440,30 @@ export function SendRequestModal({
                   id="reminders"
                   type="button"
                   role="switch"
-                  aria-checked={remindersEnabled}
-                  onClick={() => setRemindersEnabled(!remindersEnabled)}
+                  aria-checked={remindersEnabled && sendTiming !== "scheduled"}
+                  onClick={() => sendTiming !== "scheduled" && setRemindersEnabled(!remindersEnabled)}
+                  disabled={sendTiming === "scheduled"}
                   className={`
                     relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                    ${remindersEnabled ? "bg-orange-500" : "bg-gray-200"}
+                    ${sendTiming === "scheduled" 
+                      ? "bg-gray-200 cursor-not-allowed" 
+                      : remindersEnabled 
+                        ? "bg-orange-500" 
+                        : "bg-gray-200"
+                    }
                   `}
                 >
                   <span
                     className={`
                       inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                      ${remindersEnabled ? "translate-x-6" : "translate-x-1"}
+                      ${remindersEnabled && sendTiming !== "scheduled" ? "translate-x-6" : "translate-x-1"}
                     `}
                   />
                 </button>
               </div>
               
               {/* Reminder Frequency Options */}
-              {remindersEnabled && (
+              {remindersEnabled && sendTiming !== "scheduled" && (
                 <div className="mt-3 ml-6 p-3 bg-gray-50 rounded-lg">
                   <Label className="text-xs text-gray-600 mb-2 block">Remind every:</Label>
                   <div className="flex items-center gap-2">
@@ -1351,7 +1524,12 @@ export function SendRequestModal({
                 {state === "sending" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Sending...
+                    {sendTiming === "scheduled" ? "Saving..." : "Sending..."}
+                  </>
+                ) : sendTiming === "scheduled" ? (
+                  <>
+                    <CalendarClock className="w-4 h-4 mr-2" />
+                    Save as Draft
                   </>
                 ) : (
                   <>
@@ -1370,9 +1548,14 @@ export function SendRequestModal({
             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-gray-600 animate-spin" />
             </div>
-            <h3 className="mt-4 font-medium text-gray-900">Sending request...</h3>
+            <h3 className="mt-4 font-medium text-gray-900">
+              {sendTiming === "scheduled" ? "Saving draft..." : "Sending request..."}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Sending to {includedCount} recipient{includedCount !== 1 ? "s" : ""}
+              {sendTiming === "scheduled" 
+                ? "Creating scheduled request for review"
+                : `Sending to ${includedCount} recipient${includedCount !== 1 ? "s" : ""}`
+              }
             </p>
           </div>
         )}
@@ -1383,11 +1566,18 @@ export function SendRequestModal({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-              Confirm Send
+              {sendTiming === "scheduled" ? (
+                <CalendarClock className="w-5 h-5 text-blue-500" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-amber-500" />
+              )}
+              {sendTiming === "scheduled" ? "Confirm Schedule" : "Confirm Send"}
             </DialogTitle>
             <DialogDescription>
-              You are about to send emails to real recipients. This action cannot be undone.
+              {sendTiming === "scheduled"
+                ? "This will save the request as a draft for scheduled sending."
+                : "You are about to send emails to real recipients. This action cannot be undone."
+              }
             </DialogDescription>
           </DialogHeader>
           
@@ -1401,7 +1591,13 @@ export function SendRequestModal({
                 <span className="text-gray-500">Subject:</span>
                 <span className="font-medium truncate max-w-[200px]">{subject}</span>
               </div>
-              {remindersEnabled && (
+              {sendTiming === "scheduled" && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Schedule:</span>
+                  <span className="font-medium">Saved as draft</span>
+                </div>
+              )}
+              {remindersEnabled && sendTiming !== "scheduled" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Reminders:</span>
                   <span className="font-medium">Every {reminderDays} day{reminderDays !== 1 ? "s" : ""}</span>
@@ -1410,7 +1606,10 @@ export function SendRequestModal({
             </div>
             
             <p className="text-sm text-gray-600">
-              Are you sure you want to send this request?
+              {sendTiming === "scheduled"
+                ? "Are you sure you want to save this as a scheduled draft?"
+                : "Are you sure you want to send this request?"
+              }
             </p>
           </div>
 
@@ -1425,8 +1624,17 @@ export function SendRequestModal({
               onClick={handleSendConfirmed}
               className="bg-gray-900 hover:bg-gray-800"
             >
-              <Send className="w-4 h-4 mr-2" />
-              Yes, Send Now
+              {sendTiming === "scheduled" ? (
+                <>
+                  <CalendarClock className="w-4 h-4 mr-2" />
+                  Yes, Save Draft
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Yes, Send Now
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

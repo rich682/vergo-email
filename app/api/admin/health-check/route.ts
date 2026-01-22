@@ -312,22 +312,24 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  // 9. Task/Request statistics
+  // 9. Task/Request statistics (exclude draft requests from counts)
   try {
-    const [totalTasks, awaitingTasks, fulfilledTasks, totalJobs] = await Promise.all([
-      prisma.request.count({ where: { organizationId } }),
-      prisma.request.count({ where: { organizationId, status: "AWAITING_RESPONSE" } }),
-      prisma.request.count({ where: { organizationId, status: "FULFILLED" } }),
-      prisma.taskInstance.count({ where: { organizationId } })
+    const [totalTasks, awaitingTasks, fulfilledTasks, totalJobs, draftRequests] = await Promise.all([
+      prisma.request.count({ where: { organizationId, isDraft: false } }),
+      prisma.request.count({ where: { organizationId, status: "AWAITING_RESPONSE", isDraft: false } }),
+      prisma.request.count({ where: { organizationId, status: "FULFILLED", isDraft: false } }),
+      prisma.taskInstance.count({ where: { organizationId } }),
+      prisma.request.count({ where: { organizationId, isDraft: true } })
     ])
 
     checks.push({
       name: "statistics",
       status: "ok",
-      message: `${totalJobs} tasks, ${totalTasks} requests`,
+      message: `${totalJobs} tasks, ${totalTasks} requests${draftRequests > 0 ? `, ${draftRequests} drafts` : ''}`,
       details: {
         totalJobs,
         totalRequests: totalTasks,
+        draftRequests,
         awaitingResponse: awaitingTasks,
         fulfilled: fulfilledTasks
       }
