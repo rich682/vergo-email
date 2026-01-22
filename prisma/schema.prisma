@@ -27,19 +27,19 @@ enum TaskType {
 
 enum TaskStatus {
   // Current active statuses
-  NO_REPLY          // No reply received yet (default for new requests)
-  REPLIED           // Reply received from contact
-  COMPLETE          // Task marked as complete (manual action)
+  NO_REPLY // No reply received yet (default for new requests)
+  REPLIED // Reply received from contact
+  COMPLETE // Task marked as complete (manual action)
   // Legacy statuses (kept for backward compatibility with existing data)
-  IN_PROGRESS       // @deprecated - maps to NO_REPLY
-  FULFILLED         // @deprecated - maps to COMPLETE
+  IN_PROGRESS // @deprecated - maps to NO_REPLY
+  FULFILLED // @deprecated - maps to COMPLETE
   AWAITING_RESPONSE // @deprecated - maps to NO_REPLY
-  HAS_ATTACHMENTS   // @deprecated - maps to REPLIED
-  VERIFYING         // @deprecated - maps to REPLIED
-  REJECTED          // @deprecated - maps to COMPLETE
-  FLAGGED           // @deprecated - maps to NO_REPLY
-  MANUAL_REVIEW     // @deprecated - maps to NO_REPLY
-  ON_HOLD           // @deprecated - maps to NO_REPLY
+  HAS_ATTACHMENTS // @deprecated - maps to REPLIED
+  VERIFYING // @deprecated - maps to REPLIED
+  REJECTED // @deprecated - maps to COMPLETE
+  FLAGGED // @deprecated - maps to NO_REPLY
+  MANUAL_REVIEW // @deprecated - maps to NO_REPLY
+  ON_HOLD // @deprecated - maps to NO_REPLY
 }
 
 enum MessageDirection {
@@ -97,14 +97,14 @@ enum CollectedItemSource {
 // Boards group Jobs for accounting period workflows (Monday.com parity)
 enum BoardStatus {
   // New action-oriented statuses
-  NOT_STARTED  // Work not yet begun
-  IN_PROGRESS  // Work actively happening
-  COMPLETE     // All work done
-  BLOCKED      // Waiting on external dependency
-  ARCHIVED     // Hidden from active view
+  NOT_STARTED // Work not yet begun
+  IN_PROGRESS // Work actively happening
+  COMPLETE // All work done
+  BLOCKED // Waiting on external dependency
+  ARCHIVED // Hidden from active view
   // Legacy statuses (kept for backward compatibility during migration)
-  OPEN         // @deprecated - use NOT_STARTED
-  CLOSED       // @deprecated - use COMPLETE
+  OPEN // @deprecated - use NOT_STARTED
+  CLOSED // @deprecated - use COMPLETE
 }
 
 // Board cadence - what kind of time period this board represents
@@ -131,30 +131,30 @@ model Organization {
   name                 String
   slug                 String   @unique
   emailDomain          String?
-  features             Json?    // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
+  features             Json? // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
   fiscalYearStartMonth Int      @default(1) // 1 = January, 12 = December
   timezone             String   @default("UTC") // IANA timezone e.g. "America/New_York", "Australia/Sydney"
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  users                    User[]
-  entities                 Entity[]
-  groups                   Group[]
-  taskInstances            TaskInstance[]
-  taskLineages             TaskLineage[]
-  importRecipes            ImportRecipe[]
-  connectedEmailAccounts   ConnectedEmailAccount[]
-  automationRules          AutomationRule[]
-  emailDrafts              EmailDraft[]
-  agentSchedules           AgentSchedule[]
-  boards                   Board[]
-  subtasks                 Subtask[]
-  attachments              Attachment[]
-  emailQueue               EmailQueue[]
-  reconciliations          Reconciliation[]
-  reconciliationTemplates  ReconciliationTemplate[]
-  datasetTemplates         DatasetTemplate[]
-  datasetSnapshots         DatasetSnapshot[]
+  users                   User[]
+  entities                Entity[]
+  groups                  Group[]
+  taskInstances           TaskInstance[]
+  taskLineages            TaskLineage[]
+  importRecipes           ImportRecipe[]
+  connectedEmailAccounts  ConnectedEmailAccount[]
+  automationRules         AutomationRule[]
+  emailDrafts             EmailDraft[]
+  agentSchedules          AgentSchedule[]
+  boards                  Board[]
+  subtasks                Subtask[]
+  attachments             Attachment[]
+  emailQueue              EmailQueue[]
+  reconciliations         Reconciliation[]
+  reconciliationTemplates ReconciliationTemplate[]
+  datasetTemplates        DatasetTemplate[]
+  datasetSnapshots        DatasetSnapshot[]
 
   @@index([slug])
 }
@@ -165,15 +165,20 @@ model TaskLineage {
   name           String
   description    String?
   type           TaskType
-  config         Json?    // Schema for TABLE, Match rules for RECONCILIATION
+  config         Json? // Schema for TABLE, Match rules for RECONCILIATION
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  instances    TaskInstance[]
+  // Data workflow linkage (optional)
+  datasetTemplateId String?
+  datasetTemplate   DatasetTemplate? @relation(fields: [datasetTemplateId], references: [id], onDelete: SetNull)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  instances     TaskInstance[]
   importRecipes ImportRecipe[]
 
   @@index([organizationId])
+  @@index([datasetTemplateId])
 }
 
 model ImportRecipe {
@@ -181,7 +186,7 @@ model ImportRecipe {
   organizationId String
   lineageId      String
   name           String
-  mapping        Json     // CSV Header -> Schema Column mapping
+  mapping        Json // CSV Header -> Schema Column mapping
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -212,23 +217,23 @@ model User {
   onboardingCompleted Boolean @default(false)
   onboardingDismissed Boolean @default(false)
 
-  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  emailDrafts         EmailDraft[]
-  ownedTaskInstances     TaskInstance[]      @relation("TaskInstanceOwner")
+  organization               Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDrafts                EmailDraft[]
+  ownedTaskInstances         TaskInstance[]             @relation("TaskInstanceOwner")
   taskInstanceCollaborations TaskInstanceCollaborator[]
-  taskInstanceComments   TaskInstanceComment[]
-  reviewedItems       CollectedItem[]     @relation("CollectedItemReviewer")
-  ownedBoards         Board[]             @relation("BoardOwner")
-  createdBoards       Board[]             @relation("BoardCreator")
-  boardCollaborations BoardCollaborator[]
-  ownedSubtasks       Subtask[]           @relation("SubtaskOwner")
-  uploadedAttachments Attachment[]        @relation("AttachmentUploader")
-  reviewedMessages       Message[]               @relation("MessageReviewer")
-  reviewAuditLogs        ReviewAuditLog[]        @relation("ReviewAuditAuthor")
-  reconciliations        Reconciliation[]        @relation("ReconciliationCreator")
-  connectedEmailAccounts ConnectedEmailAccount[]
-  createdDatasetTemplates  DatasetTemplate[]     @relation("DatasetTemplateCreator")
-  uploadedDatasetSnapshots DatasetSnapshot[]     @relation("DatasetSnapshotUploader")
+  taskInstanceComments       TaskInstanceComment[]
+  reviewedItems              CollectedItem[]            @relation("CollectedItemReviewer")
+  ownedBoards                Board[]                    @relation("BoardOwner")
+  createdBoards              Board[]                    @relation("BoardCreator")
+  boardCollaborations        BoardCollaborator[]
+  ownedSubtasks              Subtask[]                  @relation("SubtaskOwner")
+  uploadedAttachments        Attachment[]               @relation("AttachmentUploader")
+  reviewedMessages           Message[]                  @relation("MessageReviewer")
+  reviewAuditLogs            ReviewAuditLog[]           @relation("ReviewAuditAuthor")
+  reconciliations            Reconciliation[]           @relation("ReconciliationCreator")
+  connectedEmailAccounts     ConnectedEmailAccount[]
+  createdDatasetTemplates    DatasetTemplate[]          @relation("DatasetTemplateCreator")
+  uploadedDatasetSnapshots   DatasetSnapshot[]          @relation("DatasetSnapshotUploader")
 
   @@index([organizationId])
   @@index([email])
@@ -241,19 +246,19 @@ model Entity {
   lastName               String?
   email                  String?
   phone                  String?
-  companyName            String?     // Company name for accounting reference
+  companyName            String? // Company name for accounting reference
   contactType            ContactType @default(UNKNOWN)
   contactTypeCustomLabel String?
   organizationId         String
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  groups         EntityGroup[]
-  requests       Request[]
-  messages       Message[]
-  reminderStates ReminderState[]
-  clientTaskInstances TaskInstance[] @relation("TaskInstanceClient") // Task instances where this entity is the primary client
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groups              EntityGroup[]
+  requests            Request[]
+  messages            Message[]
+  reminderStates      ReminderState[]
+  clientTaskInstances TaskInstance[]             @relation("TaskInstanceClient") // Task instances where this entity is the primary client
   taskInstanceLabels  TaskInstanceContactLabel[] // Item-scoped labels applied to this contact
 
   @@index([organizationId])
@@ -306,15 +311,15 @@ enum ContactType {
 // Note: Enum name must match database enum name "JobStatus"
 enum JobStatus {
   // New action-oriented statuses
-  NOT_STARTED  // Work not yet begun
-  IN_PROGRESS  // Work in progress
-  COMPLETE     // All work done
-  BLOCKED      // Blocked by external dependency
+  NOT_STARTED // Work not yet begun
+  IN_PROGRESS // Work in progress
+  COMPLETE // All work done
+  BLOCKED // Blocked by external dependency
   // Legacy statuses (kept for backwards compatibility)
-  ACTIVE       // @deprecated - use NOT_STARTED or IN_PROGRESS
-  WAITING      // @deprecated - use IN_PROGRESS
-  COMPLETED    // @deprecated - use COMPLETE
-  ARCHIVED     // @deprecated - use COMPLETE
+  ACTIVE // @deprecated - use NOT_STARTED or IN_PROGRESS
+  WAITING // @deprecated - use IN_PROGRESS
+  COMPLETED // @deprecated - use COMPLETE
+  ARCHIVED // @deprecated - use COMPLETE
 }
 
 // TaskInstance represents a persistent work container for a specific period
@@ -322,41 +327,40 @@ enum JobStatus {
 model TaskInstance {
   id             String    @id @default(cuid())
   organizationId String
-  lineageId      String?   // Link to parent lineage (template)
+  lineageId      String? // Link to parent lineage (template)
   type           TaskType  @default(GENERIC)
-  name           String    // Human-readable job name (e.g., "Tax Planning - Year End 2024")
-  description    String?   // Optional detailed description
-  clientId       String?   // Optional: primary client (Entity) for this job
-  ownerId        String    // Required: accountable user for this job
+  name           String // Human-readable job name (e.g., "Tax Planning - Year End 2024")
+  description    String? // Optional detailed description
+  clientId       String? // Optional: primary client (Entity) for this job
+  ownerId        String // Required: accountable user for this job
   status         JobStatus @default(NOT_STARTED)
   dueDate        DateTime? // Target completion date
-  labels         Json?     // Flexible tagging/categorization
-  boardId        String?   // Optional: parent Board for period-based organization
+  labels         Json? // Flexible tagging/categorization
+  boardId        String? // Optional: parent Board for period-based organization
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
-  notes          String?   // User notes for this task
-  customFields   Json?     // Custom column data for configurable table
-  structuredData Json?     // Row-level data for TABLE tasks or results for RECONCILIATION
+  notes          String? // User notes for this task
+  customFields   Json? // Custom column data for configurable table
+  structuredData Json? // Row-level data for TABLE tasks or results for RECONCILIATION
   isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lineage         TaskLineage?      @relation(fields: [lineageId], references: [id], onDelete: SetNull)
-  client          Entity?           @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
-  owner           User              @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
-  board           Board?            @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage         TaskLineage?               @relation(fields: [lineageId], references: [id], onDelete: SetNull)
+  client          Entity?                    @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
+  owner           User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
+  board           Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
   collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
-  requests        Request[]         // Child tasks (requests) belonging to this job
-  emailDrafts     EmailDraft[]      // Request-level association
-  comments        TaskInstanceComment[]      // Internal collaboration comments
-  collectedItems   CollectedItem[]   // Evidence/attachments collected for this job
-  subtasks         Subtask[]         // Checklist subitems within this job
-  attachments      Attachment[]      // Direct file attachments on this job
-  reconciliations  Reconciliation[]  // Document reconciliation workflows
+  requests        Request[] // Child tasks (requests) belonging to this job
+  emailDrafts     EmailDraft[] // Request-level association
+  comments        TaskInstanceComment[] // Internal collaboration comments
+  collectedItems  CollectedItem[] // Evidence/attachments collected for this job
+  subtasks        Subtask[] // Checklist subitems within this job
+  attachments     Attachment[] // Direct file attachments on this job
+  reconciliations Reconciliation[] // Document reconciliation workflows
 
-  taskInstanceLabels TaskInstanceLabel[]        // Item-scoped labels for contacts
+  taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
 
-  @@map("Job")
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([clientId])
@@ -364,27 +368,28 @@ model TaskInstance {
   @@index([organizationId, createdAt])
   @@index([boardId])
   @@index([lineageId])
+  @@map("Job")
 }
 
 // TaskInstanceLabel defines labels that can be applied to contacts within a specific TaskInstance
 // e.g., "paid", "unpaid", "pending" with metadata schemas like invoice_number, amount
 model TaskInstanceLabel {
-  id              String   @id @default(cuid())
-  taskInstanceId  String   @map("jobId")
-  organizationId  String
-  name            String   // "unpaid", "received", "pending"
-  color           String?  // "#ef4444"
-  metadataSchema  Json     @default("[]") // [{key: "invoice_number", label: "Invoice #", type: "text"}]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  taskInstanceId String   @map("jobId")
+  organizationId String
+  name           String // "unpaid", "received", "pending"
+  color          String? // "#ef4444"
+  metadataSchema Json     @default("[]") // [{key: "invoice_number", label: "Invoice #", type: "text"}]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   taskInstance  TaskInstance               @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   contactLabels TaskInstanceContactLabel[]
 
-  @@map("JobLabel")
   @@unique([taskInstanceId, name])
   @@index([taskInstanceId])
   @@index([organizationId])
+  @@map("JobLabel")
 }
 
 // TaskInstanceContactLabel applies a label to a contact within a TaskInstance's context
@@ -400,10 +405,10 @@ model TaskInstanceContactLabel {
   taskInstanceLabel TaskInstanceLabel @relation(fields: [taskInstanceLabelId], references: [id], onDelete: Cascade)
   entity            Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
-  @@map("JobContactLabel")
   @@unique([taskInstanceLabelId, entityId])
   @@index([taskInstanceLabelId])
   @@index([entityId])
+  @@map("JobContactLabel")
 }
 
 // TaskInstanceCollaborator join table for team collaboration on TaskInstances
@@ -414,15 +419,15 @@ model TaskInstanceCollaborator {
   userId         String
   role           String   @default("collaborator") // Future: "viewer"
   addedAt        DateTime @default(now())
-  addedBy        String   // User.id who added this collaborator
+  addedBy        String // User.id who added this collaborator
 
   taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("JobCollaborator")
   @@unique([taskInstanceId, userId])
   @@index([userId]) // Fast "My Tasks" query
   @@index([taskInstanceId])
+  @@map("JobCollaborator")
 }
 
 // TaskInstanceComment for internal team collaboration
@@ -431,16 +436,16 @@ model TaskInstanceComment {
   taskInstanceId String   @map("jobId")
   authorId       String
   content        String
-  mentions       Json?    // Array of mentioned user IDs
+  mentions       Json? // Array of mentioned user IDs
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   author       User         @relation(fields: [authorId], references: [id])
 
-  @@map("JobComment")
   @@index([taskInstanceId])
   @@index([authorId])
+  @@map("JobComment")
 }
 
 model Request {
@@ -476,32 +481,31 @@ model Request {
   remindersFrequencyHours  Int? // Hours/days between reminders (converted to hours)
   remindersMaxCount        Int? // Maximum reminders (1-5)
   remindersApproved        Boolean       @default(false) // Whether user approved the sequence
-  
+
   // Period-aware scheduling (collapsed into JSON for minimal schema footprint)
   // scheduleConfig: { mode: "ad_hoc"|"period_aware", anchor?: "period_start"|"period_end",
   //                   offsetDays?: number, weekendRule?: "previous"|"next", sendTime?: "HH:mm" }
-  scheduleConfig           Json?         // Scheduling recipe
-  scheduledSendAt          DateTime?     // Computed absolute send datetime (for display/audit)
-  
+  scheduleConfig  Json? // Scheduling recipe
+  scheduledSendAt DateTime? // Computed absolute send datetime (for display/audit)
+
   // Draft request fields (copy-on-write pattern for recurring request drafts)
-  isDraft                  Boolean       @default(false) // True = draft copied from prior period, not yet sent
-  draftSourceRequestId     String?       // Link to source request from prior period (for content + audit)
-  draftEditedSubject       String?       // Only populated if user edits the draft subject
-  draftEditedBody          String?       @db.Text // Only populated if user edits the draft body
-  draftEditedHtmlBody      String?       @db.Text // Only populated if user edits the draft HTML body
-  
-  organizationId           String
-  createdAt                DateTime      @default(now())
-  updatedAt                DateTime      @updatedAt
+  isDraft              Boolean @default(false) // True = draft copied from prior period, not yet sent
+  draftSourceRequestId String? // Link to source request from prior period (for content + audit)
+  draftEditedSubject   String? // Only populated if user edits the draft subject
+  draftEditedBody      String? @db.Text // Only populated if user edits the draft body
+  draftEditedHtmlBody  String? @db.Text // Only populated if user edits the draft HTML body
+
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   taskInstance      TaskInstance?      @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
   messages          Message[]
   reminderStates    ReminderState[]
-  collectedItems    CollectedItem[]    // Evidence/attachments collected for this request
+  collectedItems    CollectedItem[] // Evidence/attachments collected for this request
   aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
 
-  @@map("Task")
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([entityId])
@@ -512,6 +516,7 @@ model Request {
   @@index([organizationId, campaignType])
   @@index([organizationId, isDraft]) // For filtering draft vs active requests
   @@index([draftSourceRequestId]) // For looking up source request content
+  @@map("Task")
 }
 
 model Message {
@@ -538,16 +543,16 @@ model Message {
   aiReasoning      String? // Brief explanation of classification
   isAutoReply      Boolean          @default(false) // True if this is an OOO, bounce, or auto-reply
   createdAt        DateTime         @default(now())
-  
+
   // Review workflow fields
-  reviewStatus     ReviewStatus     @default(UNREVIEWED)
-  reviewedAt       DateTime?
-  reviewedById     String?
-  reviewNotes      String?
+  reviewStatus ReviewStatus @default(UNREVIEWED)
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewNotes  String?
 
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
   request           Request            @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  collectedItems    CollectedItem[]    // Evidence/attachments extracted from this message
+  collectedItems    CollectedItem[] // Evidence/attachments extracted from this message
   reviewedBy        User?              @relation("MessageReviewer", fields: [reviewedById], references: [id])
   auditLogs         ReviewAuditLog[]
   aiRecommendations AIRecommendation[] // AI recommendations for feedback loop
@@ -592,7 +597,7 @@ model AgentSchedule {
 model ConnectedEmailAccount {
   id             String        @id @default(cuid())
   organizationId String
-  userId         String?       // User who connected this account (null = legacy/shared)
+  userId         String? // User who connected this account (null = legacy/shared)
   email          String
   provider       EmailProvider
   accessToken    String? // Encrypted
@@ -726,43 +731,43 @@ model ReminderState {
 // CollectedItem represents evidence/attachments received in response to requests
 // This is the core model for the Collection feature - request-scoped evidence intake
 model CollectedItem {
-  id              String              @id @default(cuid())
-  organizationId  String
-  taskInstanceId  String              @map("jobId") // Parent task instance (required)
-  requestId       String?             @map("taskId") // Optional: specific request this came from
-  messageId       String?             // Optional: source message if from email
-  
+  id             String  @id @default(cuid())
+  organizationId String
+  taskInstanceId String  @map("jobId") // Parent task instance (required)
+  requestId      String? @map("taskId") // Optional: specific request this came from
+  messageId      String? // Optional: source message if from email
+
   // File metadata
-  filename        String
-  fileKey         String              // Storage key (blob or local)
-  fileUrl         String?             // Cached URL for quick access
-  fileSize        Int?                // Bytes
-  mimeType        String?
-  
+  filename String
+  fileKey  String // Storage key (blob or local)
+  fileUrl  String? // Cached URL for quick access
+  fileSize Int? // Bytes
+  mimeType String?
+
   // Source tracking
   source          CollectedItemSource
-  submittedBy     String?             // Email address of submitter
-  submittedByName String?             // Name if available
-  receivedAt      DateTime            // When the item was received
-  
+  submittedBy     String? // Email address of submitter
+  submittedByName String? // Name if available
+  receivedAt      DateTime // When the item was received
+
   // Approval workflow
   status          CollectedItemStatus @default(UNREVIEWED)
-  reviewedBy      String?             // User ID who reviewed
+  reviewedBy      String? // User ID who reviewed
   reviewedAt      DateTime?
   rejectionReason String?
-  
+
   // Metadata
-  notes           String?             // Internal notes
-  metadata        Json?               // Extensible metadata
-  
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  
-  taskInstance    TaskInstance        @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  request         Request?            @relation(fields: [requestId], references: [id], onDelete: SetNull)
-  message         Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  reviewer        User?               @relation("CollectedItemReviewer", fields: [reviewedBy], references: [id])
-  
+  notes    String? // Internal notes
+  metadata Json? // Extensible metadata
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  taskInstance TaskInstance @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  request      Request?     @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reviewer     User?        @relation("CollectedItemReviewer", fields: [reviewedBy], references: [id])
+
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([requestId])
@@ -775,33 +780,33 @@ model CollectedItem {
 // Board represents a period-based checklist (e.g., "January 2025 Book Close")
 // Boards group Jobs for accounting period workflows (Monday.com parity)
 model Board {
-  id             String        @id @default(cuid())
+  id             String      @id @default(cuid())
   organizationId String
-  name           String        // "January 2025 Book Close", "Year-End Close 2024"
+  name           String // "January 2025 Book Close", "Year-End Close 2024"
   description    String?
-  status         BoardStatus   @default(NOT_STARTED)
-  
+  status         BoardStatus @default(NOT_STARTED)
+
   // Ownership (nullable during migration, will become required after data backfill)
-  ownerId        String?       // Accountable user for this board
-  
+  ownerId String? // Accountable user for this board
+
   // Time metadata - enables filtering, sorting, and future auto-creation
-  cadence        BoardCadence? // Type of time period (Monthly, Weekly, etc.)
-  periodStart    DateTime?     // Start of the time period
-  periodEnd      DateTime?     // End of the time period
-  
+  cadence     BoardCadence? // Type of time period (Monthly, Weekly, etc.)
+  periodStart DateTime? // Start of the time period
+  periodEnd   DateTime? // End of the time period
+
   // Automation settings (UI config, automation logic not yet implemented)
   automationEnabled Boolean @default(false) // Auto-create next period's board
-  skipWeekends      Boolean @default(true)  // For DAILY cadence: skip weekends
-  
-  createdById    String
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  skipWeekends      Boolean @default(true) // For DAILY cadence: skip weekends
 
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner          User?               @relation("BoardOwner", fields: [ownerId], references: [id])
-  createdBy      User                @relation("BoardCreator", fields: [createdById], references: [id])
-  collaborators  BoardCollaborator[]
-  taskInstances  TaskInstance[]
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner         User?               @relation("BoardOwner", fields: [ownerId], references: [id])
+  createdBy     User                @relation("BoardCreator", fields: [createdById], references: [id])
+  collaborators BoardCollaborator[]
+  taskInstances TaskInstance[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -810,12 +815,12 @@ model Board {
 
 // BoardCollaborator join table for team collaboration on Boards
 model BoardCollaborator {
-  id        String   @id @default(cuid())
-  boardId   String
-  userId    String
-  role      String   @default("collaborator") // Future: "viewer"
-  addedAt   DateTime @default(now())
-  addedBy   String   // User.id who added this collaborator
+  id      String   @id @default(cuid())
+  boardId String
+  userId  String
+  role    String   @default("collaborator") // Future: "viewer"
+  addedAt DateTime @default(now())
+  addedBy String // User.id who added this collaborator
 
   board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -833,11 +838,11 @@ model Subtask {
   taskInstanceId String        @map("jobId")
   title          String
   description    String?
-  ownerId        String?       // Nullable - Monday allows unassigned subitems
+  ownerId        String? // Nullable - Monday allows unassigned subitems
   status         SubtaskStatus @default(NOT_STARTED)
   dueDate        DateTime?
   sortOrder      Int           @default(0) // Order within task for drag-drop reordering
-  completedAt    DateTime?     // Timestamp when marked as DONE
+  completedAt    DateTime? // Timestamp when marked as DONE
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -860,17 +865,17 @@ model Attachment {
   taskInstanceId String?  @map("jobId") // One of taskInstanceId or subtaskId must be set
   subtaskId      String?
   filename       String
-  fileKey        String   // Storage key
-  fileUrl        String?  // Cached URL
-  fileSize       Int?     // Bytes
+  fileKey        String // Storage key
+  fileUrl        String? // Cached URL
+  fileSize       Int? // Bytes
   mimeType       String?
   uploadedById   String
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   taskInstance TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  subtask      Subtask?     @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
-  uploadedBy   User         @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+  subtask      Subtask?      @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation("AttachmentUploader", fields: [uploadedById], references: [id])
 
   @@index([organizationId])
   @@index([taskInstanceId])
@@ -884,105 +889,105 @@ enum EmailSendResult {
   FAILED
   BLOCKED
   RATE_LIMITED
-  QUEUED  // Email was queued for later due to rate limiting
+  QUEUED // Email was queued for later due to rate limiting
 }
 
 // EmailQueue stores emails that were rate-limited and need to be sent later
 // A scheduled job processes this queue when rate limits allow
 enum EmailQueueStatus {
-  PENDING     // Waiting to be sent
-  PROCESSING  // Currently being processed
-  SENT        // Successfully sent
-  FAILED      // Failed after max retries
-  CANCELLED   // Manually cancelled
+  PENDING // Waiting to be sent
+  PROCESSING // Currently being processed
+  SENT // Successfully sent
+  FAILED // Failed after max retries
+  CANCELLED // Manually cancelled
 }
 
 model EmailQueue {
-  id              String           @id @default(cuid())
-  organizationId  String
-  userId          String?          // User who initiated the send
-  taskInstanceId  String?          @map("jobId") // Related task instance
-  requestId       String?          @map("taskId") // Related request (if updating existing)
-  
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String? // User who initiated the send
+  taskInstanceId String? @map("jobId") // Related task instance
+  requestId      String? @map("taskId") // Related request (if updating existing)
+
   // Email details (stored for retry)
-  toEmail         String
-  subject         String
-  body            String           @db.Text
-  htmlBody        String?          @db.Text
-  accountId       String?          // Email account to send from
-  
+  toEmail   String
+  subject   String
+  body      String  @db.Text
+  htmlBody  String? @db.Text
+  accountId String? // Email account to send from
+
   // Queue management
-  status          EmailQueueStatus @default(PENDING)
-  priority        Int              @default(0)  // Higher = more urgent
-  attempts        Int              @default(0)
-  maxAttempts     Int              @default(3)
-  lastAttemptAt   DateTime?
-  nextAttemptAt   DateTime         // When to try sending next
-  
+  status        EmailQueueStatus @default(PENDING)
+  priority      Int              @default(0) // Higher = more urgent
+  attempts      Int              @default(0)
+  maxAttempts   Int              @default(3)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime // When to try sending next
+
   // Error tracking
-  lastError       String?
-  
+  lastError String?
+
   // Metadata for the original send request
-  metadata        Json?            // Original send parameters (deadlineDate, remindersConfig, etc.)
-  
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
+  metadata Json? // Original send parameters (deadlineDate, remindersConfig, etc.)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([organizationId])
-  @@index([status, nextAttemptAt])  // For queue processing
+  @@index([status, nextAttemptAt]) // For queue processing
   @@index([toEmail])
   @@index([createdAt])
 }
 
 // ReviewAuditLog provides audit trail for review actions
 model ReviewAuditLog {
-  id              String   @id @default(cuid())
-  messageId       String
-  userId          String
-  action          String   // "marked_reviewed" | "marked_needs_follow_up" | "reply_sent" | "follow_up_created"
-  metadata        Json?
-  createdAt       DateTime @default(now())
-  
-  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user            User     @relation("ReviewAuditAuthor", fields: [userId], references: [id])
-  
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  action    String // "marked_reviewed" | "marked_needs_follow_up" | "reply_sent" | "follow_up_created"
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("ReviewAuditAuthor", fields: [userId], references: [id])
+
   @@index([messageId])
   @@index([userId])
   @@index([createdAt])
 }
 
 model EmailSendAudit {
-  id              String          @id @default(cuid())
-  organizationId  String
-  userId          String?         // User who initiated the send (null for system sends)
-  taskInstanceId  String?         @map("jobId") // Related task instance if applicable
-  requestId       String?         @map("taskId") // Related request if applicable
-  emailDraftId    String?         // Related email draft if applicable
-  
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String? // User who initiated the send (null for system sends)
+  taskInstanceId String? @map("jobId") // Related task instance if applicable
+  requestId      String? @map("taskId") // Related request if applicable
+  emailDraftId   String? // Related email draft if applicable
+
   // Send details
-  fromEmail       String
-  toEmail         String          // Single recipient (one row per recipient for bulk)
-  subject         String
-  recipientCount  Int             @default(1) // For bulk sends, total recipients in batch
-  
+  fromEmail      String
+  toEmail        String // Single recipient (one row per recipient for bulk)
+  subject        String
+  recipientCount Int    @default(1) // For bulk sends, total recipients in batch
+
   // Result tracking
-  result          EmailSendResult
-  errorMessage    String?         // Error details if failed
-  errorCode       String?         // Provider error code if available
-  
+  result       EmailSendResult
+  errorMessage String? // Error details if failed
+  errorCode    String? // Provider error code if available
+
   // Provider details
-  provider        EmailProvider?  // GMAIL, MICROSOFT, GENERIC_SMTP
-  providerId      String?         // Message ID from provider
-  
+  provider   EmailProvider? // GMAIL, MICROSOFT, GENERIC_SMTP
+  providerId String? // Message ID from provider
+
   // Metadata
-  ipAddress       String?         // Request IP for audit
-  userAgent       String?         // Request user agent
-  metadata        Json?           // Additional context (e.g., personalization mode, reminder number)
-  
-  createdAt       DateTime        @default(now())
-  
+  ipAddress String? // Request IP for audit
+  userAgent String? // Request user agent
+  metadata  Json? // Additional context (e.g., personalization mode, reminder number)
+
+  createdAt DateTime @default(now())
+
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([userId])
@@ -997,11 +1002,11 @@ model EmailSendAudit {
 model JobColumnConfig {
   id             String   @id @default(cuid())
   organizationId String   @unique // One config per organization
-  boardId        String?  // Optional: board-specific config (null = global default)
-  columns        Json     // Array of column definitions: { id, type, label, width, visible, order }
+  boardId        String? // Optional: board-specific config (null = global default)
+  columns        Json // Array of column definitions: { id, type, label, width, visible, order }
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  
+
   @@unique([organizationId, boardId])
   @@index([organizationId])
 }
@@ -1009,38 +1014,38 @@ model JobColumnConfig {
 // AI recommendation storage for feedback loop
 // Persists AI analysis results and links them to human decisions
 model AIRecommendation {
-  id                String        @id @default(cuid())
-  organizationId    String
-  messageId         String
-  requestId         String        @map("taskId")
-  
+  id             String @id @default(cuid())
+  organizationId String
+  messageId      String
+  requestId      String @map("taskId")
+
   // Denormalized for metrics queries
-  campaignType      CampaignType?
-  
+  campaignType CampaignType?
+
   // AI recommendation
-  recommendedAction String        // "REVIEWED" | "NEEDS_FOLLOW_UP" (matches ReviewStatus)
-  reasoning         String        // Short explanation
-  summaryBullets    Json?         // Array of summary points
-  findings          Json?         // Array of findings
-  
+  recommendedAction String // "REVIEWED" | "NEEDS_FOLLOW_UP" (matches ReviewStatus)
+  reasoning         String // Short explanation
+  summaryBullets    Json? // Array of summary points
+  findings          Json? // Array of findings
+
   // Model tracking
-  model             String        @default("gpt-4o-mini")
-  promptVersion     String        @default("v1")
-  
+  model         String @default("gpt-4o-mini")
+  promptVersion String @default("v1")
+
   // Draft reply (generated with memory, persisted for idempotency)
-  draftReply        String?       // Pre-filled draft reply text
-  draftPromptVersion String?      // Track draft prompt version separately
-  
+  draftReply         String? // Pre-filled draft reply text
+  draftPromptVersion String? // Track draft prompt version separately
+
   // Human reconciliation (filled when user acts)
-  humanAction       String?       // Actual ReviewStatus chosen
-  agreedWithAI      Boolean?      // Computed: recommendedAction == humanAction
-  humanActedAt      DateTime?
-  
-  createdAt         DateTime      @default(now())
-  
-  message           Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  request           Request       @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  
+  humanAction  String? // Actual ReviewStatus chosen
+  agreedWithAI Boolean? // Computed: recommendedAction == humanAction
+  humanActedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
   @@index([organizationId, createdAt])
   @@index([messageId])
   @@index([organizationId, campaignType, agreedWithAI])
@@ -1048,72 +1053,72 @@ model AIRecommendation {
 
 // Reconciliation status for the LLM-powered document comparison workflow
 enum ReconciliationStatus {
-  PENDING      // Documents uploaded, waiting for processing
-  PROCESSING   // LLM is analyzing the documents
-  COMPLETED    // Analysis complete with results
-  FAILED       // Processing failed
+  PENDING // Documents uploaded, waiting for processing
+  PROCESSING // LLM is analyzing the documents
+  COMPLETED // Analysis complete with results
+  FAILED // Processing failed
 }
 
 // Reconciliation represents a comparison between two documents (e.g., Excel spreadsheets)
 // Used for AI-powered document reconciliation workflows in accounting
 model Reconciliation {
-  id             String               @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String
-  taskInstanceId String               @map("jobId") // Parent task instance (TaskInstance)
-  
+  taskInstanceId String @map("jobId") // Parent task instance (TaskInstance)
+
   // ANCHOR Document (Source of Truth) - stored in document1 for backwards compatibility
-  document1Key   String               // Storage key (blob)
-  document1Name  String               // Original filename
-  document1Url   String?              // Cached URL for preview
-  document1Size  Int?                 // File size in bytes
-  document1MimeType String?           // MIME type (application/pdf, image/png, etc.)
-  
+  document1Key      String // Storage key (blob)
+  document1Name     String // Original filename
+  document1Url      String? // Cached URL for preview
+  document1Size     Int? // File size in bytes
+  document1MimeType String? // MIME type (application/pdf, image/png, etc.)
+
   // FIRST Supporting Document - stored in document2 for backwards compatibility
-  document2Key   String               // Storage key (blob)
-  document2Name  String               // Original filename
-  document2Url   String?              // Cached URL for preview
-  document2Size  Int?                 // File size in bytes
-  document2MimeType String?           // MIME type (application/pdf, image/png, etc.)
-  
+  document2Key      String // Storage key (blob)
+  document2Name     String // Original filename
+  document2Url      String? // Cached URL for preview
+  document2Size     Int? // File size in bytes
+  document2MimeType String? // MIME type (application/pdf, image/png, etc.)
+
   // Additional supporting documents (beyond document2)
   // Array of { key, name, url, size, uploadOrder, mimeType }
   supportingDocuments Json?
-  
+
   // Accounting context
-  anchorRole       String?            // "General Ledger", "Control Account", "AP Balance"
-  boardPeriodName  String?            // Cached board name + period for context
-  
+  anchorRole      String? // "General Ledger", "Control Account", "AP Balance"
+  boardPeriodName String? // Cached board name + period for context
+
   // Processing status
-  status         ReconciliationStatus @default(PENDING)
-  errorMessage   String?              // Error details if failed
-  
+  status       ReconciliationStatus @default(PENDING)
+  errorMessage String? // Error details if failed
+
   // Results (populated after processing)
-  summary        String?              // Human-readable summary
-  matchedCount   Int?                 // Number of matched items
-  unmatchedCount Int?                 // Number of unmatched items
-  totalRows      Int?                 // Total rows analyzed
-  result         Json?                // Detailed reconciliation result (includes reconciliationIntent)
-  discrepancies  Json?                // List of discrepancies found
-  
+  summary        String? // Human-readable summary
+  matchedCount   Int? // Number of matched items
+  unmatchedCount Int? // Number of unmatched items
+  totalRows      Int? // Total rows analyzed
+  result         Json? // Detailed reconciliation result (includes reconciliationIntent)
+  discrepancies  Json? // List of discrepancies found
+
   // V1 Enhanced AI output
-  confidenceScore    Int?             // 0-100 accounting confidence
-  keyFindings        Json?            // Bulleted findings array
-  suggestedNextSteps Json?            // Bulleted next steps array
-  
+  confidenceScore    Int? // 0-100 accounting confidence
+  keyFindings        Json? // Bulleted findings array
+  suggestedNextSteps Json? // Bulleted next steps array
+
   // Recurring template reference
-  templateId     String?              // Links to ReconciliationTemplate
-  
+  templateId String? // Links to ReconciliationTemplate
+
   // Metadata
-  createdById    String
-  processedAt    DateTime?            // When processing completed
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskInstance   TaskInstance         @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  createdBy      User                 @relation("ReconciliationCreator", fields: [createdById], references: [id])
-  template       ReconciliationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  
+  createdById String
+  processedAt DateTime? // When processing completed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance            @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  createdBy    User                    @relation("ReconciliationCreator", fields: [createdById], references: [id])
+  template     ReconciliationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([status])
@@ -1125,11 +1130,11 @@ model Reconciliation {
 model ReconciliationTemplate {
   id               String   @id @default(cuid())
   organizationId   String
-  name             String   // "Monthly Bank Recon", derived from task name
-  anchorRole       String   // "General Ledger", "Control Account"
-  supportingRoles  Json     // ["Bank Statement", "Credit Card Statement"]
-  defaultIntent    String?  // "ROW_LEVEL", "TOTALS_ONLY", etc.
-  priorExplanation String?  // Reference explanation from last successful run
+  name             String // "Monthly Bank Recon", derived from task name
+  anchorRole       String // "General Ledger", "Control Account"
+  supportingRoles  Json // ["Bank Statement", "Credit Card Statement"]
+  defaultIntent    String? // "ROW_LEVEL", "TOTALS_ONLY", etc.
+  priorExplanation String? // Reference explanation from last successful run
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1148,30 +1153,31 @@ model ReconciliationTemplate {
 // DatasetTemplate - defines the structure and identity for a dataset
 // Used for creating reusable data schemas with identity keys
 model DatasetTemplate {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   organizationId String
   name           String
   description    String?
-  
+
   // Schema definition (columns with types)
   // JSON: [{ key: string, label: string, type: "text"|"number"|"date"|"boolean"|"currency", required: boolean }]
-  schema         Json
-  
+  schema Json
+
   // Identity key - column key that uniquely identifies rows
-  identityKey    String
-  
+  identityKey String
+
   // Stakeholder column mapping (optional)
   // JSON: { columnKey: string, matchedField: "email" } | null
   stakeholderMapping Json?
-  
-  isArchived     Boolean  @default(false)
-  createdById    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User              @relation("DatasetTemplateCreator", fields: [createdById], references: [id])
-  snapshots    DatasetSnapshot[]
+  isArchived  Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User              @relation("DatasetTemplateCreator", fields: [createdById], references: [id])
+  snapshots      DatasetSnapshot[]
+  linkedLineages TaskLineage[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1181,42 +1187,42 @@ model DatasetTemplate {
 // DatasetSnapshot - immutable snapshot of data for a specific period
 // Snapshots are versioned and support diff computation against prior snapshots
 model DatasetSnapshot {
-  id               String   @id @default(cuid())
-  organizationId   String
-  templateId       String
-  
+  id             String @id @default(cuid())
+  organizationId String
+  templateId     String
+
   // Period metadata
-  periodLabel      String?   // "January 2025", "Q1 2025"
-  periodStart      DateTime?
-  periodEnd        DateTime?
-  
+  periodLabel String? // "January 2025", "Q1 2025"
+  periodStart DateTime?
+  periodEnd   DateTime?
+
   // Version control for same-period re-uploads
-  version          Int      @default(1)
-  isLatest         Boolean  @default(true)
-  
+  version  Int     @default(1)
+  isLatest Boolean @default(true)
+
   // Row data - immutable once created
   // JSON: Array<Record<string, any>> keyed by schema columns
-  rows             Json
-  rowCount         Int
-  
+  rows     Json
+  rowCount Int
+
   // Stakeholder matching results
   // JSON: { matched: [{ rowIdentity, userId, email }], unmatched: [{ rowIdentity, email }] }
   stakeholderResults Json?
-  
+
   // Diff from prior snapshot (computed at creation)
   // JSON: { addedCount, removedCount, addedIdentities: string[], removedIdentities: string[] }
-  diffSummary      Json?
-  priorSnapshotId  String?  // Reference to compared snapshot
-  
-  // Upload metadata
-  sourceFilename   String?
-  uploadedById     String
-  createdAt        DateTime @default(now())
+  diffSummary     Json?
+  priorSnapshotId String? // Reference to compared snapshot
 
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  template       DatasetTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  uploadedBy     User             @relation("DatasetSnapshotUploader", fields: [uploadedById], references: [id])
-  priorSnapshot  DatasetSnapshot? @relation("SnapshotDiff", fields: [priorSnapshotId], references: [id])
+  // Upload metadata
+  sourceFilename String?
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template       DatasetTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  uploadedBy     User              @relation("DatasetSnapshotUploader", fields: [uploadedById], references: [id])
+  priorSnapshot  DatasetSnapshot?  @relation("SnapshotDiff", fields: [priorSnapshotId], references: [id])
   laterSnapshots DatasetSnapshot[] @relation("SnapshotDiff")
 
   @@index([organizationId])

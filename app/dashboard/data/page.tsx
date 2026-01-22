@@ -2,50 +2,78 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, RefreshCw, Database, FileSpreadsheet } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { RefreshCw, Database, ArrowRight } from "lucide-react"
 import Link from "next/link"
-import { CreateDatasetModal } from "@/components/datasets/create-dataset-modal"
-
-interface DatasetTemplate {
-  id: string
-  name: string
-  description: string | null
-  schema: Array<{ key: string; label: string; type: string; required: boolean }>
-  identityKey: string
-  createdAt: string
-  _count: { snapshots: number }
-  latestSnapshot?: { createdAt: string; rowCount: number } | null
-}
+import { TaskDataTable, TaskDataRow, CreateDatasetModal, UploadDataModal } from "@/components/datasets"
 
 export default function DataPage() {
-  const [templates, setTemplates] = useState<DatasetTemplate[]>([])
+  const [tasks, setTasks] = useState<TaskDataRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  
+  // Modal state
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<TaskDataRow | null>(null)
 
-  const fetchTemplates = useCallback(async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch("/api/datasets", { credentials: "include" })
+      const response = await fetch("/api/data/tasks", { credentials: "include" })
       if (!response.ok) {
-        throw new Error("Failed to fetch datasets")
+        throw new Error("Failed to fetch tasks")
       }
       const data = await response.json()
-      setTemplates(data.templates || [])
-    } catch (err: any) {
-      setError(err.message)
+      setTasks(data.tasks || [])
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to fetch tasks"
+      setError(message)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    fetchTemplates()
-  }, [fetchTemplates])
+    fetchTasks()
+  }, [fetchTasks])
 
-  if (loading && templates.length === 0) {
+  const handleCreateSchema = (task: TaskDataRow) => {
+    setSelectedTask(task)
+    setCreateModalOpen(true)
+  }
+
+  const handleUploadData = (task: TaskDataRow) => {
+    setSelectedTask(task)
+    setUploadModalOpen(true)
+  }
+
+  const handleDownloadTemplate = async (task: TaskDataRow) => {
+    if (!task.datasetTemplate?.id) return
+
+    try {
+      const response = await fetch(`/api/datasets/${task.datasetTemplate.id}/template.csv`, {
+        credentials: "include",
+      })
+      if (!response.ok) {
+        throw new Error("Failed to download template")
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${task.datasetTemplate.name}-template.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error("Download failed:", err)
+    }
+  }
+
+  if (loading && tasks.length === 0) {
     return (
       <div className="p-8">
         <div className="flex items-center justify-center py-12">
@@ -62,18 +90,12 @@ export default function DataPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Data</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage dataset templates and upload period-based snapshots
+            Manage data schemas and uploads for your tasks
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={fetchTemplates}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Dataset
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={fetchTasks}>
+          <RefreshCw className="w-4 h-4" />
+        </Button>
       </div>
 
       {error && (
@@ -82,81 +104,67 @@ export default function DataPage() {
         </div>
       )}
 
-      {/* Dataset List */}
-      {templates.length === 0 ? (
-        <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-          <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No datasets yet
-          </h3>
-          <p className="text-gray-500 mb-4 max-w-md mx-auto">
-            Create a dataset template to define your data structure, then upload
-            snapshots for each period.
-          </p>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Create Your First Dataset
-          </Button>
-        </div>
+      {/* Task List or Empty State */}
+      {tasks.length === 0 ? (
+        <EmptyState />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => (
-            <Link
-              key={template.id}
-              href={`/dashboard/data/${template.id}`}
-              className="block p-6 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-gray-900">{template.name}</h3>
-                  {template.description && (
-                    <p className="text-sm text-gray-500 line-clamp-1">
-                      {template.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between text-gray-500">
-                  <span>{template.schema.length} columns</span>
-                  <span>Key: {template.identityKey}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">
-                    {template._count.snapshots} snapshot{template._count.snapshots !== 1 ? "s" : ""}
-                  </span>
-                  {template.latestSnapshot ? (
-                    <span className="text-gray-500">
-                      {template.latestSnapshot.rowCount.toLocaleString()} rows
-                    </span>
-                  ) : (
-                    <span className="text-gray-400 italic">No data uploaded</span>
-                  )}
-                </div>
-                {template.latestSnapshot && (
-                  <p className="text-xs text-gray-400">
-                    Last updated {formatDistanceToNow(new Date(template.latestSnapshot.createdAt), { addSuffix: true })}
-                  </p>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
+        <TaskDataTable
+          tasks={tasks}
+          onCreateSchema={handleCreateSchema}
+          onUploadData={handleUploadData}
+          onDownloadTemplate={handleDownloadTemplate}
+        />
       )}
 
-      {/* Create Dataset Modal */}
+      {/* Create Schema Modal */}
       <CreateDatasetModal
-        open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        lineageId={selectedTask?.id}
+        taskName={selectedTask?.name}
         onCreated={() => {
-          setIsCreateModalOpen(false)
-          fetchTemplates()
+          setCreateModalOpen(false)
+          setSelectedTask(null)
+          fetchTasks()
         }}
       />
+
+      {/* Upload Data Modal */}
+      {selectedTask?.datasetTemplate && (
+        <UploadDataModal
+          open={uploadModalOpen}
+          onOpenChange={setUploadModalOpen}
+          datasetId={selectedTask.datasetTemplate.id}
+          schema={selectedTask.datasetTemplate.schema}
+          identityKey={selectedTask.datasetTemplate.identityKey}
+          onUploaded={() => {
+            setUploadModalOpen(false)
+            setSelectedTask(null)
+            fetchTasks()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+      <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">
+        No tasks available for data management
+      </h3>
+      <p className="text-gray-500 mb-6 max-w-md mx-auto">
+        Data schemas are created in relation to eligible tasks.
+        Create a variance or reconciliation task to begin managing period-based data.
+      </p>
+      <Button asChild>
+        <Link href="/dashboard/jobs">
+          Go to Tasks
+          <ArrowRight className="w-4 h-4 ml-2" />
+        </Link>
+      </Button>
     </div>
   )
 }

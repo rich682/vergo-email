@@ -31,6 +31,9 @@ interface CreateDatasetModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
+  // Task-linked mode: when provided, creates schema via /api/data/tasks/[lineageId]/schema
+  lineageId?: string
+  taskName?: string
 }
 
 const COLUMN_TYPES = [
@@ -41,7 +44,13 @@ const COLUMN_TYPES = [
   { value: "currency", label: "Currency" },
 ]
 
-export function CreateDatasetModal({ open, onOpenChange, onCreated }: CreateDatasetModalProps) {
+export function CreateDatasetModal({ 
+  open, 
+  onOpenChange, 
+  onCreated,
+  lineageId,
+  taskName,
+}: CreateDatasetModalProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [columns, setColumns] = useState<SchemaColumn[]>([
@@ -122,7 +131,12 @@ export function CreateDatasetModal({ open, onOpenChange, onCreated }: CreateData
     setError(null)
 
     try {
-      const response = await fetch("/api/datasets", {
+      // Use task-linked endpoint if lineageId is provided
+      const url = lineageId 
+        ? `/api/data/tasks/${lineageId}/schema`
+        : "/api/datasets"
+
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -136,7 +150,7 @@ export function CreateDatasetModal({ open, onOpenChange, onCreated }: CreateData
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Failed to create dataset")
+        throw new Error(data.error || "Failed to create data schema")
       }
 
       // Reset form
@@ -157,7 +171,9 @@ export function CreateDatasetModal({ open, onOpenChange, onCreated }: CreateData
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Dataset</DialogTitle>
+          <DialogTitle>
+            {taskName ? `Create Data Schema for "${taskName}"` : "Create New Dataset"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -280,7 +296,7 @@ export function CreateDatasetModal({ open, onOpenChange, onCreated }: CreateData
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Creating..." : "Create Dataset"}
+            {saving ? "Creating..." : (lineageId ? "Create Schema" : "Create Dataset")}
           </Button>
         </DialogFooter>
       </DialogContent>
