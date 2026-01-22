@@ -183,7 +183,7 @@ export default function CollectionPage() {
   const handleDownload = async (item: CollectedItem) => {
     try {
       const response = await fetch(
-        `/api/task-instances/${item.jobId}/collection/download?itemId=${item.id}`,
+        `/api/collection/download/${item.id}`,
         { credentials: "include" }
       )
       

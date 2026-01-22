@@ -195,7 +195,7 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
   const handleDownload = async (itemId: string, filename: string) => {
     try {
       const response = await fetch(
-        `/api/task-instances/${jobId}/collection/download?itemId=${itemId}`,
+        `/api/collection/download/${itemId}`,
         { credentials: "include" }
       )
       
