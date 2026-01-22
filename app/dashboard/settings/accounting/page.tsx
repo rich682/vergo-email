@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { CalendarDays, Save, ArrowLeft } from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { CalendarDays, Save, ArrowLeft, Clock } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -28,15 +28,90 @@ const MONTHS = [
   { value: 12, label: "December" },
 ]
 
+// Common IANA timezones grouped by region
+const TIMEZONES = [
+  { value: "UTC", label: "UTC (Coordinated Universal Time)", region: "Universal" },
+  // Americas
+  { value: "America/New_York", label: "Eastern Time (New York)", region: "Americas" },
+  { value: "America/Chicago", label: "Central Time (Chicago)", region: "Americas" },
+  { value: "America/Denver", label: "Mountain Time (Denver)", region: "Americas" },
+  { value: "America/Los_Angeles", label: "Pacific Time (Los Angeles)", region: "Americas" },
+  { value: "America/Anchorage", label: "Alaska Time (Anchorage)", region: "Americas" },
+  { value: "Pacific/Honolulu", label: "Hawaii Time (Honolulu)", region: "Americas" },
+  { value: "America/Phoenix", label: "Arizona Time (Phoenix)", region: "Americas" },
+  { value: "America/Toronto", label: "Eastern Time (Toronto)", region: "Americas" },
+  { value: "America/Vancouver", label: "Pacific Time (Vancouver)", region: "Americas" },
+  { value: "America/Mexico_City", label: "Central Time (Mexico City)", region: "Americas" },
+  { value: "America/Sao_Paulo", label: "Brasilia Time (Sao Paulo)", region: "Americas" },
+  { value: "America/Buenos_Aires", label: "Argentina Time (Buenos Aires)", region: "Americas" },
+  // Europe
+  { value: "Europe/London", label: "GMT/BST (London)", region: "Europe" },
+  { value: "Europe/Paris", label: "CET/CEST (Paris)", region: "Europe" },
+  { value: "Europe/Berlin", label: "CET/CEST (Berlin)", region: "Europe" },
+  { value: "Europe/Amsterdam", label: "CET/CEST (Amsterdam)", region: "Europe" },
+  { value: "Europe/Zurich", label: "CET/CEST (Zurich)", region: "Europe" },
+  { value: "Europe/Dublin", label: "GMT/IST (Dublin)", region: "Europe" },
+  { value: "Europe/Madrid", label: "CET/CEST (Madrid)", region: "Europe" },
+  { value: "Europe/Rome", label: "CET/CEST (Rome)", region: "Europe" },
+  { value: "Europe/Stockholm", label: "CET/CEST (Stockholm)", region: "Europe" },
+  // Asia
+  { value: "Asia/Tokyo", label: "Japan Standard Time (Tokyo)", region: "Asia" },
+  { value: "Asia/Shanghai", label: "China Standard Time (Shanghai)", region: "Asia" },
+  { value: "Asia/Hong_Kong", label: "Hong Kong Time", region: "Asia" },
+  { value: "Asia/Singapore", label: "Singapore Time", region: "Asia" },
+  { value: "Asia/Seoul", label: "Korea Standard Time (Seoul)", region: "Asia" },
+  { value: "Asia/Mumbai", label: "India Standard Time (Mumbai)", region: "Asia" },
+  { value: "Asia/Dubai", label: "Gulf Standard Time (Dubai)", region: "Asia" },
+  { value: "Asia/Bangkok", label: "Indochina Time (Bangkok)", region: "Asia" },
+  { value: "Asia/Jakarta", label: "Western Indonesia Time (Jakarta)", region: "Asia" },
+  // Australia & Pacific
+  { value: "Australia/Sydney", label: "Australian Eastern Time (Sydney)", region: "Australia & Pacific" },
+  { value: "Australia/Melbourne", label: "Australian Eastern Time (Melbourne)", region: "Australia & Pacific" },
+  { value: "Australia/Brisbane", label: "Australian Eastern Time (Brisbane)", region: "Australia & Pacific" },
+  { value: "Australia/Perth", label: "Australian Western Time (Perth)", region: "Australia & Pacific" },
+  { value: "Pacific/Auckland", label: "New Zealand Time (Auckland)", region: "Australia & Pacific" },
+  // Africa
+  { value: "Africa/Johannesburg", label: "South Africa Time (Johannesburg)", region: "Africa" },
+  { value: "Africa/Cairo", label: "Eastern European Time (Cairo)", region: "Africa" },
+  { value: "Africa/Lagos", label: "West Africa Time (Lagos)", region: "Africa" },
+]
+
 export default function AccountingCalendarPage() {
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState<number>(1)
+  const [timezone, setTimezone] = useState<string>("UTC")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [currentTime, setCurrentTime] = useState<string>("")
 
   useEffect(() => {
     fetchSettings()
   }, [])
+
+  // Update current time preview every second
+  useEffect(() => {
+    const updateTime = () => {
+      try {
+        const now = new Date()
+        const formatted = now.toLocaleString("en-US", {
+          timeZone: timezone,
+          weekday: "short",
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+        setCurrentTime(formatted)
+      } catch {
+        setCurrentTime("Invalid timezone")
+      }
+    }
+    updateTime()
+    const interval = setInterval(updateTime, 1000)
+    return () => clearInterval(interval)
+  }, [timezone])
 
   const fetchSettings = async () => {
     try {
@@ -45,6 +120,7 @@ export default function AccountingCalendarPage() {
       if (response.ok) {
         const data = await response.json()
         setFiscalYearStartMonth(data.fiscalYearStartMonth || 1)
+        setTimezone(data.timezone || "UTC")
       }
     } catch (error) {
       console.error("Error fetching accounting calendar settings:", error)
@@ -61,7 +137,7 @@ export default function AccountingCalendarPage() {
       const response = await fetch("/api/org/accounting-calendar", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fiscalYearStartMonth })
+        body: JSON.stringify({ fiscalYearStartMonth, timezone })
       })
 
       if (!response.ok) {
@@ -78,6 +154,16 @@ export default function AccountingCalendarPage() {
       setSaving(false)
     }
   }
+
+  // Group timezones by region for the dropdown
+  const timezonesByRegion = useMemo(() => {
+    const grouped: Record<string, typeof TIMEZONES> = {}
+    TIMEZONES.forEach(tz => {
+      if (!grouped[tz.region]) grouped[tz.region] = []
+      grouped[tz.region].push(tz)
+    })
+    return grouped
+  }, [])
 
   return (
     <div className="min-h-screen bg-white">
@@ -176,33 +262,96 @@ export default function AccountingCalendarPage() {
                       })}
                     </div>
                   </div>
-
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="mt-4"
-                  >
-                    {saving ? (
-                      <>Saving...</>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Changes
-                      </>
-                    )}
-                  </Button>
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Timezone Settings Card */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden mt-6">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <h2 className="text-sm font-medium text-gray-900">Timezone Settings</h2>
+            </div>
+            <div className="p-4">
+              {loading ? (
+                <div className="py-8 text-center text-gray-500">Loading settings...</div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="timezone" className="text-sm font-medium text-gray-700 mb-2 block">
+                      Organization Timezone
+                    </Label>
+                    <Select
+                      value={timezone}
+                      onValueChange={setTimezone}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-80">
+                        {Object.entries(timezonesByRegion).map(([region, tzList]) => (
+                          <div key={region}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50">
+                              {region}
+                            </div>
+                            {tzList.map((tz) => (
+                              <SelectItem key={tz.value} value={tz.value}>
+                                {tz.label}
+                              </SelectItem>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-2">
+                      The timezone used for displaying dates on boards and determining period boundaries.
+                      All team members will see dates in this timezone.
+                    </p>
+                  </div>
+
+                  {/* Time Preview */}
+                  <div className="bg-gray-50 rounded-lg p-4 mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-4 h-4 text-gray-500" />
+                      <p className="text-sm font-medium text-gray-700">Current Time Preview</p>
+                    </div>
+                    <p className="text-sm text-gray-600 font-mono">
+                      {currentTime}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      This is the current date and time in your selected timezone.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <div className="mt-6">
+            <Button
+              onClick={handleSave}
+              disabled={saving || loading}
+              className="w-full sm:w-auto"
+            >
+              {saving ? (
+                <>Saving...</>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </div>
 
           {/* Info Box */}
           <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
             <h3 className="text-sm font-medium text-blue-900 mb-1">About Accounting Calendar</h3>
             <p className="text-sm text-blue-700">
-              Your fiscal year configuration is used for board automation and reporting. 
-              When you create boards with "Monthly" or "Quarterly" cadence, the system uses 
-              this setting to determine the correct periods.
+              Your fiscal year and timezone configuration are used for board automation and reporting. 
+              When you create boards with "Daily", "Monthly", or "Quarterly" cadence, the system uses 
+              these settings to determine the correct periods and display dates appropriately.
             </p>
           </div>
         </div>

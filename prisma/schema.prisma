@@ -133,6 +133,7 @@ model Organization {
   emailDomain          String?
   features             Json?    // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
   fiscalYearStartMonth Int      @default(1) // 1 = January, 12 = December
+  timezone             String   @default("UTC") // IANA timezone e.g. "America/New_York", "Australia/Sydney"
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

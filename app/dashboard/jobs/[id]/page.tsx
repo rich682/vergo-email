@@ -1521,7 +1521,14 @@ export default function JobDetailPage() {
                         </p>
                         <div className="mt-3 space-y-2">
                           {draftRequests.slice(0, 3).map((draft: any) => (
-                            <div key={draft.id} className="flex items-center justify-between bg-white rounded-md px-3 py-2 border border-amber-100">
+                            <button
+                              key={draft.id}
+                              onClick={() => {
+                                setSelectedDraft(draft)
+                                setIsDraftReviewOpen(true)
+                              }}
+                              className="w-full flex items-center justify-between bg-white rounded-md px-3 py-2 border border-amber-100 hover:border-amber-300 hover:bg-amber-50 transition-colors cursor-pointer text-left"
+                            >
                               <div className="flex items-center gap-2 text-sm">
                                 <span className="font-medium text-gray-900">
                                   {draft.entity ? `${draft.entity.firstName} ${draft.entity.lastName || ''}`.trim() : 'No recipient'}
@@ -1530,13 +1537,24 @@ export default function JobDetailPage() {
                                   <span className="text-gray-500 text-xs">{draft.entity.email}</span>
                                 )}
                               </div>
-                              <span className="text-xs text-amber-600">
-                                {draft.subject ? draft.subject.substring(0, 40) + (draft.subject.length > 40 ? '...' : '') : 'No subject'}
-                              </span>
-                            </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-amber-600 truncate max-w-[200px]">
+                                  {draft.subject ? draft.subject.substring(0, 40) + (draft.subject.length > 40 ? '...' : '') : 'No subject'}
+                                </span>
+                                <span className="text-xs text-gray-400">Click to review</span>
+                              </div>
+                            </button>
                           ))}
                           {draftRequests.length > 3 && (
-                            <p className="text-xs text-amber-700">+ {draftRequests.length - 3} more</p>
+                            <button
+                              onClick={() => {
+                                setSelectedDraft(draftRequests[0])
+                                setIsDraftReviewOpen(true)
+                              }}
+                              className="text-xs text-amber-700 hover:text-amber-900 underline"
+                            >
+                              + {draftRequests.length - 3} more - click to review all
+                            </button>
                           )}
                         </div>
                       </div>

@@ -55,6 +55,12 @@ export async function GET(request: NextRequest) {
     const yearParam = searchParams.get("year")
     const year = yearParam ? parseInt(yearParam, 10) : undefined
 
+    // Fetch organization timezone for frontend date formatting
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { timezone: true }
+    })
+
     const boards = await BoardService.getByOrganizationId(organizationId, {
       status,
       cadence,
@@ -63,7 +69,10 @@ export async function GET(request: NextRequest) {
       includeTaskInstanceCount: true
     })
 
-    return NextResponse.json({ boards })
+    return NextResponse.json({ 
+      boards,
+      organizationTimezone: organization?.timezone ?? "UTC"
+    })
   } catch (error: any) {
     console.error("[API/boards] Error listing boards:", error)
     return NextResponse.json(

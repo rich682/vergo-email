@@ -31,6 +31,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
+import { BoardDetailSidebar } from "@/components/boards/board-detail-sidebar"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { BoardColumnHeader, BoardColumnDefinition } from "@/components/boards/board-column-header"
@@ -115,6 +116,8 @@ interface Board {
   collaborators: BoardCollaborator[]
   updatedAt: string
   createdAt: string
+  automationEnabled?: boolean
+  skipWeekends?: boolean
   jobs?: Job[] // Populated when expanded
 }
 
@@ -233,28 +236,64 @@ function getCadenceBadge(cadence: BoardCadence | null) {
   )
 }
 
-function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null): string {
+/**
+ * Format date in a specific timezone.
+ * Uses Intl.DateTimeFormat for browser-native timezone support.
+ */
+function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
+  return date.toLocaleDateString("en-US", {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  })
+}
+
+function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
+  return date.toLocaleDateString("en-US", {
+    timeZone: timezone,
+    month: "long",
+    year: "numeric"
+  })
+}
+
+function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "numeric" }).formatToParts(date)
+  const monthPart = parts.find(p => p.type === "month")
+  return monthPart ? parseInt(monthPart.value, 10) - 1 : date.getMonth()
+}
+
+function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric" }).formatToParts(date)
+  const yearPart = parts.find(p => p.type === "year")
+  return yearPart ? parseInt(yearPart.value, 10) : date.getFullYear()
+}
+
+function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null, timezone: string = "UTC"): string {
   if (!periodStart) return "—"
   
   const start = new Date(periodStart)
   
   switch (cadence) {
     case "MONTHLY":
-      return format(start, "MMMM yyyy")
+      return formatMonthYearInTimezone(start, timezone)
     case "WEEKLY":
-      return `Week of ${format(start, "MMM d, yyyy")}`
+      return `Week of ${formatDateInTimezone(start, timezone)}`
     case "QUARTERLY":
-      const q = Math.floor(start.getMonth() / 3) + 1
-      return `Q${q} ${start.getFullYear()}`
+      const month = getMonthInTimezone(start, timezone)
+      const year = getYearInTimezone(start, timezone)
+      const q = Math.floor(month / 3) + 1
+      return `Q${q} ${year}`
     case "YEAR_END":
-      return start.getFullYear().toString()
+      return getYearInTimezone(start, timezone).toString()
     case "DAILY":
-      return format(start, "MMM d, yyyy")
+      return formatDateInTimezone(start, timezone)
     default:
       if (periodEnd) {
-        return `${format(start, "MMM d")} - ${format(new Date(periodEnd), "MMM d, yyyy")}`
+        const end = new Date(periodEnd)
+        return `${formatDateInTimezone(start, timezone).split(",")[0]} - ${formatDateInTimezone(end, timezone)}`
       }
-      return format(start, "MMM d, yyyy")
+      return formatDateInTimezone(start, timezone)
   }
 }
 
@@ -276,6 +315,9 @@ export default function BoardsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>("ALL")
   const [sortOption, setSortOption] = useState<SortOption>("recent")
+  
+  // Organization timezone for date formatting
+  const [organizationTimezone, setOrganizationTimezone] = useState<string>("UTC")
   
   // Expanded boards state
   const [expandedBoards, setExpandedBoards] = useState<Set<string>>(new Set())
@@ -368,6 +410,10 @@ export default function BoardsPage() {
       if (response.ok) {
         const data = await response.json()
         setBoards(data.boards || [])
+        // Store organization timezone for date formatting
+        if (data.organizationTimezone) {
+          setOrganizationTimezone(data.organizationTimezone)
+        }
       }
     } catch (error) {
       console.error("Error fetching boards:", error)
@@ -601,6 +647,16 @@ export default function BoardsPage() {
     return (board.jobCount || 0) === 0
   }
 
+  // Handle board updates from sidebar (optimistic + refresh)
+  const handleBoardUpdate = (updatedBoard: Board) => {
+    // Optimistically update local state
+    setBoards(prev => prev.map(b => 
+      b.id === updatedBoard.id ? { ...b, ...updatedBoard } : b
+    ))
+    // Also refresh to get any computed fields from server
+    fetchBoards()
+  }
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -731,6 +787,8 @@ export default function BoardsPage() {
                     handleRestoreBoard={handleRestoreBoard}
                     handleDeleteBoard={handleDeleteBoard}
                     canDeleteBoard={canDeleteBoard}
+                    onBoardUpdate={handleBoardUpdate}
+                    organizationTimezone={organizationTimezone}
                     router={router}
                   />
                 )
@@ -775,6 +833,8 @@ export default function BoardsPage() {
                     handleRestoreBoard={handleRestoreBoard}
                     handleDeleteBoard={handleDeleteBoard}
                     canDeleteBoard={canDeleteBoard}
+                    onBoardUpdate={handleBoardUpdate}
+                    organizationTimezone={organizationTimezone}
                     router={router}
                   />
                 )
@@ -855,6 +915,8 @@ interface BoardRowProps {
   handleRestoreBoard: (boardId: string) => void
   handleDeleteBoard: (board: Board) => void
   canDeleteBoard: (board: Board) => boolean
+  onBoardUpdate: (updatedBoard: Board) => void
+  organizationTimezone: string
   router: ReturnType<typeof useRouter>
 }
 
@@ -880,38 +942,48 @@ function BoardRow({
   handleRestoreBoard,
   handleDeleteBoard,
   canDeleteBoard,
+  onBoardUpdate,
+  organizationTimezone,
   router
 }: BoardRowProps) {
   // Render a column value based on column id
+  // Get column width from config
+  const getColumnWidth = (columnId: string): number => {
+    const column = columns.find(c => c.id === columnId)
+    return column?.width || 120
+  }
+
   const renderColumnValue = (columnId: string) => {
+    const width = getColumnWidth(columnId)
+    
     switch (columnId) {
       case "name":
         return (
-          <div className="flex-1 min-w-0">
-            <span className="font-medium text-gray-900">{board.name}</span>
+          <div className="flex-shrink-0 min-w-0 truncate" style={{ width }}>
+            <span className="font-medium text-gray-900 truncate block">{board.name}</span>
           </div>
         )
       case "cadence":
         return (
-          <div className="w-24 flex-shrink-0">
+          <div className="flex-shrink-0" style={{ width }}>
             {getCadenceBadge(board.cadence)}
           </div>
         )
       case "period":
         return (
-          <div className="w-36 text-sm text-gray-600 flex-shrink-0">
-            {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
+          <div className="text-sm text-gray-600 flex-shrink-0" style={{ width }}>
+            {formatPeriod(board.periodStart, board.periodEnd, board.cadence, organizationTimezone)}
           </div>
         )
       case "status":
         return (
-          <div className="w-28 flex-shrink-0">
+          <div className="flex-shrink-0" style={{ width }}>
             {getStatusBadge(board.status)}
           </div>
         )
       case "owner":
         return (
-          <div className="w-32 flex-shrink-0">
+          <div className="flex-shrink-0" style={{ width }}>
             {board.owner ? (
               <div className="flex items-center gap-2">
                 <Avatar className="h-6 w-6">
@@ -930,7 +1002,7 @@ function BoardRow({
         )
       case "updatedAt":
         return (
-          <div className="w-28 text-sm text-gray-500 flex-shrink-0">
+          <div className="text-sm text-gray-500 flex-shrink-0" style={{ width }}>
             {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
           </div>
         )
@@ -1082,153 +1154,170 @@ function BoardRow({
         </div>
       </div>
 
-      {/* Expanded Jobs Section */}
+      {/* Expanded Jobs Section with Sidebar */}
       {isExpanded && (
         <div className="border-t">
-          {isLoadingJobs ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-            </div>
-          ) : jobs.length === 0 ? (
-            <div className="py-4 px-6 text-center text-gray-500 text-sm">
-              No tasks in this board yet
-            </div>
-          ) : (
-            <div className="py-2">
-              {/* Jobs Header */}
-              <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                <div className="w-6"></div> {/* Indent spacer */}
-                {visibleTaskColumns.map((column) => (
-                  <div 
-                    key={column.id} 
-                    className={column.id === "name" ? "flex-1 min-w-0" : "w-28 flex-shrink-0"}
-                    style={column.id !== "name" ? { width: column.width || 120 } : undefined}
-                  >
-                    {column.label}
-                  </div>
-                ))}
-                <div className="w-12 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <BoardColumnHeader
-                    columns={taskColumns}
-                    onColumnsChange={onTaskColumnsChange}
-                  />
+          <div className="flex">
+            {/* Tasks Section (Left) */}
+            <div className="flex-1 min-w-0">
+              {isLoadingJobs ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
                 </div>
-              </div>
-              
-              {/* Jobs List */}
-              {jobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    router.push(`/dashboard/jobs/${job.id}`)
-                  }}
-                >
-                  <div className="w-6"></div> {/* Indent spacer */}
+              ) : jobs.length === 0 ? (
+                <div className="py-4 px-6 text-center text-gray-500 text-sm">
+                  No tasks in this board yet
+                </div>
+              ) : (
+                <div className="py-2">
+                  {/* Jobs Header */}
+                  <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                    <div className="w-6"></div> {/* Indent spacer */}
+                    {visibleTaskColumns.map((column) => (
+                      <div 
+                        key={column.id} 
+                        className={column.id === "name" ? "flex-1 min-w-0" : "w-28 flex-shrink-0"}
+                        style={column.id !== "name" ? { width: column.width || 120 } : undefined}
+                      >
+                        {column.label}
+                      </div>
+                    ))}
+                    <div className="w-12 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <BoardColumnHeader
+                        columns={taskColumns}
+                        onColumnsChange={onTaskColumnsChange}
+                      />
+                    </div>
+                  </div>
                   
-                  {visibleTaskColumns.map((column) => {
-                    switch (column.id) {
-                      case "name":
-                        return (
-                          <div key={column.id} className="flex-1 min-w-0">
-                            <span className="text-sm text-gray-900 truncate block">{job.name}</span>
-                          </div>
-                        )
-                      case "status":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 130 }}>
-                            {getJobStatusBadge(job.status)}
-                          </div>
-                        )
-                      case "type":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
-                            {getTaskTypeBadge(job.type)}
-                          </div>
-                        )
-                      case "owner":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
-                            {job.owner ? (
-                              <div className="flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                                    {getInitials(job.owner.name, job.owner.email)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm text-gray-700 truncate">
-                                  {job.owner.name || job.owner.email.split("@")[0]}
+                  {/* Jobs List */}
+                  {jobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/dashboard/jobs/${job.id}`)
+                      }}
+                    >
+                      <div className="w-6"></div> {/* Indent spacer */}
+                      
+                      {visibleTaskColumns.map((column) => {
+                        switch (column.id) {
+                          case "name":
+                            return (
+                              <div key={column.id} className="flex-1 min-w-0">
+                                <span className="text-sm text-gray-900 truncate block">{job.name}</span>
+                              </div>
+                            )
+                          case "status":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 130 }}>
+                                {getJobStatusBadge(job.status)}
+                              </div>
+                            )
+                          case "type":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
+                                {getTaskTypeBadge(job.type)}
+                              </div>
+                            )
+                          case "owner":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
+                                {job.owner ? (
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="h-6 w-6">
+                                      <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                                        {getInitials(job.owner.name, job.owner.email)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm text-gray-700 truncate">
+                                      {job.owner.name || job.owner.email.split("@")[0]}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">—</span>
+                                )}
+                              </div>
+                            )
+                          case "dueDate":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
+                                {job.dueDate ? (
+                                  <div className="flex items-center gap-1 text-sm text-gray-600">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    {format(new Date(job.dueDate), "MMM d")}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">—</span>
+                                )}
+                              </div>
+                            )
+                          case "responses":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
+                                <span className="text-sm text-gray-600">
+                                  {job.taskCount || 0}
                                 </span>
                               </div>
-                            ) : (
-                              <span className="text-gray-400 text-sm">—</span>
-                            )}
-                          </div>
-                        )
-                      case "dueDate":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
-                            {job.dueDate ? (
-                              <div className="flex items-center gap-1 text-sm text-gray-600">
-                                <Calendar className="w-3.5 h-3.5" />
-                                {format(new Date(job.dueDate), "MMM d")}
+                            )
+                          case "notes":
+                            return (
+                              <div key={column.id} className="flex-shrink-0 truncate" style={{ width: column.width || 150 }}>
+                                {job.notes ? (
+                                  <span className="text-sm text-gray-600 truncate block">{job.notes}</span>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">—</span>
+                                )}
                               </div>
-                            ) : (
-                              <span className="text-gray-400 text-sm">—</span>
-                            )}
-                          </div>
-                        )
-                      case "responses":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
-                            <span className="text-sm text-gray-600">
-                              {job.taskCount || 0}
-                            </span>
-                          </div>
-                        )
-                      case "notes":
-                        return (
-                          <div key={column.id} className="flex-shrink-0 truncate" style={{ width: column.width || 150 }}>
-                            {job.notes ? (
-                              <span className="text-sm text-gray-600 truncate block">{job.notes}</span>
-                            ) : (
-                              <span className="text-gray-400 text-sm">—</span>
-                            )}
-                          </div>
-                        )
-                      case "files":
-                        return (
-                          <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 80 }}>
-                            <span className="text-sm text-gray-600">
-                              {job.collectedItemCount || 0}
-                            </span>
-                          </div>
-                        )
-                      default:
-                        return null
-                    }
-                  })}
+                            )
+                          case "files":
+                            return (
+                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 80 }}>
+                                <span className="text-sm text-gray-600">
+                                  {job.collectedItemCount || 0}
+                                </span>
+                              </div>
+                            )
+                          default:
+                            return null
+                        }
+                      })}
 
-                  {/* Spacer for alignment */}
-                  <div className="w-12"></div>
+                      {/* Spacer for alignment */}
+                      <div className="w-12"></div>
+                    </div>
+                  ))}
+                  
+                  {/* Add Task Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
+                    }}
+                    className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="w-6"></div>
+                    <Plus className="w-4 h-4" />
+                    <span>Add item</span>
+                  </button>
                 </div>
-              ))}
-              
-              {/* Add Task Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
-                }}
-                className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                <div className="w-6"></div>
-                <Plus className="w-4 h-4" />
-                <span>Add item</span>
-              </button>
+              )}
             </div>
-          )}
+            
+            {/* Sidebar Section (Right) */}
+            <div className="w-72 border-l bg-gray-50 p-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              <BoardDetailSidebar
+                board={{
+                  ...board,
+                  automationEnabled: board.automationEnabled,
+                  skipWeekends: board.skipWeekends
+                }}
+                onUpdate={(updates) => onBoardUpdate({ ...board, ...updates } as Board)}
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

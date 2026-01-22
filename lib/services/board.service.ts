@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { Board, BoardStatus, BoardCadence, JobStatus, TaskType } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
+import { formatInTimeZone } from "date-fns-tz"
 import { TaskInstanceService } from "./task-instance.service"
 import { RequestDraftCopyService } from "./request-draft-copy.service"
 
@@ -173,36 +174,72 @@ export function calculateNextPeriodStart(
 }
 
 /**
+ * Format a date as "MMM d, yyyy" in the specified timezone.
+ * Uses the organization's timezone for consistent display.
+ */
+function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
+  return formatInTimeZone(date, timezone, "MMM d, yyyy")
+}
+
+/**
+ * Format a date as full month name and year in the specified timezone.
+ */
+function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
+  return formatInTimeZone(date, timezone, "MMMM yyyy")
+}
+
+/**
+ * Get the month index (0-11) in the specified timezone.
+ */
+function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
+  const formatted = formatInTimeZone(date, timezone, "M")
+  return parseInt(formatted, 10) - 1 // Convert 1-12 to 0-11
+}
+
+/**
+ * Get the year in the specified timezone.
+ */
+function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
+  const formatted = formatInTimeZone(date, timezone, "yyyy")
+  return parseInt(formatted, 10)
+}
+
+/**
  * Generate a board name for a given period.
+ * Uses timezone-aware formatting based on organization settings.
  */
 export function generatePeriodBoardName(
   cadence: BoardCadence,
   periodStart: Date,
   options?: {
     fiscalYearStartMonth?: number
+    timezone?: string
   }
 ): string {
   const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
+  const timezone = options?.timezone ?? "UTC"
 
   switch (cadence) {
     case "DAILY":
-      return format(periodStart, "MMM d, yyyy")
+      return formatDateInTimezone(periodStart, timezone)
     case "WEEKLY":
-      return `Week of ${format(periodStart, "MMM d, yyyy")}`
+      return `Week of ${formatDateInTimezone(periodStart, timezone)}`
     case "MONTHLY":
-      return format(periodStart, "MMMM yyyy")
+      return formatMonthYearInTimezone(periodStart, timezone)
     case "QUARTERLY": {
-      const quarterIndex = Math.floor(periodStart.getMonth() / 3)
+      const month = getMonthInTimezone(periodStart, timezone)
+      const year = getYearInTimezone(periodStart, timezone)
+      const quarterIndex = Math.floor(month / 3)
       let fiscalQuarter = quarterIndex + 1
       if (fiscalYearStartMonth !== 1) {
         const fiscalMonthIndex = fiscalYearStartMonth - 1
-        const monthsFromFiscalStart = (periodStart.getMonth() - fiscalMonthIndex + 12) % 12
+        const monthsFromFiscalStart = (month - fiscalMonthIndex + 12) % 12
         fiscalQuarter = Math.floor(monthsFromFiscalStart / 3) + 1
       }
-      return `Q${fiscalQuarter} ${periodStart.getFullYear()}`
+      return `Q${fiscalQuarter} ${year}`
     }
     case "YEAR_END":
-      return `Year-End ${periodStart.getFullYear()}`
+      return `Year-End ${getYearInTimezone(periodStart, timezone)}`
     case "AD_HOC":
       return "Ad Hoc Board"
     default:
@@ -562,7 +599,7 @@ export class BoardService {
       where: { id: completedBoardId, organizationId },
       include: {
         collaborators: true,
-        organization: { select: { fiscalYearStartMonth: true } }
+        organization: { select: { fiscalYearStartMonth: true, timezone: true } }
       }
     })
 
@@ -570,6 +607,7 @@ export class BoardService {
 
     const referenceDate = completedBoard.periodStart || new Date()
     const fiscalYearStartMonth = completedBoard.organization?.fiscalYearStartMonth ?? 1
+    const timezone = completedBoard.organization?.timezone ?? "UTC"
 
     const nextPeriodStart = calculateNextPeriodStart(
       completedBoard.cadence,
@@ -579,8 +617,22 @@ export class BoardService {
 
     if (!nextPeriodStart) return null
 
+    // Idempotency check: verify no board already exists for this period
+    const existingBoard = await prisma.board.findFirst({
+      where: {
+        organizationId,
+        cadence: completedBoard.cadence,
+        periodStart: nextPeriodStart,
+      }
+    })
+
+    if (existingBoard) {
+      console.log(`[BoardService] Board already exists for period ${nextPeriodStart.toISOString()}: ${existingBoard.name} (${existingBoard.id})`)
+      return null
+    }
+
     const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
-    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
+    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth, timezone })
 
     const newBoard = await prisma.board.create({
       data: {

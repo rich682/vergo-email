@@ -111,28 +111,63 @@ function getInitials(name: string | null, email: string): string {
   return email.substring(0, 2).toUpperCase()
 }
 
-function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null): string {
+/**
+ * Format date in a specific timezone.
+ */
+function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
+  return date.toLocaleDateString("en-US", {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  })
+}
+
+function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
+  return date.toLocaleDateString("en-US", {
+    timeZone: timezone,
+    month: "long",
+    year: "numeric"
+  })
+}
+
+function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "numeric" }).formatToParts(date)
+  const monthPart = parts.find(p => p.type === "month")
+  return monthPart ? parseInt(monthPart.value, 10) - 1 : date.getMonth()
+}
+
+function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric" }).formatToParts(date)
+  const yearPart = parts.find(p => p.type === "year")
+  return yearPart ? parseInt(yearPart.value, 10) : date.getFullYear()
+}
+
+function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null, timezone: string = "UTC"): string {
   if (!periodStart) return ""
   
   const start = new Date(periodStart)
   
   switch (cadence) {
     case "MONTHLY":
-      return format(start, "MMMM yyyy")
+      return formatMonthYearInTimezone(start, timezone)
     case "WEEKLY":
-      return `Week of ${format(start, "MMM d, yyyy")}`
+      return `Week of ${formatDateInTimezone(start, timezone)}`
     case "QUARTERLY":
-      const q = Math.floor(start.getMonth() / 3) + 1
-      return `Q${q} ${start.getFullYear()}`
+      const month = getMonthInTimezone(start, timezone)
+      const year = getYearInTimezone(start, timezone)
+      const q = Math.floor(month / 3) + 1
+      return `Q${q} ${year}`
     case "YEAR_END":
-      return start.getFullYear().toString()
+      return getYearInTimezone(start, timezone).toString()
     case "DAILY":
-      return format(start, "MMM d, yyyy")
+      return formatDateInTimezone(start, timezone)
     default:
       if (periodEnd) {
-        return `${format(start, "MMM d")} - ${format(new Date(periodEnd), "MMM d, yyyy")}`
+        const end = new Date(periodEnd)
+        return `${formatDateInTimezone(start, timezone).split(",")[0]} - ${formatDateInTimezone(end, timezone)}`
       }
-      return format(start, "MMM d, yyyy")
+      return formatDateInTimezone(start, timezone)
   }
 }
 
@@ -157,6 +192,21 @@ export function EditBoardModal({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
+  const [organizationTimezone, setOrganizationTimezone] = useState<string>("UTC")
+
+  // Fetch organization timezone
+  useEffect(() => {
+    if (open) {
+      fetch("/api/org/accounting-calendar")
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.timezone) {
+            setOrganizationTimezone(data.timezone)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [open])
 
   // Initialize form with board data
   useEffect(() => {
@@ -336,7 +386,7 @@ export function EditBoardModal({
                   Period
                 </Label>
                 <div className="px-3 py-2 bg-gray-50 border rounded-md text-sm text-gray-600">
-                  {formatPeriod(board.periodStart, board.periodEnd, board.cadence)}
+                  {formatPeriod(board.periodStart, board.periodEnd, board.cadence, organizationTimezone)}
                 </div>
                 <p className="text-xs text-gray-400">Period is set when the board is created</p>
               </div>
