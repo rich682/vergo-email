@@ -1066,7 +1066,7 @@ export default function JobDetailPage() {
         </div>
 
         <div className="grid grid-cols-12 gap-8">
-          <div className="col-span-12 lg:col-span-8 space-y-6">
+          <div className={`col-span-12 ${activeTab === "overview" ? "lg:col-span-8" : ""} space-y-6`}>
             {activeTab === "overview" && (
               <>
                 <div className="pb-6 border-b border-gray-100">
@@ -1624,63 +1624,65 @@ export default function JobDetailPage() {
             )}
           </div>
 
-          <div className="col-span-12 lg:col-span-4 space-y-4">
-            <Card>
-              <CardContent className="p-4">
-                <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">{getInitials(job.owner.name, job.owner.email)}</div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
-                    <div className="text-[10px] text-gray-500">{job.owner.email}</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Collaborators</h4>
-                  {permissions?.canManageCollaborators && <button onClick={() => setIsAddCollaboratorOpen(true)} className="text-[10px] text-orange-500 hover:text-orange-600 flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add</button>}
-                </div>
-                {collaborators.length === 0 ? <p className="text-xs text-gray-500 italic">None yet</p> : (
-                  <div className="space-y-2">
-                    {collaborators.map(c => (
-                      <div key={c.id} className="flex items-center justify-between p-2 rounded bg-gray-50 text-xs">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user.name, c.user.email)}</div>
-                          <span>{c.user.name || c.user.email.split("@")[0]}</span>
-                        </div>
-                        {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {stakeholders.length > 0 && (
+          {activeTab === "overview" && (
+            <div className="col-span-12 lg:col-span-4 space-y-4">
               <Card>
                 <CardContent className="p-4">
-                  <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Stakeholders ({stakeholderContacts.length})</h4>
-                  <ContactLabelsTable jobId={jobId} canEdit={permissions?.canEdit} />
+                  <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">{getInitials(job.owner.name, job.owner.email)}</div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
+                      <div className="text-[10px] text-gray-500">{job.owner.email}</div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            )}
 
-            {permissions?.isOwner && (
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Notes</h4>
-                    {!editingNotes ? <button onClick={() => { setNotes(job.labels?.notes || ""); setEditingNotes(true); }} className="text-gray-400 hover:text-gray-600"><Edit2 className="w-3 h-3" /></button> : <div className="flex gap-2"><button onClick={handleSaveNotes} className="text-green-600"><Save className="w-3 h-3" /></button><button onClick={() => setEditingNotes(false)} className="text-gray-400"><X className="w-3 h-3" /></button></div>}
+                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Collaborators</h4>
+                    {permissions?.canManageCollaborators && <button onClick={() => setIsAddCollaboratorOpen(true)} className="text-[10px] text-orange-500 hover:text-orange-600 flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add</button>}
                   </div>
-                  {editingNotes ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-[100px] text-sm" /> : <p className="text-xs text-gray-600">{job.labels?.notes || "No notes yet"}</p>}
+                  {collaborators.length === 0 ? <p className="text-xs text-gray-500 italic">None yet</p> : (
+                    <div className="space-y-2">
+                      {collaborators.map(c => (
+                        <div key={c.id} className="flex items-center justify-between p-2 rounded bg-gray-50 text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user.name, c.user.email)}</div>
+                            <span>{c.user.name || c.user.email.split("@")[0]}</span>
+                          </div>
+                          {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
-          </div>
+
+              {stakeholders.length > 0 && (
+                <Card>
+                  <CardContent className="p-4">
+                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Stakeholders ({stakeholderContacts.length})</h4>
+                    <ContactLabelsTable jobId={jobId} canEdit={permissions?.canEdit} />
+                  </CardContent>
+                </Card>
+              )}
+
+              {permissions?.isOwner && (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Notes</h4>
+                      {!editingNotes ? <button onClick={() => { setNotes(job.labels?.notes || ""); setEditingNotes(true); }} className="text-gray-400 hover:text-gray-600"><Edit2 className="w-3 h-3" /></button> : <div className="flex gap-2"><button onClick={handleSaveNotes} className="text-green-600"><Save className="w-3 h-3" /></button><button onClick={() => setEditingNotes(false)} className="text-gray-400"><X className="w-3 h-3" /></button></div>}
+                    </div>
+                    {editingNotes ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-[100px] text-sm" /> : <p className="text-xs text-gray-600">{job.labels?.notes || "No notes yet"}</p>}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
