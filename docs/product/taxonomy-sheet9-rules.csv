@@ -21,3 +21,4 @@
 "R-20","Capability Independence","Capabilities may evolve independently. One capability refactor must not affect others.","Development","Design review","Table capability refactor cannot break Request capability"
 "R-21","Approval Out of Scope","Approval workflows are NOT part of this taxonomy. Will be layered separately.","All","Code review","Any approval-related workflow changes are rejected"
 "R-22","Target Capabilities Not Jobs","Refactors must target a specific capability, not the Job container itself.","Development","PR review","PR title: 'Refactor Table capability' not 'Refactor Jobs'"
+"R-23","UI Terminology Mapping","Some internal terms differ from user-facing labels. TaskType.DATABASE displays as 'Variance' in UI to reflect accounting terminology.","Frontend","Code review","Internal: DATABASE. User-facing: Variance. Backend enums unchanged."
