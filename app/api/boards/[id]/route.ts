@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
@@ -111,6 +112,13 @@ export async function PATCH(
 
     // Period fields are now optional - no validation requirement
 
+    // Fetch organization's fiscal year settings for period calculations
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true }
+    })
+    const fiscalYearStartMonth = organization?.fiscalYearStartMonth ?? 1
+
     // Process period dates with server-side derivation
     let finalPeriodStart: Date | null | undefined = undefined
     let finalPeriodEnd: Date | null | undefined = undefined
@@ -123,10 +131,10 @@ export async function PATCH(
         const parsedStart = new Date(periodStart)
         // Normalize the start date based on cadence
         const effectiveCadence = cadence !== undefined ? cadence : undefined
-        finalPeriodStart = normalizePeriodStart(effectiveCadence as BoardCadence, parsedStart) || parsedStart
+        finalPeriodStart = normalizePeriodStart(effectiveCadence as BoardCadence, parsedStart, { fiscalYearStartMonth }) || parsedStart
         
         // Derive periodEnd server-side
-        const derivedEnd = derivePeriodEnd(effectiveCadence as BoardCadence, finalPeriodStart)
+        const derivedEnd = derivePeriodEnd(effectiveCadence as BoardCadence, finalPeriodStart, { fiscalYearStartMonth })
         finalPeriodEnd = derivedEnd || (periodEnd ? new Date(periodEnd) : null)
       }
     } else if (periodEnd !== undefined) {

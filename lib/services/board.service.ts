@@ -6,12 +6,18 @@ import { RequestDraftCopyService } from "./request-draft-copy.service"
 
 /**
  * Derive periodEnd from periodStart based on cadence type.
+ * For QUARTERLY cadence, respects fiscal year start month to determine fiscal quarter boundaries.
  */
 export function derivePeriodEnd(
   cadence: BoardCadence | null | undefined,
-  periodStart: Date | null | undefined
+  periodStart: Date | null | undefined,
+  options?: {
+    fiscalYearStartMonth?: number // 1-12
+  }
 ): Date | null {
   if (!cadence || !periodStart) return null
+  
+  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
   
   switch (cadence) {
     case "DAILY":
@@ -20,8 +26,26 @@ export function derivePeriodEnd(
       return endOfWeek(periodStart, { weekStartsOn: 1 })
     case "MONTHLY":
       return endOfMonth(periodStart)
-    case "QUARTERLY":
-      return endOfQuarter(periodStart)
+    case "QUARTERLY": {
+      if (fiscalYearStartMonth === 1) {
+        // Standard calendar quarters
+        return endOfQuarter(periodStart)
+      }
+      // Fiscal quarter: end is 3 months after start, minus 1 day
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      const monthsFromFiscalStart = (periodStart.getMonth() - fiscalMonthIndex + 12) % 12
+      const fiscalQuarter = Math.floor(monthsFromFiscalStart / 3)
+      // Quarter end is the last day of the 3rd month in the fiscal quarter
+      const quarterEndMonthOffset = (fiscalQuarter + 1) * 3 - 1
+      const quarterEndMonth = (fiscalMonthIndex + quarterEndMonthOffset) % 12
+      let quarterEndYear = periodStart.getFullYear()
+      // Handle year rollover: if we've wrapped around to earlier months
+      if (quarterEndMonth < periodStart.getMonth() || 
+          (quarterEndMonth < fiscalMonthIndex && periodStart.getMonth() >= fiscalMonthIndex)) {
+        quarterEndYear++
+      }
+      return endOfMonth(new Date(quarterEndYear, quarterEndMonth, 1))
+    }
     case "YEAR_END":
       return endOfYear(periodStart)
     case "AD_HOC":
@@ -33,12 +57,18 @@ export function derivePeriodEnd(
 
 /**
  * Normalize periodStart based on cadence type.
+ * For QUARTERLY cadence, respects fiscal year start month to determine fiscal quarter boundaries.
  */
 export function normalizePeriodStart(
   cadence: BoardCadence | null | undefined,
-  periodStart: Date | null | undefined
+  periodStart: Date | null | undefined,
+  options?: {
+    fiscalYearStartMonth?: number // 1-12
+  }
 ): Date | null {
   if (!cadence || !periodStart) return null
+  
+  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
   
   switch (cadence) {
     case "DAILY":
@@ -47,9 +77,25 @@ export function normalizePeriodStart(
       return startOfWeek(periodStart, { weekStartsOn: 1 })
     case "MONTHLY":
       return new Date(periodStart.getFullYear(), periodStart.getMonth(), 1)
-    case "QUARTERLY":
-      const quarterMonth = Math.floor(periodStart.getMonth() / 3) * 3
-      return new Date(periodStart.getFullYear(), quarterMonth, 1)
+    case "QUARTERLY": {
+      if (fiscalYearStartMonth === 1) {
+        // Standard calendar quarters
+        const quarterMonth = Math.floor(periodStart.getMonth() / 3) * 3
+        return new Date(periodStart.getFullYear(), quarterMonth, 1)
+      }
+      // Fiscal quarter start
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      const monthsFromFiscalStart = (periodStart.getMonth() - fiscalMonthIndex + 12) % 12
+      const fiscalQuarter = Math.floor(monthsFromFiscalStart / 3)
+      const quarterStartMonthOffset = fiscalQuarter * 3
+      const quarterStartMonth = (fiscalMonthIndex + quarterStartMonthOffset) % 12
+      let quarterStartYear = periodStart.getFullYear()
+      // Handle year: if fiscal year starts later in calendar year and we're before it
+      if (quarterStartMonth > periodStart.getMonth() && periodStart.getMonth() < fiscalMonthIndex) {
+        quarterStartYear--
+      }
+      return new Date(quarterStartYear, quarterStartMonth, 1)
+    }
     case "YEAR_END":
       return new Date(periodStart.getFullYear(), 0, 1)
     case "AD_HOC":
@@ -61,6 +107,7 @@ export function normalizePeriodStart(
 
 /**
  * Calculate the next period start date based on cadence.
+ * For QUARTERLY and YEAR_END cadences, respects fiscal year start month.
  */
 export function calculateNextPeriodStart(
   cadence: BoardCadence | null | undefined,
@@ -88,9 +135,25 @@ export function calculateNextPeriodStart(
     case "MONTHLY":
       return addMonths(new Date(currentPeriodStart.getFullYear(), currentPeriodStart.getMonth(), 1), 1)
     case "QUARTERLY": {
-      const quarterMonth = Math.floor(currentPeriodStart.getMonth() / 3) * 3
-      const currentQuarterStart = new Date(currentPeriodStart.getFullYear(), quarterMonth, 1)
-      return addMonths(currentQuarterStart, 3)
+      if (fiscalYearStartMonth === 1) {
+        // Standard calendar quarters
+        const quarterMonth = Math.floor(currentPeriodStart.getMonth() / 3) * 3
+        const currentQuarterStart = new Date(currentPeriodStart.getFullYear(), quarterMonth, 1)
+        return addMonths(currentQuarterStart, 3)
+      }
+      // Fiscal quarters: normalize to fiscal quarter start, then add 3 months
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      const monthsFromFiscalStart = (currentPeriodStart.getMonth() - fiscalMonthIndex + 12) % 12
+      const fiscalQuarter = Math.floor(monthsFromFiscalStart / 3)
+      const quarterStartMonthOffset = fiscalQuarter * 3
+      const currentFiscalQuarterStartMonth = (fiscalMonthIndex + quarterStartMonthOffset) % 12
+      let currentFiscalQuarterStartYear = currentPeriodStart.getFullYear()
+      // Adjust year if the fiscal quarter start month is after current month
+      if (currentFiscalQuarterStartMonth > currentPeriodStart.getMonth() && currentPeriodStart.getMonth() < fiscalMonthIndex) {
+        currentFiscalQuarterStartYear--
+      }
+      const currentFiscalQuarterStart = new Date(currentFiscalQuarterStartYear, currentFiscalQuarterStartMonth, 1)
+      return addMonths(currentFiscalQuarterStart, 3)
     }
     case "YEAR_END": {
       const currentYear = currentPeriodStart.getFullYear()
@@ -516,7 +579,7 @@ export class BoardService {
 
     if (!nextPeriodStart) return null
 
-    const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart)
+    const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
     const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
 
     const newBoard = await prisma.board.create({

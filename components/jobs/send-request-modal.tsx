@@ -191,6 +191,7 @@ export function SendRequestModal({
   const [body, setBody] = useState("")
   const [refinementInstruction, setRefinementInstruction] = useState("")
   const [sendTiming, setSendTiming] = useState<SendTiming>("immediate")
+  const [scheduleOffsetDays, setScheduleOffsetDays] = useState(5) // Days before period end
   const [remindersEnabled, setRemindersEnabled] = useState(false)
   const [reminderDays, setReminderDays] = useState(7) // Default to weekly
   const [usedFallback, setUsedFallback] = useState(false)
@@ -455,6 +456,7 @@ export function SendRequestModal({
       setBody("")
       setRefinementInstruction("")
       setSendTiming("immediate")
+      setScheduleOffsetDays(5)
       setRemindersEnabled(false)
       setReminderDays(7)
       setUsedFallback(false)
@@ -614,7 +616,7 @@ export function SendRequestModal({
         confidence: "high" as const,
         interpretationSummary: {
           audienceDescription: `${includedRecipients.length} stakeholder${includedRecipients.length !== 1 ? "s" : ""}`,
-          scheduleDescription: isScheduled ? "Scheduled (saved as draft)" : "Send immediately",
+          scheduleDescription: isScheduled ? `Scheduled: ${scheduleOffsetDays} days before period end` : "Send immediately",
           assumptions: ["Auto-drafted from Item context"],
         },
         warnings: [],
@@ -636,14 +638,12 @@ export function SendRequestModal({
             entityId: includedRecipients[0]?.id, // Primary recipient
             subject: subject.trim(),
             body: body.trim(),
-            scheduleConfig: isRecurringBoard ? {
+            scheduleConfig: {
               mode: "period_aware",
               anchor: "period_end",
-              offsetDays: -5, // Default: 5 business days before period end
+              offsetDays: -scheduleOffsetDays, // Negative = days before period end
               weekendRule: "previous",
               sendTime: "09:00"
-            } : {
-              mode: "ad_hoc"
             },
             // Reminders disabled for now (coming soon)
             remindersEnabled: false,
@@ -652,10 +652,10 @@ export function SendRequestModal({
 
         if (!draftResponse.ok) {
           const data = await draftResponse.json()
-          throw new Error(data.error || "Failed to create draft request")
+          throw new Error(data.error || "Failed to schedule request")
         }
 
-        console.log("Draft request created for scheduled sending")
+        console.log(`Request scheduled: ${scheduleOffsetDays} days before period end`)
         setState("success")
         
         // Auto-close after success
@@ -1387,9 +1387,7 @@ export function SendRequestModal({
                       <span className="font-medium text-gray-900">Schedule for later</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {isRecurringBoard 
-                        ? "Save timing for this recurring task" 
-                        : "Schedule relative to the period"}
+                      Send at a specific time relative to the period
                     </p>
                   </div>
                 </label>
@@ -1397,22 +1395,44 @@ export function SendRequestModal({
 
               {/* Schedule Options - shown when scheduled is selected */}
               {sendTiming === "scheduled" && (
-                <div className="mt-3 ml-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <CalendarClock className="w-4 h-4 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-900">Period-aware scheduling</p>
-                      <p className="text-xs text-blue-700 mt-1">
-                        {isRecurringBoard 
-                          ? `This request will be saved as a draft and scheduled relative to each period's dates. It will automatically copy to future periods.`
-                          : `This request will be saved as a draft. You can review and send it from the Requests tab.`
-                        }
+                <div className="mt-3 ml-6 space-y-3">
+                  {/* Days before period end selector */}
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                      When should this be sent?
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={scheduleOffsetDays}
+                        onChange={(e) => setScheduleOffsetDays(Number(e.target.value))}
+                        className="block w-24 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value={3}>3</option>
+                        <option value={5}>5</option>
+                        <option value={7}>7</option>
+                        <option value={10}>10</option>
+                        <option value={14}>14</option>
+                      </select>
+                      <span className="text-sm text-gray-700">business days before period end</span>
+                    </div>
+                    {job.board?.periodEnd && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Current period ends: {new Date(job.board.periodEnd).toLocaleDateString()}
                       </p>
-                      {job.board?.periodEnd && (
-                        <p className="text-xs text-blue-600 mt-2">
-                          Current period ends: {new Date(job.board.periodEnd).toLocaleDateString()}
+                    )}
+                  </div>
+                  
+                  {/* Info box */}
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <CalendarClock className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-900">How scheduling works</p>
+                        <p className="text-xs text-blue-700 mt-1">
+                          This request will be saved as a draft with the scheduled date. 
+                          {isRecurringBoard && " The timing will automatically carry over to future periods."}
                         </p>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1524,12 +1544,12 @@ export function SendRequestModal({
                 {state === "sending" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {sendTiming === "scheduled" ? "Saving..." : "Sending..."}
+                    {sendTiming === "scheduled" ? "Scheduling..." : "Sending..."}
                   </>
                 ) : sendTiming === "scheduled" ? (
                   <>
                     <CalendarClock className="w-4 h-4 mr-2" />
-                    Save as Draft
+                    Schedule Request
                   </>
                 ) : (
                   <>
@@ -1549,11 +1569,11 @@ export function SendRequestModal({
               <Loader2 className="w-8 h-8 text-gray-600 animate-spin" />
             </div>
             <h3 className="mt-4 font-medium text-gray-900">
-              {sendTiming === "scheduled" ? "Saving draft..." : "Sending request..."}
+              {sendTiming === "scheduled" ? "Scheduling request..." : "Sending request..."}
             </h3>
             <p className="text-sm text-gray-500 mt-1">
               {sendTiming === "scheduled" 
-                ? "Creating scheduled request for review"
+                ? `Scheduling to send ${scheduleOffsetDays} days before period end`
                 : `Sending to ${includedCount} recipient${includedCount !== 1 ? "s" : ""}`
               }
             </p>
@@ -1575,7 +1595,7 @@ export function SendRequestModal({
             </DialogTitle>
             <DialogDescription>
               {sendTiming === "scheduled"
-                ? "This will save the request as a draft for scheduled sending."
+                ? `This request will be scheduled to send ${scheduleOffsetDays} business days before period end.`
                 : "You are about to send emails to real recipients. This action cannot be undone."
               }
             </DialogDescription>
@@ -1594,7 +1614,7 @@ export function SendRequestModal({
               {sendTiming === "scheduled" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Schedule:</span>
-                  <span className="font-medium">Saved as draft</span>
+                  <span className="font-medium">{scheduleOffsetDays} days before period end</span>
                 </div>
               )}
               {remindersEnabled && sendTiming !== "scheduled" && (
@@ -1607,7 +1627,7 @@ export function SendRequestModal({
             
             <p className="text-sm text-gray-600">
               {sendTiming === "scheduled"
-                ? "Are you sure you want to save this as a scheduled draft?"
+                ? "Are you sure you want to schedule this request?"
                 : "Are you sure you want to send this request?"
               }
             </p>
@@ -1627,7 +1647,7 @@ export function SendRequestModal({
               {sendTiming === "scheduled" ? (
                 <>
                   <CalendarClock className="w-4 h-4 mr-2" />
-                  Yes, Save Draft
+                  Yes, Schedule
                 </>
               ) : (
                 <>

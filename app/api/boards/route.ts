@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
@@ -130,13 +131,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Fetch organization's fiscal year settings for period calculations
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fiscalYearStartMonth: true }
+    })
+    const fiscalYearStartMonth = organization?.fiscalYearStartMonth ?? 1
+
     // Period fields are now optional - boards can be created without time periods
     // Parse and normalize period dates if provided
     const parsedPeriodStart = periodStart ? new Date(periodStart) : undefined
-    const normalizedStart = normalizePeriodStart(cadence as BoardCadence, parsedPeriodStart)
+    const normalizedStart = normalizePeriodStart(cadence as BoardCadence, parsedPeriodStart, { fiscalYearStartMonth })
     
     // Derive periodEnd server-side if not provided (or override client value for consistency)
-    const derivedEnd = derivePeriodEnd(cadence as BoardCadence, normalizedStart)
+    const derivedEnd = derivePeriodEnd(cadence as BoardCadence, normalizedStart, { fiscalYearStartMonth })
     // Use client-provided periodEnd only if server derivation returns null
     const finalPeriodEnd = derivedEnd || (periodEnd ? new Date(periodEnd) : undefined)
 
