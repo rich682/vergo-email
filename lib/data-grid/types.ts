@@ -278,6 +278,18 @@ export interface DataGridProps {
   isLoading?: boolean
   /** Error message */
   error?: string | null
+  /** Callback to add a new app column */
+  onAddColumn?: (type: string, label: string) => Promise<void>
+  /** Callback to hide a column */
+  onHideColumn?: (columnId: string) => void
+  /** Callback to delete an app column */
+  onDeleteColumn?: (columnId: string) => Promise<void>
+  /** Callback when an app column cell value changes */
+  onCellValueChange?: (columnId: string, rowIdentity: string, value: unknown) => Promise<void>
+  /** Identity key for row identification */
+  identityKey?: string
+  /** Whether to show the add column button */
+  showAddColumn?: boolean
 }
 
 /**

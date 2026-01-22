@@ -33,11 +33,6 @@ import {
   schemaToColumns,
   createV1CellResolver,
   createEmptyFilterState,
-  AddColumnButton,
-  NotesCell,
-  StatusCell,
-  OwnerCell,
-  AttachmentsCell,
 } from "@/components/data-grid"
 import type { AppColumnType, StatusOption, TeamMember } from "@/components/data-grid"
 import type {
@@ -323,6 +318,30 @@ export function DataTabUniversal({
       return newMap
     })
   }, [currentLineageId])
+
+  // Handle deleting an app column
+  const handleDeleteAppColumn = useCallback(async (columnId: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+    
+    // Extract actual column ID (remove "app_" prefix)
+    const actualColumnId = columnId.replace("app_", "")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-columns/${actualColumnId}`,
+      {
+        method: "DELETE",
+        credentials: "include",
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to delete column")
+    }
+
+    // Refresh app columns
+    fetchAppColumns()
+  }, [currentLineageId, fetchAppColumns])
 
   // Update lineageId when it changes
   useEffect(() => {
@@ -731,12 +750,6 @@ export function DataTabUniversal({
           </div>
           
           <div className="flex items-center gap-2">
-            {hasSnapshots && (
-              <AddColumnButton
-                onAddColumn={handleAddColumn}
-                disabled={loadingAppColumns}
-              />
-            )}
             {hasStakeholderSettings && (
               <Button
                 variant="outline"
@@ -822,6 +835,12 @@ export function DataTabUniversal({
                 onColumnVisibilityChange={handleColumnVisibilityChange}
                 isLoading={loadingSnapshot}
                 error={snapshotError}
+                onAddColumn={handleAddColumn}
+                onHideColumn={handleColumnVisibilityChange ? (id) => handleColumnVisibilityChange(id, false) : undefined}
+                onDeleteColumn={handleDeleteAppColumn}
+                onCellValueChange={handleCellValueUpdate}
+                identityKey={dataStatus?.datasetTemplate?.identityKey}
+                showAddColumn={!!currentLineageId}
               />
             </div>
           </div>
