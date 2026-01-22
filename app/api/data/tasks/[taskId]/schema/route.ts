@@ -1,11 +1,11 @@
 /**
  * Data Workflow - Task Schema API
  * 
- * POST /api/data/tasks/[taskId]/schema - Creates a DatasetTemplate and links it to the task
+ * POST /api/data/tasks/[taskId]/schema - Updates the DatasetTemplate schema for a task
  * 
- * Now accepts TaskInstance ID (not TaskLineage ID) because:
- * - The Data workflow now queries TaskInstances
- * - We create/use a TaskLineage to hold the schema linkage
+ * Flow:
+ * 1. User enables Data via /api/task-instances/[id]/data/enable (creates empty template)
+ * 2. User configures schema via this endpoint (updates the template)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -14,12 +14,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { SchemaColumn } from "@/lib/services/dataset.service"
 
-// Eligible task types for data attachment
-const ELIGIBLE_TASK_TYPES = ["TABLE", "RECONCILIATION"]
-
-interface CreateSchemaRequest {
-  name: string
-  description?: string
+interface UpdateSchemaRequest {
   schema: SchemaColumn[]
   identityKey: string
   stakeholderMapping?: { columnKey: string } | null
@@ -35,16 +30,16 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { organizationId, id: userId } = session.user
+    const { organizationId } = session.user
     const { taskId } = await params
 
     // Validate request body
-    const body: CreateSchemaRequest = await request.json()
-    const { name, description, schema, identityKey, stakeholderMapping } = body
+    const body: UpdateSchemaRequest = await request.json()
+    const { schema, identityKey, stakeholderMapping } = body
 
-    if (!name || !schema || !identityKey) {
+    if (!schema || !identityKey) {
       return NextResponse.json(
-        { error: "Missing required fields: name, schema, identityKey" },
+        { error: "Missing required fields: schema, identityKey" },
         { status: 400 }
       )
     }
@@ -65,14 +60,18 @@ export async function POST(
       )
     }
 
-    // Fetch the TaskInstance
+    // Fetch the TaskInstance with its lineage and template
     const instance = await prisma.taskInstance.findFirst({
       where: {
         id: taskId,
         organizationId,
       },
       include: {
-        lineage: true,
+        lineage: {
+          include: {
+            datasetTemplate: true,
+          },
+        },
       },
     })
 
@@ -83,84 +82,33 @@ export async function POST(
       )
     }
 
-    if (!ELIGIBLE_TASK_TYPES.includes(instance.type)) {
+    // Check if Data is enabled (template exists)
+    if (!instance.lineage?.datasetTemplateId || !instance.lineage.datasetTemplate) {
       return NextResponse.json(
-        { error: "This task type is not eligible for data schema attachment" },
+        { error: "Data is not enabled for this task. Enable Data first." },
         { status: 400 }
       )
     }
 
-    // Check if lineage already has a schema
-    if (instance.lineage?.datasetTemplateId) {
-      return NextResponse.json(
-        { error: "This task already has a data schema attached" },
-        { status: 409 }
-      )
-    }
-
-    // Create the template and link it to the task in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create the dataset template
-      const template = await tx.datasetTemplate.create({
-        data: {
-          organizationId,
-          name,
-          description,
-          schema,
-          identityKey,
-          stakeholderMapping: stakeholderMapping 
-            ? { columnKey: stakeholderMapping.columnKey, matchedField: "email" } 
-            : undefined,
-          createdById: userId,
-        },
-      })
-
-      let lineageId = instance.lineageId
-
-      // If instance doesn't have a lineage, create one
-      if (!lineageId) {
-        const newLineage = await tx.taskLineage.create({
-          data: {
-            organizationId,
-            name: instance.name,
-            description: instance.description,
-            type: instance.type,
-            datasetTemplateId: template.id,
-          },
-        })
-        lineageId = newLineage.id
-
-        // Link instance to the new lineage
-        await tx.taskInstance.update({
-          where: { id: taskId },
-          data: { lineageId: newLineage.id },
-        })
-
-        return { template, lineage: newLineage }
-      }
-
-      // Link the template to the existing lineage
-      const updatedLineage = await tx.taskLineage.update({
-        where: { id: lineageId },
-        data: { datasetTemplateId: template.id },
-      })
-
-      return { template, lineage: updatedLineage }
+    // Update the existing template with the schema
+    const updatedTemplate = await prisma.datasetTemplate.update({
+      where: { id: instance.lineage.datasetTemplateId },
+      data: {
+        schema,
+        identityKey,
+        stakeholderMapping: stakeholderMapping 
+          ? { columnKey: stakeholderMapping.columnKey, matchedField: "email" } 
+          : undefined,
+      },
     })
 
-    return NextResponse.json(result, { status: 201 })
+    return NextResponse.json({
+      template: updatedTemplate,
+      lineage: instance.lineage,
+    }, { status: 200 })
   } catch (error: unknown) {
-    console.error("Error creating data schema for task:", error)
-
-    // Handle unique constraint violation (dataset name already exists)
-    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-      return NextResponse.json(
-        { error: "A dataset with this name already exists" },
-        { status: 409 }
-      )
-    }
-
-    const message = error instanceof Error ? error.message : "Failed to create data schema"
+    console.error("Error updating data schema for task:", error)
+    const message = error instanceof Error ? error.message : "Failed to update data schema"
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

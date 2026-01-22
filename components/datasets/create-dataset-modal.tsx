@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react"
 import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Dialog,
@@ -33,7 +32,7 @@ interface CreateDatasetModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
-  // Task-linked mode: when provided, creates schema via /api/data/tasks/[taskId]/schema
+  // Task-linked mode: when provided, updates schema via /api/data/tasks/[taskId]/schema
   taskId?: string
   taskName?: string
 }
@@ -64,8 +63,6 @@ export function CreateDatasetModal({
   const [fileName, setFileName] = useState<string | null>(null)
   
   // Review step state
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
   const [columns, setColumns] = useState<SchemaColumn[]>([])
   const [identityKey, setIdentityKey] = useState("")
   const [stakeholderColumn, setStakeholderColumn] = useState<string | null>(null)
@@ -80,8 +77,6 @@ export function CreateDatasetModal({
     setUploadError(null)
     setParsing(false)
     setFileName(null)
-    setName("")
-    setDescription("")
     setColumns([])
     setIdentityKey("")
     setStakeholderColumn(null)
@@ -129,10 +124,6 @@ export function CreateDatasetModal({
         setIdentityKey(schemaColumns[0].key)
       }
       
-      // Default name from file name (without extension)
-      const baseName = file.name.replace(/\.(csv|xlsx|xls)$/i, "")
-      setName(baseName)
-      
       setStep("review")
     } catch (err) {
       setUploadError("Failed to parse file. Please try again.")
@@ -175,10 +166,6 @@ export function CreateDatasetModal({
   }
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      setError("Name is required")
-      return
-    }
     if (columns.length === 0) {
       setError("At least one column is required")
       return
@@ -207,8 +194,6 @@ export function CreateDatasetModal({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
           schema: columns,
           identityKey,
           stakeholderMapping,
@@ -217,13 +202,13 @@ export function CreateDatasetModal({
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Failed to create data schema")
+        throw new Error(data.error || "Failed to save data schema")
       }
 
       resetForm()
       onCreated()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to create schema"
+      const message = err instanceof Error ? err.message : "Failed to save schema"
       setError(message)
     } finally {
       setSaving(false)
@@ -235,7 +220,7 @@ export function CreateDatasetModal({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {taskName ? `Create Data Schema for "${taskName}"` : "Create New Dataset"}
+            {taskName ? `Configure Schema for "${taskName}"` : "Configure Data Schema"}
           </DialogTitle>
         </DialogHeader>
 
@@ -295,28 +280,6 @@ export function CreateDatasetModal({
                 <ArrowLeft className="w-4 h-4 mr-1" />
                 Change file
               </Button>
-            </div>
-
-            {/* Name & Description */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Schema Name</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Employee List, Vendor Master"
-                />
-              </div>
-              <div>
-                <Label htmlFor="description">Description (optional)</Label>
-                <Input
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Brief description of this dataset"
-                />
-              </div>
             </div>
 
             {/* Detected Columns */}
@@ -428,7 +391,7 @@ export function CreateDatasetModal({
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Creating..." : "Create Schema"}
+                {saving ? "Saving..." : "Save Schema"}
               </Button>
             </>
           )}
