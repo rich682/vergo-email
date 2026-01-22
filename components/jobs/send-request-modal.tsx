@@ -1407,11 +1407,15 @@ export function SendRequestModal({
                         onChange={(e) => setScheduleOffsetDays(Number(e.target.value))}
                         className="block w-24 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
                       >
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
                         <option value={3}>3</option>
                         <option value={5}>5</option>
                         <option value={7}>7</option>
                         <option value={10}>10</option>
                         <option value={14}>14</option>
+                        <option value={21}>21</option>
+                        <option value={30}>30</option>
                       </select>
                       <span className="text-sm text-gray-700">business days before period end</span>
                     </div>
