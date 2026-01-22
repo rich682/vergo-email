@@ -153,6 +153,8 @@ model Organization {
   emailQueue               EmailQueue[]
   reconciliations          Reconciliation[]
   reconciliationTemplates  ReconciliationTemplate[]
+  datasetTemplates         DatasetTemplate[]
+  datasetSnapshots         DatasetSnapshot[]
 
   @@index([slug])
 }
@@ -225,6 +227,8 @@ model User {
   reviewAuditLogs        ReviewAuditLog[]        @relation("ReviewAuditAuthor")
   reconciliations        Reconciliation[]        @relation("ReconciliationCreator")
   connectedEmailAccounts ConnectedEmailAccount[]
+  createdDatasetTemplates  DatasetTemplate[]     @relation("DatasetTemplateCreator")
+  uploadedDatasetSnapshots DatasetSnapshot[]     @relation("DatasetSnapshotUploader")
 
   @@index([organizationId])
   @@index([email])
@@ -1135,4 +1139,88 @@ model ReconciliationTemplate {
 
   @@unique([organizationId, name])
   @@index([organizationId])
+}
+
+// ============================================
+// Dataset Workflow Models (Top-Level Data Hub)
+// ============================================
+
+// DatasetTemplate - defines the structure and identity for a dataset
+// Used for creating reusable data schemas with identity keys
+model DatasetTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  
+  // Schema definition (columns with types)
+  // JSON: [{ key: string, label: string, type: "text"|"number"|"date"|"boolean"|"currency", required: boolean }]
+  schema         Json
+  
+  // Identity key - column key that uniquely identifies rows
+  identityKey    String
+  
+  // Stakeholder column mapping (optional)
+  // JSON: { columnKey: string, matchedField: "email" } | null
+  stakeholderMapping Json?
+  
+  isArchived     Boolean  @default(false)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User              @relation("DatasetTemplateCreator", fields: [createdById], references: [id])
+  snapshots    DatasetSnapshot[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([createdById])
+}
+
+// DatasetSnapshot - immutable snapshot of data for a specific period
+// Snapshots are versioned and support diff computation against prior snapshots
+model DatasetSnapshot {
+  id               String   @id @default(cuid())
+  organizationId   String
+  templateId       String
+  
+  // Period metadata
+  periodLabel      String?   // "January 2025", "Q1 2025"
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  
+  // Version control for same-period re-uploads
+  version          Int      @default(1)
+  isLatest         Boolean  @default(true)
+  
+  // Row data - immutable once created
+  // JSON: Array<Record<string, any>> keyed by schema columns
+  rows             Json
+  rowCount         Int
+  
+  // Stakeholder matching results
+  // JSON: { matched: [{ rowIdentity, userId, email }], unmatched: [{ rowIdentity, email }] }
+  stakeholderResults Json?
+  
+  // Diff from prior snapshot (computed at creation)
+  // JSON: { addedCount, removedCount, addedIdentities: string[], removedIdentities: string[] }
+  diffSummary      Json?
+  priorSnapshotId  String?  // Reference to compared snapshot
+  
+  // Upload metadata
+  sourceFilename   String?
+  uploadedById     String
+  createdAt        DateTime @default(now())
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template       DatasetTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  uploadedBy     User             @relation("DatasetSnapshotUploader", fields: [uploadedById], references: [id])
+  priorSnapshot  DatasetSnapshot? @relation("SnapshotDiff", fields: [priorSnapshotId], references: [id])
+  laterSnapshots DatasetSnapshot[] @relation("SnapshotDiff")
+
+  @@index([organizationId])
+  @@index([templateId])
+  @@index([templateId, isLatest])
+  @@index([templateId, periodStart])
 }

@@ -179,6 +179,113 @@ export function parseCSV(csvContent: string, maxRows = 5000, maxColumns = 100): 
   }
 }
 
+// ============================================
+// Dataset CSV Parser (for Data workflow)
+// ============================================
+
+export interface DatasetCSVParseResult {
+  rows: Array<Record<string, string>>
+  headers: string[]
+  validation: {
+    rowCount: number
+    columnCount: number
+    missingValues: Record<string, number> // column -> count of missing values
+  }
+}
+
+export interface DatasetCSVParseError {
+  message: string
+  code: 'HEADER_COLLISION' | 'TOO_MANY_ROWS' | 'TOO_MANY_COLUMNS' | 'INVALID_CSV'
+}
+
+/**
+ * Parse CSV for dataset uploads (no email column requirement)
+ * Used by the Data workflow for uploading dataset snapshots.
+ */
+export function parseDatasetCSV(
+  csvContent: string,
+  maxRows = 10000,
+  maxColumns = 100
+): DatasetCSVParseResult | DatasetCSVParseError {
+  try {
+    const lines = csvContent.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    if (lines.length === 0) {
+      return { message: 'CSV is empty', code: 'INVALID_CSV' }
+    }
+
+    // Parse headers
+    const headers = parseCSVLine(lines[0])
+    if (headers.length === 0) {
+      return { message: 'CSV has no headers', code: 'INVALID_CSV' }
+    }
+
+    if (headers.length > maxColumns) {
+      return { message: `CSV has ${headers.length} columns, maximum is ${maxColumns}`, code: 'TOO_MANY_COLUMNS' }
+    }
+
+    // Check for header collisions after normalization
+    const normalizedHeaderMap = new Map<string, string>()
+    for (const header of headers) {
+      const normalized = normalizeTagName(header)
+      if (normalizedHeaderMap.has(normalized) && normalizedHeaderMap.get(normalized) !== header) {
+        return { 
+          message: `Header collision: "${header}" and "${normalizedHeaderMap.get(normalized)}" normalize to the same column name`, 
+          code: 'HEADER_COLLISION' 
+        }
+      }
+      normalizedHeaderMap.set(normalized, header)
+    }
+
+    // Parse data rows
+    const rows: Array<Record<string, string>> = []
+
+    for (let i = 1; i < lines.length; i++) {
+      if (rows.length >= maxRows) {
+        return { message: `CSV has more than ${maxRows} rows`, code: 'TOO_MANY_ROWS' }
+      }
+
+      const values = parseCSVLine(lines[i])
+      if (values.length !== headers.length) {
+        // Skip malformed rows but continue processing
+        continue
+      }
+
+      const row: Record<string, string> = {}
+      for (let j = 0; j < headers.length; j++) {
+        row[headers[j]] = values[j]?.trim() || ''
+      }
+
+      rows.push(row)
+    }
+
+    // Count missing values per column
+    const missingValues: Record<string, number> = {}
+    for (const column of headers) {
+      let missing = 0
+      for (const row of rows) {
+        if (!row[column] || row[column].trim().length === 0) {
+          missing++
+        }
+      }
+      if (missing > 0) {
+        missingValues[column] = missing
+      }
+    }
+
+    return {
+      rows,
+      headers,
+      validation: {
+        rowCount: rows.length,
+        columnCount: headers.length,
+        missingValues
+      }
+    }
+  } catch (error: any) {
+    return { message: `Failed to parse CSV: ${error.message}`, code: 'INVALID_CSV' }
+  }
+}
+
 /**
  * Simple CSV line parser (handles quoted fields)
  */

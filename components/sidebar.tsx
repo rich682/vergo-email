@@ -82,6 +82,16 @@ function DocumentIcon({ className }: { className?: string }) {
   )
 }
 
+function DataIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  )
+}
+
 interface NavItem {
   href: string
   label: string
@@ -130,6 +140,9 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
   const isOnCollectionPage = pathname === "/dashboard/collection" || pathname.startsWith("/dashboard/collection/")
   const isOnExpensesPage = pathname === "/dashboard/collection/expenses"
   const isOnInvoicesPage = pathname === "/dashboard/collection/invoices"
+  
+  // Check if we're on the data page
+  const isOnDataPage = pathname === "/dashboard/data" || pathname.startsWith("/dashboard/data/")
 
   return (
     <div
@@ -296,6 +309,27 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
                 </li>
               </ul>
             )}
+          </li>
+
+          {/* Data - Top-level menu item */}
+          <li>
+            <Link
+              href="/dashboard/data"
+              className={`
+                flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                transition-all duration-150
+                ${isOnDataPage
+                  ? "bg-gray-100 text-gray-900" 
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                }
+              `}
+              style={{ width: "calc(100% - 24px)" }}
+            >
+              <DataIcon className="w-6 h-6 flex-shrink-0" />
+              <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                Data
+              </span>
+            </Link>
           </li>
         </ul>
 
