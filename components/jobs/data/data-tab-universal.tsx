@@ -4,9 +4,16 @@ import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { 
   Database, FileSpreadsheet, Upload, Loader2, Settings, 
-  Download, Trash2, Table2, Calendar, Key, AlertCircle,
-  CheckCircle2
+  Download, Trash2, Table2, AlertCircle,
+  CheckCircle2, Users, Eye, EyeOff
 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EnableDataModal } from "./enable-data-modal"
 import { CreateDatasetModal, UploadDataModal } from "@/components/datasets"
 import {
@@ -26,6 +33,12 @@ interface SchemaColumn {
   required: boolean
 }
 
+interface StakeholderMapping {
+  columnKey: string
+  matchedField: string
+  visibility?: "own_rows" | "all_rows"
+}
+
 interface SnapshotInfo {
   id: string
   rowCount: number
@@ -38,6 +51,7 @@ interface DatasetTemplate {
   name: string
   schema: SchemaColumn[]
   identityKey: string
+  stakeholderMapping: StakeholderMapping | null
   snapshotCount: number
   latestSnapshot?: SnapshotInfo | null
 }
@@ -80,6 +94,7 @@ export function DataTabUniversal({
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [updatingVisibility, setUpdatingVisibility] = useState(false)
 
   // Current lineage ID (may be updated after enable)
   const [currentLineageId, setCurrentLineageId] = useState<string | null>(lineageId)
@@ -181,6 +196,33 @@ export function DataTabUniversal({
       setError(message)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleVisibilityChange = async (visibility: "own_rows" | "all_rows") => {
+    setUpdatingVisibility(true)
+    try {
+      const response = await fetch(
+        `/api/task-instances/${taskInstanceId}/data`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ stakeholderVisibility: visibility }),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to update visibility")
+      }
+
+      fetchDataStatus()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update"
+      setError(message)
+    } finally {
+      setUpdatingVisibility(false)
     }
   }
 
@@ -322,28 +364,57 @@ export function DataTabUniversal({
           </div>
         </div>
 
-        {/* Schema Summary */}
-        <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-            <Key className="w-4 h-4 text-amber-500" />
-            Schema Configuration
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {template.schema.map((col) => (
-              <span
-                key={col.key}
-                className={`px-2 py-1 text-xs rounded ${
-                  col.key === template.identityKey
-                    ? "bg-amber-100 text-amber-800 font-medium"
-                    : "bg-white text-gray-700 border border-gray-200"
-                }`}
-              >
-                {col.label}
-                {col.key === template.identityKey && " (ID)"}
-              </span>
-            ))}
+        {/* Data Settings - only show if stakeholder column configured */}
+        {template.stakeholderMapping?.columnKey && (
+          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+            <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+              <Settings className="w-4 h-4 text-gray-500" />
+              Data Settings
+            </h4>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Stakeholder Visibility</p>
+                    <p className="text-xs text-gray-500">
+                      Column: {template.schema.find(c => c.key === template.stakeholderMapping?.columnKey)?.label || template.stakeholderMapping.columnKey}
+                    </p>
+                  </div>
+                </div>
+                <Select
+                  value={template.stakeholderMapping.visibility || "all_rows"}
+                  onValueChange={(value) => handleVisibilityChange(value as "own_rows" | "all_rows")}
+                  disabled={updatingVisibility}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all_rows">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4" />
+                        <span>See all rows</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="own_rows">
+                      <div className="flex items-center gap-2">
+                        <EyeOff className="w-4 h-4" />
+                        <span>Own rows only</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-gray-500">
+                {template.stakeholderMapping.visibility === "own_rows" 
+                  ? "Stakeholders will only see rows where their email matches the stakeholder column."
+                  : "All stakeholders can see all rows in the dataset."
+                }
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Latest Snapshot Info or Empty State */}
         {hasSnapshots && template.latestSnapshot ? (
