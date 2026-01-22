@@ -134,11 +134,8 @@ export function CreateDatasetModal({
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "text/csv": [".csv"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "application/vnd.ms-excel": [".xls"],
-    },
+    // Accept all files - parser will validate file type
+    // This avoids browser MIME type detection issues
     maxFiles: 1,
     disabled: parsing,
   })
