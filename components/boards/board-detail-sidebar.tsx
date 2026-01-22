@@ -488,20 +488,7 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
             />
           </div>
 
-          {/* Skip weekends - only for DAILY */}
-          {board.cadence === "DAILY" && (
-            <div className="flex items-center justify-between">
-              <div className="flex-1 pr-2">
-                <p className="text-sm font-medium text-gray-700">Skip weekends</p>
-                <p className="text-xs text-gray-500">No boards for Sat/Sun</p>
-              </div>
-              <Switch
-                checked={board.skipWeekends ?? true}
-                onCheckedChange={(checked) => handleUpdate("skipWeekends", checked)}
-                disabled={saving}
-              />
-            </div>
-          )}
+          {/* Skip weekends hidden - always enabled by default */}
         </div>
       )}
     </div>

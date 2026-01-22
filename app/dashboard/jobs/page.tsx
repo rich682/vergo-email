@@ -919,14 +919,7 @@ export default function JobsPage() {
                         disabled={updatingBoard}
                       />
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <span className="text-gray-700">Skip weekends:</span>
-                      <Switch
-                        checked={currentBoard.skipWeekends ?? false}
-                        onCheckedChange={(checked) => handleUpdateBoard({ skipWeekends: checked } as any)}
-                        disabled={updatingBoard}
-                      />
-                    </div>
+{/* Skip weekends hidden - always enabled by default */}
                   </div>
                 </div>
               </>

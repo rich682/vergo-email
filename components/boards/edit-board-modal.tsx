@@ -558,19 +558,7 @@ export function EditBoardModal({
                   />
                 </div>
 
-                {/* Skip weekends (only for DAILY) */}
-                {cadence === "DAILY" && (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Skip weekends</p>
-                      <p className="text-xs text-gray-500">Don't create boards for Saturday and Sunday</p>
-                    </div>
-                    <Switch
-                      checked={skipWeekends}
-                      onCheckedChange={setSkipWeekends}
-                    />
-                  </div>
-                )}
+                {/* Skip weekends hidden - always enabled by default */}
               </div>
             </div>
           </div>
