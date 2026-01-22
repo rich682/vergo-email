@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { 
   Database, FileSpreadsheet, Upload, Loader2, Settings, 
@@ -26,10 +26,25 @@ import {
 } from "@/components/ui/dialog"
 import { format } from "date-fns"
 
+// DataGrid imports
+import {
+  DataGrid,
+  DataGridToolbar,
+  schemaToColumns,
+  createV1CellResolver,
+  createEmptyFilterState,
+} from "@/components/data-grid"
+import type {
+  SheetContext,
+  SheetMetadata,
+  GridFilterState,
+  ColumnDefinition,
+} from "@/lib/data-grid/types"
+
 interface SchemaColumn {
   key: string
   label: string
-  type: string
+  type: "text" | "number" | "date" | "boolean" | "currency"
   required: boolean
 }
 
@@ -43,7 +58,15 @@ interface SnapshotInfo {
   id: string
   rowCount: number
   createdAt: string
-  periodLabel?: string
+  periodLabel?: string | null
+}
+
+interface SnapshotMetadataAPI {
+  id: string
+  periodLabel: string | null
+  rowCount: number
+  createdAt: string
+  isLatest: boolean
 }
 
 interface DatasetTemplate {
@@ -54,6 +77,7 @@ interface DatasetTemplate {
   stakeholderMapping: StakeholderMapping | null
   snapshotCount: number
   latestSnapshot?: SnapshotInfo | null
+  snapshots?: SnapshotMetadataAPI[]
 }
 
 interface DataStatus {
@@ -102,6 +126,14 @@ export function DataTabUniversal({
   // Current lineage ID (may be updated after enable)
   const [currentLineageId, setCurrentLineageId] = useState<string | null>(lineageId)
 
+  // DataGrid state
+  const [currentSheet, setCurrentSheet] = useState<SheetContext | null>(null)
+  const [snapshotRows, setSnapshotRows] = useState<Record<string, unknown>[]>([])
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
+  const [snapshotError, setSnapshotError] = useState<string | null>(null)
+  const [filterState, setFilterState] = useState<GridFilterState>(createEmptyFilterState())
+  const [columns, setColumns] = useState<ColumnDefinition[]>([])
+
   const fetchDataStatus = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -135,6 +167,93 @@ export function DataTabUniversal({
   useEffect(() => {
     setCurrentLineageId(lineageId)
   }, [lineageId])
+
+  // Initialize columns from schema when dataStatus changes
+  useEffect(() => {
+    if (dataStatus?.datasetTemplate?.schema) {
+      const cols = schemaToColumns(dataStatus.datasetTemplate.schema)
+      setColumns(cols)
+    }
+  }, [dataStatus?.datasetTemplate?.schema])
+
+  // Initialize current sheet when snapshots are available
+  useEffect(() => {
+    if (dataStatus?.datasetTemplate?.latestSnapshot && !currentSheet) {
+      setCurrentSheet({
+        kind: "snapshot",
+        snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
+      })
+    }
+  }, [dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
+
+  // Fetch snapshot rows when sheet changes
+  const fetchSnapshotRows = useCallback(async (snapshotId: string) => {
+    if (!dataStatus?.datasetTemplate?.id) return
+
+    setLoadingSnapshot(true)
+    setSnapshotError(null)
+
+    try {
+      const response = await fetch(
+        `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${snapshotId}`,
+        { credentials: "include" }
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to load snapshot data")
+      }
+
+      const data = await response.json()
+      const rows = data.snapshot?.rows || []
+      setSnapshotRows(Array.isArray(rows) ? rows : [])
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to load snapshot data"
+      setSnapshotError(message)
+      setSnapshotRows([])
+    } finally {
+      setLoadingSnapshot(false)
+    }
+  }, [dataStatus?.datasetTemplate?.id])
+
+  // Fetch rows when sheet changes
+  useEffect(() => {
+    if (currentSheet?.kind === "snapshot" && currentSheet.snapshotId) {
+      fetchSnapshotRows(currentSheet.snapshotId)
+    }
+  }, [currentSheet, fetchSnapshotRows])
+
+  // Create cell resolver
+  const cellResolver = useMemo(() => {
+    if (!dataStatus?.datasetTemplate?.identityKey) return null
+    return createV1CellResolver(dataStatus.datasetTemplate.identityKey)
+  }, [dataStatus?.datasetTemplate?.identityKey])
+
+  // Convert API snapshots to SheetMetadata
+  const sheets: SheetMetadata[] = useMemo(() => {
+    if (!dataStatus?.datasetTemplate?.snapshots) return []
+    return dataStatus.datasetTemplate.snapshots.map(s => ({
+      id: s.id,
+      periodLabel: s.periodLabel,
+      createdAt: s.createdAt,
+      rowCount: s.rowCount,
+      isLatest: s.isLatest,
+    }))
+  }, [dataStatus?.datasetTemplate?.snapshots])
+
+  // Handle sheet change
+  const handleSheetChange = useCallback((sheet: SheetContext) => {
+    setCurrentSheet(sheet)
+    // Reset filter state on sheet change
+    setFilterState(createEmptyFilterState())
+  }, [])
+
+  // Handle column visibility change
+  const handleColumnVisibilityChange = useCallback((columnId: string, isVisible: boolean) => {
+    setColumns(prev => prev.map(col => 
+      col.id === columnId ? { ...col, isVisible } : col
+    ))
+  }, [])
 
   const handleEnableComplete = (result: { lineage: { id: string } }) => {
     setCurrentLineageId(result.lineage.id)
@@ -346,9 +465,9 @@ export function DataTabUniversal({
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="flex flex-col h-full space-y-4">
         {/* Action Bar */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <Table2 className="w-5 h-5 text-gray-500" />
             <span className="text-sm text-gray-600">
@@ -398,25 +517,8 @@ export function DataTabUniversal({
                 Upload Data
               </Button>
             )}
-          </div>
-        </div>
 
-        {/* Latest Snapshot Info or Empty State */}
-        {hasSnapshots && template.latestSnapshot ? (
-          <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                <div>
-                  <p className="text-sm font-medium text-green-900">
-                    Data uploaded: {template.latestSnapshot.rowCount.toLocaleString()} rows
-                  </p>
-                  <p className="text-xs text-green-700">
-                    Uploaded {format(new Date(template.latestSnapshot.createdAt), "MMM d, yyyy 'at' h:mm a")}
-                    {template.latestSnapshot.periodLabel && ` • ${template.latestSnapshot.periodLabel}`}
-                  </p>
-                </div>
-              </div>
+            {hasSnapshots && (
               <Button
                 variant="outline"
                 size="sm"
@@ -426,6 +528,37 @@ export function DataTabUniversal({
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Data
               </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Data Grid or Empty State */}
+        {hasSnapshots && currentSheet && cellResolver ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Toolbar */}
+            <DataGridToolbar
+              filterState={filterState}
+              onFilterChange={setFilterState}
+              columns={columns}
+              onColumnVisibilityChange={handleColumnVisibilityChange}
+              sheets={sheets}
+              currentSheet={currentSheet}
+              onSheetChange={handleSheetChange}
+            />
+            
+            {/* Grid */}
+            <div className="flex-1 min-h-0">
+              <DataGrid
+                columns={columns}
+                rows={snapshotRows}
+                resolver={cellResolver}
+                sheet={currentSheet}
+                initialFilterState={filterState}
+                onFilterChange={setFilterState}
+                onColumnVisibilityChange={handleColumnVisibilityChange}
+                isLoading={loadingSnapshot}
+                error={snapshotError}
+              />
             </div>
           </div>
         ) : (

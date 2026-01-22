@@ -51,13 +51,15 @@ export async function GET(
                 _count: {
                   select: { snapshots: true },
                 },
+                // Fetch all snapshots for the sheet selector (metadata only)
                 snapshots: {
-                  where: { isLatest: true },
-                  take: 1,
+                  orderBy: { createdAt: "desc" },
                   select: {
                     id: true,
+                    periodLabel: true,
                     rowCount: true,
                     createdAt: true,
+                    isLatest: true,
                   },
                 },
               },
@@ -95,6 +97,9 @@ export async function GET(
     // Determine if schema is configured (has columns and identity key)
     const schemaConfigured = schema.length > 0 && !!template.identityKey
 
+    // Find the latest snapshot
+    const latestSnapshot = template.snapshots.find(s => s.isLatest) || template.snapshots[0] || null
+
     return NextResponse.json({
       enabled: true,
       schemaConfigured,
@@ -105,11 +110,20 @@ export async function GET(
         identityKey: template.identityKey,
         stakeholderMapping: stakeholderMapping || null,
         snapshotCount: template._count.snapshots,
-        latestSnapshot: template.snapshots[0] ? {
-          id: template.snapshots[0].id,
-          rowCount: template.snapshots[0].rowCount,
-          createdAt: template.snapshots[0].createdAt.toISOString(),
+        latestSnapshot: latestSnapshot ? {
+          id: latestSnapshot.id,
+          rowCount: latestSnapshot.rowCount,
+          createdAt: latestSnapshot.createdAt.toISOString(),
+          periodLabel: latestSnapshot.periodLabel || null,
         } : null,
+        // All snapshots metadata for sheet selector
+        snapshots: template.snapshots.map(s => ({
+          id: s.id,
+          periodLabel: s.periodLabel || null,
+          rowCount: s.rowCount,
+          createdAt: s.createdAt.toISOString(),
+          isLatest: s.isLatest,
+        })),
       },
     })
   } catch (error: unknown) {
