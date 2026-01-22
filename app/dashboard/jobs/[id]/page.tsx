@@ -60,7 +60,10 @@ import { DraftRequestReviewModal } from "@/components/jobs/draft-request-review-
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 
 // Table components for TABLE type tasks
-import { DataTab, CompareView } from "@/components/jobs/table"
+import { CompareView } from "@/components/jobs/table"
+
+// Universal Data tab (opt-in for all task types)
+import { DataTabUniversal } from "@/components/jobs/data"
 
 // ============================================
 // Types
@@ -261,7 +264,7 @@ export default function JobDetailPage() {
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "table" | "compare">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "data" | "compare">("overview")
   const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
   
   // Inline editing states
@@ -1005,14 +1008,12 @@ export default function JobDetailPage() {
             Overview
           </button>
           
-          {job.type === "TABLE" && (
-            <button
-              onClick={() => setActiveTab("table")}
-              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "table" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              Data
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("data")}
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "data" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          >
+            Data
+          </button>
 
           {job.type === "TABLE" && (
             <div className="relative group">
@@ -1604,9 +1605,10 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "table" && (
-              <DataTab
+            {activeTab === "data" && (
+              <DataTabUniversal
                 taskInstanceId={jobId}
+                taskName={job.name}
                 lineageId={job.lineageId}
                 isSnapshot={job.isSnapshot}
                 isAdHoc={isAdHoc}

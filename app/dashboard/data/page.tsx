@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { RefreshCw, Database, ArrowRight, AlertTriangle } from "lucide-react"
 import Link from "next/link"
-import { TaskDataTable, TaskDataRow, CreateDatasetModal, UploadDataModal } from "@/components/datasets"
+import { TaskDataTable, TaskDataRow, UploadDataModal } from "@/components/datasets"
 
 export default function DataPage() {
   const [tasks, setTasks] = useState<TaskDataRow[]>([])
@@ -20,7 +20,6 @@ export default function DataPage() {
   const [error, setError] = useState<string | null>(null)
   
   // Modal state
-  const [createModalOpen, setCreateModalOpen] = useState(false)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<TaskDataRow | null>(null)
@@ -47,11 +46,6 @@ export default function DataPage() {
   useEffect(() => {
     fetchTasks()
   }, [fetchTasks])
-
-  const handleCreateSchema = (task: TaskDataRow) => {
-    setSelectedTask(task)
-    setCreateModalOpen(true)
-  }
 
   const handleUploadData = (task: TaskDataRow) => {
     setSelectedTask(task)
@@ -150,25 +144,11 @@ export default function DataPage() {
       ) : (
         <TaskDataTable
           tasks={tasks}
-          onCreateSchema={handleCreateSchema}
           onUploadData={handleUploadData}
           onDownloadTemplate={handleDownloadTemplate}
           onDeleteData={handleDeleteData}
         />
       )}
-
-      {/* Create Schema Modal */}
-      <CreateDatasetModal
-        open={createModalOpen}
-        onOpenChange={setCreateModalOpen}
-        taskId={selectedTask?.id}
-        taskName={selectedTask?.name}
-        onCreated={() => {
-          setCreateModalOpen(false)
-          setSelectedTask(null)
-          fetchTasks()
-        }}
-      />
 
       {/* Upload Data Modal */}
       {selectedTask?.datasetTemplate && (
@@ -224,11 +204,10 @@ function EmptyState() {
     <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-300">
       <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
       <h3 className="text-lg font-medium text-gray-900 mb-2">
-        No tasks available for data management
+        No tasks have data enabled yet
       </h3>
       <p className="text-gray-500 mb-6 max-w-md mx-auto">
-        Data schemas are created in relation to eligible tasks.
-        Create a variance or reconciliation task to begin managing period-based data.
+        Enable data from a task's Data tab to start managing schemas and uploads here.
       </p>
       <Button asChild>
         <Link href="/dashboard/jobs">
