@@ -5,6 +5,8 @@
  * 
  * Creates a DatasetTemplate and links it to the task's lineage.
  * This is the opt-in mechanism for enabling Data on any task.
+ * 
+ * Dataset names are auto-generated to avoid conflicts.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -12,8 +14,13 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-interface EnableDataRequest {
-  name?: string // Optional custom name, defaults to task name
+/**
+ * Generate a unique dataset name using task name + short unique suffix
+ */
+function generateDatasetName(taskName: string): string {
+  // Use last 6 chars of a random ID for uniqueness
+  const suffix = Math.random().toString(36).substring(2, 8)
+  return `${taskName}_${suffix}`
 }
 
 export async function POST(
@@ -28,14 +35,6 @@ export async function POST(
 
     const { organizationId, id: userId } = session.user
     const { id: taskInstanceId } = await params
-
-    // Parse optional request body
-    let body: EnableDataRequest = {}
-    try {
-      body = await request.json()
-    } catch {
-      // Empty body is fine, we'll use defaults
-    }
 
     // Fetch the TaskInstance
     const instance = await prisma.taskInstance.findFirst({
@@ -67,8 +66,8 @@ export async function POST(
       )
     }
 
-    // Determine the name for the DatasetTemplate
-    const templateName = body.name || `${instance.name} Data`
+    // Generate a unique name for the DatasetTemplate
+    const templateName = generateDatasetName(instance.name)
 
     // Create the template and link it to the task in a transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -129,15 +128,6 @@ export async function POST(
     }, { status: 201 })
   } catch (error: unknown) {
     console.error("Error enabling data for task:", error)
-
-    // Handle unique constraint violation (dataset name already exists)
-    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-      return NextResponse.json(
-        { error: "A dataset with this name already exists" },
-        { status: 409 }
-      )
-    }
-
     const message = error instanceof Error ? error.message : "Failed to enable data"
     return NextResponse.json({ error: message }, { status: 500 })
   }

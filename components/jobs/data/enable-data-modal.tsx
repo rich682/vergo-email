@@ -2,8 +2,6 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -38,7 +36,7 @@ interface EnableDataModalProps {
  * Modal to confirm enabling Data for a task.
  * 
  * Flow:
- * 1. User confirms (optionally customizes name)
+ * 1. User confirms
  * 2. POST to /api/task-instances/[id]/data/enable
  * 3. On success, calls onEnabled with the result
  * 4. Parent component opens schema editor
@@ -50,7 +48,6 @@ export function EnableDataModal({
   taskName,
   onEnabled,
 }: EnableDataModalProps) {
-  const [customName, setCustomName] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,9 +62,7 @@ export function EnableDataModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            name: customName.trim() || undefined, // Use default if empty
-          }),
+          body: JSON.stringify({}),
         }
       )
 
@@ -89,7 +84,6 @@ export function EnableDataModal({
 
   const handleClose = () => {
     if (!loading) {
-      setCustomName("")
       setError(null)
       onOpenChange(false)
     }
@@ -108,27 +102,11 @@ export function EnableDataModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4 space-y-4">
-          <div>
-            <Label htmlFor="datasetName">Dataset Name (optional)</Label>
-            <Input
-              id="datasetName"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder={`${taskName} Data`}
-              className="mt-1"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave blank to use the default name
-            </p>
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {error}
           </div>
-
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
-            </div>
-          )}
-        </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={loading}>
