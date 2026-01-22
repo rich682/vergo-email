@@ -15,13 +15,13 @@ export interface SchemaColumn {
 }
 
 export interface TaskDataRow {
-  id: string
+  id: string // TaskInstance ID
+  lineageId: string | null // TaskLineage ID for schema linkage
   name: string
   type: "TABLE" | "RECONCILIATION"
   description: string | null
-  instanceCount: number
   dataState: DataState
-  // Board info
+  // Board info (directly from TaskInstance's board)
   boardName: string | null
   cadence: string | null
   accountingPeriod: string | null

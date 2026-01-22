@@ -33,8 +33,8 @@ interface CreateDatasetModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
-  // Task-linked mode: when provided, creates schema via /api/data/tasks/[lineageId]/schema
-  lineageId?: string
+  // Task-linked mode: when provided, creates schema via /api/data/tasks/[taskId]/schema
+  taskId?: string
   taskName?: string
 }
 
@@ -52,7 +52,7 @@ export function CreateDatasetModal({
   open, 
   onOpenChange, 
   onCreated,
-  lineageId,
+  taskId,
   taskName,
 }: CreateDatasetModalProps) {
   // Step management
@@ -192,9 +192,9 @@ export function CreateDatasetModal({
     setError(null)
 
     try {
-      // Use task-linked endpoint if lineageId is provided
-      const url = lineageId 
-        ? `/api/data/tasks/${lineageId}/schema`
+      // Use task-linked endpoint if taskId is provided
+      const url = taskId 
+        ? `/api/data/tasks/${taskId}/schema`
         : "/api/datasets"
 
       // Build stakeholder mapping if selected

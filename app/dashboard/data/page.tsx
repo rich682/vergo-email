@@ -161,7 +161,7 @@ export default function DataPage() {
       <CreateDatasetModal
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
-        lineageId={selectedTask?.id}
+        taskId={selectedTask?.id}
         taskName={selectedTask?.name}
         onCreated={() => {
           setCreateModalOpen(false)

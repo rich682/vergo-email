@@ -2,6 +2,13 @@
  * Data Workflow - Tasks API
  * 
  * GET /api/data/tasks - Returns tasks eligible for data attachment with their data state
+ * 
+ * Now queries TaskInstance directly (not TaskLineage) because:
+ * - TaskInstance has direct board linkage (Board Name, Cadence, Period)
+ * - The Jobs page shows TaskInstances
+ * - Users interact with TaskInstances, not TaskLineages
+ * 
+ * DatasetTemplate linkage is accessed through TaskInstance -> TaskLineage -> DatasetTemplate
  */
 
 import { NextResponse } from "next/server"
@@ -22,13 +29,13 @@ interface SchemaColumn {
 }
 
 export interface TaskDataResponse {
-  id: string
+  id: string // TaskInstance ID
+  lineageId: string | null // TaskLineage ID for schema linkage
   name: string
   type: "TABLE" | "RECONCILIATION"
   description: string | null
-  instanceCount: number
   dataState: DataState
-  // Board info from latest instance
+  // Board info (directly from TaskInstance's board)
   boardName: string | null
   cadence: string | null
   accountingPeriod: string | null
@@ -56,43 +63,38 @@ export async function GET() {
 
     const { organizationId } = session.user
 
-    // Fetch eligible task lineages with their data linkage state and board info
-    const lineages = await prisma.taskLineage.findMany({
+    // Fetch eligible TaskInstances (actual tasks on boards) with their lineage and data linkage
+    const instances = await prisma.taskInstance.findMany({
       where: {
         organizationId,
         type: { in: ELIGIBLE_TASK_TYPES as unknown as string[] },
       },
       include: {
-        _count: {
-          select: { instances: true },
-        },
-        // Get latest instance to get board info
-        instances: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          include: {
-            board: {
-              select: {
-                name: true,
-                cadence: true,
-                periodStart: true,
-                periodEnd: true,
-              },
-            },
+        board: {
+          select: {
+            name: true,
+            cadence: true,
+            periodStart: true,
+            periodEnd: true,
           },
         },
-        datasetTemplate: {
+        // Get lineage for schema linkage
+        lineage: {
           include: {
-            _count: {
-              select: { snapshots: true },
-            },
-            snapshots: {
-              where: { isLatest: true },
-              take: 1,
-              select: {
-                id: true,
-                rowCount: true,
-                createdAt: true,
+            datasetTemplate: {
+              include: {
+                _count: {
+                  select: { snapshots: true },
+                },
+                snapshots: {
+                  where: { isLatest: true },
+                  take: 1,
+                  select: {
+                    id: true,
+                    rowCount: true,
+                    createdAt: true,
+                  },
+                },
               },
             },
           },
@@ -102,10 +104,9 @@ export async function GET() {
     })
 
     // Transform to response format
-    const tasks: TaskDataResponse[] = lineages.map((lineage) => {
-      const template = lineage.datasetTemplate
-      const latestInstance = lineage.instances[0]
-      const board = latestInstance?.board
+    const tasks: TaskDataResponse[] = instances.map((instance) => {
+      const template = instance.lineage?.datasetTemplate
+      const board = instance.board
       
       // Derive data state
       let dataState: DataState = "no_schema"
@@ -124,11 +125,11 @@ export async function GET() {
       }
 
       const result: TaskDataResponse = {
-        id: lineage.id,
-        name: lineage.name,
-        type: lineage.type as "TABLE" | "RECONCILIATION",
-        description: lineage.description,
-        instanceCount: lineage._count.instances,
+        id: instance.id,
+        lineageId: instance.lineageId,
+        name: instance.name,
+        type: instance.type as "TABLE" | "RECONCILIATION",
+        description: instance.description,
         dataState,
         boardName: board?.name || null,
         cadence: board?.cadence || null,
