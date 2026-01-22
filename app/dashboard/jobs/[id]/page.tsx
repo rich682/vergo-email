@@ -53,6 +53,8 @@ import { ReconciliationResultCard } from "@/components/jobs/reconciliation-resul
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
+// Draft Request Review Modal
+import { DraftRequestReviewModal } from "@/components/jobs/draft-request-review-modal"
 
 // Task AI Summary
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
@@ -324,6 +326,10 @@ export default function JobDetailPage() {
 
   // Send Request Modal
   const [isSendRequestOpen, setIsSendRequestOpen] = useState(false)
+
+  // Draft Request Review Modal
+  const [isDraftReviewOpen, setIsDraftReviewOpen] = useState(false)
+  const [selectedDraft, setSelectedDraft] = useState<any>(null)
 
   // Notes
   const [notes, setNotes] = useState("")
@@ -1139,6 +1145,20 @@ export default function JobDetailPage() {
                         ) : (
                           <StatusBadge status={job.status} />
                         )}
+                        {/* Draft Request Badge - shown in header when drafts exist */}
+                        {draftRequests.length > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedDraft(draftRequests[0])
+                              setIsDraftReviewOpen(true)
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+                            title="Review draft requests copied from prior period"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''} to review
+                          </button>
+                        )}
                       </div>
                       {editingDescription ? (
                         <Input
@@ -1653,6 +1673,25 @@ export default function JobDetailPage() {
       />
 
       <ReconciliationUploadModal open={isReconciliationModalOpen} onOpenChange={setIsReconciliationModalOpen} jobId={jobId} jobName={job?.name || ""} onReconciliationCreated={(r) => setReconciliations(prev => [r, ...prev])} />
+
+      <DraftRequestReviewModal
+        open={isDraftReviewOpen}
+        onOpenChange={setIsDraftReviewOpen}
+        taskInstanceId={jobId}
+        draft={selectedDraft}
+        availableContacts={stakeholderContacts.filter(c => c.email).map(c => ({ 
+          id: c.id, 
+          email: c.email!, 
+          firstName: c.firstName, 
+          lastName: c.lastName, 
+          companyName: c.companyName 
+        }))}
+        onSuccess={() => { 
+          fetchDraftRequests()
+          fetchRequests()
+          setSelectedDraft(null)
+        }}
+      />
     </div>
   )
 }

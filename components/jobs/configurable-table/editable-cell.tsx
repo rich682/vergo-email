@@ -25,6 +25,7 @@ export function EditableCell({ column, job, teamMembers, onUpdate }: EditableCel
       const textValue = column.field === "name" 
         ? job.name 
         : (job.customFields?.[column.id] || null)
+      
       return (
         <TextCell
           value={textValue}
