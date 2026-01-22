@@ -55,13 +55,10 @@ export function DataGridHeader({
 }: ExtendedDataGridHeaderProps) {
   const visibleColumns = columns.filter((c) => c.isVisible)
 
-  // Calculate width including add column button
-  const headerWidth = showAddColumn ? totalWidth + 48 : totalWidth
-
   return (
     <div
       className="flex bg-gray-100 border-b border-gray-300 sticky top-0 z-10"
-      style={{ minWidth: headerWidth }}
+      style={{ minWidth: totalWidth }}
     >
       {visibleColumns.map((column) => {
         const isActive = sort?.columnId === column.id
@@ -85,10 +82,10 @@ export function DataGridHeader({
         )
       })}
       
-      {/* Add Column Button - far right */}
+      {/* Add Column Button - inline at end */}
       {showAddColumn && onAddColumn && (
         <div
-          className="flex items-center justify-center px-2 py-2 bg-gray-100 min-w-[48px]"
+          className="flex items-center px-1 bg-gray-100"
           style={{ flexShrink: 0 }}
         >
           <AddColumnButton
