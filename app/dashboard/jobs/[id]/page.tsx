@@ -270,6 +270,7 @@ export default function JobDetailPage() {
   // Data state
   const [tasks, setTasks] = useState<JobTask[]>([])
   const [requests, setRequests] = useState<JobRequest[]>([])
+  const [draftRequests, setDraftRequests] = useState<any[]>([])
   const [comments, setComments] = useState<JobComment[]>([])
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
   const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
@@ -414,6 +415,19 @@ export default function JobDetailPage() {
       console.error("Error fetching requests:", error)
     } finally {
       setRequestsLoading(false)
+    }
+  }, [jobId])
+
+  const fetchDraftRequests = useCallback(async () => {
+    try {
+      // Use consolidated requests endpoint with includeDrafts param
+      const response = await fetch(`/api/task-instances/${jobId}/requests?includeDrafts=true`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setDraftRequests(data.draftRequests || [])
+      }
+    } catch (error) {
+      console.error("Error fetching draft requests:", error)
     }
   }, [jobId])
 
@@ -613,13 +627,14 @@ export default function JobDetailPage() {
     fetchJob()
     fetchTasks()
     fetchRequests()
+    fetchDraftRequests()
     fetchComments()
     fetchTimeline()
     fetchStakeholderOptions()
     fetchCollaborators()
     fetchTeamMembers()
     fetchReconciliations()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers, fetchReconciliations])
+  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers, fetchReconciliations])
 
   useEffect(() => {
     if (stakeholders.length > 0) {
@@ -1016,9 +1031,14 @@ export default function JobDetailPage() {
 
           <button
             onClick={() => setActiveTab("requests")}
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
           >
             Requests ({requests.length})
+            {draftRequests.length > 0 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''}
+              </span>
+            )}
           </button>
 
           <button
@@ -1467,6 +1487,43 @@ export default function JobDetailPage() {
 
             {activeTab === "requests" && (
               <div className="space-y-4">
+                {/* Draft Requests Banner */}
+                {draftRequests.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <FileText className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-amber-900">
+                          {draftRequests.length} Draft Request{draftRequests.length > 1 ? 's' : ''} from Prior Period
+                        </h4>
+                        <p className="text-xs text-amber-700 mt-1">
+                          These requests were copied from the previous period. Review recipients and content before sending.
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {draftRequests.slice(0, 3).map((draft: any) => (
+                            <div key={draft.id} className="flex items-center justify-between bg-white rounded-md px-3 py-2 border border-amber-100">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium text-gray-900">
+                                  {draft.entity ? `${draft.entity.firstName} ${draft.entity.lastName || ''}`.trim() : 'No recipient'}
+                                </span>
+                                {draft.entity?.email && (
+                                  <span className="text-gray-500 text-xs">{draft.entity.email}</span>
+                                )}
+                              </div>
+                              <span className="text-xs text-amber-600">
+                                {draft.subject ? draft.subject.substring(0, 40) + (draft.subject.length > 40 ? '...' : '') : 'No subject'}
+                              </span>
+                            </div>
+                          ))}
+                          {draftRequests.length > 3 && (
+                            <p className="text-xs text-amber-700">+ {draftRequests.length - 3} more</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={<Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button>} />
                 <div className="space-y-3">
                   {requests.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No requests sent yet</p></div> : requests.map(r => <RequestCardExpandable key={r.id} request={r} onRefresh={fetchRequests} />)}
