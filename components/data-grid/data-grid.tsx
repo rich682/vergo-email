@@ -207,7 +207,7 @@ export function DataGrid({
   }
 
   const virtualRows = rowVirtualizer.getVirtualItems()
-  const headerWidth = showAddColumn ? totalWidth + 50 : totalWidth
+  const headerWidth = showAddColumn ? totalWidth + 48 : totalWidth
 
   return (
     <div className="flex flex-col h-full min-h-[300px] border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -280,12 +280,9 @@ export function DataGrid({
                     )
                   })}
                   
-                  {/* Empty spacer for add column button */}
+                  {/* Empty spacer for add column button alignment */}
                   {showAddColumn && (
-                    <div
-                      className="border-r border-gray-200"
-                      style={{ width: 50, minWidth: 50, flexShrink: 0 }}
-                    />
+                    <div style={{ width: 48, minWidth: 48, flexShrink: 0 }} />
                   )}
                 </div>
               )

@@ -56,7 +56,7 @@ export function DataGridHeader({
   const visibleColumns = columns.filter((c) => c.isVisible)
 
   // Calculate width including add column button
-  const headerWidth = showAddColumn ? totalWidth + 50 : totalWidth
+  const headerWidth = showAddColumn ? totalWidth + 48 : totalWidth
 
   return (
     <div
@@ -87,10 +87,15 @@ export function DataGridHeader({
       
       {/* Add Column Button - far right */}
       {showAddColumn && onAddColumn && (
-        <AddColumnButton
-          onAddColumn={onAddColumn}
-          variant="header"
-        />
+        <div
+          className="flex items-center justify-center px-2 py-2 bg-gray-100 min-w-[48px]"
+          style={{ flexShrink: 0 }}
+        >
+          <AddColumnButton
+            onAddColumn={onAddColumn}
+            variant="header"
+          />
+        </div>
       )}
     </div>
   )

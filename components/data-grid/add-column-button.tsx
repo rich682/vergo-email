@@ -141,15 +141,14 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
       disabled={disabled || isSubmitting}
       className={`
         flex items-center justify-center
-        w-10 h-full
-        text-gray-400 hover:text-gray-600
-        bg-gray-50 hover:bg-gray-100
-        border-r border-gray-300
+        w-9 h-8
+        text-gray-400 hover:text-gray-600 hover:bg-gray-200
+        rounded
         transition-colors
         disabled:opacity-50 disabled:cursor-not-allowed
       `}
     >
-      <Plus className="w-5 h-5" />
+      <Plus className="w-4 h-4" />
     </button>
   ) : (
     <Button
