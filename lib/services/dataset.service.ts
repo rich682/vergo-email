@@ -679,4 +679,35 @@ export class DatasetService {
 
     return { matched, unmatched }
   }
+
+  /**
+   * Delete a snapshot and update isLatest flag on prior snapshot if needed
+   */
+  static async deleteSnapshot(
+    snapshotId: string,
+    organizationId: string
+  ): Promise<void> {
+    const snapshot = await prisma.datasetSnapshot.findFirst({
+      where: { id: snapshotId, organizationId },
+    })
+
+    if (!snapshot) {
+      throw new Error("Snapshot not found")
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // If this was the latest snapshot, mark the prior one as latest
+      if (snapshot.isLatest && snapshot.priorSnapshotId) {
+        await tx.datasetSnapshot.update({
+          where: { id: snapshot.priorSnapshotId },
+          data: { isLatest: true },
+        })
+      }
+
+      // Delete the snapshot
+      await tx.datasetSnapshot.delete({
+        where: { id: snapshotId },
+      })
+    })
+  }
 }

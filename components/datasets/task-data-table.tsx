@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Upload, ExternalLink, Plus } from "lucide-react"
+import { Download, Upload, ExternalLink, Plus, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 export type DataState = "no_schema" | "schema_only" | "has_data"
@@ -21,6 +21,10 @@ export interface TaskDataRow {
   description: string | null
   instanceCount: number
   dataState: DataState
+  // Board info
+  boardName: string | null
+  cadence: string | null
+  accountingPeriod: string | null
   datasetTemplate?: {
     id: string
     name: string
@@ -29,6 +33,7 @@ export interface TaskDataRow {
     columnCount: number
     snapshotCount: number
     latestSnapshot?: {
+      id: string
       rowCount: number
       createdAt: string
     }
@@ -40,6 +45,7 @@ interface TaskDataTableProps {
   onCreateSchema: (task: TaskDataRow) => void
   onUploadData: (task: TaskDataRow) => void
   onDownloadTemplate: (task: TaskDataRow) => void
+  onDeleteData: (task: TaskDataRow) => void
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -50,6 +56,15 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   TABLE: "bg-purple-100 text-purple-800",
   RECONCILIATION: "bg-blue-100 text-blue-800",
+}
+
+const CADENCE_LABELS: Record<string, string> = {
+  DAILY: "Daily",
+  WEEKLY: "Weekly",
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEAR_END: "Year End",
+  AD_HOC: "Ad Hoc",
 }
 
 function DataStatusBadge({ state, snapshotCount }: { state: DataState; snapshotCount?: number }) {
@@ -80,9 +95,10 @@ export function TaskDataTable({
   onCreateSchema,
   onUploadData,
   onDownloadTemplate,
+  onDeleteData,
 }: TaskDataTableProps) {
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
@@ -91,6 +107,15 @@ export function TaskDataTable({
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Type
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Board
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Recurring
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Period
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Data Status
@@ -118,6 +143,15 @@ export function TaskDataTable({
                   {TYPE_LABELS[task.type]}
                 </Badge>
               </td>
+              <td className="px-6 py-4 text-sm text-gray-900">
+                {task.boardName || <span className="text-gray-400">—</span>}
+              </td>
+              <td className="px-6 py-4 text-sm text-gray-900">
+                {task.cadence ? CADENCE_LABELS[task.cadence] || task.cadence : <span className="text-gray-400">—</span>}
+              </td>
+              <td className="px-6 py-4 text-sm text-gray-900">
+                {task.accountingPeriod || <span className="text-gray-400">—</span>}
+              </td>
               <td className="px-6 py-4">
                 <DataStatusBadge
                   state={task.dataState}
@@ -130,6 +164,7 @@ export function TaskDataTable({
                   onCreateSchema={onCreateSchema}
                   onUploadData={onUploadData}
                   onDownloadTemplate={onDownloadTemplate}
+                  onDeleteData={onDeleteData}
                 />
               </td>
             </tr>
@@ -145,9 +180,10 @@ interface TaskActionsProps {
   onCreateSchema: (task: TaskDataRow) => void
   onUploadData: (task: TaskDataRow) => void
   onDownloadTemplate: (task: TaskDataRow) => void
+  onDeleteData: (task: TaskDataRow) => void
 }
 
-function TaskActions({ task, onCreateSchema, onUploadData, onDownloadTemplate }: TaskActionsProps) {
+function TaskActions({ task, onCreateSchema, onUploadData, onDownloadTemplate, onDeleteData }: TaskActionsProps) {
   switch (task.dataState) {
     case "no_schema":
       return (
@@ -181,14 +217,6 @@ function TaskActions({ task, onCreateSchema, onUploadData, onDownloadTemplate }:
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onDownloadTemplate(task)}
-          >
-            <Download className="w-4 h-4 mr-1" />
-            Template
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             onClick={() => onUploadData(task)}
           >
             <Upload className="w-4 h-4 mr-1" />
@@ -199,6 +227,14 @@ function TaskActions({ task, onCreateSchema, onUploadData, onDownloadTemplate }:
               <ExternalLink className="w-4 h-4 mr-1" />
               Open
             </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onDeleteData(task)}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       )

@@ -3,8 +3,6 @@
 import { useState, useCallback } from "react"
 import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -13,8 +11,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { 
-  Upload, FileSpreadsheet, AlertCircle, CheckCircle2, 
-  Plus, Minus, X, Calendar
+  Upload, AlertCircle, CheckCircle2, 
+  Plus, Minus
 } from "lucide-react"
 import { parseDatasetCSV } from "@/lib/utils/csv-parser"
 
@@ -61,9 +59,6 @@ export function UploadDataModal({
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<Record<string, unknown>[]>([])
   const [preview, setPreview] = useState<PreviewResult | null>(null)
-  const [periodLabel, setPeriodLabel] = useState("")
-  const [periodStart, setPeriodStart] = useState("")
-  const [periodEnd, setPeriodEnd] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -72,9 +67,6 @@ export function UploadDataModal({
     setFile(null)
     setParsedRows([])
     setPreview(null)
-    setPeriodLabel("")
-    setPeriodStart("")
-    setPeriodEnd("")
     setError(null)
   }
 
@@ -115,11 +107,7 @@ export function UploadDataModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          rows,
-          periodStart: periodStart || undefined,
-          periodEnd: periodEnd || undefined,
-        }),
+        body: JSON.stringify({ rows }),
       })
 
       if (!response.ok) {
@@ -130,12 +118,13 @@ export function UploadDataModal({
       const data = await response.json()
       setPreview(data.preview)
       setStep("preview")
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to parse file"
+      setError(message)
     } finally {
       setLoading(false)
     }
-  }, [datasetId, schema, periodStart, periodEnd])
+  }, [datasetId, schema])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -159,9 +148,6 @@ export function UploadDataModal({
         credentials: "include",
         body: JSON.stringify({
           rows: parsedRows,
-          periodLabel: periodLabel || undefined,
-          periodStart: periodStart || undefined,
-          periodEnd: periodEnd || undefined,
           sourceFilename: file?.name,
         }),
       })
@@ -176,8 +162,9 @@ export function UploadDataModal({
         reset()
         onUploaded()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload"
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -201,39 +188,6 @@ export function UploadDataModal({
 
         {step === "upload" && (
           <div className="space-y-6 py-4">
-            {/* Period Selection */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="periodLabel">Period Label (optional)</Label>
-                <Input
-                  id="periodLabel"
-                  value={periodLabel}
-                  onChange={(e) => setPeriodLabel(e.target.value)}
-                  placeholder="e.g., January 2025, Q1 2025"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label htmlFor="periodStart">Start Date</Label>
-                  <Input
-                    id="periodStart"
-                    type="date"
-                    value={periodStart}
-                    onChange={(e) => setPeriodStart(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="periodEnd">End Date</Label>
-                  <Input
-                    id="periodEnd"
-                    type="date"
-                    value={periodEnd}
-                    onChange={(e) => setPeriodEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* File Dropzone */}
             <div
               {...getRootProps()}

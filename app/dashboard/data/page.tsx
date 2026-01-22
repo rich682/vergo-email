@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Database, ArrowRight } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { RefreshCw, Database, ArrowRight, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { TaskDataTable, TaskDataRow, CreateDatasetModal, UploadDataModal } from "@/components/datasets"
 
@@ -14,7 +22,9 @@ export default function DataPage() {
   // Modal state
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<TaskDataRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -73,6 +83,36 @@ export default function DataPage() {
     }
   }
 
+  const handleDeleteData = (task: TaskDataRow) => {
+    setSelectedTask(task)
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDeleteData = async () => {
+    if (!selectedTask?.datasetTemplate?.latestSnapshot?.id) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(
+        `/api/datasets/${selectedTask.datasetTemplate.id}/snapshots/${selectedTask.datasetTemplate.latestSnapshot.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      )
+      if (!response.ok) {
+        throw new Error("Failed to delete data")
+      }
+      setDeleteModalOpen(false)
+      setSelectedTask(null)
+      fetchTasks()
+    } catch (err) {
+      console.error("Delete failed:", err)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (loading && tasks.length === 0) {
     return (
       <div className="p-8">
@@ -113,6 +153,7 @@ export default function DataPage() {
           onCreateSchema={handleCreateSchema}
           onUploadData={handleUploadData}
           onDownloadTemplate={handleDownloadTemplate}
+          onDeleteData={handleDeleteData}
         />
       )}
 
@@ -144,6 +185,36 @@ export default function DataPage() {
           }}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Delete Data
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the uploaded data for{" "}
+              <strong>{selectedTask?.name}</strong>? This will remove the latest
+              snapshot ({selectedTask?.datasetTemplate?.latestSnapshot?.rowCount?.toLocaleString()} rows).
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteData}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete Data"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
