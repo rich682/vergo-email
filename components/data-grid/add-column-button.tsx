@@ -6,13 +6,13 @@
  * Monday.com-style column type selector with:
  * - Search field
  * - Categorized column types with colored icons
- * - Formula column (frontend placeholder)
+ * - Direct add (no name confirmation step)
  */
 
 import { useState, useMemo } from "react"
 import { 
   Plus, Search, Type, CheckSquare, Paperclip, User, 
-  Calculator, Calendar, Hash, ListChecks, X
+  Calculator, ListChecks, X, Loader2
 } from "lucide-react"
 import {
   Popover,
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
 export type AppColumnType = "text" | "status" | "attachment" | "user" | "formula"
 
@@ -87,10 +86,9 @@ interface AddColumnButtonProps {
 
 export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: AddColumnButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedType, setSelectedType] = useState<AppColumnType | null>(null)
-  const [label, setLabel] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submittingType, setSubmittingType] = useState<AppColumnType | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Filter column types by search
@@ -105,50 +103,34 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
   const essentials = filteredTypes.filter((t) => t.category === "essentials")
   const superUseful = filteredTypes.filter((t) => t.category === "super_useful")
 
-  const handleSelectType = (type: AppColumnType) => {
+  const handleSelectType = async (option: ColumnTypeOption) => {
     // Formula is coming soon
-    if (type === "formula") {
+    if (option.type === "formula") {
       setError("Formula columns coming soon!")
       setTimeout(() => setError(null), 2000)
       return
     }
     
-    setSelectedType(type)
-    const defaultLabel = COLUMN_TYPES.find((t) => t.type === type)?.label || ""
-    setLabel(defaultLabel)
-    setError(null)
-  }
-
-  const handleBack = () => {
-    setSelectedType(null)
-    setLabel("")
-    setError(null)
-  }
-
-  const handleSubmit = async () => {
-    if (!selectedType || !label.trim()) return
-
     setIsSubmitting(true)
+    setSubmittingType(option.type)
     setError(null)
 
     try {
-      await onAddColumn(selectedType, label.trim())
+      // Use the default label directly - no confirmation step
+      await onAddColumn(option.type, option.label)
       setIsOpen(false)
-      setSelectedType(null)
-      setLabel("")
       setSearchQuery("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add column")
     } finally {
       setIsSubmitting(false)
+      setSubmittingType(null)
     }
   }
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
     if (!open) {
-      setSelectedType(null)
-      setLabel("")
       setSearchQuery("")
       setError(null)
     }
@@ -156,7 +138,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
 
   const triggerContent = variant === "header" ? (
     <button
-      disabled={disabled}
+      disabled={disabled || isSubmitting}
       className={`
         flex items-center justify-center
         w-10 h-full
@@ -173,7 +155,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
     <Button
       variant="outline"
       size="sm"
-      disabled={disabled}
+      disabled={disabled || isSubmitting}
       className="h-8"
     >
       <Plus className="w-4 h-4 mr-1" />
@@ -187,133 +169,85 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
         {triggerContent}
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start" sideOffset={4}>
-        {selectedType === null ? (
-          // Type selection screen
-          <div>
-            {/* Header with search */}
-            <div className="p-3 border-b border-gray-100">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Search or describe your column"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9 text-sm border-blue-500 focus-visible:ring-blue-500"
-                  autoFocus
-                />
-                {isOpen && (
-                  <button
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <X className="w-4 h-4 text-gray-400" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Column types */}
-            <div className="p-2 max-h-80 overflow-y-auto">
-              {error && (
-                <div className="px-2 py-1.5 mb-2 text-xs text-amber-700 bg-amber-50 rounded">
-                  {error}
-                </div>
-              )}
-              
-              {/* Essentials */}
-              {essentials.length > 0 && (
-                <>
-                  <div className="px-2 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Essentials
-                  </div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {essentials.map((option) => (
-                      <ColumnTypeButton
-                        key={option.type}
-                        option={option}
-                        onClick={() => handleSelectType(option.type)}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {/* Super useful */}
-              {superUseful.length > 0 && (
-                <>
-                  <div className="px-2 py-1.5 mt-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Super useful
-                  </div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {superUseful.map((option) => (
-                      <ColumnTypeButton
-                        key={option.type}
-                        option={option}
-                        onClick={() => handleSelectType(option.type)}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {filteredTypes.length === 0 && (
-                <div className="px-2 py-8 text-sm text-gray-500 text-center">
-                  No matching column types
-                </div>
+        <div>
+          {/* Header with search */}
+          <div className="p-3 border-b border-gray-100">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search or describe your column"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-sm border-blue-500 focus-visible:ring-blue-500"
+                autoFocus
+              />
+              {isOpen && (
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
               )}
             </div>
           </div>
-        ) : (
-          // Name input screen
-          <div className="p-4">
-            <button
-              className="text-xs text-gray-500 hover:text-gray-700 mb-3 flex items-center"
-              onClick={handleBack}
-            >
-              ← Back
-            </button>
-            <div className="flex items-center gap-2 mb-4">
-              <span className={`w-6 h-6 rounded flex items-center justify-center ${COLUMN_TYPES.find((t) => t.type === selectedType)?.iconBg}`}>
-                {COLUMN_TYPES.find((t) => t.type === selectedType)?.icon}
-              </span>
-              <span className="text-sm font-medium text-gray-800">
-                {COLUMN_TYPES.find((t) => t.type === selectedType)?.label} Column
-              </span>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="column-label" className="text-xs">
-                  Column Name
-                </Label>
-                <Input
-                  id="column-label"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="Enter column name"
-                  className="mt-1 h-9 text-sm"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && label.trim()) {
-                      handleSubmit()
-                    }
-                  }}
-                />
+
+          {/* Column types */}
+          <div className="p-2 max-h-80 overflow-y-auto">
+            {error && (
+              <div className="px-2 py-1.5 mb-2 text-xs text-amber-700 bg-amber-50 rounded">
+                {error}
               </div>
-              {error && (
-                <div className="text-xs text-red-600">{error}</div>
-              )}
-              <Button
-                size="sm"
-                className="w-full h-9"
-                onClick={handleSubmit}
-                disabled={!label.trim() || isSubmitting}
-              >
-                {isSubmitting ? "Adding..." : "Add Column"}
-              </Button>
-            </div>
+            )}
+            
+            {/* Essentials */}
+            {essentials.length > 0 && (
+              <>
+                <div className="px-2 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Essentials
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {essentials.map((option) => (
+                    <ColumnTypeButton
+                      key={option.type}
+                      option={option}
+                      onClick={() => handleSelectType(option)}
+                      isLoading={isSubmitting && submittingType === option.type}
+                      disabled={isSubmitting}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Super useful */}
+            {superUseful.length > 0 && (
+              <>
+                <div className="px-2 py-1.5 mt-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Super useful
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {superUseful.map((option) => (
+                    <ColumnTypeButton
+                      key={option.type}
+                      option={option}
+                      onClick={() => handleSelectType(option)}
+                      isLoading={isSubmitting && submittingType === option.type}
+                      disabled={isSubmitting}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {filteredTypes.length === 0 && (
+              <div className="px-2 py-8 text-sm text-gray-500 text-center">
+                No matching column types
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -322,18 +256,31 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
 // Column type button component
 function ColumnTypeButton({ 
   option, 
-  onClick 
+  onClick,
+  isLoading,
+  disabled,
 }: { 
   option: ColumnTypeOption
   onClick: () => void 
+  isLoading?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
-      className="flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-100 transition-colors text-left w-full"
+      className={`
+        flex items-center gap-2 px-2 py-2 rounded 
+        hover:bg-gray-100 transition-colors text-left w-full
+        disabled:opacity-50 disabled:cursor-not-allowed
+      `}
       onClick={onClick}
+      disabled={disabled}
     >
       <span className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${option.iconBg}`}>
-        {option.icon}
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 text-white animate-spin" />
+        ) : (
+          option.icon
+        )}
       </span>
       <span className="text-sm text-gray-700 truncate">{option.label}</span>
     </button>
