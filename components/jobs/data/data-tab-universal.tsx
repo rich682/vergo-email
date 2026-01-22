@@ -93,7 +93,10 @@ export function DataTabUniversal({
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [isDeleteDataConfirmOpen, setIsDeleteDataConfirmOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deletingData, setDeletingData] = useState(false)
   const [updatingVisibility, setUpdatingVisibility] = useState(false)
 
   // Current lineage ID (may be updated after enable)
@@ -226,6 +229,34 @@ export function DataTabUniversal({
     }
   }
 
+  const handleDeleteData = async () => {
+    if (!dataStatus?.datasetTemplate?.latestSnapshot) return
+    
+    setDeletingData(true)
+    try {
+      const response = await fetch(
+        `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${dataStatus.datasetTemplate.latestSnapshot.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to delete data")
+      }
+
+      setIsDeleteDataConfirmOpen(false)
+      fetchDataStatus()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete data"
+      setError(message)
+    } finally {
+      setDeletingData(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -310,7 +341,8 @@ export function DataTabUniversal({
   // State 3: Data enabled WITH schema - show data management UI
   const template = dataStatus.datasetTemplate!
   const hasSnapshots = template.snapshotCount > 0
-  const canDelete = !hasSnapshots
+  const canDeleteSchema = !hasSnapshots
+  const hasStakeholderSettings = !!template.stakeholderMapping?.columnKey
 
   return (
     <>
@@ -322,17 +354,20 @@ export function DataTabUniversal({
             <span className="text-sm text-gray-600">
               {template.schema.length} columns configured
             </span>
-            {hasSnapshots && (
-              <>
-                <span className="text-gray-300">•</span>
-                <span className="text-sm text-gray-600">
-                  {template.snapshotCount} snapshot{template.snapshotCount !== 1 ? "s" : ""}
-                </span>
-              </>
-            )}
           </div>
           
           <div className="flex items-center gap-2">
+            {hasStakeholderSettings && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSettingsOpen(true)}
+                title="Data Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
+            
             <Button
               variant="outline"
               size="sm"
@@ -342,7 +377,7 @@ export function DataTabUniversal({
               Download Template
             </Button>
             
-            {canDelete && (
+            {canDeleteSchema && (
               <Button
                 variant="outline"
                 size="sm"
@@ -354,67 +389,17 @@ export function DataTabUniversal({
               </Button>
             )}
             
-            <Button
-              size="sm"
-              onClick={() => setIsUploadModalOpen(true)}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Data
-            </Button>
+            {!hasSnapshots && (
+              <Button
+                size="sm"
+                onClick={() => setIsUploadModalOpen(true)}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Data
+              </Button>
+            )}
           </div>
         </div>
-
-        {/* Data Settings - only show if stakeholder column configured */}
-        {template.stakeholderMapping?.columnKey && (
-          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-            <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-              <Settings className="w-4 h-4 text-gray-500" />
-              Data Settings
-            </h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Stakeholder Visibility</p>
-                    <p className="text-xs text-gray-500">
-                      Column: {template.schema.find(c => c.key === template.stakeholderMapping?.columnKey)?.label || template.stakeholderMapping.columnKey}
-                    </p>
-                  </div>
-                </div>
-                <Select
-                  value={template.stakeholderMapping.visibility || "all_rows"}
-                  onValueChange={(value) => handleVisibilityChange(value as "own_rows" | "all_rows")}
-                  disabled={updatingVisibility}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all_rows">
-                      <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4" />
-                        <span>See all rows</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="own_rows">
-                      <div className="flex items-center gap-2">
-                        <EyeOff className="w-4 h-4" />
-                        <span>Own rows only</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-xs text-gray-500">
-                {template.stakeholderMapping.visibility === "own_rows" 
-                  ? "Stakeholders will only see rows where their email matches the stakeholder column."
-                  : "All stakeholders can see all rows in the dataset."
-                }
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Latest Snapshot Info or Empty State */}
         {hasSnapshots && template.latestSnapshot ? (
@@ -424,7 +409,7 @@ export function DataTabUniversal({
                 <CheckCircle2 className="w-5 h-5 text-green-600" />
                 <div>
                   <p className="text-sm font-medium text-green-900">
-                    Latest Data: {template.latestSnapshot.rowCount.toLocaleString()} rows
+                    Data uploaded: {template.latestSnapshot.rowCount.toLocaleString()} rows
                   </p>
                   <p className="text-xs text-green-700">
                     Uploaded {format(new Date(template.latestSnapshot.createdAt), "MMM d, yyyy 'at' h:mm a")}
@@ -432,6 +417,15 @@ export function DataTabUniversal({
                   </p>
                 </div>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDeleteDataConfirmOpen(true)}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Data
+              </Button>
             </div>
           </div>
         ) : (
@@ -441,7 +435,7 @@ export function DataTabUniversal({
               No data uploaded yet
             </h4>
             <p className="text-sm text-gray-500 mb-4">
-              Upload a CSV file to add data for this task period.
+              Upload a CSV or Excel file to add data for this task.
             </p>
             <Button onClick={() => setIsUploadModalOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />
@@ -461,7 +455,68 @@ export function DataTabUniversal({
         onUploaded={handleUploadComplete}
       />
 
-      {/* Delete Confirmation Modal */}
+      {/* Settings Modal */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-gray-500" />
+              Data Settings
+            </DialogTitle>
+          </DialogHeader>
+          {template.stakeholderMapping?.columnKey && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Stakeholder Visibility</p>
+                    <p className="text-xs text-gray-500">
+                      Column: {template.schema.find(c => c.key === template.stakeholderMapping?.columnKey)?.label || template.stakeholderMapping.columnKey}
+                    </p>
+                  </div>
+                </div>
+                <Select
+                  value={template.stakeholderMapping.visibility || "all_rows"}
+                  onValueChange={(value) => handleVisibilityChange(value as "own_rows" | "all_rows")}
+                  disabled={updatingVisibility}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all_rows">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4" />
+                        <span>See all rows</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="own_rows">
+                      <div className="flex items-center gap-2">
+                        <EyeOff className="w-4 h-4" />
+                        <span>Own rows only</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  {template.stakeholderMapping.visibility === "own_rows" 
+                    ? "Stakeholders will only see rows where their email matches the stakeholder column."
+                    : "All stakeholders can see all rows in the dataset."
+                  }
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Schema Confirmation Modal */}
       <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -487,6 +542,38 @@ export function DataTabUniversal({
               disabled={deleting}
             >
               {deleting ? "Deleting..." : "Delete Schema"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Data Confirmation Modal */}
+      <Dialog open={isDeleteDataConfirmOpen} onOpenChange={setIsDeleteDataConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="w-5 h-5" />
+              Delete Data
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the uploaded data ({template.latestSnapshot?.rowCount.toLocaleString()} rows)? 
+              This action cannot be undone. You will need to upload data again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDataConfirmOpen(false)}
+              disabled={deletingData}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteData}
+              disabled={deletingData}
+            >
+              {deletingData ? "Deleting..." : "Delete Data"}
             </Button>
           </DialogFooter>
         </DialogContent>
