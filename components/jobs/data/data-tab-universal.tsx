@@ -33,12 +33,20 @@ import {
   schemaToColumns,
   createV1CellResolver,
   createEmptyFilterState,
+  AddColumnButton,
+  NotesCell,
+  StatusCell,
+  OwnerCell,
+  AttachmentsCell,
 } from "@/components/data-grid"
+import type { AppColumnType, StatusOption, TeamMember } from "@/components/data-grid"
 import type {
   SheetContext,
   SheetMetadata,
   GridFilterState,
   ColumnDefinition,
+  CellValue,
+  CellResolver,
 } from "@/lib/data-grid/types"
 
 interface SchemaColumn {
@@ -84,6 +92,25 @@ interface DataStatus {
   enabled: boolean
   schemaConfigured: boolean
   datasetTemplate: DatasetTemplate | null
+}
+
+// App column types
+interface AppColumnDef {
+  id: string
+  key: string
+  label: string
+  dataType: "text" | "status" | "attachment" | "user"
+  config?: {
+    options?: StatusOption[]
+  } | null
+  position: number
+}
+
+interface AppColumnValueData {
+  [rowIdentity: string]: {
+    value: unknown
+    updatedAt: string
+  }
 }
 
 interface DataTabUniversalProps {
@@ -133,6 +160,12 @@ export function DataTabUniversal({
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
   const [filterState, setFilterState] = useState<GridFilterState>(createEmptyFilterState())
   const [columns, setColumns] = useState<ColumnDefinition[]>([])
+  
+  // App columns state
+  const [appColumns, setAppColumns] = useState<AppColumnDef[]>([])
+  const [appColumnValues, setAppColumnValues] = useState<Map<string, AppColumnValueData>>(new Map())
+  const [loadingAppColumns, setLoadingAppColumns] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
 
   const fetchDataStatus = useCallback(async () => {
     setLoading(true)
@@ -163,18 +196,167 @@ export function DataTabUniversal({
     fetchDataStatus()
   }, [fetchDataStatus])
 
+  // Fetch app columns when lineageId is available
+  const fetchAppColumns = useCallback(async () => {
+    if (!currentLineageId) return
+
+    setLoadingAppColumns(true)
+    try {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-columns`,
+        { credentials: "include" }
+      )
+
+      if (!response.ok) {
+        console.error("Failed to fetch app columns")
+        return
+      }
+
+      const data = await response.json()
+      setAppColumns(data.columns || [])
+    } catch (err) {
+      console.error("Error fetching app columns:", err)
+    } finally {
+      setLoadingAppColumns(false)
+    }
+  }, [currentLineageId])
+
+  // Fetch app column values for all columns
+  const fetchAppColumnValues = useCallback(async (rowIdentities: string[]) => {
+    if (!currentLineageId || appColumns.length === 0 || rowIdentities.length === 0) return
+
+    try {
+      const identitiesParam = rowIdentities.join(",")
+      const valueMap = new Map<string, AppColumnValueData>()
+
+      // Fetch values for each column
+      await Promise.all(
+        appColumns.map(async (col) => {
+          const response = await fetch(
+            `/api/task-lineages/${currentLineageId}/app-columns/${col.id}/values?identities=${encodeURIComponent(identitiesParam)}`,
+            { credentials: "include" }
+          )
+
+          if (response.ok) {
+            const data = await response.json()
+            valueMap.set(col.id, data.values || {})
+          }
+        })
+      )
+
+      setAppColumnValues(valueMap)
+    } catch (err) {
+      console.error("Error fetching app column values:", err)
+    }
+  }, [currentLineageId, appColumns])
+
+  // Fetch team members for owner column
+  const fetchTeamMembers = useCallback(async () => {
+    try {
+      const response = await fetch("/api/team", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setTeamMembers(data.members || [])
+      }
+    } catch (err) {
+      console.error("Error fetching team members:", err)
+    }
+  }, [])
+
+  // Handle adding a new app column
+  const handleAddColumn = useCallback(async (type: AppColumnType, label: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-columns`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ label, dataType: type }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to add column")
+    }
+
+    // Refresh app columns
+    fetchAppColumns()
+  }, [currentLineageId, fetchAppColumns])
+
+  // Handle updating a cell value
+  const handleCellValueUpdate = useCallback(async (
+    columnId: string,
+    rowIdentity: string,
+    value: unknown
+  ) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-columns/${columnId}/values/${encodeURIComponent(rowIdentity)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ value }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to update value")
+    }
+
+    // Update local state
+    setAppColumnValues(prev => {
+      const newMap = new Map(prev)
+      const columnValues = newMap.get(columnId) || {}
+      newMap.set(columnId, {
+        ...columnValues,
+        [rowIdentity]: {
+          value,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+      return newMap
+    })
+  }, [currentLineageId])
+
   // Update lineageId when it changes
   useEffect(() => {
     setCurrentLineageId(lineageId)
   }, [lineageId])
 
-  // Initialize columns from schema when dataStatus changes
+  // Fetch app columns when lineageId becomes available
+  useEffect(() => {
+    if (currentLineageId) {
+      fetchAppColumns()
+      fetchTeamMembers()
+    }
+  }, [currentLineageId, fetchAppColumns, fetchTeamMembers])
+
+  // Initialize columns from schema and app columns
   useEffect(() => {
     if (dataStatus?.datasetTemplate?.schema) {
-      const cols = schemaToColumns(dataStatus.datasetTemplate.schema)
-      setColumns(cols)
+      const sourceCols = schemaToColumns(dataStatus.datasetTemplate.schema)
+      
+      // Convert app columns to ColumnDefinition format
+      const appCols: ColumnDefinition[] = appColumns.map(col => ({
+        id: `app_${col.id}`,
+        key: col.key,
+        label: col.label,
+        kind: "app" as const,
+        dataType: col.dataType as ColumnDefinition["dataType"],
+        isFilterable: col.dataType === "text" || col.dataType === "status",
+        isSortable: col.dataType === "text" || col.dataType === "status",
+        isVisible: true,
+      }))
+      
+      setColumns([...sourceCols, ...appCols])
     }
-  }, [dataStatus?.datasetTemplate?.schema])
+  }, [dataStatus?.datasetTemplate?.schema, appColumns])
 
   // Initialize current sheet when snapshots are available
   useEffect(() => {
@@ -223,11 +405,79 @@ export function DataTabUniversal({
     }
   }, [currentSheet, fetchSnapshotRows])
 
-  // Create cell resolver
-  const cellResolver = useMemo(() => {
+  // Fetch app column values when snapshot rows are loaded
+  useEffect(() => {
+    if (snapshotRows.length > 0 && appColumns.length > 0 && dataStatus?.datasetTemplate?.identityKey) {
+      const identityKey = dataStatus.datasetTemplate.identityKey
+      const identities = snapshotRows
+        .map(row => String(row[identityKey] || ""))
+        .filter(Boolean)
+      
+      if (identities.length > 0) {
+        fetchAppColumnValues(identities)
+      }
+    }
+  }, [snapshotRows, appColumns, dataStatus?.datasetTemplate?.identityKey, fetchAppColumnValues])
+
+  // Create cell resolver that handles both source and app columns
+  const cellResolver = useMemo<CellResolver | null>(() => {
     if (!dataStatus?.datasetTemplate?.identityKey) return null
-    return createV1CellResolver(dataStatus.datasetTemplate.identityKey)
-  }, [dataStatus?.datasetTemplate?.identityKey])
+    
+    const identityKey = dataStatus.datasetTemplate.identityKey
+    const baseResolver = createV1CellResolver(identityKey)
+    
+    // Return an extended resolver that handles app columns
+    return {
+      getRowId: baseResolver.getRowId,
+      getCellValue: (args) => {
+        const { row, column, sheet } = args
+        
+        // For source columns, use the base resolver
+        if (column.kind === "source") {
+          return baseResolver.getCellValue(args)
+        }
+        
+        // For app columns, look up value from appColumnValues
+        if (column.kind === "app") {
+          const columnId = column.id.replace("app_", "")
+          const rowIdentity = String(row[identityKey] || "")
+          const columnValues = appColumnValues.get(columnId)
+          const cellData = columnValues?.[rowIdentity]
+          
+          if (!cellData || cellData.value === null || cellData.value === undefined) {
+            return { type: "empty" }
+          }
+          
+          // Convert stored value to CellValue based on column type
+          const appCol = appColumns.find(c => c.id === columnId)
+          if (appCol?.dataType === "text") {
+            const textVal = cellData.value as { text?: string }
+            return { type: "text", value: textVal.text || "" }
+          }
+          if (appCol?.dataType === "status") {
+            const statusVal = cellData.value as { statusKey?: string }
+            const option = appCol.config?.options?.find(o => o.key === statusVal.statusKey)
+            return { type: "label", value: option ? [option.label] : [] }
+          }
+          if (appCol?.dataType === "user") {
+            const userVal = cellData.value as { userId?: string }
+            const user = teamMembers.find(m => m.id === userVal.userId)
+            if (user) {
+              return { type: "user", value: { userId: user.id, display: user.name || user.email } }
+            }
+          }
+          if (appCol?.dataType === "attachment") {
+            const attachVal = cellData.value as { files?: unknown[] }
+            return { type: "attachment", value: (attachVal.files || []) as any }
+          }
+          
+          return { type: "empty" }
+        }
+        
+        return { type: "empty" }
+      },
+    }
+  }, [dataStatus?.datasetTemplate?.identityKey, appColumnValues, appColumns, teamMembers])
 
   // Convert API snapshots to SheetMetadata
   const sheets: SheetMetadata[] = useMemo(() => {
@@ -471,11 +721,22 @@ export function DataTabUniversal({
           <div className="flex items-center gap-2">
             <Table2 className="w-5 h-5 text-gray-500" />
             <span className="text-sm text-gray-600">
-              {template.schema.length} columns configured
+              {template.schema.length + appColumns.length} columns
+              {appColumns.length > 0 && (
+                <span className="text-gray-400 ml-1">
+                  ({appColumns.length} custom)
+                </span>
+              )}
             </span>
           </div>
           
           <div className="flex items-center gap-2">
+            {hasSnapshots && (
+              <AddColumnButton
+                onAddColumn={handleAddColumn}
+                disabled={loadingAppColumns}
+              />
+            )}
             {hasStakeholderSettings && (
               <Button
                 variant="outline"

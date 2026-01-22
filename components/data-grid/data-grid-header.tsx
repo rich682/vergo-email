@@ -5,19 +5,18 @@
  *
  * Sticky header row with:
  * - Column labels
- * - Excel-style filter dropdown per column
- * - Sort indicators
+ * - Excel-style filter dropdown with checkboxes for value selection
+ * - Sort options
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import type {
   ColumnDefinition,
   ColumnSort,
   ColumnFilter,
   DataGridHeaderProps,
-  FilterOperator,
 } from "@/lib/data-grid/types"
-import { ChevronDown, ArrowUpAZ, ArrowDownAZ, Filter } from "lucide-react"
+import { ChevronDown, ArrowUpAZ, ArrowDownAZ, Check, Search } from "lucide-react"
 import {
   Popover,
   PopoverContent,
@@ -33,6 +32,7 @@ export function DataGridHeader({
   columnFilters,
   onColumnFilterChange,
   totalWidth,
+  columnUniqueValues,
 }: DataGridHeaderProps) {
   const visibleColumns = columns.filter((c) => c.isVisible)
 
@@ -44,6 +44,7 @@ export function DataGridHeader({
       {visibleColumns.map((column) => {
         const isActive = sort?.columnId === column.id
         const currentFilter = columnFilters.find((f) => f.columnId === column.id)
+        const uniqueValues = columnUniqueValues?.find((uv) => uv.columnId === column.id)
 
         return (
           <ColumnHeader
@@ -54,6 +55,7 @@ export function DataGridHeader({
             currentFilter={currentFilter || null}
             onSortChange={onSortChange}
             onFilterChange={(filter) => onColumnFilterChange(filter, column.id)}
+            uniqueValues={uniqueValues?.values || []}
           />
         )
       })}
@@ -72,6 +74,7 @@ interface ColumnHeaderProps {
   currentFilter: ColumnFilter | null
   onSortChange: (sort: ColumnSort | null) => void
   onFilterChange: (filter: ColumnFilter | null) => void
+  uniqueValues: string[]
 }
 
 function ColumnHeader({
@@ -81,11 +84,40 @@ function ColumnHeader({
   currentFilter,
   onSortChange,
   onFilterChange,
+  uniqueValues,
 }: ColumnHeaderProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [filterValue, setFilterValue] = useState(
-    currentFilter?.value !== undefined ? String(currentFilter.value) : ""
-  )
+  const [searchQuery, setSearchQuery] = useState("")
+  
+  // Track selected values - initialize from current filter
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(() => {
+    if (currentFilter?.operator === "in_values" && currentFilter.selectedValues) {
+      return new Set(currentFilter.selectedValues)
+    }
+    // If no filter, all values are selected by default
+    return new Set([...uniqueValues, "__BLANK__"])
+  })
+
+  // Reset selection when popover opens
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open)
+    if (open) {
+      setSearchQuery("")
+      // Reset to current filter state
+      if (currentFilter?.operator === "in_values" && currentFilter.selectedValues) {
+        setSelectedValues(new Set(currentFilter.selectedValues))
+      } else {
+        setSelectedValues(new Set([...uniqueValues, "__BLANK__"]))
+      }
+    }
+  }, [currentFilter, uniqueValues])
+
+  // Filter values by search query
+  const filteredValues = useMemo(() => {
+    if (!searchQuery.trim()) return uniqueValues
+    const query = searchQuery.toLowerCase()
+    return uniqueValues.filter((v) => v.toLowerCase().includes(query))
+  }, [uniqueValues, searchQuery])
 
   const handleSortAsc = useCallback(() => {
     onSortChange({ columnId: column.id, direction: "asc" })
@@ -97,30 +129,53 @@ function ColumnHeader({
     setIsOpen(false)
   }, [column.id, onSortChange])
 
+  const handleToggleValue = useCallback((value: string) => {
+    setSelectedValues((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) {
+        next.delete(value)
+      } else {
+        next.add(value)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedValues(new Set([...uniqueValues, "__BLANK__"]))
+  }, [uniqueValues])
+
+  const handleClearAll = useCallback(() => {
+    setSelectedValues(new Set())
+  }, [])
+
   const handleApplyFilter = useCallback(() => {
-    if (!filterValue.trim()) {
+    const allValues = new Set([...uniqueValues, "__BLANK__"])
+    const allSelected = selectedValues.size === allValues.size && 
+      [...allValues].every((v) => selectedValues.has(v))
+
+    if (allSelected || selectedValues.size === 0) {
+      // All selected or none selected = no filter
       onFilterChange(null)
     } else {
-      const operator = getDefaultOperator(column.dataType)
-      const value = column.dataType === "number" || column.dataType === "currency"
-        ? parseFloat(filterValue) || 0
-        : filterValue
       onFilterChange({
         columnId: column.id,
-        operator,
-        value,
+        operator: "in_values",
+        selectedValues: Array.from(selectedValues),
       })
     }
     setIsOpen(false)
-  }, [column.id, column.dataType, filterValue, onFilterChange])
+  }, [column.id, onFilterChange, selectedValues, uniqueValues])
 
   const handleClearFilter = useCallback(() => {
-    setFilterValue("")
+    setSelectedValues(new Set([...uniqueValues, "__BLANK__"]))
     onFilterChange(null)
     setIsOpen(false)
-  }, [onFilterChange])
+  }, [onFilterChange, uniqueValues])
 
   const hasFilter = currentFilter !== null
+  const allSelected = selectedValues.size === uniqueValues.length + 1 // +1 for blanks
+  const noneSelected = selectedValues.size === 0
 
   return (
     <div
@@ -142,7 +197,7 @@ function ColumnHeader({
       </span>
       
       {/* Filter dropdown trigger */}
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
             className={`
@@ -156,7 +211,7 @@ function ColumnHeader({
           </button>
         </PopoverTrigger>
         <PopoverContent 
-          className="w-52 p-0" 
+          className="w-64 p-0" 
           align="start"
           onClick={(e) => e.stopPropagation()}
         >
@@ -191,32 +246,87 @@ function ColumnHeader({
             )}
             
             {/* Filter section */}
-            {column.isFilterable && (
+            {column.isFilterable && uniqueValues.length > 0 && (
               <div className="p-2">
-                <div className="flex items-center gap-1 mb-2">
-                  <Filter className="w-3.5 h-3.5 text-gray-500" />
-                  <span className="text-xs font-medium text-gray-600">Filter</span>
+                {/* Filter header */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-600">Filter by values</span>
                   {hasFilter && (
                     <button
-                      className="ml-auto text-xs text-gray-500 hover:text-gray-700"
+                      className="text-xs text-blue-600 hover:text-blue-700"
                       onClick={handleClearFilter}
                     >
                       Clear
                     </button>
                   )}
                 </div>
-                <Input
-                  type={column.dataType === "number" || column.dataType === "currency" ? "number" : "text"}
-                  placeholder={getFilterPlaceholder(column.dataType)}
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                  className="h-7 text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleApplyFilter()
-                    }
-                  }}
-                />
+
+                {/* Search input */}
+                {uniqueValues.length > 5 && (
+                  <div className="relative mb-2">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-7 text-sm pl-7"
+                    />
+                  </div>
+                )}
+
+                {/* Select All / Clear */}
+                <div className="flex items-center justify-between mb-1 text-xs">
+                  <button
+                    className="text-gray-600 hover:text-gray-800"
+                    onClick={handleSelectAll}
+                  >
+                    Select all {filteredValues.length}
+                  </button>
+                  <span className="text-gray-400">-</span>
+                  <button
+                    className="text-gray-600 hover:text-gray-800"
+                    onClick={handleClearAll}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {/* Value checkboxes */}
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
+                  {/* Blanks option */}
+                  <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
+                    <Checkbox
+                      checked={selectedValues.has("__BLANK__")}
+                      onChange={() => handleToggleValue("__BLANK__")}
+                    />
+                    <span className="text-sm text-gray-500 italic">(Blanks)</span>
+                  </label>
+
+                  {/* Value options */}
+                  {filteredValues.map((value) => (
+                    <label
+                      key={value}
+                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={selectedValues.has(value)}
+                        onChange={() => handleToggleValue(value)}
+                      />
+                      <span className="text-sm truncate" title={value}>
+                        {value}
+                      </span>
+                    </label>
+                  ))}
+
+                  {filteredValues.length === 0 && searchQuery && (
+                    <div className="px-2 py-3 text-sm text-gray-500 text-center">
+                      No matching values
+                    </div>
+                  )}
+                </div>
+
+                {/* Apply button */}
                 <Button
                   size="sm"
                   className="w-full mt-2 h-7 text-xs"
@@ -226,10 +336,47 @@ function ColumnHeader({
                 </Button>
               </div>
             )}
+
+            {/* Empty state for no values */}
+            {column.isFilterable && uniqueValues.length === 0 && (
+              <div className="p-4 text-sm text-gray-500 text-center">
+                No values to filter
+              </div>
+            )}
           </div>
         </PopoverContent>
       </Popover>
     </div>
+  )
+}
+
+// ============================================
+// Checkbox Component
+// ============================================
+
+interface CheckboxProps {
+  checked: boolean
+  onChange: () => void
+}
+
+function Checkbox({ checked, onChange }: CheckboxProps) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault()
+        onChange()
+      }}
+      className={`
+        w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
+        ${checked 
+          ? "bg-blue-600 border-blue-600" 
+          : "bg-white border-gray-300 hover:border-gray-400"
+        }
+      `}
+    >
+      {checked && <Check className="w-3 h-3 text-white" />}
+    </button>
   )
 }
 
@@ -249,31 +396,5 @@ function getDefaultWidth(dataType: string): number {
     case "text":
     default:
       return 180
-  }
-}
-
-function getDefaultOperator(dataType: string): FilterOperator {
-  switch (dataType) {
-    case "number":
-    case "currency":
-      return "equals"
-    case "date":
-      return "on"
-    case "boolean":
-      return "is_true"
-    default:
-      return "contains"
-  }
-}
-
-function getFilterPlaceholder(dataType: string): string {
-  switch (dataType) {
-    case "number":
-    case "currency":
-      return "Enter value..."
-    case "date":
-      return "YYYY-MM-DD"
-    default:
-      return "Contains..."
   }
 }

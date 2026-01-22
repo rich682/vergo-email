@@ -223,6 +223,25 @@ export function matchesFilter(cell: CellValue, filter: ColumnFilter): boolean {
     return cell.type !== "empty"
   }
 
+  // Handle in_values (multi-select checkbox filter like Excel)
+  if (filter.operator === "in_values") {
+    const selectedValues = filter.selectedValues || []
+    if (selectedValues.length === 0) {
+      return true // No filter applied
+    }
+    
+    // Get the display text for the cell
+    const cellText = getCellDisplayText(cell)
+    
+    // Check if "(Blanks)" is selected and cell is empty
+    if (cell.type === "empty" && selectedValues.includes("__BLANK__")) {
+      return true
+    }
+    
+    // Check if cell value is in selected values
+    return selectedValues.includes(cellText)
+  }
+
   // Empty cells don't match other filters
   if (cell.type === "empty" || cell.type === "error") {
     return false
@@ -522,4 +541,64 @@ export function getMinColumnWidth(dataType: DataType): number {
     default:
       return 100
   }
+}
+
+// ============================================
+// Unique Value Extraction (for value-based filtering)
+// ============================================
+
+/**
+ * Extract unique values from a column for value-based filtering.
+ * Returns sorted unique values as strings, plus a count of blank values.
+ */
+export function extractColumnUniqueValues(
+  rows: Record<string, unknown>[],
+  column: ColumnDefinition,
+  resolver: CellResolver,
+  sheet: SheetContext
+): { values: string[]; blankCount: number } {
+  const valueSet = new Set<string>()
+  let blankCount = 0
+
+  for (const row of rows) {
+    const cell = resolver.getCellValue({ row, column, sheet })
+    
+    if (cell.type === "empty") {
+      blankCount++
+    } else {
+      const displayText = getCellDisplayText(cell)
+      if (displayText) {
+        valueSet.add(displayText)
+      } else {
+        blankCount++
+      }
+    }
+  }
+
+  // Sort values alphabetically (case-insensitive)
+  const values = Array.from(valueSet).sort((a, b) => 
+    a.toLowerCase().localeCompare(b.toLowerCase())
+  )
+
+  return { values, blankCount }
+}
+
+/**
+ * Extract unique values for all columns.
+ */
+export function extractAllColumnUniqueValues(
+  rows: Record<string, unknown>[],
+  columns: ColumnDefinition[],
+  resolver: CellResolver,
+  sheet: SheetContext
+): Map<string, { values: string[]; blankCount: number }> {
+  const result = new Map<string, { values: string[]; blankCount: number }>()
+
+  for (const column of columns) {
+    if (column.isFilterable) {
+      result.set(column.id, extractColumnUniqueValues(rows, column, resolver, sheet))
+    }
+  }
+
+  return result
 }

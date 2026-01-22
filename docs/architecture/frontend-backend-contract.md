@@ -1,6 +1,6 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-21  
+> **Living Document** - Last updated: 2026-01-22  
 > **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -34,10 +34,11 @@ A Job (TaskInstance) is the atomic unit in the system. Rather than having differ
 | Capability | Description | API Route Patterns | Workflows |
 |------------|-------------|-------------------|-----------|
 | **Core** | Basic job operations available to all jobs | `/api/task-instances/[id]`, `/api/task-instances/[id]/collaborators`, `/api/task-instances/[id]/comments` | WF-03a, WF-03f, WF-03g, WF-04a-h |
-| **Table** | Structured data, schema, import, variance | `/api/task-instances/[id]/table/*`, `/api/task-lineages/*` | WF-03b, WF-03d, WF-03e |
+| **Table** | Structured data, schema, import, variance | `/api/task-instances/[id]/table/*`, `/api/task-lineages/[id]/schema` | WF-03b, WF-03d, WF-03e |
 | **Reconciliation** | Document comparison, anchor/supporting model | `/api/task-instances/[id]/reconciliations/*` | WF-03c, WF-03h, WF-03i |
-| **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-n |
+| **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-r |
 | **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
+| **Data** | Opt-in spreadsheet data management with custom columns | `/api/task-instances/[id]/data/*`, `/api/datasets/*`, `/api/task-lineages/[id]/app-columns/*` | WF-10a-j |
 
 ### UI Terminology Mapping
 
@@ -216,7 +217,7 @@ Every route has two classification fields:
 
 ## Section C: API Route Inventory
 
-### FRONTEND Routes (75 routes)
+### FRONTEND Routes (79 routes)
 
 Routes with verified `fetch()` calls from `app/` or `components/`.
 
@@ -294,6 +295,10 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-instances/column-config` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/configurable-table/configurable-table.tsx:186,209` |
 | `/api/task-instances/template` | GET | FRONTEND | URL_GENERATION | `components/jobs/ai-bulk-upload-modal.tsx:310` (window.open) |
 | `/api/task-lineages/[id]/schema` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:93,116` |
+| `/api/task-lineages/[id]/app-columns` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10g) |
+| `/api/task-lineages/[id]/app-columns/[columnId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10j) |
+| `/api/task-lineages/[id]/app-columns/[columnId]/values` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10h) |
+| `/api/task-lineages/[id]/app-columns/[columnId]/values/[rowIdentity]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10h) |
 | `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
 | `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
 | `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
@@ -371,7 +376,6 @@ Routes with no detected callers. Caller Type: `UNKNOWN`, Call Style: `NONE`.
 | `/api/task-instances/[id]/attachments` | GET, POST | attachment.service | `rg "\/attachments[^/]" -n app components` |
 | `/api/task-instances/[id]/labels/[labelId]` | GET, PATCH, DELETE | task-instance-label | `rg "\/labels\/[^r]" -n app components` |
 | `/api/task-instances/[id]/request/dataset/preview` | GET, POST | task-instance | `rg "\/dataset\/preview" -n app components` |
-| `/api/task-lineages/[id]` | GET, PATCH, DELETE | task-lineage | `rg "\/api\/task-lineages\/[^s]" -n app components` |
 
 ---
 
@@ -382,8 +386,8 @@ Routes with no detected callers. Caller Type: `UNKNOWN`, Call Style: `NONE`.
 | Category | Count | Description |
 |----------|-------|-------------|
 | Feature-flagged | 5 | Quest routes behind `QUEST_*` flags |
-| Missing wiring | 7 | Valid functionality, needs UI integration |
-| Recently wired | 5 | Wired in P1 Sprint 2026-01-21 |
+| Missing wiring | 6 | Valid functionality, needs UI integration |
+| Recently wired | 6 | Wired in P1 Sprint 2026-01-21/22 |
 | Duplicate/Legacy | 2 | Can be safely removed |
 | Internal metrics | 1 | Not for frontend use |
 | Unclear purpose | 1 | Needs investigation |
@@ -401,7 +405,7 @@ These routes support Quest functionality behind feature flags:
 
 **Flags**: `NEXT_PUBLIC_QUEST_UI`, `QUEST_AI_INTERPRETER`, `QUEST_STANDING`
 
-#### Missing Wiring (7)
+#### Missing Wiring (6)
 
 | Route | Sub-Workflow | Workflow Justification | Recommended Action |
 |-------|--------------|----------------------|-------------------|
@@ -411,9 +415,8 @@ These routes support Quest functionality behind feature flags:
 | `/api/task-instances/[id]/attachments` | WF-04e | File attachments on jobs | Wire to job detail attachments section |
 | `/api/task-instances/[id]/labels/[labelId]` | WF-05a | Label management | Wire to label edit/delete UI |
 | `/api/task-instances/[id]/request/dataset/preview` | WF-05b | Preview personalization | Wire to dataset preview step |
-| `/api/task-lineages/[id]` | WF-03b | Lineage management | Wire to recurring job lineage settings |
 
-#### Recently Wired (5) - 2026-01-21
+#### Recently Wired (6) - 2026-01-21/22
 
 | Route | Sub-Workflow | Component | Evidence |
 |-------|--------------|-----------|----------|
@@ -422,6 +425,7 @@ These routes support Quest functionality behind feature flags:
 | `/api/task-instances/[id]/collection/bulk` | WF-06c | `collection-tab.tsx:168` | Bulk approve/reject/delete actions |
 | `/api/task-instances/[id]/collection/export` | WF-06d | `collection-tab.tsx:324` | Export All button |
 | `/api/task-instances/[id]/table/signoff` | WF-03d | `data-tab.tsx:126,137` | Dataset signoff UI |
+| `/api/task-lineages/[id]` | WF-10g | `data-tab-universal.tsx` | Indirectly via app-columns routes |
 
 #### Duplicate/Legacy (2)
 
@@ -463,7 +467,6 @@ Only items with workflow justification and verified no current frontend caller.
 | 5 | `/api/task-instances/[id]/attachments` | WF-04e | Manage Job Attachments | Wire to job detail attachments section |
 | 6 | `/api/attachments/delete/[id]` | - | N/A - Duplicate | Delete route file |
 | 7 | `/api/requests/detail` | - | N/A - Unclear purpose | Investigate or delete |
-| 8 | `/api/task-lineages/[id]` | WF-03b | Create Table Job | Wire to lineage settings |
 
 ---
 
@@ -534,12 +537,12 @@ awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
 
 | Metric | Count | Source |
 |--------|-------|--------|
-| Total API Routes | 122 | `find app/api -name "route.ts" \| wc -l` |
-| FRONTEND | 70 | This document |
+| Total API Routes | 126 | `find app/api -name "route.ts" \| wc -l` |
+| FRONTEND | 79 | This document |
 | ADMIN | 18 | Routes in `/api/admin/*` |
 | EXTERNAL | 8 | OAuth, webhooks, tracking |
 | TEST_ONLY | 3 | Only test file callers |
-| UNKNOWN | 21 | No callers detected |
+| UNKNOWN | 17 | No callers detected |
 | Frontend Pages | 21 | `find app -name "page.tsx" \| wc -l` |
 
 ---

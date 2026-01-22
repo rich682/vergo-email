@@ -201,6 +201,8 @@ export type FilterOperator =
   // Boolean
   | "is_true"
   | "is_false"
+  // Multi-select (value-based filtering like Excel)
+  | "in_values"
 
 /**
  * Filter state for a single column.
@@ -208,7 +210,10 @@ export type FilterOperator =
 export interface ColumnFilter {
   columnId: string
   operator: FilterOperator
+  /** Single value for most operators */
   value?: string | number | boolean
+  /** Multiple values for "in_values" operator (Excel-style checkbox filter) */
+  selectedValues?: string[]
 }
 
 /**
@@ -296,6 +301,14 @@ export interface DataGridToolbarProps {
 }
 
 /**
+ * Unique values for a column (for value-based filtering).
+ */
+export interface ColumnUniqueValues {
+  columnId: string
+  values: string[]
+}
+
+/**
  * Props for the DataGridHeader component.
  */
 export interface DataGridHeaderProps {
@@ -311,4 +324,6 @@ export interface DataGridHeaderProps {
   onColumnFilterChange: (filter: ColumnFilter | null, columnId: string) => void
   /** Total width for horizontal scroll sync */
   totalWidth: number
+  /** Unique values per column for value-based filtering */
+  columnUniqueValues?: ColumnUniqueValues[]
 }

@@ -13,6 +13,24 @@ export { DataGridHeader } from "./data-grid-header"
 export { DataGridToolbar } from "./data-grid-toolbar"
 export { FilterPopover } from "./filter-popover"
 export { CellRenderer, getAlignmentClass, getFontClass } from "./cell-renderers"
+export { AddColumnButton } from "./add-column-button"
+export type { AppColumnType } from "./add-column-button"
+
+// Cell editors
+export {
+  NotesCell,
+  StatusCell,
+  StatusBadge,
+  OwnerCell,
+  OwnerBadge,
+  UserAvatar,
+  AttachmentsCell,
+} from "./cell-editors"
+export type {
+  StatusOption,
+  TeamMember,
+  AttachmentRef as CellAttachmentRef,
+} from "./cell-editors"
 
 // Re-export types from lib
 export type {
@@ -28,6 +46,7 @@ export type {
   DataGridProps,
   DataGridToolbarProps,
   DataGridHeaderProps,
+  ColumnUniqueValues,
   AttachmentRef,
   UserRef,
   LinkRef,
@@ -52,4 +71,6 @@ export {
   calculateTotalWidth,
   getDefaultColumnWidth,
   getMinColumnWidth,
+  extractColumnUniqueValues,
+  extractAllColumnUniqueValues,
 } from "@/lib/data-grid/utils"

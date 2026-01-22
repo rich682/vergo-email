@@ -21,11 +21,14 @@ import type {
   ColumnSort,
   ColumnFilter,
   SheetContext,
+  ColumnUniqueValues,
 } from "@/lib/data-grid/types"
 import {
   processRows,
   createEmptyFilterState,
   getDefaultColumnWidth,
+  extractColumnUniqueValues,
+  getCellDisplayText,
 } from "@/lib/data-grid/utils"
 import { DataGridHeader } from "./data-grid-header"
 import { CellRenderer, getAlignmentClass } from "./cell-renderers"
@@ -79,6 +82,19 @@ export function DataGrid({
   const processedRows = useMemo(() => {
     return processRows(rows, columns, resolver, sheet, filterState)
   }, [rows, columns, resolver, sheet, filterState])
+
+  // Extract unique values for each column (for value-based filtering)
+  const columnUniqueValues = useMemo<ColumnUniqueValues[]>(() => {
+    return visibleColumns
+      .filter((col) => col.isFilterable)
+      .map((col) => {
+        const { values } = extractColumnUniqueValues(rows, col, resolver, sheet)
+        return {
+          columnId: col.id,
+          values,
+        }
+      })
+  }, [rows, visibleColumns, resolver, sheet])
 
   // Row virtualizer
   const rowVirtualizer = useVirtualizer({
@@ -143,6 +159,7 @@ export function DataGrid({
           columnFilters={filterState.columnFilters}
           onColumnFilterChange={handleColumnFilterChange}
           totalWidth={totalWidth}
+          columnUniqueValues={columnUniqueValues}
         />
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <p className="text-gray-500 text-sm">
@@ -170,6 +187,7 @@ export function DataGrid({
             columnFilters={filterState.columnFilters}
             onColumnFilterChange={handleColumnFilterChange}
             totalWidth={totalWidth}
+            columnUniqueValues={columnUniqueValues}
           />
           
           {/* Body rows */}

@@ -155,6 +155,8 @@ model Organization {
   reconciliationTemplates ReconciliationTemplate[]
   datasetTemplates        DatasetTemplate[]
   datasetSnapshots        DatasetSnapshot[]
+  appColumnDefinitions    AppColumnDefinition[]
+  appColumnValues         AppColumnValue[]
 
   @@index([slug])
 }
@@ -173,9 +175,10 @@ model TaskLineage {
   datasetTemplateId String?
   datasetTemplate   DatasetTemplate? @relation(fields: [datasetTemplateId], references: [id], onDelete: SetNull)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   instances     TaskInstance[]
   importRecipes ImportRecipe[]
+  appColumns    AppColumnDefinition[] // App-owned columns for data grid
 
   @@index([organizationId])
   @@index([datasetTemplateId])
@@ -234,6 +237,8 @@ model User {
   connectedEmailAccounts     ConnectedEmailAccount[]
   createdDatasetTemplates    DatasetTemplate[]          @relation("DatasetTemplateCreator")
   uploadedDatasetSnapshots   DatasetSnapshot[]          @relation("DatasetSnapshotUploader")
+  createdAppColumns          AppColumnDefinition[]      @relation("AppColumnCreator")
+  updatedAppColumnValues     AppColumnValue[]           @relation("AppColumnValueUpdater")
 
   @@index([organizationId])
   @@index([email])
@@ -1229,4 +1234,67 @@ model DatasetSnapshot {
   @@index([templateId])
   @@index([templateId, isLatest])
   @@index([templateId, periodStart])
+}
+
+// ============================================
+// App-Owned Columns (User-Added Columns for Data Grid)
+// ============================================
+
+// AppColumnDefinition - custom column definitions stored at TaskLineage level
+// These columns persist across all task instances in a recurring board
+model AppColumnDefinition {
+  id             String @id @default(cuid())
+  organizationId String
+  lineageId      String // Stored at TaskLineage level for inheritance
+
+  key      String // Stable key (e.g., "notes", "status_1", "owner_2")
+  label    String // Display name
+  dataType String // "text" | "status" | "attachment" | "user"
+
+  // Type-specific configuration
+  // For status: { options: [{ key: string, label: string, color: string }] }
+  // For others: null
+  config Json?
+
+  position Int // Column display order (0-indexed)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage      TaskLineage      @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("AppColumnCreator", fields: [createdById], references: [id])
+  values       AppColumnValue[]
+
+  @@unique([lineageId, key])
+  @@index([organizationId])
+  @@index([lineageId])
+}
+
+// AppColumnValue - cell values for app-owned columns
+// Keyed by rowIdentity (the identity key value from source data)
+model AppColumnValue {
+  id             String @id @default(cuid())
+  organizationId String
+  columnId       String // FK to AppColumnDefinition
+  rowIdentity    String // Identity key value from source data (e.g., email address)
+
+  // Stored value (format depends on column type)
+  // text: { text: string }
+  // status: { statusKey: string }
+  // attachment: { files: AttachmentRef[] }
+  // user: { userId: string }
+  value Json
+
+  updatedAt   DateTime @updatedAt
+  updatedById String
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  column       AppColumnDefinition @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  updatedBy    User                @relation("AppColumnValueUpdater", fields: [updatedById], references: [id])
+
+  @@unique([columnId, rowIdentity])
+  @@index([organizationId])
+  @@index([columnId])
 }
