@@ -5,19 +5,26 @@
  *
  * Sticky header row with:
  * - Column labels
- * - Sort indicators (click to toggle)
- * - Filter trigger buttons
+ * - Excel-style filter dropdown per column
+ * - Sort indicators
  */
 
-import { useCallback } from "react"
+import { useState, useCallback } from "react"
 import type {
   ColumnDefinition,
   ColumnSort,
   ColumnFilter,
   DataGridHeaderProps,
+  FilterOperator,
 } from "@/lib/data-grid/types"
-import { getAlignmentClass } from "./cell-renderers"
-import { ChevronUp, ChevronDown, Filter } from "lucide-react"
+import { ChevronDown, ArrowUpAZ, ArrowDownAZ, Filter } from "lucide-react"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 export function DataGridHeader({
   columns,
@@ -27,70 +34,27 @@ export function DataGridHeader({
   onColumnFilterChange,
   totalWidth,
 }: DataGridHeaderProps) {
-  const handleSortClick = useCallback(
-    (column: ColumnDefinition) => {
-      if (!column.isSortable) return
-
-      if (sort?.columnId === column.id) {
-        // Cycle: asc -> desc -> none
-        if (sort.direction === "asc") {
-          onSortChange({ columnId: column.id, direction: "desc" })
-        } else {
-          onSortChange(null)
-        }
-      } else {
-        onSortChange({ columnId: column.id, direction: "asc" })
-      }
-    },
-    [sort, onSortChange]
-  )
-
   const visibleColumns = columns.filter((c) => c.isVisible)
 
   return (
     <div
-      className="flex bg-gray-50 border-b border-gray-200 sticky top-0 z-10"
+      className="flex bg-gray-100 border-b border-gray-300 sticky top-0 z-10"
       style={{ minWidth: totalWidth }}
     >
-      {visibleColumns.map((column, index) => {
+      {visibleColumns.map((column) => {
         const isActive = sort?.columnId === column.id
-        const hasFilter = columnFilters.some((f) => f.columnId === column.id)
-        const alignClass = getAlignmentClass(column.dataType)
+        const currentFilter = columnFilters.find((f) => f.columnId === column.id)
 
         return (
-          <div
+          <ColumnHeader
             key={column.id}
-            className={`
-              flex items-center justify-between
-              px-2 py-2 
-              text-xs font-medium text-gray-600 
-              border-r border-gray-200 last:border-r-0
-              select-none
-              ${column.isSortable ? "cursor-pointer hover:bg-gray-100" : ""}
-              ${isActive ? "bg-gray-100" : ""}
-            `}
-            style={{
-              width: column.width ?? getDefaultWidth(column.dataType),
-              minWidth: column.width ?? getDefaultWidth(column.dataType),
-              flexShrink: 0,
-            }}
-            onClick={() => handleSortClick(column)}
-          >
-            <span className={`truncate flex-1 ${alignClass}`}>
-              {column.label}
-            </span>
-            <div className="flex items-center gap-0.5 ml-1">
-              {hasFilter && (
-                <Filter className="w-3 h-3 text-blue-500" />
-              )}
-              {column.isSortable && (
-                <SortIndicator
-                  direction={isActive ? sort.direction : null}
-                  isActive={isActive}
-                />
-              )}
-            </div>
-          </div>
+            column={column}
+            sort={sort}
+            isActive={isActive}
+            currentFilter={currentFilter || null}
+            onSortChange={onSortChange}
+            onFilterChange={(filter) => onColumnFilterChange(filter, column.id)}
+          />
         )
       })}
     </div>
@@ -98,37 +62,179 @@ export function DataGridHeader({
 }
 
 // ============================================
-// Sort Indicator
+// Column Header with Filter Dropdown
 // ============================================
 
-interface SortIndicatorProps {
-  direction: "asc" | "desc" | null
+interface ColumnHeaderProps {
+  column: ColumnDefinition
+  sort: ColumnSort | null
   isActive: boolean
+  currentFilter: ColumnFilter | null
+  onSortChange: (sort: ColumnSort | null) => void
+  onFilterChange: (filter: ColumnFilter | null) => void
 }
 
-function SortIndicator({ direction, isActive }: SortIndicatorProps) {
+function ColumnHeader({
+  column,
+  sort,
+  isActive,
+  currentFilter,
+  onSortChange,
+  onFilterChange,
+}: ColumnHeaderProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [filterValue, setFilterValue] = useState(
+    currentFilter?.value !== undefined ? String(currentFilter.value) : ""
+  )
+
+  const handleSortAsc = useCallback(() => {
+    onSortChange({ columnId: column.id, direction: "asc" })
+    setIsOpen(false)
+  }, [column.id, onSortChange])
+
+  const handleSortDesc = useCallback(() => {
+    onSortChange({ columnId: column.id, direction: "desc" })
+    setIsOpen(false)
+  }, [column.id, onSortChange])
+
+  const handleApplyFilter = useCallback(() => {
+    if (!filterValue.trim()) {
+      onFilterChange(null)
+    } else {
+      const operator = getDefaultOperator(column.dataType)
+      const value = column.dataType === "number" || column.dataType === "currency"
+        ? parseFloat(filterValue) || 0
+        : filterValue
+      onFilterChange({
+        columnId: column.id,
+        operator,
+        value,
+      })
+    }
+    setIsOpen(false)
+  }, [column.id, column.dataType, filterValue, onFilterChange])
+
+  const handleClearFilter = useCallback(() => {
+    setFilterValue("")
+    onFilterChange(null)
+    setIsOpen(false)
+  }, [onFilterChange])
+
+  const hasFilter = currentFilter !== null
+
   return (
-    <div className="flex flex-col -space-y-1">
-      <ChevronUp
-        className={`w-3 h-3 ${
-          isActive && direction === "asc"
-            ? "text-gray-900"
-            : "text-gray-300"
-        }`}
-      />
-      <ChevronDown
-        className={`w-3 h-3 ${
-          isActive && direction === "desc"
-            ? "text-gray-900"
-            : "text-gray-300"
-        }`}
-      />
+    <div
+      className={`
+        flex items-center justify-between
+        px-2 py-2 
+        text-xs font-medium text-gray-700 
+        border-r border-gray-300 last:border-r-0
+        select-none bg-gray-100
+      `}
+      style={{
+        width: column.width ?? getDefaultWidth(column.dataType),
+        minWidth: column.width ?? getDefaultWidth(column.dataType),
+        flexShrink: 0,
+      }}
+    >
+      <span className="truncate flex-1">
+        {column.label}
+      </span>
+      
+      {/* Filter dropdown trigger */}
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={`
+              ml-1 p-0.5 rounded hover:bg-gray-200 transition-colors
+              ${hasFilter ? "text-blue-600" : "text-gray-400"}
+              ${isActive ? "text-gray-700" : ""}
+            `}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent 
+          className="w-52 p-0" 
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-1">
+            {/* Sort options */}
+            {column.isSortable && (
+              <>
+                <button
+                  className={`
+                    w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded
+                    hover:bg-gray-100 transition-colors text-left
+                    ${isActive && sort?.direction === "asc" ? "bg-blue-50 text-blue-700" : ""}
+                  `}
+                  onClick={handleSortAsc}
+                >
+                  <ArrowUpAZ className="w-4 h-4" />
+                  Sort A to Z
+                </button>
+                <button
+                  className={`
+                    w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded
+                    hover:bg-gray-100 transition-colors text-left
+                    ${isActive && sort?.direction === "desc" ? "bg-blue-50 text-blue-700" : ""}
+                  `}
+                  onClick={handleSortDesc}
+                >
+                  <ArrowDownAZ className="w-4 h-4" />
+                  Sort Z to A
+                </button>
+                <div className="border-t border-gray-200 my-1" />
+              </>
+            )}
+            
+            {/* Filter section */}
+            {column.isFilterable && (
+              <div className="p-2">
+                <div className="flex items-center gap-1 mb-2">
+                  <Filter className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-xs font-medium text-gray-600">Filter</span>
+                  {hasFilter && (
+                    <button
+                      className="ml-auto text-xs text-gray-500 hover:text-gray-700"
+                      onClick={handleClearFilter}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <Input
+                  type={column.dataType === "number" || column.dataType === "currency" ? "number" : "text"}
+                  placeholder={getFilterPlaceholder(column.dataType)}
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  className="h-7 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleApplyFilter()
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  className="w-full mt-2 h-7 text-xs"
+                  onClick={handleApplyFilter}
+                >
+                  Apply Filter
+                </Button>
+              </div>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
 
 // ============================================
-// Default Width Helper
+// Helpers
 // ============================================
 
 function getDefaultWidth(dataType: string): number {
@@ -143,5 +249,31 @@ function getDefaultWidth(dataType: string): number {
     case "text":
     default:
       return 180
+  }
+}
+
+function getDefaultOperator(dataType: string): FilterOperator {
+  switch (dataType) {
+    case "number":
+    case "currency":
+      return "equals"
+    case "date":
+      return "on"
+    case "boolean":
+      return "is_true"
+    default:
+      return "contains"
+  }
+}
+
+function getFilterPlaceholder(dataType: string): string {
+  switch (dataType) {
+    case "number":
+    case "currency":
+      return "Enter value..."
+    case "date":
+      return "YYYY-MM-DD"
+    default:
+      return "Contains..."
   }
 }

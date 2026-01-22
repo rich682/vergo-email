@@ -487,14 +487,17 @@ export function DataTabUniversal({
               </Button>
             )}
             
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDownloadTemplate}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Template
-            </Button>
+            {/* Only show Download Template when no data uploaded yet */}
+            {!hasSnapshots && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadTemplate}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Template
+              </Button>
+            )}
             
             {canDeleteSchema && (
               <Button
@@ -526,7 +529,7 @@ export function DataTabUniversal({
                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Delete Data
+                Delete Upload
               </Button>
             )}
           </div>
@@ -680,16 +683,16 @@ export function DataTabUniversal({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Data Confirmation Modal */}
+      {/* Delete Upload Confirmation Modal */}
       <Dialog open={isDeleteDataConfirmOpen} onOpenChange={setIsDeleteDataConfirmOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertCircle className="w-5 h-5" />
-              Delete Data
+              Delete Upload
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the uploaded data ({template.latestSnapshot?.rowCount.toLocaleString()} rows)? 
+              Are you sure you want to delete this upload ({template.latestSnapshot?.rowCount.toLocaleString()} rows)? 
               This action cannot be undone. You will need to upload data again.
             </DialogDescription>
           </DialogHeader>
@@ -706,7 +709,7 @@ export function DataTabUniversal({
               onClick={handleDeleteData}
               disabled={deletingData}
             >
-              {deletingData ? "Deleting..." : "Delete Data"}
+              {deletingData ? "Deleting..." : "Delete Upload"}
             </Button>
           </DialogFooter>
         </DialogContent>

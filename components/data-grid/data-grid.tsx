@@ -158,86 +158,82 @@ export function DataGrid({
   const virtualRows = rowVirtualizer.getVirtualItems()
 
   return (
-    <div className="flex flex-col h-full border border-gray-200 rounded-lg overflow-hidden">
-      {/* Scrollable container */}
-      <div className="overflow-x-auto">
-        {/* Header */}
-        <DataGridHeader
-          columns={visibleColumns}
-          sort={filterState.sort}
-          onSortChange={handleSortChange}
-          columnFilters={filterState.columnFilters}
-          onColumnFilterChange={handleColumnFilterChange}
-          totalWidth={totalWidth}
-        />
-      </div>
+    <div className="flex flex-col h-full min-h-[300px] border border-gray-200 rounded-lg overflow-hidden bg-white">
+      {/* Scrollable container for header + body */}
+      <div className="flex-1 overflow-auto min-h-0">
+        <div style={{ minWidth: totalWidth }}>
+          {/* Header */}
+          <DataGridHeader
+            columns={visibleColumns}
+            sort={filterState.sort}
+            onSortChange={handleSortChange}
+            columnFilters={filterState.columnFilters}
+            onColumnFilterChange={handleColumnFilterChange}
+            totalWidth={totalWidth}
+          />
+          
+          {/* Body rows */}
+          <div
+            ref={parentRef}
+            style={{ 
+              height: `${Math.max(rowVirtualizer.getTotalSize(), 100)}px`,
+              position: "relative",
+            }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const row = processedRows[virtualRow.index]
+              const rowId = resolver.getRowId(row)
 
-      {/* Virtualized body */}
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto"
-        style={{ contain: "strict" }}
-      >
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            width: totalWidth,
-            position: "relative",
-          }}
-        >
-          {virtualRows.map((virtualRow) => {
-            const row = processedRows[virtualRow.index]
-            const rowId = resolver.getRowId(row)
+              return (
+                <div
+                  key={rowId || virtualRow.index}
+                  className={`
+                    flex absolute left-0 w-full
+                    border-b border-gray-200
+                    bg-white
+                    hover:bg-blue-50
+                  `}
+                  style={{
+                    height: `${ROW_HEIGHT}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {visibleColumns.map((column) => {
+                    const cellValue = resolver.getCellValue({
+                      row,
+                      column,
+                      sheet,
+                    })
+                    const alignClass = getAlignmentClass(column.dataType)
 
-            return (
-              <div
-                key={rowId || virtualRow.index}
-                className={`
-                  flex absolute left-0 w-full
-                  border-b border-gray-200 last:border-b-0
-                  ${virtualRow.index % 2 === 0 ? "bg-white" : "bg-gray-50/50"}
-                  hover:bg-blue-50/50
-                `}
-                style={{
-                  height: `${ROW_HEIGHT}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                {visibleColumns.map((column) => {
-                  const cellValue = resolver.getCellValue({
-                    row,
-                    column,
-                    sheet,
-                  })
-                  const alignClass = getAlignmentClass(column.dataType)
-
-                  return (
-                    <div
-                      key={column.id}
-                      className={`
-                        px-2 py-1 
-                        border-r border-gray-200 last:border-r-0
-                        flex items-center
-                        ${alignClass}
-                      `}
-                      style={{
-                        width: column.width ?? getDefaultColumnWidth(column.dataType),
-                        minWidth: column.width ?? getDefaultColumnWidth(column.dataType),
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CellRenderer value={cellValue} />
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
+                    return (
+                      <div
+                        key={column.id}
+                        className={`
+                          px-2 py-1 
+                          border-r border-gray-200 last:border-r-0
+                          flex items-center
+                          ${alignClass}
+                        `}
+                        style={{
+                          width: column.width ?? getDefaultColumnWidth(column.dataType),
+                          minWidth: column.width ?? getDefaultColumnWidth(column.dataType),
+                          flexShrink: 0,
+                        }}
+                      >
+                        <CellRenderer value={cellValue} />
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
       {/* Footer with row count */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
         <span>
           {processedRows.length.toLocaleString()} row{processedRows.length !== 1 ? "s" : ""}
           {rows.length !== processedRows.length && (
