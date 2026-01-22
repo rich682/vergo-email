@@ -2,9 +2,16 @@
  * Job Requests API Endpoint
  * 
  * GET /api/task-instances/[id]/requests - Get EmailDrafts (Requests) associated with a Job
+ *   Query params:
+ *   - includeDrafts=true|false (default: false) - Include draft requests in response
  * 
- * Returns a list of EmailDrafts that have jobId set to this job.
- * Tasks are linked directly via jobId.
+ * POST /api/task-instances/[id]/requests - Draft operations
+ *   Body: { requestId: string, action: "send" | "update", ...actionParams }
+ *   - action: "send" - Send a draft request (activates it)
+ *   - action: "update" - Update draft content
+ * 
+ * DELETE /api/task-instances/[id]/requests - Delete a draft request
+ *   Body: { requestId: string }
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -12,10 +19,24 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
-import { UserRole } from "@prisma/client"
+import { RequestDraftCopyService } from "@/lib/services/request-draft-copy.service"
+import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { RequestCreationService } from "@/lib/services/request-creation.service"
+import { ReminderStateService } from "@/lib/services/reminder-state.service"
+import { BusinessDayService, ScheduleConfig } from "@/lib/services/business-day.service"
+import { TrackingPixelService } from "@/lib/services/tracking-pixel.service"
+import { UserRole, EmailProvider } from "@prisma/client"
+import { GmailProvider } from "@/lib/providers/email/gmail-provider"
+import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * GET - Get requests for a task instance
+ * Query params:
+ * - includeDrafts=true|false (default: false)
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,6 +54,10 @@ export async function GET(
     const userId = session.user.id
     const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
     const { id: taskInstanceId } = await params
+
+    // Parse query params
+    const { searchParams } = new URL(request.url)
+    const includeDrafts = searchParams.get("includeDrafts") === "true"
 
     // Verify task instance exists and user has access
     const instance = await TaskInstanceService.findById(taskInstanceId, organizationId)
@@ -83,11 +108,12 @@ export async function GET(
       orderBy: { createdAt: "desc" }
     })
 
-    // Get requests directly by taskInstanceId
+    // Get requests directly by taskInstanceId (exclude drafts for this endpoint)
     const requests = await prisma.request.findMany({
       where: {
         organizationId,
-        taskInstanceId
+        taskInstanceId,
+        isDraft: false
       },
       select: {
         id: true,
@@ -121,17 +147,17 @@ export async function GET(
 
     // Match requests to emailDrafts by creation time proximity
     const enrichedRequests = emailDrafts.map(draft => {
-      let draftRequests: typeof requests = []
+      let matchedRequests: typeof requests = []
 
       if (draft.sentAt) {
         const sentTime = new Date(draft.sentAt).getTime()
-        draftRequests = requests.filter(req => {
+        matchedRequests = requests.filter(req => {
           const reqTime = new Date(req.createdAt).getTime()
           return Math.abs(reqTime - sentTime) < 5 * 60 * 1000
         })
       }
 
-      const firstReq = draftRequests[0]
+      const firstReq = matchedRequests[0]
       const reminderConfig = firstReq ? {
         enabled: firstReq.remindersEnabled,
         frequencyHours: firstReq.remindersFrequencyHours,
@@ -140,9 +166,9 @@ export async function GET(
 
       return {
         ...draft,
-        taskCount: draftRequests.length,
+        taskCount: matchedRequests.length,
         reminderConfig,
-        recipients: draftRequests.map(req => ({
+        recipients: matchedRequests.map(req => ({
           id: req.id,
           entityId: req.entity?.id,
           name: req.entity ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}` : 'Unknown',
@@ -159,10 +185,103 @@ export async function GET(
       }
     })
 
-    return NextResponse.json({
+    // Build response
+    const response: any = {
       success: true,
       requests: enrichedRequests
-    })
+    }
+
+    // Include draft requests if requested
+    if (includeDrafts) {
+      const draftRequestRecords = await prisma.request.findMany({
+        where: {
+          taskInstanceId,
+          organizationId,
+          isDraft: true
+        },
+        include: {
+          entity: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              companyName: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      })
+
+      // Resolve content for each draft using copy-on-write pattern
+      const draftsWithContent = await Promise.all(
+        draftRequestRecords.map(async (draft) => {
+          const content = await RequestDraftCopyService.resolveDraftContent(draft)
+          
+          // Get source request info for display
+          let sourceInfo = null
+          if (draft.draftSourceRequestId) {
+            const sourceRequest = await prisma.request.findUnique({
+              where: { id: draft.draftSourceRequestId },
+              select: {
+                id: true,
+                createdAt: true,
+                taskInstance: {
+                  select: {
+                    name: true,
+                    board: {
+                      select: {
+                        name: true,
+                        periodStart: true,
+                        periodEnd: true
+                      }
+                    }
+                  }
+                }
+              }
+            })
+            if (sourceRequest) {
+              sourceInfo = {
+                requestId: sourceRequest.id,
+                taskName: sourceRequest.taskInstance?.name,
+                boardName: sourceRequest.taskInstance?.board?.name,
+                periodStart: sourceRequest.taskInstance?.board?.periodStart,
+                periodEnd: sourceRequest.taskInstance?.board?.periodEnd,
+                createdAt: sourceRequest.createdAt
+              }
+            }
+          }
+
+          return {
+            id: draft.id,
+            isDraft: true,
+            entityId: draft.entityId,
+            entity: draft.entity,
+            campaignName: draft.campaignName,
+            campaignType: draft.campaignType,
+            scheduleConfig: draft.scheduleConfig,
+            scheduledSendAt: draft.scheduledSendAt,
+            remindersEnabled: draft.remindersEnabled,
+            remindersFrequencyHours: draft.remindersFrequencyHours,
+            remindersMaxCount: draft.remindersMaxCount,
+            createdAt: draft.createdAt,
+            // Resolved content
+            subject: content.subject,
+            body: content.body,
+            htmlBody: content.htmlBody,
+            // Source info for "Copied from..." display
+            sourceInfo,
+            // Whether user has edited the content
+            hasEdits: !!(draft.draftEditedSubject || draft.draftEditedBody || draft.draftEditedHtmlBody)
+          }
+        })
+      )
+
+      response.draftRequests = draftsWithContent
+      response.hasDrafts = draftsWithContent.length > 0
+    }
+
+    return NextResponse.json(response)
 
   } catch (error: any) {
     console.error("Get task instance requests error:", error)
@@ -171,4 +290,376 @@ export async function GET(
       { status: 500 }
     )
   }
+}
+
+/**
+ * POST - Draft operations (send or update)
+ * Body: { requestId: string, action: "send" | "update", ...actionParams }
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId || !session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const { id: taskInstanceId } = await params
+
+    // Verify task instance exists and user has edit access
+    const instance = await TaskInstanceService.findById(taskInstanceId, organizationId)
+    if (!instance) {
+      return NextResponse.json({ error: "Task instance not found" }, { status: 404 })
+    }
+
+    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, instance, 'edit')
+    if (!canEdit) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { requestId, action } = body
+
+    if (!requestId) {
+      return NextResponse.json({ error: "requestId is required" }, { status: 400 })
+    }
+
+    if (!action || !["send", "update"].includes(action)) {
+      return NextResponse.json({ error: "action must be 'send' or 'update'" }, { status: 400 })
+    }
+
+    // Handle update action
+    if (action === "update") {
+      return handleUpdateDraft(requestId, taskInstanceId, organizationId, body)
+    }
+
+    // Handle send action
+    if (action === "send") {
+      return handleSendDraft(requestId, taskInstanceId, organizationId, userId, body)
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+
+  } catch (error: any) {
+    console.error("Draft operation error:", error)
+    return NextResponse.json(
+      { error: "Failed to process draft operation", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * DELETE - Delete a draft request
+ * Body: { requestId: string }
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId || !session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const { id: taskInstanceId } = await params
+
+    // Verify task instance exists and user has edit access
+    const instance = await TaskInstanceService.findById(taskInstanceId, organizationId)
+    if (!instance) {
+      return NextResponse.json({ error: "Task instance not found" }, { status: 404 })
+    }
+
+    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, instance, 'edit')
+    if (!canEdit) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { requestId } = body
+
+    if (!requestId) {
+      return NextResponse.json({ error: "requestId is required" }, { status: 400 })
+    }
+
+    // Delete the draft (only if it's actually a draft)
+    const deleted = await RequestDraftCopyService.deleteDraft(requestId, organizationId)
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Draft request not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Draft request deleted"
+    })
+
+  } catch (error: any) {
+    console.error("Delete draft request error:", error)
+    return NextResponse.json(
+      { error: "Failed to delete draft request", message: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// ==================== Helper Functions ====================
+
+async function handleUpdateDraft(
+  requestId: string,
+  taskInstanceId: string,
+  organizationId: string,
+  body: any
+): Promise<NextResponse> {
+  // Verify draft exists
+  const existingDraft = await prisma.request.findFirst({
+    where: {
+      id: requestId,
+      taskInstanceId,
+      organizationId,
+      isDraft: true
+    }
+  })
+
+  if (!existingDraft) {
+    return NextResponse.json({ error: "Draft request not found" }, { status: 404 })
+  }
+
+  const { subject, body: bodyContent, htmlBody, entityId, scheduleConfig } = body
+
+  // Build update data (only include fields that were provided)
+  const updateData: any = {}
+
+  // Copy-on-write: store edited content
+  if (subject !== undefined) {
+    updateData.draftEditedSubject = subject
+  }
+  if (bodyContent !== undefined) {
+    updateData.draftEditedBody = bodyContent
+  }
+  if (htmlBody !== undefined) {
+    updateData.draftEditedHtmlBody = htmlBody
+  }
+
+  // Update recipient if provided
+  if (entityId !== undefined) {
+    updateData.entityId = entityId
+  }
+
+  // Update schedule config if provided
+  if (scheduleConfig !== undefined) {
+    updateData.scheduleConfig = scheduleConfig
+  }
+
+  const updated = await prisma.request.update({
+    where: { id: requestId },
+    data: updateData,
+    include: {
+      entity: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true
+        }
+      }
+    }
+  })
+
+  // Resolve content for response
+  const content = await RequestDraftCopyService.resolveDraftContent(updated)
+
+  return NextResponse.json({
+    success: true,
+    draft: {
+      ...updated,
+      subject: content.subject,
+      body: content.body,
+      htmlBody: content.htmlBody,
+      hasEdits: true
+    }
+  })
+}
+
+async function handleSendDraft(
+  requestId: string,
+  taskInstanceId: string,
+  organizationId: string,
+  userId: string,
+  body: any
+): Promise<NextResponse> {
+  // Get the draft request with entity
+  const draft = await prisma.request.findFirst({
+    where: {
+      id: requestId,
+      taskInstanceId,
+      organizationId,
+      isDraft: true
+    },
+    include: {
+      entity: true,
+      taskInstance: {
+        include: {
+          board: {
+            select: {
+              id: true,
+              periodStart: true,
+              periodEnd: true
+            }
+          }
+        }
+      }
+    }
+  })
+
+  if (!draft) {
+    return NextResponse.json({ error: "Draft request not found" }, { status: 404 })
+  }
+
+  // Verify recipient exists and has email
+  if (!draft.entity?.email) {
+    return NextResponse.json(
+      { error: "Draft request has no valid recipient. Please select a recipient before sending." },
+      { status: 400 }
+    )
+  }
+
+  const { remindersApproved = false } = body
+
+  // Resolve content using copy-on-write pattern
+  const content = await RequestDraftCopyService.resolveDraftContent(draft)
+
+  if (!content.subject || !content.body) {
+    return NextResponse.json(
+      { error: "Draft request has no content. Please add subject and body before sending." },
+      { status: 400 }
+    )
+  }
+
+  // Get email account for sending
+  let account = await EmailConnectionService.getAccountForUser(userId, organizationId)
+  if (!account) {
+    account = await EmailConnectionService.getPrimaryAccount(organizationId)
+  }
+  if (!account) {
+    account = await EmailConnectionService.getFirstActive(organizationId)
+  }
+  if (!account) {
+    return NextResponse.json({ error: "No email account available for sending" }, { status: 400 })
+  }
+
+  // Compute scheduled send time if period-aware
+  const scheduleConfig = draft.scheduleConfig as ScheduleConfig | null
+  let scheduledSendAt: Date | null = null
+  
+  if (scheduleConfig?.mode === "period_aware" && draft.taskInstance?.board) {
+    scheduledSendAt = BusinessDayService.computeFromConfig(
+      scheduleConfig,
+      draft.taskInstance.board.periodStart,
+      draft.taskInstance.board.periodEnd
+    )
+  }
+
+  // Generate tracking token
+  const trackingToken = TrackingPixelService.generateTrackingToken()
+  const trackingUrl = TrackingPixelService.generateTrackingUrl(trackingToken)
+  
+  // Inject tracking pixel into HTML body
+  let htmlBodyWithTracking = content.htmlBody || content.body
+  if (htmlBodyWithTracking) {
+    htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(htmlBodyWithTracking, trackingUrl)
+  }
+
+  // Send the email
+  let sendResult: { messageId: string; providerData: any }
+  const replyTo = account.email
+
+  if (account.provider === EmailProvider.GMAIL) {
+    const provider = new GmailProvider()
+    sendResult = await provider.sendEmail({
+      account,
+      to: draft.entity.email,
+      subject: content.subject,
+      body: content.body,
+      htmlBody: htmlBodyWithTracking,
+      replyTo
+    })
+  } else if (account.provider === EmailProvider.MICROSOFT) {
+    const provider = new MicrosoftProvider()
+    sendResult = await provider.sendEmail({
+      account,
+      to: draft.entity.email,
+      subject: content.subject,
+      body: content.body,
+      htmlBody: htmlBodyWithTracking,
+      replyTo
+    })
+  } else {
+    sendResult = await EmailSendingService.sendViaSMTP({
+      account,
+      to: draft.entity.email,
+      subject: content.subject,
+      body: content.body,
+      htmlBody: htmlBodyWithTracking,
+      replyTo
+    })
+  }
+
+  // Log outbound message
+  await RequestCreationService.logOutboundMessage({
+    requestId: draft.id,
+    entityId: draft.entityId!,
+    subject: content.subject,
+    body: content.body,
+    htmlBody: htmlBodyWithTracking,
+    fromAddress: account.email,
+    toAddress: draft.entity.email,
+    providerId: sendResult.messageId,
+    providerData: sendResult.providerData,
+    trackingToken
+  })
+
+  // Activate the draft (set isDraft = false)
+  const activatedRequest = await prisma.request.update({
+    where: { id: draft.id },
+    data: {
+      isDraft: false,
+      scheduledSendAt,
+      deadlineDate: scheduledSendAt || draft.deadlineDate,
+      remindersApproved: draft.remindersEnabled && remindersApproved,
+      replyToEmail: replyTo
+    }
+  })
+
+  // Initialize reminder state if reminders are enabled and approved
+  if (draft.remindersEnabled && remindersApproved) {
+    await ReminderStateService.initializeForRequest(draft.id, {
+      enabled: true,
+      startDelayHours: draft.remindersStartDelayHours || 48,
+      frequencyHours: draft.remindersFrequencyHours || 72,
+      maxCount: draft.remindersMaxCount || 3,
+      approved: true
+    })
+  }
+
+  return NextResponse.json({
+    success: true,
+    message: "Draft request sent successfully",
+    request: {
+      id: activatedRequest.id,
+      status: activatedRequest.status,
+      isDraft: activatedRequest.isDraft,
+      scheduledSendAt: activatedRequest.scheduledSendAt,
+      messageId: sendResult.messageId
+    }
+  })
 }
