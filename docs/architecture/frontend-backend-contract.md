@@ -209,7 +209,7 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-instances/[id]/request/draft` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:291` |
 | `/api/task-instances/[id]/request/refine` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:434` |
 | `/api/task-instances/[id]/request/reminder-preview` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:397` |
-| `/api/task-instances/[id]/requests` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:407` |
+| `/api/task-instances/[id]/requests` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:407`, `components/jobs/draft-request-review-modal.tsx:122,154,181` (GET supports `?includeDrafts=true`, POST handles draft send/update, DELETE for draft deletion) |
 | `/api/task-instances/[id]/table/cell` | PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:135` |
 | `/api/task-instances/[id]/table/compare` | GET | FRONTEND | DIRECT_FETCH | `components/jobs/table/compare-view.tsx:81` |
 | `/api/task-instances/[id]/table/import` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/table/import-modal.tsx:328` |
