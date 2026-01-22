@@ -31,7 +31,6 @@ import {
 import { format, formatDistanceToNow } from "date-fns"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
-import { BoardDetailSidebar } from "@/components/boards/board-detail-sidebar"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { BoardColumnHeader, BoardColumnDefinition } from "@/components/boards/board-column-header"
@@ -196,15 +195,15 @@ function getJobStatusBadge(status: JobStatus) {
 function getTaskTypeBadge(type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABASE" | undefined) {
   switch (type) {
     case "GENERIC":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Generic</span>
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Standard</span>
     case "TABLE":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">Table</span>
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">Variance</span>
     case "RECONCILIATION":
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">Reconciliation</span>
     case "DATABASE":
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Variance</span>
     default:
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Generic</span>
+      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Standard</span>
   }
 }
 
@@ -1154,12 +1153,9 @@ function BoardRow({
         </div>
       </div>
 
-      {/* Expanded Jobs Section with Sidebar */}
+      {/* Expanded Jobs Section */}
       {isExpanded && (
         <div className="border-t">
-          <div className="flex">
-            {/* Tasks Section (Left) */}
-            <div className="flex-1 min-w-0">
               {isLoadingJobs ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
@@ -1304,20 +1300,6 @@ function BoardRow({
                   </button>
                 </div>
               )}
-            </div>
-            
-            {/* Sidebar Section (Right) */}
-            <div className="w-72 border-l bg-gray-50 p-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-              <BoardDetailSidebar
-                board={{
-                  ...board,
-                  automationEnabled: board.automationEnabled,
-                  skipWeekends: board.skipWeekends
-                }}
-                onUpdate={(updates) => onBoardUpdate({ ...board, ...updates } as Board)}
-              />
-            </div>
-          </div>
         </div>
       )}
     </div>

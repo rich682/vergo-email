@@ -8,7 +8,7 @@ interface TaskTypeCellProps {
 
 const TYPE_CONFIG = {
   GENERIC: {
-    label: "Generic",
+    label: "Standard",
     icon: ClipboardList,
     bgColor: "bg-gray-100",
     textColor: "text-gray-700",

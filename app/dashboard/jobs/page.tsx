@@ -28,8 +28,21 @@ import {
   Edit2,
   Check,
   X,
-  Settings
+  Settings,
+  Calendar,
+  Users,
+  Tag,
+  Zap,
+  ChevronDown
 } from "lucide-react"
+import { format } from "date-fns"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Switch } from "@/components/ui/switch"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
@@ -161,6 +174,12 @@ export default function JobsPage() {
   
   // Board settings modal
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false)
+  
+  // Board metadata editing
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [isOwnerPopoverOpen, setIsOwnerPopoverOpen] = useState(false)
+  const [isCollaboratorPopoverOpen, setIsCollaboratorPopoverOpen] = useState(false)
+  const [updatingBoard, setUpdatingBoard] = useState(false)
 
   // ============================================
   // Data fetching
@@ -495,6 +514,77 @@ export default function JobsPage() {
     }
   }
 
+  // Update board field
+  const handleUpdateBoard = async (updates: Partial<Board>) => {
+    if (!currentBoard) return
+    setUpdatingBoard(true)
+    try {
+      const response = await fetch(`/api/boards/${currentBoard.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates)
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentBoard(data.board || { ...currentBoard, ...updates })
+      }
+    } catch (error) {
+      console.error("Error updating board:", error)
+    } finally {
+      setUpdatingBoard(false)
+      setIsStatusDropdownOpen(false)
+      setIsOwnerPopoverOpen(false)
+      setIsCollaboratorPopoverOpen(false)
+    }
+  }
+
+  // Helper to get initials
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      const parts = name.split(" ")
+      return parts.length >= 2 
+        ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+        : name.substring(0, 2).toUpperCase()
+    }
+    return email.substring(0, 2).toUpperCase()
+  }
+
+  // Board status badge
+  const getBoardStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+      NOT_STARTED: { label: "Not Started", bg: "bg-gray-100", text: "text-gray-700" },
+      IN_PROGRESS: { label: "In Progress", bg: "bg-blue-100", text: "text-blue-700" },
+      COMPLETE: { label: "Complete", bg: "bg-green-100", text: "text-green-700" },
+      BLOCKED: { label: "Blocked", bg: "bg-red-100", text: "text-red-700" },
+      ARCHIVED: { label: "Archived", bg: "bg-gray-100", text: "text-gray-500" },
+    }
+    const config = statusConfig[status] || statusConfig.NOT_STARTED
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.label}
+      </span>
+    )
+  }
+
+  // Board cadence badge
+  const getCadenceBadge = (cadence: string | null) => {
+    const cadenceLabels: Record<string, string> = {
+      DAILY: "Daily",
+      WEEKLY: "Weekly",
+      MONTHLY: "Monthly",
+      QUARTERLY: "Quarterly",
+      YEAR_END: "Year-End",
+      AD_HOC: "Ad Hoc",
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+        {cadenceLabels[cadence || "AD_HOC"] || cadence}
+      </span>
+    )
+  }
+
   const handleCreateJob = async () => {
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || newJobStakeholders.length === 0) return
     setCreating(true)
@@ -610,74 +700,240 @@ export default function JobsPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div>
+          <div className="flex-1">
             {currentBoard ? (
-              <div className="flex items-center gap-2">
-                {editingBoardName ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={editBoardName}
-                      onChange={(e) => setEditBoardName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleUpdateBoardName()
-                        if (e.key === "Escape") {
+              <>
+                {/* Board Name Row */}
+                <div className="flex items-center gap-2 mb-2">
+                  {editingBoardName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editBoardName}
+                        onChange={(e) => setEditBoardName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleUpdateBoardName()
+                          if (e.key === "Escape") {
+                            setEditingBoardName(false)
+                            setEditBoardName(currentBoard.name)
+                          }
+                        }}
+                        className="text-2xl font-semibold h-auto py-1 px-2 w-64"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleUpdateBoardName}
+                        className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                      >
+                        <Check className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => {
                           setEditingBoardName(false)
                           setEditBoardName(currentBoard.name)
-                        }
-                      }}
-                      className="text-2xl font-semibold h-auto py-1 px-2 w-64"
-                      autoFocus
-                    />
+                        }}
+                        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <h1 className="text-2xl font-semibold text-gray-900">
+                        {currentBoard.name}
+                      </h1>
+                      <button
+                        onClick={() => {
+                          setEditBoardName(currentBoard.name)
+                          setEditingBoardName(true)
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                        title="Edit board name"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* Status Dropdown */}
+                  <div className="relative ml-2">
                     <button
-                      onClick={handleUpdateBoardName}
-                      className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                      onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                      className="flex items-center gap-1 hover:opacity-80"
+                      disabled={updatingBoard}
                     >
-                      <Check className="w-5 h-5" />
+                      {getBoardStatusBadge(currentBoard.status)}
+                      <ChevronDown className="w-3 h-3 text-gray-400" />
                     </button>
-                    <button
-                      onClick={() => {
-                        setEditingBoardName(false)
-                        setEditBoardName(currentBoard.name)
-                      }}
-                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                    {isStatusDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
+                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
+                          <div className="py-1">
+                            {["NOT_STARTED", "IN_PROGRESS", "COMPLETE", "BLOCKED"].map(status => (
+                              <button
+                                key={status}
+                                onClick={() => handleUpdateBoard({ status })}
+                                className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${currentBoard.status === status ? "bg-gray-50 font-medium" : ""}`}
+                              >
+                                {getBoardStatusBadge(status)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <h1 className="text-2xl font-semibold text-gray-900">
-                      {currentBoard.name}
-                    </h1>
-                    <button
-                      onClick={() => {
-                        setEditBoardName(currentBoard.name)
-                        setEditingBoardName(true)
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      title="Edit board name"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setIsBoardSettingsOpen(true)}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      title="Board settings"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-              </div>
+                </div>
+                
+                <p className="text-sm text-gray-500 mb-3">{filteredJobs.length} tasks</p>
+                
+                {/* Board Metadata Section */}
+                <div className="space-y-2 pb-4 border-b border-gray-100 mb-4">
+                  {/* Period Row */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-700">Period:</span>
+                    <span className="text-gray-600">
+                      {currentBoard.periodStart && currentBoard.periodEnd
+                        ? `${format(new Date(currentBoard.periodStart), "MMM d, yyyy")} - ${format(new Date(currentBoard.periodEnd), "MMM d, yyyy")}`
+                        : currentBoard.periodStart
+                        ? format(new Date(currentBoard.periodStart), "MMM d, yyyy")
+                        : "Not set"}
+                    </span>
+                  </div>
+                  
+                  {/* Board Type Row */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Tag className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-700">Type:</span>
+                    {getCadenceBadge(currentBoard.cadence)}
+                  </div>
+                  
+                  {/* Owner Row */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-700">Owner:</span>
+                    <Popover open={isOwnerPopoverOpen} onOpenChange={setIsOwnerPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-2 hover:bg-gray-100 rounded px-2 py-1 -ml-2">
+                          {currentBoard.owner ? (
+                            <>
+                              <Avatar className="h-5 w-5">
+                                <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">
+                                  {getInitials(currentBoard.owner.name, currentBoard.owner.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-gray-700">{currentBoard.owner.name || currentBoard.owner.email}</span>
+                            </>
+                          ) : (
+                            <span className="text-gray-400 italic">No owner</span>
+                          )}
+                          <ChevronDown className="w-3 h-3 text-gray-400" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start">
+                        <div className="space-y-1">
+                          {teamMembers.map(member => (
+                            <button
+                              key={member.id}
+                              onClick={() => {
+                                handleUpdateBoard({ ownerId: member.id } as any)
+                                setIsOwnerPopoverOpen(false)
+                              }}
+                              className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100 ${currentBoard.owner?.id === member.id ? "bg-gray-100" : ""}`}
+                            >
+                              <Avatar className="h-5 w-5">
+                                <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">
+                                  {getInitials(member.name, member.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>{member.name || member.email}</span>
+                              {member.isCurrentUser && <span className="text-xs text-gray-400">(you)</span>}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    
+                    {/* Collaborators */}
+                    {currentBoard.collaborators && currentBoard.collaborators.length > 0 && (
+                      <div className="flex items-center gap-1 ml-2">
+                        {currentBoard.collaborators.slice(0, 3).map(collab => (
+                          <Avatar key={collab.id} className="h-5 w-5 border-2 border-white -ml-1 first:ml-0">
+                            <AvatarFallback className="text-[10px] bg-gray-100 text-gray-700">
+                              {getInitials(collab.user.name, collab.user.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                        ))}
+                        {currentBoard.collaborators.length > 3 && (
+                          <span className="text-xs text-gray-500 ml-1">+{currentBoard.collaborators.length - 3}</span>
+                        )}
+                      </div>
+                    )}
+                    
+                    <Popover open={isCollaboratorPopoverOpen} onOpenChange={setIsCollaboratorPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-dashed border-gray-300 ml-1">
+                          <Plus className="w-3 h-3" />
+                          Add
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start">
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {teamMembers
+                            .filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id))
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                onClick={() => {
+                                  const newCollaboratorIds = [...(currentBoard.collaborators?.map(c => c.userId) || []), member.id]
+                                  handleUpdateBoard({ collaboratorIds: newCollaboratorIds } as any)
+                                  setIsCollaboratorPopoverOpen(false)
+                                }}
+                                className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100"
+                              >
+                                <Avatar className="h-5 w-5">
+                                  <AvatarFallback className="text-[10px] bg-gray-100 text-gray-700">
+                                    {getInitials(member.name, member.email)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{member.name || member.email}</span>
+                              </button>
+                            ))}
+                          {teamMembers.filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id)).length === 0 && (
+                            <p className="text-sm text-gray-500 py-2 text-center">No more team members</p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  {/* Automation Row */}
+                  <div className="flex items-center gap-4 text-sm">
+                    <Zap className="w-4 h-4 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-700">Auto-create next period:</span>
+                      <Switch
+                        checked={currentBoard.automationEnabled ?? false}
+                        onCheckedChange={(checked) => handleUpdateBoard({ automationEnabled: checked } as any)}
+                        disabled={updatingBoard}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="text-gray-700">Skip weekends:</span>
+                      <Switch
+                        checked={currentBoard.skipWeekends ?? false}
+                        onCheckedChange={(checked) => handleUpdateBoard({ skipWeekends: checked } as any)}
+                        disabled={updatingBoard}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             ) : (
               <h1 className="text-2xl font-semibold text-gray-900">
                 All Tasks
               </h1>
-            )}
-            {currentBoard && (
-              <p className="text-sm text-gray-500 mt-1">
-                {filteredJobs.length} tasks
-              </p>
             )}
           </div>
           
@@ -715,9 +971,9 @@ export default function JobsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="GENERIC">Generic Task</SelectItem>
-                      <SelectItem value="RECONCILIATION">Reconciliation Task</SelectItem>
-                      <SelectItem value="TABLE">Table / Variance Task</SelectItem>
+                      <SelectItem value="GENERIC">Standard</SelectItem>
+                      <SelectItem value="RECONCILIATION">Reconciliation</SelectItem>
+                      <SelectItem value="TABLE">Variance</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
