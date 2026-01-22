@@ -22,7 +22,7 @@ Instead, Jobs have **Capabilities** that can be enabled:
 | **Core** | Basic job operations available to all jobs | Create, Archive, Delete, Owner, Collaborators, Notes, Status |
 | **Table** | Structured data with schema, import, variance | WF-03b, WF-03d, WF-03e |
 | **Reconciliation** | Document comparison with anchor/supporting model | WF-03c, WF-03h, WF-03i |
-| **Request** | Email communication, reminders, tracking | WF-05a through WF-05n |
+| **Request** | Email communication, reminders, tracking, draft review | WF-05a through WF-05r |
 | **Evidence** | File collection, review, export | WF-06a through WF-06e |
 
 ### UI Terminology Note
@@ -71,10 +71,10 @@ The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to refl
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| GREEN | 38 | 63% |
-| YELLOW | 13 | 22% |
-| RED | 9 | 15% |
-| **Total** | **60** | 100% |
+| GREEN | 42 | 66% |
+| YELLOW | 13 | 20% |
+| RED | 9 | 14% |
+| **Total** | **64** | 100% |
 
 ### By Parent Workflow
 
@@ -84,7 +84,7 @@ The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to refl
 | PWF-02 | Board Management | 9 | 7 | 1 | 1 |
 | PWF-03 | Job Lifecycle | 8 | 5 | 2 | 1 |
 | PWF-04 | Job Collaboration & Governance | 8 | 7 | 1 | 0 |
-| PWF-05 | Requests & Communication | 14 | 5 | 5 | 4 |
+| PWF-05 | Requests & Communication | 18 | 9 | 5 | 4 |
 | PWF-06 | Evidence Collection | 5 | 4 | 0 | 1 |
 | PWF-07 | Contact Management | 6 | 6 | 0 | 0 |
 | PWF-08 | Email Account Management | 3 | 3 | 0 | 0 |
@@ -776,6 +776,10 @@ Parent workflow for sending, tracking, and responding to email requests.
 | WF-05f | Manually Override Request Risk | - | YELLOW |
 | WF-05g | Mark Request Read / Unread | - | YELLOW |
 | WF-05h | Reply Review | WF-14 | GREEN |
+| WF-05o | Review Draft Requests | - | GREEN |
+| WF-05p | Edit Draft Request | - | GREEN |
+| WF-05q | Send Draft Request | - | GREEN |
+| WF-05r | Delete Draft Request | - | GREEN |
 
 ---
 
@@ -941,6 +945,92 @@ Parent workflow for sending, tracking, and responding to email requests.
 3. Click "Analyze" button
 4. Expect: `POST /api/review/analyze` called
 5. Draft and send reply
+
+---
+
+### WF-05o: Review Draft Requests
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User reviews drafts copied from prior period in job header
+
+#### Context
+When a board completes and auto-creates the next period (WF-02l, WF-02m), active requests from the previous period are copied forward as draft requests. These drafts require user review before sending.
+
+#### Evidence
+- Frontend: `app/dashboard/jobs/[id]/page.tsx:1148-1160` - Draft badge in job header
+- Frontend: `app/dashboard/jobs/[id]/page.tsx:1152-1153` - Opens DraftRequestReviewModal
+- Frontend: `app/dashboard/jobs/[id]/page.tsx:429-430` - Fetches with `?includeDrafts=true`
+- Component: `components/jobs/draft-request-review-modal.tsx:84-91` - Modal interface
+- API: `GET /api/task-instances/[id]/requests?includeDrafts=true`
+- Services: `request-draft-copy.service.ts`
+
+#### Verification Steps
+1. Navigate to `/dashboard/jobs/[id]` for a job with draft requests
+2. See amber "N draft(s) to review" badge in job header (next to status)
+3. Click the badge
+4. Expect: DraftRequestReviewModal opens with list of drafts
+
+---
+
+### WF-05p: Edit Draft Request
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User modifies draft subject, body, or recipient
+
+#### Evidence
+- Frontend: `components/jobs/draft-request-review-modal.tsx:122-131` - PATCH to update draft
+- API: `POST /api/task-instances/[id]/requests` with `{ action: "update", requestId, ... }`
+- Services: `request-draft-copy.service.ts` (copy-on-write pattern)
+
+#### Verification Steps
+1. Open Draft Request Review modal (WF-05o)
+2. Click Edit button on a draft
+3. Modify subject, body, or select different recipient
+4. Click Save
+5. Expect: `POST /api/task-instances/[id]/requests` with action: "update" called
+
+---
+
+### WF-05q: Send Draft Request
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User sends a draft request after review
+
+#### Evidence
+- Frontend: `components/jobs/draft-request-review-modal.tsx:159-168` - Send flow
+- API: `POST /api/task-instances/[id]/requests` with `{ action: "send", requestId, remindersApproved? }`
+- Services: `request-draft-copy.service.ts`, `email-sending.service.ts`
+
+#### Verification Steps
+1. Open Draft Request Review modal (WF-05o)
+2. Review content and recipient
+3. Optionally approve reminders
+4. Click Send
+5. Expect: `POST /api/task-instances/[id]/requests` with action: "send" called
+6. Draft becomes active request, email sent
+
+---
+
+### WF-05r: Delete Draft Request
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User removes an unwanted draft request
+
+#### Evidence
+- Frontend: `components/jobs/draft-request-review-modal.tsx:181-193` - DELETE flow
+- API: `DELETE /api/task-instances/[id]/requests` with `{ requestId }` in body
+- Services: `request-draft-copy.service.ts`
+
+#### Verification Steps
+1. Open Draft Request Review modal (WF-05o)
+2. Click Delete button on a draft
+3. Confirm deletion
+4. Expect: `DELETE /api/task-instances/[id]/requests` called
+5. Draft is permanently removed
 
 ---
 

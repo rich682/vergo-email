@@ -24,6 +24,7 @@
 "/api/task-instances/[id]/request/dataset/draft","POST","WF-05b","PWF-05","Request","FRONTEND","DIRECT_FETCH","components/jobs/data-personalization/compose-send-step.tsx:161,203","ai-email-generation.service.ts","GREEN"
 "/api/task-instances/[id]/request/dataset/preview","GET, POST","WF-05b","PWF-05","Request","FRONTEND","DIRECT_FETCH","components/jobs/data-personalization/compose-send-step.tsx:283,326","personalization-data.service.ts","GREEN"
 "/api/task-instances/[id]/request/dataset/send","POST","WF-05b","PWF-05","Request","FRONTEND","DIRECT_FETCH","components/jobs/data-personalization/compose-send-step.tsx:366","email-sending.service.ts, quest.service.ts","GREEN"
+"/api/task-instances/[id]/requests","GET, POST, DELETE","WF-05o, WF-05p, WF-05q, WF-05r","PWF-05","Request","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/[id]/page.tsx:429-430 (GET ?includeDrafts=true), components/jobs/draft-request-review-modal.tsx:122-193 (POST action:send/update, DELETE)","request-draft-copy.service.ts, email-sending.service.ts","GREEN"
 "/api/quests","GET, POST","WF-05a","PWF-05","Request","FRONTEND","DIRECT_FETCH","components/jobs/send-request-modal.tsx:533","quest.service.ts","GREEN"
 "/api/quests/[id]/execute","POST","WF-05a","PWF-05","Request","FRONTEND","DIRECT_FETCH","components/jobs/send-request-modal.tsx:562","quest.service.ts, email-sending.service.ts","GREEN"
 "/api/requests","GET","WF-05e","PWF-05","Request","FRONTEND","DIRECT_FETCH","app/dashboard/jobs/[id]/page.tsx:392","None","GREEN"

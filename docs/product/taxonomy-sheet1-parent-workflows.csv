@@ -3,7 +3,7 @@
 "PWF-02","Board Management","Period-based organization of jobs through boards including recurring period automation","14","N/A","14 GREEN, 0 YELLOW, 0 RED","/dashboard/boards, /dashboard/jobs","TBD","TBD"
 "PWF-03","Job Lifecycle","Creation and management of the Job container. Jobs are containers; capabilities define behavior.","9","Core, Table, Reconciliation","8 GREEN, 1 YELLOW, 0 RED","/dashboard/jobs, /dashboard/jobs/[id]","TBD","TBD"
 "PWF-04","Job Collaboration & Governance","Team collaboration, ownership, and governance controls on jobs (Core capability)","8 (1 removed)","Core","7 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id]","TBD","TBD"
-"PWF-05","Requests & Communication","Sending, tracking, and responding to email requests + AI assistance (Request capability)","14 (1 removed)","Request","13 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id], /dashboard/requests, /dashboard/review/*","TBD","TBD"
+"PWF-05","Requests & Communication","Sending, tracking, and responding to email requests + AI assistance (Request capability)","18 (1 removed)","Request","17 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id], /dashboard/requests, /dashboard/review/*","TBD","TBD"
 "PWF-06","Evidence Collection","Collecting, reviewing, and exporting evidence/attachments + AI analysis (Evidence capability)","5","Evidence","5 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id] (Collection tab)","TBD","TBD"
 "PWF-07","Contact Management","Managing contacts, groups, and contact organization","6","N/A","6 GREEN, 0 YELLOW, 0 RED","/dashboard/contacts","TBD","TBD"
 "PWF-08","Email Account Management","Connecting and managing email accounts for sending/receiving","3","N/A","3 GREEN, 0 YELLOW, 0 RED","/dashboard/settings/team","TBD","TBD"

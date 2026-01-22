@@ -1,7 +1,7 @@
 # Workflow Taxonomy
 
-**Version**: 1.0  
-**Last Updated**: January 21, 2026  
+**Version**: 1.1  
+**Last Updated**: January 22, 2026  
 **Purpose**: Hierarchical workflow structure enabling safe, ring-fenced refactoring
 
 ---
@@ -146,6 +146,10 @@
 | WF-05f | Manually Override Request Risk | User manually adjusts risk classification | YELLOW |
 | WF-05g | Mark Request Read / Unread | User marks requests as read/unread | YELLOW |
 | WF-05h | Reply Review | User reviews replies with AI assistance | GREEN |
+| WF-05o | Review Draft Requests | User reviews drafts copied from prior period in job header | GREEN |
+| WF-05p | Edit Draft Request | User modifies draft subject, body, or recipient | GREEN |
+| WF-05q | Send Draft Request | User sends a draft request after review | GREEN |
+| WF-05r | Delete Draft Request | User removes an unwanted draft request | GREEN |
 
 ---
 
@@ -247,6 +251,10 @@
 | WF-05f | PWF-05 | Manually Override Request Risk | - | `/dashboard/requests` | `PUT /api/requests/detail/[id]/risk` |
 | WF-05g | PWF-05 | Mark Request Read / Unread | - | `/dashboard/requests` | `POST /api/requests/detail/[id]/mark-read` |
 | WF-05h | PWF-05 | Reply Review | WF-14 | `/dashboard/review/[messageId]` | `GET/PATCH /api/review/[messageId]`, `POST /api/review/analyze` |
+| WF-05o | PWF-05 | Review Draft Requests | - | `/dashboard/jobs/[id]` | `GET /api/task-instances/[id]/requests?includeDrafts=true` |
+| WF-05p | PWF-05 | Edit Draft Request | - | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/requests` (action: update) |
+| WF-05q | PWF-05 | Send Draft Request | - | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/requests` (action: send) |
+| WF-05r | PWF-05 | Delete Draft Request | - | `/dashboard/jobs/[id]` | `DELETE /api/task-instances/[id]/requests` |
 | WF-06a | PWF-06 | Upload Evidence | WF-13 | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/collection` |
 | WF-06b | PWF-06 | Review / Approve Evidence | WF-13 | `/dashboard/jobs/[id]` | `PATCH /api/task-instances/[id]/collection/[itemId]` |
 | WF-06c | PWF-06 | Bulk Evidence Actions | WF-13 | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/collection/bulk` |
@@ -272,9 +280,9 @@
 | Metric | Count |
 |--------|-------|
 | Parent Workflows | 9 |
-| Sub-Workflows | 47 |
-| GREEN Status | 38 |
+| Sub-Workflows | 51 |
+| GREEN Status | 42 |
 | YELLOW Status | 9 |
 | RED Status | 0 |
 | System Automation | 4 |
-| User-Initiated | 43 |
+| User-Initiated | 47 |

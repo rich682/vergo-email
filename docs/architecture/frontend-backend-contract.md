@@ -77,6 +77,77 @@ CRITICAL: Job Stability Rules
 
 ---
 
+## Draft Request Handling (Period Rollover)
+
+> **Last Updated**: 2026-01-22  
+> **Scope**: Recurring request drafts copied during board period rollover
+
+### Overview
+
+When a board completes and auto-creates the next period (WF-02l, WF-02m), active requests from the previous period are copied forward as **draft requests** on the new job. These drafts require user review before sending.
+
+### Canonical API Endpoint
+
+**All draft request operations are handled through the existing endpoint:**
+
+```
+/api/task-instances/[id]/requests
+```
+
+| Operation | Method | Query/Body | Evidence |
+|-----------|--------|------------|----------|
+| List drafts | GET | `?includeDrafts=true` | `app/dashboard/jobs/[id]/page.tsx:429-430` |
+| Update draft | POST | `{ requestId, action: "update", subject?, body?, entityId? }` | `components/jobs/draft-request-review-modal.tsx:122-131` |
+| Send draft | POST | `{ requestId, action: "send", remindersApproved? }` | `components/jobs/draft-request-review-modal.tsx:159-168` |
+| Delete draft | DELETE | `{ requestId }` (body) | `components/jobs/draft-request-review-modal.tsx:181-193` |
+
+### UI Entry Point
+
+Draft requests are surfaced in the **Job Detail Header** (not in table cells):
+
+| Location | Evidence | Behavior |
+|----------|----------|----------|
+| Job header badge | `app/dashboard/jobs/[id]/page.tsx:1148-1160` | Shows amber badge "{N} draft(s) to review" when drafts exist |
+| Badge click | `app/dashboard/jobs/[id]/page.tsx:1152-1153` | Opens `DraftRequestReviewModal` |
+| Modal component | `components/jobs/draft-request-review-modal.tsx:84-91` | Review, edit, send, or delete drafts |
+
+### Response Shape
+
+```typescript
+// GET /api/task-instances/[id]/requests?includeDrafts=true
+{
+  success: true,
+  requests: [...],        // Existing EmailDraft-based requests
+  draftRequests: [...],   // Draft Request records with resolved content
+  hasDrafts: boolean      // Convenience flag
+}
+```
+
+### Services Involved
+
+| Service | Purpose | File |
+|---------|---------|------|
+| `RequestDraftCopyService` | Copy-on-write pattern for draft content | `lib/services/request-draft-copy.service.ts` |
+| `BusinessDayService` | Period-aware scheduling computation | `lib/services/business-day.service.ts` |
+
+### Key Behaviors
+
+1. **Drafts are NOT auto-sent**: User must explicitly send each draft
+2. **Copy-on-write content**: Source request content is referenced until user edits
+3. **Recipients must be reviewed**: Stakeholders may change between periods
+4. **Reminders require re-approval**: User must opt-in to reminders for each draft
+
+### Related Workflows
+
+- WF-02l: Auto-Create Next Period Board (triggers draft copy)
+- WF-02m: Copy Tasks to Next Period (copies job structure)
+- WF-05o: Review Draft Requests (new - documented below)
+- WF-05p: Edit Draft Request (new - documented below)
+- WF-05q: Send Draft Request (new - documented below)
+- WF-05r: Delete Draft Request (new - documented below)
+
+---
+
 ## Section A: Page-to-Workflow Mapping
 
 ### Dashboard Pages

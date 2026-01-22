@@ -1,7 +1,7 @@
 # Workflows Reference
 
-**Version**: 1.0  
-**Last Updated**: January 21, 2026  
+**Version**: 1.1  
+**Last Updated**: January 22, 2026  
 **Purpose**: User-facing guide to all application workflows
 
 ---
@@ -391,6 +391,70 @@ To Restore:
 5. Send reply
 
 **APIs Used**: `GET /api/review/[messageId]`, `POST /api/review/analyze`, `POST /api/requests/detail/[id]/reply`
+
+---
+
+### WF-05o: Review Draft Requests
+
+**Goal**: Review requests copied from a prior period before sending
+
+**Context**: When a board completes and auto-creates the next period, requests from the prior period are copied as drafts. These drafts require user review.
+
+**Steps**:
+1. Navigate to `/dashboard/jobs/[id]`
+2. Look for amber "N draft(s) to review" badge in the job header (next to status)
+3. Click the badge to open the Draft Request Review modal
+4. Review the draft content (subject, body, recipient)
+5. Choose to Edit, Send, or Delete
+
+**APIs Used**: `GET /api/task-instances/[id]/requests?includeDrafts=true`
+
+---
+
+### WF-05p: Edit Draft Request
+
+**Goal**: Modify a draft request's content or recipient before sending
+
+**Steps**:
+1. Open the Draft Request Review modal (WF-05o)
+2. Click "Edit" on the draft
+3. Modify subject, body, or select a different recipient
+4. Click "Save" to preserve changes
+
+**Note**: Edits use copy-on-write pattern - original source content is preserved until you edit.
+
+**APIs Used**: `POST /api/task-instances/[id]/requests` with `{ action: "update", requestId, ... }`
+
+---
+
+### WF-05q: Send Draft Request
+
+**Goal**: Send a reviewed draft request to its recipient
+
+**Steps**:
+1. Open the Draft Request Review modal (WF-05o)
+2. Verify recipient and content are correct
+3. Optionally approve reminders
+4. Click "Send"
+5. Draft is activated and email is sent
+
+**Important**: The draft's `isDraft` flag is set to `false` upon sending.
+
+**APIs Used**: `POST /api/task-instances/[id]/requests` with `{ action: "send", requestId, remindersApproved? }`
+
+---
+
+### WF-05r: Delete Draft Request
+
+**Goal**: Remove an unwanted draft request
+
+**Steps**:
+1. Open the Draft Request Review modal (WF-05o)
+2. Click "Delete" on the draft
+3. Confirm deletion
+4. Draft is permanently removed
+
+**APIs Used**: `DELETE /api/task-instances/[id]/requests` with `{ requestId }` in body
 
 ---
 
