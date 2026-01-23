@@ -55,7 +55,8 @@ const COLUMN_TYPES = [
   { value: "currency", label: "Currency" },
 ]
 
-type Step = "upload" | "review"
+// Steps: upload → orientation → configure
+type Step = "upload" | "orientation" | "configure"
 
 export function CreateDatasetModal({ 
   open, 
@@ -72,12 +73,15 @@ export function CreateDatasetModal({
   const [parsing, setParsing] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
   
-  // Review step state
+  // Schema data state
   const [columns, setColumns] = useState<SchemaColumn[]>([])
-  const [orientation, setOrientation] = useState<IdentityOrientation>("row")
+  const [rowLabels, setRowLabels] = useState<string[]>([])  // Values from Column A
+  const [rowCount, setRowCount] = useState(0)
+  
+  // Configuration state
+  const [orientation, setOrientation] = useState<IdentityOrientation | null>(null)
   const [rowKey, setRowKey] = useState("")
   const [stakeholderColumn, setStakeholderColumn] = useState<string | null>(null)
-  const [rowCount, setRowCount] = useState(0)
   
   // Saving state
   const [saving, setSaving] = useState(false)
@@ -89,10 +93,11 @@ export function CreateDatasetModal({
     setParsing(false)
     setFileName(null)
     setColumns([])
-    setOrientation("row")
+    setRowLabels([])
+    setRowCount(0)
+    setOrientation(null)
     setRowKey("")
     setStakeholderColumn(null)
-    setRowCount(0)
     setError(null)
   }, [])
 
@@ -128,6 +133,7 @@ export function CreateDatasetModal({
       }))
 
       setColumns(schemaColumns)
+      setRowLabels(result.rowLabels || [])
       setFileName(file.name)
       setRowCount(result.rowCount)
       
@@ -136,7 +142,8 @@ export function CreateDatasetModal({
         setRowKey(schemaColumns[0].key)
       }
       
-      setStep("review")
+      // Go to orientation selection step (not configure yet)
+      setStep("orientation")
     } catch (err) {
       setUploadError("Failed to parse file. Please try again.")
     } finally {
@@ -179,6 +186,10 @@ export function CreateDatasetModal({
       setError("At least one column is required")
       return
     }
+    if (!orientation) {
+      setError("Please select a data orientation")
+      return
+    }
     if (!rowKey || !columns.some(c => c.key === rowKey)) {
       setError("Please select a row key column")
       return
@@ -200,7 +211,7 @@ export function CreateDatasetModal({
 
       // Build identity configuration
       const identity: IdentityConfig = {
-        orientation,
+        orientation: orientation,
         rowKey,
         ...(orientation === "column" ? { columnIdentitySource: "headers" as ColumnIdentitySource } : {})
       }
@@ -281,7 +292,8 @@ export function CreateDatasetModal({
           </div>
         )}
 
-        {step === "review" && (
+        {/* Step 2: Orientation Selection */}
+        {step === "orientation" && (
           <div className="space-y-6 py-4">
             {/* File info */}
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -298,119 +310,174 @@ export function CreateDatasetModal({
               </Button>
             </div>
 
-            {/* Detected Columns */}
+            {/* Orientation Selection */}
             <div>
-              <Label className="mb-3 block">Detected Columns</Label>
-              <div className="space-y-2 bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
-                {columns.map((column, index) => (
-                  <div
-                    key={column.key}
-                    className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {column.label}
-                      </p>
-                      <p className="text-xs text-gray-400">{column.key}</p>
-                    </div>
-
-                    <Select
-                      value={column.type}
-                      onValueChange={(value) => updateColumn(index, { type: value as ColumnType })}
-                    >
-                      <SelectTrigger className="w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COLUMN_TYPES.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeColumn(index)}
-                      disabled={columns.length === 1}
-                      className="text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+              <Label className="text-sm font-medium mb-3 block">How is this data organized?</Label>
+              <div className="space-y-3">
+                <label 
+                  className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    orientation === "column" 
+                      ? "border-blue-500 bg-blue-50" 
+                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="orientation"
+                    value="column"
+                    checked={orientation === "column"}
+                    onChange={() => setOrientation("column")}
+                    className="mt-1"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900">Columns represent the primary items</span>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Each column header (Row 1) is a project, location, or entity that persists over time
+                    </p>
                   </div>
-                ))}
+                </label>
+                <label 
+                  className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    orientation === "row" 
+                      ? "border-blue-500 bg-blue-50" 
+                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="orientation"
+                    value="row"
+                    checked={orientation === "row"}
+                    onChange={() => setOrientation("row")}
+                    className="mt-1"
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900">Rows represent the primary items</span>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Each row (Column A values) is an account or record that persists over time
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Configure - Preview based on orientation + key selection */}
+        {step === "configure" && (
+          <div className="space-y-6 py-4">
+            {/* File info with orientation badge */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <FileSpreadsheet className="w-5 h-5 text-gray-500" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-900">{fileName}</p>
+                <p className="text-xs text-gray-500">
+                  {orientation === "column" ? "Column-based" : "Row-based"} • {rowCount.toLocaleString()} rows
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setStep("orientation")}>
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+            </div>
+
+            {/* Preview based on orientation */}
+            <div>
+              <Label className="mb-3 block">
+                {orientation === "column" 
+                  ? "Columns detected (entities to track)"
+                  : "Rows detected (entities to track)"
+                }
+              </Label>
+              <div className="space-y-2 bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                {orientation === "column" ? (
+                  // Column orientation: show column headers (excluding first column which is row labels)
+                  columns.slice(1).map((column, index) => (
+                    <div
+                      key={column.key}
+                      className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {column.label}
+                        </p>
+                      </div>
+                      <Select
+                        value={column.type}
+                        onValueChange={(value) => updateColumn(index + 1, { type: value as ColumnType })}
+                      >
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COLUMN_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeColumn(index + 1)}
+                        disabled={columns.length <= 2}
+                        className="text-gray-400 hover:text-red-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  // Row orientation: show row labels from Column A
+                  rowLabels.length > 0 ? (
+                    rowLabels.slice(0, 20).map((label, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
+                      >
+                        <p className="text-sm font-medium text-gray-900 truncate flex-1">
+                          {label}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 p-3">No row labels detected in Column A</p>
+                  )
+                )}
+                {orientation === "row" && rowLabels.length > 20 && (
+                  <p className="text-xs text-gray-400 text-center pt-2">
+                    + {rowLabels.length - 20} more rows
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Identity Configuration - Two Step */}
-            <div className="space-y-4">
-              {/* Step 1: Orientation Selection */}
-              <div>
-                <Label className="text-sm font-medium">How is this data organized?</Label>
-                <div className="mt-2 space-y-2">
-                  <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                    <input
-                      type="radio"
-                      name="orientation"
-                      value="row"
-                      checked={orientation === "row"}
-                      onChange={() => setOrientation("row")}
-                      className="mt-1"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-900">Rows represent the primary items</span>
-                      <p className="text-sm text-gray-500">
-                        Each row is an account or record that persists over time (e.g. accounts, recipients)
-                      </p>
-                    </div>
-                  </label>
-                  <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                    <input
-                      type="radio"
-                      name="orientation"
-                      value="column"
-                      checked={orientation === "column"}
-                      onChange={() => setOrientation("column")}
-                      className="mt-1"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-900">Columns represent the primary items</span>
-                      <p className="text-sm text-gray-500">
-                        Each column is a project or entity that may be added over time (e.g. projects, locations)
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Step 2: Key Selection (dynamic based on orientation) */}
-              <div>
-                <Label htmlFor="rowKey">
-                  {orientation === "row" 
-                    ? "Select the column that uniquely identifies each row"
-                    : "Select the column that contains the row labels (line items)"
-                  }
-                </Label>
-                {orientation === "column" && (
-                  <p className="text-sm text-gray-500 mb-2">
-                    Columns will be treated as the primary entities and tracked over time.
-                  </p>
-                )}
-                <Select value={rowKey} onValueChange={setRowKey}>
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Select column" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {columns.map((column) => (
-                      <SelectItem key={column.key} value={column.key}>
-                        {column.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Row key / identifier column selection */}
+            <div>
+              <Label htmlFor="rowKey">
+                {orientation === "column" 
+                  ? "Select the column containing row labels (line items)"
+                  : "Select the column that uniquely identifies each row"
+                }
+              </Label>
+              {orientation === "column" && (
+                <p className="text-sm text-gray-500 mb-2">
+                  This column contains the row labels (e.g., Revenue, Expenses, Net Income)
+                </p>
+              )}
+              <Select value={rowKey} onValueChange={setRowKey}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Select column" />
+                </SelectTrigger>
+                <SelectContent>
+                  {columns.map((column) => (
+                    <SelectItem key={column.key} value={column.key}>
+                      {column.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Stakeholder Column Selection (Optional) */}
@@ -446,11 +513,25 @@ export function CreateDatasetModal({
         )}
 
         <DialogFooter>
-          {step === "upload" ? (
+          {step === "upload" && (
             <Button variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-          ) : (
+          )}
+          {step === "orientation" && (
+            <>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => setStep("configure")} 
+                disabled={!orientation}
+              >
+                Continue
+              </Button>
+            </>
+          )}
+          {step === "configure" && (
             <>
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel

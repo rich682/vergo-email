@@ -21,6 +21,7 @@ export interface SchemaParseResult {
   columns: DetectedColumn[]
   sampleRows: Array<Record<string, string>>
   rowCount: number
+  rowLabels: string[]  // Values from Column A (first column) - used for row-based identity preview
 }
 
 export interface SchemaParseError {
@@ -156,10 +157,17 @@ function parseCSVForSchema(content: string): SchemaParseResult | SchemaParseErro
       }
     })
 
+    // Extract row labels (values from first column / Column A)
+    const firstColumnHeader = headers[0]
+    const rowLabels = firstColumnHeader 
+      ? sampleRows.map(row => row[firstColumnHeader] || "").filter(v => v.trim().length > 0)
+      : []
+
     return {
       columns,
       sampleRows,
       rowCount: lines.length - 1, // Exclude header row
+      rowLabels,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to parse CSV"
@@ -301,10 +309,17 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
       }
     })
 
+    // Extract row labels (values from first column / Column A)
+    const firstColumnHeader = headers[0]
+    const rowLabels = firstColumnHeader 
+      ? sampleRows.map(row => row[firstColumnHeader] || "").filter(v => v.trim().length > 0)
+      : []
+
     return {
       columns,
       sampleRows,
       rowCount: data.length - 1, // Exclude header row
+      rowLabels,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to parse Excel file"
