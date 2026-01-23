@@ -678,7 +678,8 @@ export default function JobsPage() {
     customFields: job.customFields,
     collectedItemCount: job.collectedItemCount || 0,
     taskCount: job.taskCount || 0,
-    respondedCount: job.respondedCount || 0
+    respondedCount: job.respondedCount || 0,
+    dataStatus: (job as any).dataStatus || "none"
   }))
 
   // ============================================

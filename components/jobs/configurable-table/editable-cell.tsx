@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDefinition, JobRow, TeamMember } from "./types"
-import { TextCell, StatusCell, PersonCell, DateCell, NotesCell, FilesCell, ResponsesCell, TaskTypeCell } from "./cell-types"
+import { TextCell, StatusCell, PersonCell, DateCell, NotesCell, FilesCell, ResponsesCell, TaskTypeCell, DataStatusCell } from "./cell-types"
 
 interface EditableCellProps {
   column: ColumnDefinition
@@ -90,6 +90,13 @@ export function EditableCell({ column, job, teamMembers, onUpdate }: EditableCel
       return (
         <TaskTypeCell
           value={job.type}
+        />
+      )
+
+    case "dataStatus":
+      return (
+        <DataStatusCell
+          value={job.dataStatus}
         />
       )
 
