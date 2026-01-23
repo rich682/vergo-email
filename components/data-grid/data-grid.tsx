@@ -337,7 +337,7 @@ function DataGridCell({
     <div
       className={`
         px-2 py-1.5
-        border-r border-gray-200 last:border-r-0
+        border-r border-gray-200
         flex items-center
         ${alignClass}
         ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
