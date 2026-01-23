@@ -199,11 +199,25 @@ function parseCSVLine(line: string): string[] {
 }
 
 /**
+ * Check if an Excel cell format indicates currency
+ */
+function isCurrencyFormat(format: string | undefined): boolean {
+  if (!format) return false
+  // Common currency format patterns in Excel
+  // e.g., "$#,##0.00", "[$USD] #,##0.00", "#,##0.00 €", etc.
+  return /[$€£¥₹]/.test(format) || 
+         /\[\$[A-Z]{3}\]/.test(format) || // [$USD], [$EUR], etc.
+         format.includes("Currency") ||
+         format.includes("Accounting")
+}
+
+/**
  * Parse XLSX content and extract schema
  */
 function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaParseError {
   try {
-    const workbook = XLSX.read(buffer, { type: "array" })
+    // Use cellDates to properly handle dates, cellNF to get number formats
+    const workbook = XLSX.read(buffer, { type: "array", cellNF: true, cellStyles: true })
     
     // Get first sheet
     const sheetName = workbook.SheetNames[0]
@@ -212,6 +226,29 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
     }
 
     const sheet = workbook.Sheets[sheetName]
+    
+    // Get the range of the sheet
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1")
+    
+    if (range.e.r < 0 || range.e.c < 0) {
+      return { message: "Sheet is empty", code: "NO_DATA" }
+    }
+
+    // Track which columns have currency formatting
+    const currencyColumns = new Set<number>()
+    
+    // Check cell formats for currency columns (sample first 20 data rows)
+    for (let row = 1; row <= Math.min(range.e.r, MAX_SAMPLE_ROWS); row++) {
+      for (let col = 0; col <= range.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        const cell = sheet[cellAddress]
+        if (cell && cell.z && isCurrencyFormat(cell.z)) {
+          currencyColumns.add(col)
+        }
+      }
+    }
+
+    // Parse data using sheet_to_json for convenience
     const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][]
 
     if (data.length === 0) {
@@ -241,16 +278,24 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
       sampleRows.push(row)
     }
 
-    // Detect columns
+    // Detect columns, using format info for currency detection
     const existingKeys = new Set<string>()
-    const columns: DetectedColumn[] = headers.map(header => {
+    const columns: DetectedColumn[] = headers.map((header, colIndex) => {
       const sampleValues = sampleRows.map(row => row[header] || "")
       const key = generateKey(header, existingKeys)
+      
+      // If Excel format indicates currency, use that; otherwise detect from values
+      let type: ColumnType
+      if (currencyColumns.has(colIndex)) {
+        type = "currency"
+      } else {
+        type = detectColumnType(sampleValues)
+      }
       
       return {
         key,
         label: header,
-        type: detectColumnType(sampleValues),
+        type,
         required: false,
         sampleValues: sampleValues.slice(0, 5),
       }
