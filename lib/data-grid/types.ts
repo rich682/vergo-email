@@ -300,6 +300,14 @@ export interface DataGridProps {
   onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
   /** Whether to show the add row button */
   showAddRow?: boolean
+  /** Available sheets for tab bar (shows tabs if > 1 sheet) */
+  sheets?: SheetMetadata[]
+  /** Callback when sheet changes (from tab bar) */
+  onSheetChange?: (sheet: SheetContext) => void
+  /** Callback to add a new sheet (upload new period) */
+  onAddSheet?: () => void
+  /** Whether adding sheets is allowed */
+  canAddSheet?: boolean
 }
 
 /**

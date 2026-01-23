@@ -10,8 +10,10 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+import { parseFormula, extractColumnReferences } from "@/lib/formula"
+
 // Valid column types
-const VALID_DATA_TYPES = ["text", "status", "attachment", "user"]
+const VALID_DATA_TYPES = ["text", "status", "attachment", "user", "formula"]
 
 // Default status options for new status columns
 const DEFAULT_STATUS_OPTIONS = [
@@ -19,6 +21,9 @@ const DEFAULT_STATUS_OPTIONS = [
   { key: "in_progress", label: "In Progress", color: "#F59E0B" },
   { key: "done", label: "Done", color: "#10B981" },
 ]
+
+// Valid formula result types
+const VALID_FORMULA_RESULT_TYPES = ["number", "currency", "text"]
 
 /**
  * GET /api/task-lineages/[id]/app-columns
@@ -71,8 +76,10 @@ export async function GET(
  * 
  * Body:
  * - label: string (display name)
- * - dataType: "text" | "status" | "attachment" | "user"
- * - config?: object (for status: { options: [{key, label, color}] })
+ * - dataType: "text" | "status" | "attachment" | "user" | "formula"
+ * - config?: object
+ *   - For status: { options: [{key, label, color}] }
+ *   - For formula: { expression: string, resultType: "number" | "currency" | "text" }
  */
 export async function POST(
   request: NextRequest,
@@ -107,6 +114,34 @@ export async function POST(
       )
     }
 
+    // Validate formula-specific config
+    if (dataType === "formula") {
+      if (!config?.expression || typeof config.expression !== "string") {
+        return NextResponse.json(
+          { error: "Formula expression is required" },
+          { status: 400 }
+        )
+      }
+
+      // Validate formula syntax
+      const parseResult = parseFormula(config.expression as string)
+      if (!parseResult.ok) {
+        return NextResponse.json(
+          { error: `Invalid formula: ${parseResult.error}` },
+          { status: 400 }
+        )
+      }
+
+      // Validate result type
+      const resultType = config.resultType as string || "number"
+      if (!VALID_FORMULA_RESULT_TYPES.includes(resultType)) {
+        return NextResponse.json(
+          { error: `Invalid result type. Must be one of: ${VALID_FORMULA_RESULT_TYPES.join(", ")}` },
+          { status: 400 }
+        )
+      }
+    }
+
     // Verify lineage exists and belongs to org
     const lineage = await prisma.taskLineage.findFirst({
       where: { id: lineageId, organizationId },
@@ -126,10 +161,19 @@ export async function POST(
     // Generate a unique key based on type and position
     const key = `${dataType}_${Date.now()}`
 
-    // Set default config for status columns
+    // Set default config based on type
     let columnConfig = config
     if (dataType === "status" && !config) {
       columnConfig = { options: DEFAULT_STATUS_OPTIONS }
+    }
+    if (dataType === "formula" && config) {
+      // Extract and store column references for dependency tracking
+      const references = extractColumnReferences(config.expression as string)
+      columnConfig = {
+        expression: config.expression,
+        resultType: config.resultType || "number",
+        references,
+      }
     }
 
     // Create the column

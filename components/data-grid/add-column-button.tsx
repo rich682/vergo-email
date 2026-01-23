@@ -55,11 +55,13 @@ const COLUMN_TYPES: ColumnTypeOption[] = [
 
 interface AddColumnButtonProps {
   onAddColumn: (type: AppColumnType, label: string) => Promise<void>
+  /** Callback when formula type is selected - opens formula editor */
+  onFormulaSelect?: () => void
   disabled?: boolean
   variant?: "header" | "button"
 }
 
-export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: AddColumnButtonProps) {
+export function AddColumnButton({ onAddColumn, onFormulaSelect, disabled, variant = "button" }: AddColumnButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -79,10 +81,16 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
   const superUseful = filteredTypes.filter((t) => t.category === "super_useful")
 
   const handleSelectType = async (option: ColumnTypeOption) => {
-    // Formula is coming soon
+    // Formula opens the formula editor modal
     if (option.type === "formula") {
-      setError("Formula columns coming soon!")
-      setTimeout(() => setError(null), 2000)
+      if (onFormulaSelect) {
+        setIsOpen(false)
+        setSearchQuery("")
+        onFormulaSelect()
+      } else {
+        setError("Formula columns coming soon!")
+        setTimeout(() => setError(null), 2000)
+      }
       return
     }
     

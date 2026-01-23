@@ -942,6 +942,10 @@ export function DataTabUniversal({
                 onAddRow={handleAddRow}
                 onRowCellValueChange={handleRowCellValueUpdate}
                 showAddRow={!!currentLineageId}
+                sheets={sheets}
+                onSheetChange={handleSheetChange}
+                onAddSheet={() => setIsUploadModalOpen(true)}
+                canAddSheet={dataStatus?.schemaConfigured && !hasSnapshots ? false : dataStatus?.schemaConfigured}
               />
             </div>
           </div>

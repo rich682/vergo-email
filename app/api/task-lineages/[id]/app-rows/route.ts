@@ -9,9 +9,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { parseFormula, extractColumnReferences } from "@/lib/formula"
 
 // Valid row types
 const VALID_ROW_TYPES = ["text", "formula"]
+
+// Valid formula result types
+const VALID_FORMULA_RESULT_TYPES = ["number", "currency", "text"]
 
 /**
  * GET /api/task-lineages/[id]/app-rows
@@ -66,7 +70,7 @@ export async function GET(
  * Body:
  * - label: string (display name, e.g., "Total", "Notes")
  * - rowType: "text" | "formula"
- * - formula?: object (for formula rows: { expression: string, references: string[] })
+ * - formula?: object (for formula rows: { expression: string, resultType: "number" | "currency" | "text" })
  */
 export async function POST(
   request: NextRequest,
@@ -101,6 +105,43 @@ export async function POST(
       )
     }
 
+    // Validate formula for formula rows
+    let processedFormula = formula
+    if (rowType === "formula") {
+      if (!formula?.expression || typeof formula.expression !== "string") {
+        return NextResponse.json(
+          { error: "Formula expression is required for formula rows" },
+          { status: 400 }
+        )
+      }
+
+      // Validate formula syntax
+      const parseResult = parseFormula(formula.expression as string)
+      if (!parseResult.ok) {
+        return NextResponse.json(
+          { error: `Invalid formula: ${parseResult.error}` },
+          { status: 400 }
+        )
+      }
+
+      // Validate result type
+      const resultType = formula.resultType as string || "number"
+      if (!VALID_FORMULA_RESULT_TYPES.includes(resultType)) {
+        return NextResponse.json(
+          { error: `Invalid result type. Must be one of: ${VALID_FORMULA_RESULT_TYPES.join(", ")}` },
+          { status: 400 }
+        )
+      }
+
+      // Extract and store column references for dependency tracking
+      const references = extractColumnReferences(formula.expression as string)
+      processedFormula = {
+        expression: formula.expression,
+        resultType: resultType,
+        references,
+      }
+    }
+
     // Verify lineage exists and belongs to org
     const lineage = await prisma.taskLineage.findFirst({
       where: { id: lineageId, organizationId },
@@ -125,7 +166,7 @@ export async function POST(
         rowType,
         label: label.trim(),
         position: nextPosition,
-        formula: formula ?? null,
+        formula: processedFormula ?? null,
         createdById: userId,
       },
       include: {

@@ -34,6 +34,7 @@ import {
 import { DataGridHeader } from "./data-grid-header"
 import { CellRenderer, getAlignmentClass } from "./cell-renderers"
 import { AddRowButton, type AppRowType } from "./add-row-button"
+import { SheetTabBar } from "./sheet-tab-bar"
 import { Loader2 } from "lucide-react"
 import type { AppColumnType } from "./add-column-button"
 
@@ -62,6 +63,10 @@ export function DataGrid({
   onDeleteRow,
   onRowCellValueChange,
   showAddRow = false,
+  sheets = [],
+  onSheetChange,
+  onAddSheet,
+  canAddSheet = false,
 }: DataGridProps) {
   // Container ref for virtualization
   const parentRef = useRef<HTMLDivElement>(null)
@@ -332,6 +337,17 @@ export function DataGrid({
           )}
         </div>
       </div>
+
+      {/* Sheet Tab Bar (Excel-like tabs at bottom) */}
+      {(sheets.length > 1 || canAddSheet) && onSheetChange && (
+        <SheetTabBar
+          sheets={sheets}
+          currentSheet={sheet}
+          onSheetChange={onSheetChange}
+          onAddSheet={onAddSheet}
+          canAddSheet={canAddSheet}
+        />
+      )}
 
       {/* Footer with row count */}
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
