@@ -207,12 +207,13 @@ export function DataGrid({
   }
 
   const virtualRows = rowVirtualizer.getVirtualItems()
+  const gridWidth = showAddColumn ? totalWidth + 60 : totalWidth
 
   return (
     <div className="flex flex-col h-full min-h-[300px] border border-gray-200 rounded-lg overflow-hidden bg-white">
       {/* Scrollable container for header + body */}
       <div className="flex-1 overflow-auto min-h-0">
-        <div style={{ minWidth: totalWidth }}>
+        <div style={{ minWidth: gridWidth }}>
           {/* Header */}
           <DataGridHeader
             columns={visibleColumns}
@@ -279,6 +280,13 @@ export function DataGrid({
                     )
                   })}
                   
+                  {/* Empty cell for add column - matches header */}
+                  {showAddColumn && (
+                    <div
+                      className="border-r border-gray-200 bg-white"
+                      style={{ width: 60, minWidth: 60, flexShrink: 0 }}
+                    />
+                  )}
                 </div>
               )
             })}

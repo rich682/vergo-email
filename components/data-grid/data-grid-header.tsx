@@ -82,11 +82,11 @@ export function DataGridHeader({
         )
       })}
       
-      {/* Add Column Button - inline at end */}
+      {/* Add Column - proper column cell like Monday */}
       {showAddColumn && onAddColumn && (
         <div
-          className="flex items-center px-1 bg-gray-100"
-          style={{ flexShrink: 0 }}
+          className="flex items-center justify-center px-2 py-2 bg-gray-100 border-r border-gray-300"
+          style={{ width: 60, minWidth: 60, flexShrink: 0 }}
         >
           <AddColumnButton
             onAddColumn={onAddColumn}
