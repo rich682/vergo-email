@@ -13,6 +13,7 @@ const DEFAULT_COLUMNS = [
   { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 5, field: "responses", isSystem: true },
   { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 6, field: "notes", isSystem: false },
   { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 7, field: "collectedItemCount", isSystem: false },
+  { id: "data", type: "dataStatus", label: "Data", width: 80, visible: true, order: 8, field: "dataStatus", isSystem: true },
 ]
 
 // Merge saved config with default columns to include any new system columns
