@@ -15,7 +15,6 @@ import {
   Paperclip,
   CheckSquare,
   MessageSquare,
-  Layers,
   Database
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -34,7 +33,6 @@ const COLUMN_TYPE_ICONS: Record<ColumnType, typeof Type> = {
   notes: FileText,
   files: Paperclip,
   responses: MessageSquare,
-  taskType: Layers,
   dataStatus: Database,
 }
 

@@ -146,7 +146,6 @@ export default function JobsPage() {
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE">("GENERIC")
   const [newJobName, setNewJobName] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
@@ -603,7 +602,7 @@ export default function JobsPage() {
           ownerId: newJobOwnerId,
           stakeholders: newJobStakeholders,
           boardId: boardId || undefined,
-          type: newJobType,
+          type: "GENERIC",
           createLineage: isRecurring
         })
       })
@@ -957,21 +956,6 @@ export default function JobsPage() {
               )}
               
               <div className="space-y-3 pt-2">
-                {/* Task Type - Compact dropdown */}
-                <div>
-                  <Label className="text-sm">Task Type</Label>
-                  <Select value={newJobType} onValueChange={(v) => setNewJobType(v as any)}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GENERIC">Standard</SelectItem>
-                      <SelectItem value="RECONCILIATION">Reconciliation</SelectItem>
-                      <SelectItem value="TABLE">Variance</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Task Name */}
                 <div>
                   <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
