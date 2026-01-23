@@ -798,8 +798,10 @@ Use plain language. Be concise.`
     }
   ),
 
-  // Auto-create next period boards when period ends
-  // Runs daily at midnight to check for boards whose period has ended
+  // Auto-create recurring boards based on schedule
+  // Runs daily at midnight to ensure all scheduled boards exist up to today
+  // Schedule-based: creates boards regardless of previous board status
+  // No auto-completion: users manually complete boards when ready
   inngest.createFunction(
     { 
       id: "auto-create-period-boards",
@@ -810,88 +812,122 @@ Use plain language. Be concise.`
     },
     { cron: "0 0 * * *" },  // Daily at midnight
     async () => {
-      console.log("[Board Automation] Starting period board auto-creation check...")
+      console.log("[Board Automation] Starting schedule-based board creation...")
       
       try {
         const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         
-        // Find all boards where:
-        // 1. automationEnabled is true
-        // 2. cadence is not AD_HOC
-        // 3. periodEnd has passed (periodEnd < now)
-        // 4. status is NOT "COMPLETE" (haven't been completed yet)
-        const boardsDue = await prisma.board.findMany({
+        // Import BoardService dynamically to avoid circular deps
+        const { BoardService, calculateNextPeriodStart } = await import("@/lib/services/board.service")
+        
+        // Find the latest board for each recurring series
+        // Group by organization + cadence to find each unique recurring series
+        const latestBoards = await prisma.board.findMany({
           where: {
             automationEnabled: true,
             cadence: { not: "AD_HOC" },
-            periodEnd: { lt: now },
-            status: { not: "COMPLETE" }
+            periodStart: { not: null }
           },
           include: {
-            organization: { select: { fiscalYearStartMonth: true } },
-            collaborators: true
-          }
+            organization: { select: { fiscalYearStartMonth: true, timezone: true } }
+          },
+          orderBy: { periodStart: "desc" }
         })
         
-        if (boardsDue.length === 0) {
-          console.log("[Board Automation] No boards due for period transition")
+        if (latestBoards.length === 0) {
+          console.log("[Board Automation] No recurring boards with automation enabled")
           return { success: true, processed: 0, created: 0 }
         }
         
-        console.log(`[Board Automation] Found ${boardsDue.length} boards due for period transition`)
-        
-        let created = 0
-        let failed = 0
-        const results: { boardId: string; boardName: string; newBoardId?: string; error?: string }[] = []
-        
-        for (const board of boardsDue) {
-          try {
-            console.log(`[Board Automation] Processing board: ${board.name} (${board.id})`)
-            
-            // Import BoardService dynamically to avoid circular deps
-            const { BoardService } = await import("@/lib/services/board.service")
-            
-            // Mark current board as complete
-            await prisma.board.update({
-              where: { id: board.id },
-              data: { status: "COMPLETE" }
-            })
-            
-            // Mark all task instances as snapshots
-            await prisma.taskInstance.updateMany({
-              where: { boardId: board.id, organizationId: board.organizationId },
-              data: { isSnapshot: true, status: "COMPLETE" }
-            })
-            
-            // Create next period board
-            const nextBoard = await BoardService.createNextPeriodBoard(
-              board.id,
-              board.organizationId,
-              board.ownerId || board.createdById
-            )
-            
-            if (nextBoard) {
-              created++
-              console.log(`[Board Automation] Created next period board: ${nextBoard.name} (${nextBoard.id})`)
-              results.push({ boardId: board.id, boardName: board.name, newBoardId: nextBoard.id })
-            } else {
-              console.log(`[Board Automation] No next board created for: ${board.name}`)
-              results.push({ boardId: board.id, boardName: board.name, error: "No next board created" })
-            }
-            
-          } catch (error: any) {
-            console.error(`[Board Automation] Failed to process board ${board.id}:`, error.message)
-            failed++
-            results.push({ boardId: board.id, boardName: board.name, error: error.message })
+        // Group boards by organization + cadence to find the latest in each series
+        const seriesMap = new Map<string, typeof latestBoards[0]>()
+        for (const board of latestBoards) {
+          const key = `${board.organizationId}:${board.cadence}`
+          if (!seriesMap.has(key)) {
+            seriesMap.set(key, board)
           }
         }
         
-        console.log(`[Board Automation] Completed: ${created} boards created, ${failed} failed out of ${boardsDue.length} processed`)
+        console.log(`[Board Automation] Found ${seriesMap.size} unique recurring board series`)
+        
+        let totalCreated = 0
+        let failed = 0
+        const results: { seriesKey: string; boardsCreated: number; error?: string }[] = []
+        
+        for (const [seriesKey, latestBoard] of seriesMap) {
+          try {
+            console.log(`[Board Automation] Processing series: ${seriesKey}, latest board: ${latestBoard.name} (period: ${latestBoard.periodStart?.toISOString()})`)
+            
+            const fiscalYearStartMonth = latestBoard.organization?.fiscalYearStartMonth ?? 1
+            let seriesCreated = 0
+            let currentBoardId = latestBoard.id
+            let currentPeriodStart = latestBoard.periodStart
+            
+            // Keep creating boards until we've caught up to today
+            while (currentPeriodStart) {
+              const nextPeriodStart = calculateNextPeriodStart(
+                latestBoard.cadence,
+                currentPeriodStart,
+                { skipWeekends: latestBoard.skipWeekends, fiscalYearStartMonth }
+              )
+              
+              if (!nextPeriodStart || nextPeriodStart > today) {
+                // We've caught up or no more periods to create
+                break
+              }
+              
+              // Try to create the next board (has idempotency check)
+              const newBoard = await BoardService.createNextPeriodBoard(
+                currentBoardId,
+                latestBoard.organizationId,
+                latestBoard.ownerId || latestBoard.createdById
+              )
+              
+              if (newBoard) {
+                seriesCreated++
+                totalCreated++
+                console.log(`[Board Automation] Created board: ${newBoard.name} (${newBoard.id})`)
+                currentBoardId = newBoard.id
+                currentPeriodStart = newBoard.periodStart
+              } else {
+                // Board might already exist, try to find it and continue from there
+                const existingBoard = await prisma.board.findFirst({
+                  where: {
+                    organizationId: latestBoard.organizationId,
+                    cadence: latestBoard.cadence,
+                    periodStart: nextPeriodStart
+                  }
+                })
+                
+                if (existingBoard) {
+                  console.log(`[Board Automation] Board already exists for ${nextPeriodStart.toISOString()}, continuing from there`)
+                  currentBoardId = existingBoard.id
+                  currentPeriodStart = existingBoard.periodStart
+                } else {
+                  // Something else went wrong, stop this series
+                  console.log(`[Board Automation] Could not create or find board for ${nextPeriodStart.toISOString()}, stopping series`)
+                  break
+                }
+              }
+            }
+            
+            results.push({ seriesKey, boardsCreated: seriesCreated })
+            console.log(`[Board Automation] Series ${seriesKey}: created ${seriesCreated} boards`)
+            
+          } catch (error: any) {
+            console.error(`[Board Automation] Failed to process series ${seriesKey}:`, error.message)
+            failed++
+            results.push({ seriesKey, boardsCreated: 0, error: error.message })
+          }
+        }
+        
+        console.log(`[Board Automation] Completed: ${totalCreated} total boards created, ${failed} series failed`)
         
         return {
           success: true,
-          processed: boardsDue.length,
-          created,
+          seriesProcessed: seriesMap.size,
+          totalCreated,
           failed,
           results
         }
