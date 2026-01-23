@@ -80,8 +80,12 @@ export function CreateDatasetModal({
   
   // Configuration state
   const [orientation, setOrientation] = useState<IdentityOrientation | null>(null)
+  // Column orientation: which column has the row labels
   const [rowKey, setRowKey] = useState("")
   const [stakeholderColumn, setStakeholderColumn] = useState<string | null>(null)
+  // Row orientation: which row has the column identifiers, which row has stakeholder info
+  const [identifierRow, setIdentifierRow] = useState<string | null>(null)
+  const [stakeholderRow, setStakeholderRow] = useState<string | null>(null)
   
   // Saving state
   const [saving, setSaving] = useState(false)
@@ -98,6 +102,8 @@ export function CreateDatasetModal({
     setOrientation(null)
     setRowKey("")
     setStakeholderColumn(null)
+    setIdentifierRow(null)
+    setStakeholderRow(null)
     setError(null)
   }, [])
 
@@ -196,7 +202,14 @@ export function CreateDatasetModal({
       setError("Please select a data orientation")
       return
     }
-    if (!rowKey || !columns.some(c => c.key === rowKey)) {
+    
+    // For column orientation, require rowKey selection
+    // For row orientation, use first column as rowKey (row labels column)
+    const effectiveRowKey = orientation === "column" 
+      ? rowKey 
+      : columns[0]?.key || ""
+    
+    if (orientation === "column" && (!rowKey || !columns.some(c => c.key === rowKey))) {
       setError("Please select a row key column")
       return
     }
@@ -210,16 +223,21 @@ export function CreateDatasetModal({
         ? `/api/data/tasks/${taskId}/schema`
         : "/api/datasets"
 
-      // Build stakeholder mapping if selected
-      const stakeholderMapping = stakeholderColumn 
+      // Build stakeholder mapping based on orientation
+      // Column orientation: stakeholder is a column
+      // Row orientation: stakeholder is a row (stored differently)
+      const stakeholderMapping = orientation === "column" && stakeholderColumn 
         ? { columnKey: stakeholderColumn, matchedField: "email" }
-        : undefined
+        : orientation === "row" && stakeholderRow
+          ? { rowLabel: stakeholderRow, matchedField: "email" }
+          : undefined
 
       // Build identity configuration
       const identity: IdentityConfig = {
         orientation: orientation,
-        rowKey,
-        ...(orientation === "column" ? { columnIdentitySource: "headers" as ColumnIdentitySource } : {})
+        rowKey: effectiveRowKey,
+        ...(orientation === "column" ? { columnIdentitySource: "headers" as ColumnIdentitySource } : {}),
+        ...(orientation === "row" && identifierRow ? { identifierRow } : {})
       }
 
       const response = await fetch(url, {
@@ -474,56 +492,107 @@ export function CreateDatasetModal({
               </div>
             </div>
 
-            {/* Row key / identifier column selection */}
-            <div>
-              <Label htmlFor="rowKey">
-                {orientation === "column" 
-                  ? "Select the column containing row labels (line items)"
-                  : "Select the column that uniquely identifies each row"
-                }
-              </Label>
-              {orientation === "column" && (
+            {/* Identifier selection - differs by orientation */}
+            {orientation === "column" ? (
+              // Column orientation: select which column contains row labels
+              <div>
+                <Label htmlFor="rowKey">
+                  Select the column containing row labels (line items)
+                </Label>
                 <p className="text-sm text-gray-500 mb-2">
                   This column contains the row labels (e.g., Revenue, Expenses, Net Income)
                 </p>
-              )}
-              <Select value={rowKey} onValueChange={setRowKey}>
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select column" />
-                </SelectTrigger>
-                <SelectContent>
-                  {columns.map((column) => (
-                    <SelectItem key={column.key} value={column.key}>
-                      {column.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <Select value={rowKey} onValueChange={setRowKey}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columns.map((column) => (
+                      <SelectItem key={column.key} value={column.key}>
+                        {column.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // Row orientation: select which row contains column identifiers
+              <div>
+                <Label htmlFor="identifierRow">
+                  Select the row containing column identifiers (optional)
+                </Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Select a row if column headers need additional context (usually not needed)
+                </p>
+                <Select 
+                  value={identifierRow || "_none"} 
+                  onValueChange={(v) => setIdentifierRow(v === "_none" ? null : v)}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="None (use column headers)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None (use column headers)</SelectItem>
+                    {rowLabels.map((row, index) => (
+                      <SelectItem key={index} value={row.label}>
+                        {row.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-            {/* Stakeholder Column Selection (Optional) */}
-            <div>
-              <Label htmlFor="stakeholderColumn">Stakeholder Column (optional)</Label>
-              <p className="text-sm text-gray-500 mb-2">
-                Select a column containing email addresses to link rows to contacts
-              </p>
-              <Select 
-                value={stakeholderColumn || "_none"} 
-                onValueChange={(v) => setStakeholderColumn(v === "_none" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="None selected" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">None</SelectItem>
-                  {columns.map((column) => (
-                    <SelectItem key={column.key} value={column.key}>
-                      {column.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Stakeholder selection - differs by orientation */}
+            {orientation === "column" ? (
+              // Column orientation: stakeholder is a column
+              <div>
+                <Label htmlFor="stakeholderColumn">Stakeholder Column (optional)</Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Select a column containing email addresses to link rows to contacts
+                </p>
+                <Select 
+                  value={stakeholderColumn || "_none"} 
+                  onValueChange={(v) => setStakeholderColumn(v === "_none" ? null : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="None selected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {columns.map((column) => (
+                      <SelectItem key={column.key} value={column.key}>
+                        {column.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // Row orientation: stakeholder is a row
+              <div>
+                <Label htmlFor="stakeholderRow">Stakeholder Row (optional)</Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Select a row containing email addresses to link columns to contacts
+                </p>
+                <Select 
+                  value={stakeholderRow || "_none"} 
+                  onValueChange={(v) => setStakeholderRow(v === "_none" ? null : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="None selected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {rowLabels.map((row, index) => (
+                      <SelectItem key={index} value={row.label}>
+                        {row.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
