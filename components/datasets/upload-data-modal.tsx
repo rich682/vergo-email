@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { useDropzone } from "react-dropzone"
+import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -70,25 +71,64 @@ export function UploadDataModal({
     setError(null)
   }
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const csvFile = acceptedFiles[0]
-    if (!csvFile) return
+  const parseExcelFile = async (file: File): Promise<Array<Record<string, string>>> => {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: "array" })
+    
+    const sheetName = workbook.SheetNames[0]
+    if (!sheetName) throw new Error("No sheets found in workbook")
+    
+    const sheet = workbook.Sheets[sheetName]
+    const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][]
+    
+    if (data.length === 0) throw new Error("Sheet is empty")
+    
+    const headers = (data[0] || []).map(h => String(h || "").trim())
+    if (headers.length === 0) throw new Error("No column headers found")
+    
+    const rows: Array<Record<string, string>> = []
+    for (let i = 1; i < data.length && rows.length < 10000; i++) {
+      const rowData = data[i] || []
+      const row: Record<string, string> = {}
+      for (let j = 0; j < headers.length; j++) {
+        const value = rowData[j]
+        row[headers[j]] = value !== null && value !== undefined ? String(value).trim() : ""
+      }
+      rows.push(row)
+    }
+    
+    return rows
+  }
 
-    setFile(csvFile)
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const uploadFile = acceptedFiles[0]
+    if (!uploadFile) return
+
+    setFile(uploadFile)
     setError(null)
     setLoading(true)
 
     try {
-      const text = await csvFile.text()
-      const result = parseDatasetCSV(text)
+      let rawRows: Array<Record<string, string>>
+      const fileName = uploadFile.name.toLowerCase()
+      
+      if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+        // Parse Excel file
+        rawRows = await parseExcelFile(uploadFile)
+      } else {
+        // Parse CSV file
+        const text = await uploadFile.text()
+        const result = parseDatasetCSV(text)
 
-      if ("code" in result) {
-        throw new Error(result.message)
+        if ("code" in result) {
+          throw new Error(result.message)
+        }
+        rawRows = result.rows
       }
 
-      // Map CSV rows to schema keys
+      // Map rows to schema keys
       const schemaKeyMap = new Map(schema.map(col => [col.label.toLowerCase(), col.key]))
-      const rows = result.rows.map(row => {
+      const rows = rawRows.map(row => {
         const mapped: Record<string, unknown> = {}
         for (const [key, value] of Object.entries(row)) {
           // Try to find matching schema column by label or key
@@ -130,7 +170,8 @@ export function UploadDataModal({
     onDrop,
     accept: {
       "text/csv": [".csv"],
-      "application/vnd.ms-excel": [".csv"],
+      "application/vnd.ms-excel": [".xls"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
     },
     maxFiles: 1,
   })
@@ -200,11 +241,11 @@ export function UploadDataModal({
               <input {...getInputProps()} />
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               {isDragActive ? (
-                <p className="text-blue-600">Drop the CSV file here...</p>
+                <p className="text-blue-600">Drop the file here...</p>
               ) : (
                 <>
                   <p className="text-gray-600 mb-2">
-                    Drag and drop a CSV file here, or click to select
+                    Drag and drop a CSV or Excel file here, or click to select
                   </p>
                   <p className="text-sm text-gray-400">
                     File should match the dataset schema (max 10,000 rows)
