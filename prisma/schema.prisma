@@ -157,6 +157,8 @@ model Organization {
   datasetSnapshots        DatasetSnapshot[]
   appColumnDefinitions    AppColumnDefinition[]
   appColumnValues         AppColumnValue[]
+  appRowDefinitions       AppRowDefinition[]
+  appRowValues            AppRowValue[]
 
   @@index([slug])
 }
@@ -179,6 +181,7 @@ model TaskLineage {
   instances     TaskInstance[]
   importRecipes ImportRecipe[]
   appColumns    AppColumnDefinition[] // App-owned columns for data grid
+  appRows       AppRowDefinition[]    // App-owned rows for data grid (totals, annotations)
 
   @@index([organizationId])
   @@index([datasetTemplateId])
@@ -239,6 +242,8 @@ model User {
   uploadedDatasetSnapshots   DatasetSnapshot[]          @relation("DatasetSnapshotUploader")
   createdAppColumns          AppColumnDefinition[]      @relation("AppColumnCreator")
   updatedAppColumnValues     AppColumnValue[]           @relation("AppColumnValueUpdater")
+  createdAppRows             AppRowDefinition[]         @relation("AppRowCreator")
+  updatedAppRowValues        AppRowValue[]              @relation("AppRowValueUpdater")
 
   @@index([organizationId])
   @@index([email])
@@ -1297,4 +1302,55 @@ model AppColumnValue {
   @@unique([columnId, rowIdentity])
   @@index([organizationId])
   @@index([columnId])
+}
+
+// AppRowDefinition - custom rows at bottom of data grid (text annotations, formulas)
+// Stored at TaskLineage level for inheritance across recurring tasks
+model AppRowDefinition {
+  id             String @id @default(cuid())
+  organizationId String
+  lineageId      String // Stored at TaskLineage level for inheritance
+
+  rowType  String // "text" | "formula"
+  label    String // Display name (e.g., "Total", "Notes")
+  position Int    // Row display order (0-indexed)
+
+  // Formula configuration (for formula rows only)
+  // { expression: string, references: string[] }
+  formula Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage      TaskLineage     @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  createdBy    User            @relation("AppRowCreator", fields: [createdById], references: [id])
+  values       AppRowValue[]
+
+  @@index([organizationId])
+  @@index([lineageId])
+}
+
+// AppRowValue - cell values for app-owned rows
+// Keyed by columnKey (which column this value is in)
+model AppRowValue {
+  id             String @id @default(cuid())
+  organizationId String
+  rowId          String // FK to AppRowDefinition
+  columnKey      String // Which column this value belongs to
+
+  // Stored value (text for text rows, null for formula - calculated on read)
+  value String?
+
+  updatedAt   DateTime @updatedAt
+  updatedById String
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  row          AppRowDefinition  @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  updatedBy    User              @relation("AppRowValueUpdater", fields: [updatedById], references: [id])
+
+  @@unique([rowId, columnKey])
+  @@index([organizationId])
+  @@index([rowId])
 }

@@ -23,6 +23,7 @@ import type {
   SheetContext,
   ColumnUniqueValues,
   CellValue,
+  AppRowDefinition,
 } from "@/lib/data-grid/types"
 import {
   processRows,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/data-grid/utils"
 import { DataGridHeader } from "./data-grid-header"
 import { CellRenderer, getAlignmentClass } from "./cell-renderers"
+import { AddRowButton, type AppRowType } from "./add-row-button"
 import { Loader2 } from "lucide-react"
 import type { AppColumnType } from "./add-column-button"
 
@@ -55,6 +57,11 @@ export function DataGrid({
   onCellValueChange,
   identityKey,
   showAddColumn = false,
+  appRows = [],
+  onAddRow,
+  onDeleteRow,
+  onRowCellValueChange,
+  showAddRow = false,
 }: DataGridProps) {
   // Container ref for virtualization
   const parentRef = useRef<HTMLDivElement>(null)
@@ -159,6 +166,13 @@ export function DataGrid({
       await onDeleteColumn(columnId)
     }
   }, [onDeleteColumn])
+
+  // Handle add row
+  const handleAddRow = useCallback(async (type: AppRowType, label: string) => {
+    if (onAddRow) {
+      await onAddRow(type, label)
+    }
+  }, [onAddRow])
 
   // Loading state
   if (isLoading) {
@@ -291,6 +305,31 @@ export function DataGrid({
               )
             })}
           </div>
+          
+          {/* App Rows (custom rows at bottom) */}
+          {appRows.length > 0 && (
+            <div className="border-t-2 border-gray-300">
+              {appRows.map((appRow) => (
+                <AppRowComponent
+                  key={appRow.id}
+                  appRow={appRow}
+                  visibleColumns={visibleColumns}
+                  showAddColumn={showAddColumn}
+                  onRowCellValueChange={onRowCellValueChange}
+                />
+              ))}
+            </div>
+          )}
+          
+          {/* Add Row Button */}
+          {showAddRow && (
+            <div className="p-2 border-t border-gray-200 bg-gray-50">
+              <AddRowButton
+                onAddRow={handleAddRow}
+                disabled={isLoading}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -304,9 +343,185 @@ export function DataGrid({
               (filtered from {rows.length.toLocaleString()})
             </span>
           )}
+          {appRows.length > 0 && (
+            <span className="text-gray-400">
+              {" "}+ {appRows.length} custom row{appRows.length !== 1 ? "s" : ""}
+            </span>
+          )}
         </span>
         <span>{visibleColumns.length} columns</span>
       </div>
+    </div>
+  )
+}
+
+// ============================================
+// App Row Component (custom rows at bottom)
+// ============================================
+
+interface AppRowComponentProps {
+  appRow: AppRowDefinition
+  visibleColumns: ColumnDefinition[]
+  showAddColumn: boolean
+  onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
+}
+
+function AppRowComponent({
+  appRow,
+  visibleColumns,
+  showAddColumn,
+  onRowCellValueChange,
+}: AppRowComponentProps) {
+  return (
+    <div
+      className={`
+        flex
+        border-b border-gray-200
+        bg-gray-50
+        hover:bg-gray-100
+      `}
+      style={{ height: `${ROW_HEIGHT}px` }}
+    >
+      {/* Row label in first column position */}
+      <div
+        className="px-2 py-1.5 border-r border-gray-200 flex items-center font-medium text-gray-700 text-sm"
+        style={{
+          width: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
+          minWidth: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
+          flexShrink: 0,
+        }}
+      >
+        {appRow.label}
+      </div>
+      
+      {/* Rest of the columns */}
+      {visibleColumns.slice(1).map((column) => {
+        // Find the value for this column
+        const cellValue = appRow.values.find((v) => v.columnKey === column.key)
+        const displayValue = cellValue?.value || ""
+        
+        return (
+          <AppRowCell
+            key={column.id}
+            column={column}
+            value={displayValue}
+            appRow={appRow}
+            onRowCellValueChange={onRowCellValueChange}
+          />
+        )
+      })}
+      
+      {/* Empty cell for add column - matches header */}
+      {showAddColumn && (
+        <div
+          className="border-r border-gray-200 bg-gray-50"
+          style={{ width: 60, minWidth: 60, flexShrink: 0 }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// App Row Cell Component
+// ============================================
+
+interface AppRowCellProps {
+  column: ColumnDefinition
+  value: string
+  appRow: AppRowDefinition
+  onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
+}
+
+function AppRowCell({
+  column,
+  value,
+  appRow,
+  onRowCellValueChange,
+}: AppRowCellProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setEditValue(value)
+  }, [value])
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleSave = async () => {
+    if (editValue !== value && onRowCellValueChange) {
+      await onRowCellValueChange(appRow.id, column.key, editValue || null)
+    }
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSave()
+    } else if (e.key === "Escape") {
+      setEditValue(value)
+      setIsEditing(false)
+    }
+  }
+
+  // Formula rows show calculated value (not editable in V1)
+  if (appRow.rowType === "formula") {
+    return (
+      <div
+        className={`
+          px-2 py-1.5
+          border-r border-gray-200
+          flex items-center
+          text-sm text-gray-500 italic
+        `}
+        style={{
+          width: column.width ?? getDefaultColumnWidth(column.dataType),
+          minWidth: column.width ?? getDefaultColumnWidth(column.dataType),
+          flexShrink: 0,
+        }}
+      >
+        {value || "—"}
+      </div>
+    )
+  }
+
+  // Text rows are editable
+  return (
+    <div
+      className={`
+        px-2 py-1.5
+        border-r border-gray-200
+        flex items-center
+        cursor-pointer hover:bg-blue-50
+      `}
+      style={{
+        width: column.width ?? getDefaultColumnWidth(column.dataType),
+        minWidth: column.width ?? getDefaultColumnWidth(column.dataType),
+        flexShrink: 0,
+      }}
+      onClick={() => !isEditing && setIsEditing(true)}
+    >
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          className="w-full h-full px-1 text-sm border border-blue-500 rounded outline-none"
+        />
+      ) : (
+        <span className="text-sm text-gray-600 truncate">
+          {value || <span className="text-gray-400 italic">Click to edit</span>}
+        </span>
+      )}
     </div>
   )
 }

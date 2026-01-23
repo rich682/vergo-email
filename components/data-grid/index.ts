@@ -15,6 +15,8 @@ export { FilterPopover } from "./filter-popover"
 export { CellRenderer, getAlignmentClass, getFontClass } from "./cell-renderers"
 export { AddColumnButton } from "./add-column-button"
 export type { AppColumnType } from "./add-column-button"
+export { AddRowButton } from "./add-row-button"
+export type { AppRowType } from "./add-row-button"
 
 // Cell editors
 export {
@@ -54,6 +56,8 @@ export type {
   ColumnKind,
   FilterOperator,
   SortDirection,
+  AppRowDefinition,
+  AppRowValue,
 } from "@/lib/data-grid/types"
 
 // Re-export utils

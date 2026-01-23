@@ -290,6 +290,38 @@ export interface DataGridProps {
   identityKey?: string
   /** Whether to show the add column button */
   showAddColumn?: boolean
+  /** App rows to display at bottom of grid */
+  appRows?: AppRowDefinition[]
+  /** Callback to add a new app row */
+  onAddRow?: (type: string, label: string) => Promise<void>
+  /** Callback to delete an app row */
+  onDeleteRow?: (rowId: string) => Promise<void>
+  /** Callback when an app row cell value changes */
+  onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
+  /** Whether to show the add row button */
+  showAddRow?: boolean
+}
+
+/**
+ * App row definition (custom rows at bottom of grid).
+ */
+export interface AppRowDefinition {
+  id: string
+  rowType: "text" | "formula"
+  label: string
+  position: number
+  formula?: Record<string, unknown> | null
+  values: AppRowValue[]
+}
+
+/**
+ * App row value (cell value for an app row).
+ */
+export interface AppRowValue {
+  id: string
+  rowId: string
+  columnKey: string
+  value: string | null
 }
 
 /**

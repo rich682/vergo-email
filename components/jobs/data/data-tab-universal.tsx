@@ -34,7 +34,7 @@ import {
   createV1CellResolver,
   createEmptyFilterState,
 } from "@/components/data-grid"
-import type { AppColumnType, StatusOption, TeamMember } from "@/components/data-grid"
+import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue } from "@/components/data-grid"
 import type {
   SheetContext,
   SheetMetadata,
@@ -108,6 +108,23 @@ interface AppColumnValueData {
   }
 }
 
+// App row types (mirrors Prisma model)
+interface AppRowDef {
+  id: string
+  rowType: "text" | "formula"
+  label: string
+  position: number
+  formula?: Record<string, unknown> | null
+  values: AppRowValueDef[]
+}
+
+interface AppRowValueDef {
+  id: string
+  rowId: string
+  columnKey: string
+  value: string | null
+}
+
 interface DataTabUniversalProps {
   taskInstanceId: string
   taskName: string
@@ -161,6 +178,10 @@ export function DataTabUniversal({
   const [appColumnValues, setAppColumnValues] = useState<Map<string, AppColumnValueData>>(new Map())
   const [loadingAppColumns, setLoadingAppColumns] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+
+  // App rows state
+  const [appRows, setAppRows] = useState<AppRowDef[]>([])
+  const [loadingAppRows, setLoadingAppRows] = useState(false)
 
   const fetchDataStatus = useCallback(async () => {
     setLoading(true)
@@ -343,18 +364,94 @@ export function DataTabUniversal({
     fetchAppColumns()
   }, [currentLineageId, fetchAppColumns])
 
+  // Fetch app rows
+  const fetchAppRows = useCallback(async () => {
+    if (!currentLineageId) return
+
+    setLoadingAppRows(true)
+    try {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows`,
+        { credentials: "include" }
+      )
+
+      if (!response.ok) {
+        console.error("Failed to fetch app rows")
+        return
+      }
+
+      const data = await response.json()
+      setAppRows(data.rows || [])
+    } catch (err) {
+      console.error("Error fetching app rows:", err)
+    } finally {
+      setLoadingAppRows(false)
+    }
+  }, [currentLineageId])
+
+  // Handle adding a new app row
+  const handleAddRow = useCallback(async (type: AppRowType, label: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-rows`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ label, rowType: type }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to add row")
+    }
+
+    // Refresh app rows
+    fetchAppRows()
+  }, [currentLineageId, fetchAppRows])
+
+  // Handle updating an app row cell value
+  const handleRowCellValueUpdate = useCallback(async (
+    rowId: string,
+    columnKey: string,
+    value: string | null
+  ) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}/values`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ values: [{ columnKey, value }] }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to update row value")
+    }
+
+    // Refresh app rows to get updated values
+    fetchAppRows()
+  }, [currentLineageId, fetchAppRows])
+
   // Update lineageId when it changes
   useEffect(() => {
     setCurrentLineageId(lineageId)
   }, [lineageId])
 
-  // Fetch app columns when lineageId becomes available
+  // Fetch app columns and rows when lineageId becomes available
   useEffect(() => {
     if (currentLineageId) {
       fetchAppColumns()
+      fetchAppRows()
       fetchTeamMembers()
     }
-  }, [currentLineageId, fetchAppColumns, fetchTeamMembers])
+  }, [currentLineageId, fetchAppColumns, fetchAppRows, fetchTeamMembers])
 
   // Initialize columns from schema and app columns
   useEffect(() => {
@@ -841,6 +938,10 @@ export function DataTabUniversal({
                 onCellValueChange={handleCellValueUpdate}
                 identityKey={dataStatus?.datasetTemplate?.identityKey}
                 showAddColumn={!!currentLineageId}
+                appRows={appRows}
+                onAddRow={handleAddRow}
+                onRowCellValueChange={handleRowCellValueUpdate}
+                showAddRow={!!currentLineageId}
               />
             </div>
           </div>

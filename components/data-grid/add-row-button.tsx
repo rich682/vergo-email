@@ -1,11 +1,11 @@
 "use client"
 
 /**
- * Add Column Button
+ * Add Row Button
  * 
- * Monday.com-style column type selector with:
+ * Monday.com-style row type selector with:
  * - Search field
- * - Categorized column types with colored icons
+ * - Categorized row types with colored icons
  * - Direct add (no name confirmation step)
  */
 
@@ -18,13 +18,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-export type AppColumnType = "text" | "formula"
+export type AppRowType = "text" | "formula"
 
-interface ColumnTypeOption {
-  type: AppColumnType
+interface RowTypeOption {
+  type: AppRowType
   label: string
   description: string
   icon: React.ReactNode
@@ -32,12 +31,12 @@ interface ColumnTypeOption {
   category: "essentials" | "super_useful"
 }
 
-const COLUMN_TYPES: ColumnTypeOption[] = [
+const ROW_TYPES: RowTypeOption[] = [
   // Essentials
   {
     type: "text",
     label: "Text",
-    description: "Free text field for notes",
+    description: "Free text row for notes",
     icon: <Type className="w-4 h-4 text-white" />,
     iconBg: "bg-orange-500",
     category: "essentials",
@@ -53,24 +52,23 @@ const COLUMN_TYPES: ColumnTypeOption[] = [
   },
 ]
 
-interface AddColumnButtonProps {
-  onAddColumn: (type: AppColumnType, label: string) => Promise<void>
+interface AddRowButtonProps {
+  onAddRow: (type: AppRowType, label: string) => Promise<void>
   disabled?: boolean
-  variant?: "header" | "button"
 }
 
-export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: AddColumnButtonProps) {
+export function AddRowButton({ onAddRow, disabled }: AddRowButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submittingType, setSubmittingType] = useState<AppColumnType | null>(null)
+  const [submittingType, setSubmittingType] = useState<AppRowType | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Filter column types by search
+  // Filter row types by search
   const filteredTypes = useMemo(() => {
-    if (!searchQuery.trim()) return COLUMN_TYPES
+    if (!searchQuery.trim()) return ROW_TYPES
     const query = searchQuery.toLowerCase()
-    return COLUMN_TYPES.filter(
+    return ROW_TYPES.filter(
       (t) => t.label.toLowerCase().includes(query) || t.description.toLowerCase().includes(query)
     )
   }, [searchQuery])
@@ -78,10 +76,10 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
   const essentials = filteredTypes.filter((t) => t.category === "essentials")
   const superUseful = filteredTypes.filter((t) => t.category === "super_useful")
 
-  const handleSelectType = async (option: ColumnTypeOption) => {
+  const handleSelectType = async (option: RowTypeOption) => {
     // Formula is coming soon
     if (option.type === "formula") {
-      setError("Formula columns coming soon!")
+      setError("Formula rows coming soon!")
       setTimeout(() => setError(null), 2000)
       return
     }
@@ -92,11 +90,11 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
 
     try {
       // Use the default label directly - no confirmation step
-      await onAddColumn(option.type, option.label)
+      await onAddRow(option.type, option.label)
       setIsOpen(false)
       setSearchQuery("")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add column")
+      setError(err instanceof Error ? err.message : "Failed to add row")
     } finally {
       setIsSubmitting(false)
       setSubmittingType(null)
@@ -111,36 +109,24 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
     }
   }
 
-  const triggerContent = variant === "header" ? (
-    <button
-      disabled={disabled || isSubmitting}
-      className={`
-        flex items-center justify-center
-        w-9 h-8
-        text-gray-400 hover:text-gray-600 hover:bg-gray-200
-        rounded
-        transition-colors
-        disabled:opacity-50 disabled:cursor-not-allowed
-      `}
-    >
-      <Plus className="w-4 h-4" />
-    </button>
-  ) : (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={disabled || isSubmitting}
-      className="h-8"
-    >
-      <Plus className="w-4 h-4 mr-1" />
-      Add Column
-    </Button>
-  )
-
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        {triggerContent}
+        <button
+          disabled={disabled || isSubmitting}
+          className={`
+            flex items-center justify-center
+            w-full h-8
+            text-gray-400 hover:text-gray-600 hover:bg-gray-100
+            border border-dashed border-gray-300 hover:border-gray-400
+            rounded
+            transition-colors
+            disabled:opacity-50 disabled:cursor-not-allowed
+          `}
+        >
+          <Plus className="w-4 h-4 mr-1" />
+          <span className="text-sm">Add Row</span>
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start" sideOffset={4}>
         <div>
@@ -150,7 +136,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search or describe your column"
+                placeholder="Search or describe your row"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-9 text-sm border-blue-500 focus-visible:ring-blue-500"
@@ -167,7 +153,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
             </div>
           </div>
 
-          {/* Column types */}
+          {/* Row types */}
           <div className="p-2 max-h-80 overflow-y-auto">
             {error && (
               <div className="px-2 py-1.5 mb-2 text-xs text-amber-700 bg-amber-50 rounded">
@@ -183,7 +169,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
                 </div>
                 <div className="grid grid-cols-2 gap-1">
                   {essentials.map((option) => (
-                    <ColumnTypeButton
+                    <RowTypeButton
                       key={option.type}
                       option={option}
                       onClick={() => handleSelectType(option)}
@@ -203,7 +189,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
                 </div>
                 <div className="grid grid-cols-2 gap-1">
                   {superUseful.map((option) => (
-                    <ColumnTypeButton
+                    <RowTypeButton
                       key={option.type}
                       option={option}
                       onClick={() => handleSelectType(option)}
@@ -217,7 +203,7 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
 
             {filteredTypes.length === 0 && (
               <div className="px-2 py-8 text-sm text-gray-500 text-center">
-                No matching column types
+                No matching row types
               </div>
             )}
           </div>
@@ -227,14 +213,14 @@ export function AddColumnButton({ onAddColumn, disabled, variant = "button" }: A
   )
 }
 
-// Column type button component
-function ColumnTypeButton({ 
+// Row type button component
+function RowTypeButton({ 
   option, 
   onClick,
   isLoading,
   disabled,
 }: { 
-  option: ColumnTypeOption
+  option: RowTypeOption
   onClick: () => void 
   isLoading?: boolean
   disabled?: boolean
