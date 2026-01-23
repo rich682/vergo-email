@@ -230,7 +230,7 @@ function ColumnHeader({
         group flex items-center justify-between
         px-2 py-2 
         text-xs font-medium text-gray-700 
-        border-r border-gray-300 last:border-r-0
+        border-r border-gray-300
         select-none bg-gray-100
         hover:bg-gray-50
       `}
