@@ -28,6 +28,16 @@ interface SchemaColumn {
   required: boolean
 }
 
+// Identity configuration types (matches backend)
+type IdentityOrientation = "row" | "column"
+type ColumnIdentitySource = "headers"
+
+interface IdentityConfig {
+  orientation: IdentityOrientation
+  rowKey: string
+  columnIdentitySource?: ColumnIdentitySource
+}
+
 interface CreateDatasetModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -64,7 +74,8 @@ export function CreateDatasetModal({
   
   // Review step state
   const [columns, setColumns] = useState<SchemaColumn[]>([])
-  const [identityKey, setIdentityKey] = useState("")
+  const [orientation, setOrientation] = useState<IdentityOrientation>("row")
+  const [rowKey, setRowKey] = useState("")
   const [stakeholderColumn, setStakeholderColumn] = useState<string | null>(null)
   const [rowCount, setRowCount] = useState(0)
   
@@ -78,7 +89,8 @@ export function CreateDatasetModal({
     setParsing(false)
     setFileName(null)
     setColumns([])
-    setIdentityKey("")
+    setOrientation("row")
+    setRowKey("")
     setStakeholderColumn(null)
     setRowCount(0)
     setError(null)
@@ -119,9 +131,9 @@ export function CreateDatasetModal({
       setFileName(file.name)
       setRowCount(result.rowCount)
       
-      // Default identity key to first column
+      // Default row key to first column
       if (schemaColumns.length > 0) {
-        setIdentityKey(schemaColumns[0].key)
+        setRowKey(schemaColumns[0].key)
       }
       
       setStep("review")
@@ -151,9 +163,9 @@ export function CreateDatasetModal({
     const newColumns = columns.filter((_, i) => i !== index)
     setColumns(newColumns)
     
-    // If removing the identity key column, reset to first column
-    if (removedKey === identityKey && newColumns.length > 0) {
-      setIdentityKey(newColumns[0].key)
+    // If removing the row key column, reset to first column
+    if (removedKey === rowKey && newColumns.length > 0) {
+      setRowKey(newColumns[0].key)
     }
     
     // If removing the stakeholder column, clear it
@@ -167,8 +179,8 @@ export function CreateDatasetModal({
       setError("At least one column is required")
       return
     }
-    if (!identityKey || !columns.some(c => c.key === identityKey)) {
-      setError("Please select an identity key column")
+    if (!rowKey || !columns.some(c => c.key === rowKey)) {
+      setError("Please select a row key column")
       return
     }
 
@@ -186,13 +198,20 @@ export function CreateDatasetModal({
         ? { columnKey: stakeholderColumn, matchedField: "email" }
         : undefined
 
+      // Build identity configuration
+      const identity: IdentityConfig = {
+        orientation,
+        rowKey,
+        ...(orientation === "column" ? { columnIdentitySource: "headers" as ColumnIdentitySource } : {})
+      }
+
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           schema: columns,
-          identityKey,
+          identity,
           stakeholderMapping,
         }),
       })
@@ -325,24 +344,73 @@ export function CreateDatasetModal({
               </div>
             </div>
 
-            {/* Identity Key Selection */}
-            <div>
-              <Label htmlFor="identityKey">Identity Key (required)</Label>
-              <p className="text-sm text-gray-500 mb-2">
-                Select the column that uniquely identifies each row
-              </p>
-              <Select value={identityKey} onValueChange={setIdentityKey}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select identity key column" />
-                </SelectTrigger>
-                <SelectContent>
-                  {columns.map((column) => (
-                    <SelectItem key={column.key} value={column.key}>
-                      {column.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Identity Configuration - Two Step */}
+            <div className="space-y-4">
+              {/* Step 1: Orientation Selection */}
+              <div>
+                <Label className="text-sm font-medium">How is this data organized?</Label>
+                <div className="mt-2 space-y-2">
+                  <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                      type="radio"
+                      name="orientation"
+                      value="row"
+                      checked={orientation === "row"}
+                      onChange={() => setOrientation("row")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <span className="font-medium text-gray-900">Rows represent the primary items</span>
+                      <p className="text-sm text-gray-500">
+                        Each row is an account or record that persists over time (e.g. accounts, recipients)
+                      </p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input
+                      type="radio"
+                      name="orientation"
+                      value="column"
+                      checked={orientation === "column"}
+                      onChange={() => setOrientation("column")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <span className="font-medium text-gray-900">Columns represent the primary items</span>
+                      <p className="text-sm text-gray-500">
+                        Each column is a project or entity that may be added over time (e.g. projects, locations)
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Step 2: Key Selection (dynamic based on orientation) */}
+              <div>
+                <Label htmlFor="rowKey">
+                  {orientation === "row" 
+                    ? "Select the column that uniquely identifies each row"
+                    : "Select the column that contains the row labels (line items)"
+                  }
+                </Label>
+                {orientation === "column" && (
+                  <p className="text-sm text-gray-500 mb-2">
+                    Columns will be treated as the primary entities and tracked over time.
+                  </p>
+                )}
+                <Select value={rowKey} onValueChange={setRowKey}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columns.map((column) => (
+                      <SelectItem key={column.key} value={column.key}>
+                        {column.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Stakeholder Column Selection (Optional) */}

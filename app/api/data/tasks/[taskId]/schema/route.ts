@@ -12,11 +12,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { SchemaColumn } from "@/lib/services/dataset.service"
+import { SchemaColumn, IdentityConfig } from "@/lib/services/dataset.service"
 
 interface UpdateSchemaRequest {
   schema: SchemaColumn[]
-  identityKey: string
+  identity?: IdentityConfig        // New: structured identity config
+  identityKey?: string             // Legacy: for backwards compatibility
   stakeholderMapping?: { columnKey: string } | null
 }
 
@@ -35,11 +36,17 @@ export async function POST(
 
     // Validate request body
     const body: UpdateSchemaRequest = await request.json()
-    const { schema, identityKey, stakeholderMapping } = body
+    const { schema, identity, identityKey, stakeholderMapping } = body
 
-    if (!schema || !identityKey) {
+    // Resolve identity config (support both new and legacy)
+    const resolvedIdentity: IdentityConfig = identity ?? {
+      orientation: "row",
+      rowKey: identityKey!
+    }
+
+    if (!schema || !resolvedIdentity.rowKey) {
       return NextResponse.json(
-        { error: "Missing required fields: schema, identityKey" },
+        { error: "Missing required fields: schema, identity (or identityKey)" },
         { status: 400 }
       )
     }
@@ -51,11 +58,19 @@ export async function POST(
       )
     }
 
-    // Validate identity key exists in schema
-    const identityColumn = schema.find((col) => col.key === identityKey)
-    if (!identityColumn) {
+    // Validate rowKey exists in schema
+    const rowKeyColumn = schema.find((col) => col.key === resolvedIdentity.rowKey)
+    if (!rowKeyColumn) {
       return NextResponse.json(
-        { error: "Identity key must reference a column in the schema" },
+        { error: "Row key must reference a column in the schema" },
+        { status: 400 }
+      )
+    }
+
+    // Validate column-based identity config
+    if (resolvedIdentity.orientation === "column" && !resolvedIdentity.columnIdentitySource) {
+      return NextResponse.json(
+        { error: "Column-based orientation requires columnIdentitySource" },
         { status: 400 }
       )
     }
@@ -90,12 +105,13 @@ export async function POST(
       )
     }
 
-    // Update the existing template with the schema
+    // Update the existing template with the schema and identity config
     const updatedTemplate = await prisma.datasetTemplate.update({
       where: { id: instance.lineage.datasetTemplateId },
       data: {
         schema,
-        identityKey,
+        identityKey: resolvedIdentity.rowKey,  // Keep for backwards compatibility
+        identity: resolvedIdentity,
         stakeholderMapping: stakeholderMapping 
           ? { columnKey: stakeholderMapping.columnKey, matchedField: "email" } 
           : undefined,

@@ -25,12 +25,34 @@ export interface StakeholderMapping {
   matchedField: "email"
 }
 
+// Identity configuration types
+export type ColumnIdentitySource = "headers"  // V1 only; future values reserved
+
+export interface IdentityConfig {
+  orientation: "row" | "column"
+  rowKey: string                              // Always required (row labels / line items)
+  columnIdentitySource?: ColumnIdentitySource // Only for column orientation
+}
+
 export interface DatasetTemplateInput {
   name: string
   description?: string
   schema: SchemaColumn[]
-  identityKey: string
+  identity: IdentityConfig                    // New: structured identity config
+  identityKey?: string                        // Legacy: for backwards compatibility
   stakeholderMapping?: StakeholderMapping | null
+}
+
+/**
+ * Get the identity configuration from a template, with fallback to legacy identityKey
+ */
+export function getIdentityConfig(template: DatasetTemplate): IdentityConfig {
+  const identity = template.identity as IdentityConfig | null
+  if (identity) {
+    return identity
+  }
+  // Fallback for un-migrated data
+  return { orientation: "row", rowKey: template.identityKey }
 }
 
 export interface MatchedStakeholder {
@@ -64,8 +86,12 @@ export interface ColumnValidation {
 
 export interface IdentityValidation {
   valid: boolean
-  duplicates: string[]
-  emptyCount: number
+  // Row-based validation
+  duplicates: string[]       // Duplicate rowKey values (row-based only)
+  emptyCount: number         // Empty rowKey values
+  // Column-based validation
+  duplicateHeaders?: string[] // Duplicate column headers (column-based only)
+  emptyRowLabels?: number     // Empty row labels (column-based only)
 }
 
 export interface SnapshotPreviewResult {
@@ -106,10 +132,21 @@ export class DatasetService {
     userId: string,
     input: DatasetTemplateInput
   ): Promise<DatasetTemplate> {
-    // Validate identity key exists in schema
+    // Resolve identity config (support both new and legacy input)
+    const identity: IdentityConfig = input.identity ?? {
+      orientation: "row",
+      rowKey: input.identityKey!
+    }
+
+    // Validate rowKey exists in schema
     const schemaKeys = input.schema.map(col => col.key)
-    if (!schemaKeys.includes(input.identityKey)) {
-      throw new Error(`Identity key "${input.identityKey}" must be one of the schema columns`)
+    if (!schemaKeys.includes(identity.rowKey)) {
+      throw new Error(`Row key "${identity.rowKey}" must be one of the schema columns`)
+    }
+
+    // Validate column-based identity config
+    if (identity.orientation === "column" && !identity.columnIdentitySource) {
+      throw new Error(`Column-based orientation requires columnIdentitySource to be set`)
     }
 
     // Validate stakeholder mapping column exists if provided
@@ -124,30 +161,42 @@ export class DatasetService {
         name: input.name,
         description: input.description,
         schema: input.schema as unknown as Prisma.InputJsonValue,
-        identityKey: input.identityKey,
+        identityKey: identity.rowKey, // Keep for backwards compatibility
+        identity: identity as unknown as Prisma.InputJsonValue,
         stakeholderMapping: input.stakeholderMapping as unknown as Prisma.InputJsonValue,
       },
     })
   }
 
   /**
-   * Update a template's schema and identity key
+   * Update a template's schema and identity configuration
    * 
    * When snapshots exist, breaking changes are blocked:
-   * - Cannot remove the current identity key column
-   * - Cannot change identity key to a column that didn't exist before
+   * - Cannot remove the current rowKey column
+   * - Cannot change rowKey to a column that didn't exist before
+   * - Cannot change orientation
    */
   static async updateSchema(
     templateId: string,
     orgId: string,
     schema: SchemaColumn[],
-    identityKey: string,
+    identityOrKey: IdentityConfig | string, // Support both new and legacy
     stakeholderMapping?: StakeholderMapping | null
   ): Promise<DatasetTemplate> {
-    // Validate identity key exists in schema
+    // Resolve identity config (support both new object and legacy string)
+    const identity: IdentityConfig = typeof identityOrKey === "string"
+      ? { orientation: "row", rowKey: identityOrKey }
+      : identityOrKey
+
+    // Validate rowKey exists in schema
     const schemaKeys = schema.map(col => col.key)
-    if (!schemaKeys.includes(identityKey)) {
-      throw new Error(`Identity key "${identityKey}" must be one of the schema columns`)
+    if (!schemaKeys.includes(identity.rowKey)) {
+      throw new Error(`Row key "${identity.rowKey}" must be one of the schema columns`)
+    }
+
+    // Validate column-based identity config
+    if (identity.orientation === "column" && !identity.columnIdentitySource) {
+      throw new Error(`Column-based orientation requires columnIdentitySource to be set`)
     }
 
     // Validate stakeholder mapping column exists if provided
@@ -176,20 +225,29 @@ export class DatasetService {
     if (existingTemplate._count.snapshots > 0) {
       const existingSchema = existingTemplate.schema as unknown as SchemaColumn[]
       const existingSchemaKeys = existingSchema.map(col => col.key)
+      const existingIdentity = getIdentityConfig(existingTemplate)
 
-      // Cannot remove the current identity key column
-      if (!schemaKeys.includes(existingTemplate.identityKey)) {
+      // Cannot change orientation when snapshots exist
+      if (identity.orientation !== existingIdentity.orientation) {
         throw new Error(
-          `Cannot remove identity key column "${existingTemplate.identityKey}" when snapshots exist. ` +
+          `Cannot change identity orientation from "${existingIdentity.orientation}" to "${identity.orientation}" when snapshots exist. ` +
+          `Delete all snapshots first.`
+        )
+      }
+
+      // Cannot remove the current rowKey column
+      if (!schemaKeys.includes(existingIdentity.rowKey)) {
+        throw new Error(
+          `Cannot remove row key column "${existingIdentity.rowKey}" when snapshots exist. ` +
           `Delete all snapshots first or keep this column.`
         )
       }
 
-      // Cannot change identity key to a column that didn't exist in prior schema
-      if (identityKey !== existingTemplate.identityKey && !existingSchemaKeys.includes(identityKey)) {
+      // Cannot change rowKey to a column that didn't exist in prior schema
+      if (identity.rowKey !== existingIdentity.rowKey && !existingSchemaKeys.includes(identity.rowKey)) {
         throw new Error(
-          `Cannot change identity key to new column "${identityKey}" when snapshots exist. ` +
-          `The identity key must be an existing column from the original schema.`
+          `Cannot change row key to new column "${identity.rowKey}" when snapshots exist. ` +
+          `The row key must be an existing column from the original schema.`
         )
       }
     }
@@ -201,7 +259,8 @@ export class DatasetService {
       },
       data: {
         schema: schema as unknown as Prisma.InputJsonValue,
-        identityKey,
+        identityKey: identity.rowKey, // Keep for backwards compatibility
+        identity: identity as unknown as Prisma.InputJsonValue,
         stakeholderMapping: stakeholderMapping as unknown as Prisma.InputJsonValue,
       },
     })
@@ -324,19 +383,19 @@ export class DatasetService {
     }
 
     const schema = template.schema as unknown as SchemaColumn[]
-    const identityKey = template.identityKey
+    const identity = getIdentityConfig(template)
     const stakeholderMapping = template.stakeholderMapping as StakeholderMapping | null
 
     // Validate columns
     const columnValidation = this.validateColumns(parsedRows, schema)
     
-    // Validate identity key uniqueness
-    const identityValidation = this.validateIdentityUniqueness(parsedRows, identityKey)
+    // Validate identity based on orientation
+    const identityValidation = this.validateIdentity(parsedRows, identity)
 
-    // Match stakeholders if configured
+    // Match stakeholders if configured (only for row-based or using rowKey)
     let stakeholderResults: StakeholderResults | undefined
     if (stakeholderMapping) {
-      stakeholderResults = await this.matchStakeholders(orgId, parsedRows, stakeholderMapping, identityKey)
+      stakeholderResults = await this.matchStakeholders(orgId, parsedRows, stakeholderMapping, identity.rowKey)
     }
 
     // Compute diff against prior snapshot
@@ -352,7 +411,7 @@ export class DatasetService {
 
     if (latestSnapshot) {
       const priorRows = latestSnapshot.rows as unknown as Record<string, unknown>[]
-      diffSummary = this.computeDiffSummary(parsedRows, priorRows, identityKey)
+      diffSummary = this.computeDiff(parsedRows, priorRows, identity)
     }
 
     return {
@@ -391,7 +450,7 @@ export class DatasetService {
       throw new Error("Template not found")
     }
 
-    const identityKey = template.identityKey
+    const identity = getIdentityConfig(template)
     const stakeholderMapping = template.stakeholderMapping as StakeholderMapping | null
 
     // Find the latest snapshot for this template
@@ -404,17 +463,17 @@ export class DatasetService {
       orderBy: { createdAt: "desc" },
     })
 
-    // Compute diff
+    // Compute diff based on identity orientation
     let diffSummary: DiffSummary | undefined
     if (latestSnapshot) {
       const priorRows = latestSnapshot.rows as unknown as Record<string, unknown>[]
-      diffSummary = this.computeDiffSummary(rows, priorRows, identityKey)
+      diffSummary = this.computeDiff(rows, priorRows, identity)
     }
 
-    // Match stakeholders
+    // Match stakeholders (uses rowKey for identity)
     let stakeholderResults: StakeholderResults | undefined
     if (stakeholderMapping) {
-      stakeholderResults = await this.matchStakeholders(orgId, rows, stakeholderMapping, identityKey)
+      stakeholderResults = await this.matchStakeholders(orgId, rows, stakeholderMapping, identity.rowKey)
     }
 
     // Determine version number
@@ -558,22 +617,36 @@ export class DatasetService {
   }
 
   /**
-   * Validate identity key uniqueness and non-empty values
+   * Validate identity based on orientation
+   * - Row-based: rowKey values must be non-empty AND unique
+   * - Column-based: rowKey values must be non-empty (uniqueness NOT required), column headers must be unique
    */
-  private static validateIdentityUniqueness(
+  private static validateIdentity(
     rows: Record<string, unknown>[],
-    identityKey: string
+    identity: IdentityConfig
+  ): IdentityValidation {
+    if (identity.orientation === "column") {
+      return this.validateColumnBasedIdentity(rows, identity.rowKey)
+    }
+    return this.validateRowBasedIdentity(rows, identity.rowKey)
+  }
+
+  /**
+   * Validate row-based identity: rowKey values must be non-empty AND unique
+   */
+  private static validateRowBasedIdentity(
+    rows: Record<string, unknown>[],
+    rowKey: string
   ): IdentityValidation {
     const seen = new Map<string, number>()
     const duplicates: string[] = []
     let emptyCount = 0
 
     for (const row of rows) {
-      const rawValue = row[identityKey]
+      const rawValue = row[rowKey]
       const identity = String(rawValue ?? "").trim()
       
       if (!identity) {
-        // Empty or whitespace-only identity key
         emptyCount++
       } else {
         const count = seen.get(identity) || 0
@@ -592,18 +665,85 @@ export class DatasetService {
   }
 
   /**
-   * Compute diff between current and prior rows
+   * Validate column-based identity:
+   * - rowKey values must be non-empty (uniqueness NOT required in V1)
+   * - Column headers must be unique after normalization
    */
-  private static computeDiffSummary(
+  private static validateColumnBasedIdentity(
+    rows: Record<string, unknown>[],
+    rowKey: string
+  ): IdentityValidation {
+    // Check row labels (rowKey values) for empty values
+    let emptyRowLabels = 0
+    for (const row of rows) {
+      const rawValue = row[rowKey]
+      const label = String(rawValue ?? "").trim()
+      if (!label) {
+        emptyRowLabels++
+      }
+    }
+
+    // Check column headers (excluding rowKey column) for uniqueness
+    const columnHeaders = rows.length > 0 
+      ? Object.keys(rows[0]).filter(k => k !== rowKey)
+      : []
+    
+    const seenHeaders = new Set<string>()
+    const duplicateHeaders: string[] = []
+    for (const header of columnHeaders) {
+      const normalized = header.toLowerCase().trim()
+      if (seenHeaders.has(normalized)) {
+        duplicateHeaders.push(header)
+      }
+      seenHeaders.add(normalized)
+    }
+
+    return {
+      valid: emptyRowLabels === 0 && duplicateHeaders.length === 0,
+      duplicates: [],  // Not used for column-based
+      emptyCount: 0,   // Not used for column-based
+      duplicateHeaders,
+      emptyRowLabels,
+    }
+  }
+
+  /**
+   * Legacy wrapper for backwards compatibility
+   */
+  private static validateIdentityUniqueness(
+    rows: Record<string, unknown>[],
+    identityKey: string
+  ): IdentityValidation {
+    return this.validateRowBasedIdentity(rows, identityKey)
+  }
+
+  /**
+   * Compute diff between current and prior rows based on identity orientation
+   */
+  private static computeDiff(
     currentRows: Record<string, unknown>[],
     priorRows: Record<string, unknown>[],
-    identityKey: string
+    identity: IdentityConfig
+  ): DiffSummary {
+    if (identity.orientation === "column") {
+      return this.computeColumnBasedDiff(currentRows, priorRows, identity.rowKey)
+    }
+    return this.computeRowBasedDiff(currentRows, priorRows, identity.rowKey)
+  }
+
+  /**
+   * Compute row-based diff: compare row identities
+   */
+  private static computeRowBasedDiff(
+    currentRows: Record<string, unknown>[],
+    priorRows: Record<string, unknown>[],
+    rowKey: string
   ): DiffSummary {
     const currentIdentities = new Set(
-      currentRows.map(row => String(row[identityKey] ?? ""))
+      currentRows.map(row => String(row[rowKey] ?? ""))
     )
     const priorIdentities = new Set(
-      priorRows.map(row => String(row[identityKey] ?? ""))
+      priorRows.map(row => String(row[rowKey] ?? ""))
     )
 
     const addedIdentities: string[] = []
@@ -627,6 +767,47 @@ export class DatasetService {
       addedIdentities,
       removedIdentities,
     }
+  }
+
+  /**
+   * Compute column-based diff: compare column headers between snapshots
+   */
+  private static computeColumnBasedDiff(
+    currentRows: Record<string, unknown>[],
+    priorRows: Record<string, unknown>[],
+    rowKey: string
+  ): DiffSummary {
+    const currentColumns = new Set(
+      currentRows.length > 0 
+        ? Object.keys(currentRows[0]).filter(k => k !== rowKey)
+        : []
+    )
+    const priorColumns = new Set(
+      priorRows.length > 0 
+        ? Object.keys(priorRows[0]).filter(k => k !== rowKey)
+        : []
+    )
+
+    const addedIdentities = [...currentColumns].filter(c => !priorColumns.has(c))
+    const removedIdentities = [...priorColumns].filter(c => !currentColumns.has(c))
+
+    return {
+      addedCount: addedIdentities.length,
+      removedCount: removedIdentities.length,
+      addedIdentities,
+      removedIdentities,
+    }
+  }
+
+  /**
+   * Legacy wrapper for backwards compatibility
+   */
+  private static computeDiffSummary(
+    currentRows: Record<string, unknown>[],
+    priorRows: Record<string, unknown>[],
+    identityKey: string
+  ): DiffSummary {
+    return this.computeRowBasedDiff(currentRows, priorRows, identityKey)
   }
 
   /**

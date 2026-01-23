@@ -1,13 +1,13 @@
 /**
  * Dataset Template Schema API Routes
  * 
- * PATCH /api/datasets/[id]/schema - Update schema and identity key
+ * PATCH /api/datasets/[id]/schema - Update schema and identity configuration
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { DatasetService } from "@/lib/services/dataset.service"
+import { DatasetService, IdentityConfig } from "@/lib/services/dataset.service"
 
 export async function PATCH(
   request: NextRequest,
@@ -20,11 +20,14 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { schema, identityKey, stakeholderMapping } = body
+    const { schema, identity, identityKey, stakeholderMapping } = body
 
-    if (!schema || !identityKey) {
+    // Resolve identity config (support both new object and legacy string)
+    const resolvedIdentity: IdentityConfig | string | undefined = identity ?? identityKey
+
+    if (!schema || !resolvedIdentity) {
       return NextResponse.json(
-        { error: "Missing required fields: schema, identityKey" },
+        { error: "Missing required fields: schema, identity (or identityKey)" },
         { status: 400 }
       )
     }
@@ -40,7 +43,7 @@ export async function PATCH(
       params.id,
       session.user.organizationId,
       schema,
-      identityKey,
+      resolvedIdentity,  // Service accepts both IdentityConfig and string
       stakeholderMapping
     )
 

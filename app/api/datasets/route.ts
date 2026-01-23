@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { DatasetService, DatasetTemplateInput } from "@/lib/services/dataset.service"
+import { DatasetService, DatasetTemplateInput, IdentityConfig } from "@/lib/services/dataset.service"
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,11 +18,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, schema, identityKey, stakeholderMapping } = body
+    const { name, description, schema, identity, identityKey, stakeholderMapping } = body
 
-    if (!name || !schema || !identityKey) {
+    // Resolve identity config (support both new and legacy)
+    const resolvedIdentity: IdentityConfig | undefined = identity ?? (identityKey ? {
+      orientation: "row",
+      rowKey: identityKey
+    } : undefined)
+
+    if (!name || !schema || !resolvedIdentity?.rowKey) {
       return NextResponse.json(
-        { error: "Missing required fields: name, schema, identityKey" },
+        { error: "Missing required fields: name, schema, identity (or identityKey)" },
         { status: 400 }
       )
     }
@@ -38,7 +44,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       schema,
-      identityKey,
+      identity: resolvedIdentity,
       stakeholderMapping,
     }
 

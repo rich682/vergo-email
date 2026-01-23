@@ -1172,8 +1172,12 @@ model DatasetTemplate {
   // JSON: [{ key: string, label: string, type: "text"|"number"|"date"|"boolean"|"currency", required: boolean }]
   schema Json
 
-  // Identity key - column key that uniquely identifies rows
+  // Identity key - column key that uniquely identifies rows (LEGACY - use identity instead)
   identityKey String
+
+  // Identity configuration (replaces identityKey)
+  // JSON: { orientation: "row"|"column", rowKey: string, columnIdentitySource?: "headers" }
+  identity Json?
 
   // Stakeholder column mapping (optional)
   // JSON: { columnKey: string, matchedField: "email" } | null
