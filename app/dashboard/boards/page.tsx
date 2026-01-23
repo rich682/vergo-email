@@ -50,12 +50,11 @@ const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
 const DEFAULT_TASK_COLUMNS: BoardColumnDefinition[] = [
   { id: "name", label: "Task", width: 280, visible: true, order: 0, isSystem: true },
   { id: "status", label: "Status", width: 130, visible: true, order: 1, isSystem: true },
-  { id: "type", label: "Type", width: 120, visible: true, order: 2, isSystem: true },
-  { id: "owner", label: "Owner", width: 120, visible: true, order: 3, isSystem: true },
-  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 4, isSystem: true },
-  { id: "responses", label: "Responses", width: 100, visible: true, order: 5, isSystem: true },
-  { id: "notes", label: "Notes", width: 150, visible: true, order: 6, isSystem: true },
-  { id: "files", label: "Files", width: 80, visible: true, order: 7, isSystem: true },
+  { id: "owner", label: "Owner", width: 120, visible: true, order: 2, isSystem: true },
+  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 3, isSystem: true },
+  { id: "responses", label: "Responses", width: 100, visible: true, order: 4, isSystem: true },
+  { id: "notes", label: "Notes", width: 150, visible: true, order: 5, isSystem: true },
+  { id: "files", label: "Files", width: 80, visible: true, order: 6, isSystem: true },
 ]
 
 // Types
@@ -189,21 +188,6 @@ function getJobStatusBadge(status: JobStatus) {
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700">Stuck</span>
     default:
       return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{status}</span>
-  }
-}
-
-function getTaskTypeBadge(type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABASE" | undefined) {
-  switch (type) {
-    case "GENERIC":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Standard</span>
-    case "TABLE":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">Variance</span>
-    case "RECONCILIATION":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">Reconciliation</span>
-    case "DATABASE":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Variance</span>
-    default:
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Standard</span>
   }
 }
 
@@ -1172,8 +1156,8 @@ function BoardRow({
                     {visibleTaskColumns.map((column) => (
                       <div 
                         key={column.id} 
-                        className={column.id === "name" ? "flex-1 min-w-0" : "w-28 flex-shrink-0"}
-                        style={column.id !== "name" ? { width: column.width || 120 } : undefined}
+                        className="flex-shrink-0"
+                        style={{ width: column.width || 120 }}
                       >
                         {column.label}
                       </div>
@@ -1202,7 +1186,7 @@ function BoardRow({
                         switch (column.id) {
                           case "name":
                             return (
-                              <div key={column.id} className="flex-1 min-w-0">
+                              <div key={column.id} className="flex-shrink-0 min-w-0" style={{ width: column.width || 280 }}>
                                 <span className="text-sm text-gray-900 truncate block">{job.name}</span>
                               </div>
                             )
@@ -1210,12 +1194,6 @@ function BoardRow({
                             return (
                               <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 130 }}>
                                 {getJobStatusBadge(job.status)}
-                              </div>
-                            )
-                          case "type":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
-                                {getTaskTypeBadge(job.type)}
                               </div>
                             )
                           case "owner":
