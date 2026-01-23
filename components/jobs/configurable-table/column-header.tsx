@@ -15,7 +15,8 @@ import {
   Paperclip,
   CheckSquare,
   MessageSquare,
-  Layers
+  Layers,
+  Database
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ColumnDefinition, ColumnType } from "./types"
@@ -34,6 +35,7 @@ const COLUMN_TYPE_ICONS: Record<ColumnType, typeof Type> = {
   files: Paperclip,
   responses: MessageSquare,
   taskType: Layers,
+  dataStatus: Database,
 }
 
 export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
