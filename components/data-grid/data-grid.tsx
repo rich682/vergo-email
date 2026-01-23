@@ -67,6 +67,8 @@ export function DataGrid({
   onSheetChange,
   onAddSheet,
   canAddSheet = false,
+  onFormulaColumnSelect,
+  onFormulaRowSelect,
 }: DataGridProps) {
   // Container ref for virtualization
   const parentRef = useRef<HTMLDivElement>(null)
@@ -213,6 +215,7 @@ export function DataGrid({
           onHideColumn={handleHideColumn}
           onDeleteColumn={handleDeleteColumn}
           showAddColumn={showAddColumn}
+          onFormulaSelect={onFormulaColumnSelect}
         />
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <p className="text-gray-500 text-sm">
@@ -246,6 +249,7 @@ export function DataGrid({
             onHideColumn={handleHideColumn}
             onDeleteColumn={handleDeleteColumn}
             showAddColumn={showAddColumn}
+            onFormulaSelect={onFormulaColumnSelect}
           />
           
           {/* Body rows */}
@@ -331,6 +335,7 @@ export function DataGrid({
             <div className="p-2 border-t border-gray-200 bg-gray-50">
               <AddRowButton
                 onAddRow={handleAddRow}
+                onFormulaSelect={onFormulaRowSelect}
                 disabled={isLoading}
               />
             </div>

@@ -54,10 +54,12 @@ const ROW_TYPES: RowTypeOption[] = [
 
 interface AddRowButtonProps {
   onAddRow: (type: AppRowType, label: string) => Promise<void>
+  /** Callback when formula type is selected - opens formula editor */
+  onFormulaSelect?: () => void
   disabled?: boolean
 }
 
-export function AddRowButton({ onAddRow, disabled }: AddRowButtonProps) {
+export function AddRowButton({ onAddRow, onFormulaSelect, disabled }: AddRowButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -77,10 +79,16 @@ export function AddRowButton({ onAddRow, disabled }: AddRowButtonProps) {
   const superUseful = filteredTypes.filter((t) => t.category === "super_useful")
 
   const handleSelectType = async (option: RowTypeOption) => {
-    // Formula is coming soon
+    // Formula opens the formula editor modal
     if (option.type === "formula") {
-      setError("Formula rows coming soon!")
-      setTimeout(() => setError(null), 2000)
+      if (onFormulaSelect) {
+        setIsOpen(false)
+        setSearchQuery("")
+        onFormulaSelect()
+      } else {
+        setError("Formula rows coming soon!")
+        setTimeout(() => setError(null), 2000)
+      }
       return
     }
     

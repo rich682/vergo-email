@@ -33,8 +33,11 @@ import {
   schemaToColumns,
   createV1CellResolver,
   createEmptyFilterState,
+  FormulaEditorModal,
 } from "@/components/data-grid"
-import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue } from "@/components/data-grid"
+import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue, ColumnResource } from "@/components/data-grid"
+import { evaluateExpression, buildFormulaContext } from "@/lib/formula"
+import type { FormulaResultType } from "@/lib/formula"
 import type {
   SheetContext,
   SheetMetadata,
@@ -158,6 +161,8 @@ export function DataTabUniversal({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [isDeleteDataConfirmOpen, setIsDeleteDataConfirmOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isFormulaEditorOpen, setIsFormulaEditorOpen] = useState(false)
+  const [formulaEditorMode, setFormulaEditorMode] = useState<"column" | "row">("column")
   const [deleting, setDeleting] = useState(false)
   const [deletingData, setDeletingData] = useState(false)
   const [updatingVisibility, setUpdatingVisibility] = useState(false)
@@ -301,6 +306,78 @@ export function DataTabUniversal({
     // Refresh app columns
     fetchAppColumns()
   }, [currentLineageId, fetchAppColumns])
+
+  // Handle opening formula editor for column formulas
+  const handleOpenFormulaEditor = useCallback(() => {
+    setFormulaEditorMode("column")
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  // Handle opening formula editor for row formulas
+  const handleOpenRowFormulaEditor = useCallback(() => {
+    setFormulaEditorMode("row")
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  // Handle saving a formula column
+  const handleSaveFormulaColumn = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-columns`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          label: formula.label,
+          dataType: "formula",
+          config: {
+            expression: formula.expression,
+            resultType: formula.resultType,
+          },
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to add formula column")
+    }
+
+    // Refresh app columns
+    fetchAppColumns()
+  }, [currentLineageId, fetchAppColumns])
+
+  // Handle saving a formula row
+  const handleSaveFormulaRow = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-rows`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          label: formula.label,
+          rowType: "formula",
+          formula: {
+            expression: formula.expression,
+            resultType: formula.resultType,
+          },
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to add formula row")
+    }
+
+    // Refresh app rows
+    fetchAppRows()
+  }, [currentLineageId, fetchAppRows])
 
   // Handle updating a cell value
   const handleCellValueUpdate = useCallback(async (
@@ -553,10 +630,44 @@ export function DataTabUniversal({
           return baseResolver.getCellValue(args)
         }
         
-        // For app columns, look up value from appColumnValues
+        // For app columns, look up value from appColumnValues or evaluate formula
         if (column.kind === "app") {
           const columnId = column.id.replace("app_", "")
           const rowIdentity = String(row[identityKey] || "")
+          
+          // Find the app column definition
+          const appCol = appColumns.find(c => c.id === columnId)
+          
+          // Handle formula columns - evaluate the expression
+          if (appCol?.dataType === "formula" && appCol.config?.expression) {
+            try {
+              const schemaColumns = dataStatus?.datasetTemplate?.schema || []
+              const context = buildFormulaContext(
+                "current",
+                [{ id: "current", label: "Current", rows: snapshotRows }],
+                schemaColumns.map(col => ({ key: col.key, label: col.label, dataType: col.type }))
+              )
+              const rowContext = {
+                rowIndex: 0,
+                row,
+                identity: rowIdentity,
+              }
+              const result = evaluateExpression(appCol.config.expression as string, context, rowContext)
+              
+              if (result.ok) {
+                const resultType = (appCol.config.resultType as FormulaResultType) || "number"
+                if (resultType === "currency") {
+                  return { type: "currency", value: result.value }
+                }
+                return { type: "number", value: result.value }
+              } else {
+                return { type: "error", message: result.error }
+              }
+            } catch (err) {
+              return { type: "error", message: err instanceof Error ? err.message : "Formula error" }
+            }
+          }
+          
           const columnValues = appColumnValues.get(columnId)
           const cellData = columnValues?.[rowIdentity]
           
@@ -565,7 +676,6 @@ export function DataTabUniversal({
           }
           
           // Convert stored value to CellValue based on column type
-          const appCol = appColumns.find(c => c.id === columnId)
           if (appCol?.dataType === "text") {
             const textVal = cellData.value as { text?: string }
             return { type: "text", value: textVal.text || "" }
@@ -593,7 +703,7 @@ export function DataTabUniversal({
         return { type: "empty" }
       },
     }
-  }, [dataStatus?.datasetTemplate?.identityKey, appColumnValues, appColumns, teamMembers])
+  }, [dataStatus?.datasetTemplate?.identityKey, dataStatus?.datasetTemplate?.schema, appColumnValues, appColumns, teamMembers, snapshotRows])
 
   // Convert API snapshots to SheetMetadata
   const sheets: SheetMetadata[] = useMemo(() => {
@@ -606,6 +716,21 @@ export function DataTabUniversal({
       isLatest: s.isLatest,
     }))
   }, [dataStatus?.datasetTemplate?.snapshots])
+
+  // Convert schema columns to ColumnResource for formula editor
+  const formulaColumnResources: ColumnResource[] = useMemo(() => {
+    if (!dataStatus?.datasetTemplate?.schema) return []
+    return dataStatus.datasetTemplate.schema.map(col => ({
+      key: col.key,
+      label: col.label,
+      dataType: col.type,
+    }))
+  }, [dataStatus?.datasetTemplate?.schema])
+
+  // Get sample row for formula preview
+  const sampleRow = useMemo(() => {
+    return snapshotRows.length > 0 ? snapshotRows[0] : undefined
+  }, [snapshotRows])
 
   // Handle sheet change
   const handleSheetChange = useCallback((sheet: SheetContext) => {
@@ -946,6 +1071,8 @@ export function DataTabUniversal({
                 onSheetChange={handleSheetChange}
                 onAddSheet={() => setIsUploadModalOpen(true)}
                 canAddSheet={dataStatus?.schemaConfigured && !hasSnapshots ? false : dataStatus?.schemaConfigured}
+                onFormulaColumnSelect={handleOpenFormulaEditor}
+                onFormulaRowSelect={handleOpenRowFormulaEditor}
               />
             </div>
           </div>
@@ -1099,6 +1226,17 @@ export function DataTabUniversal({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Formula Editor Modal */}
+      <FormulaEditorModal
+        open={isFormulaEditorOpen}
+        onOpenChange={setIsFormulaEditorOpen}
+        mode={formulaEditorMode}
+        columns={formulaColumnResources}
+        sampleRow={sampleRow}
+        allRows={snapshotRows}
+        onSave={formulaEditorMode === "column" ? handleSaveFormulaColumn : handleSaveFormulaRow}
+      />
     </>
   )
 }

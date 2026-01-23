@@ -37,6 +37,7 @@ interface ExtendedDataGridHeaderProps extends DataGridHeaderProps {
   onDeleteColumn?: (columnId: string) => Promise<void>
   onRenameColumn?: (columnId: string, newLabel: string) => Promise<void>
   showAddColumn?: boolean
+  onFormulaSelect?: () => void
 }
 
 export function DataGridHeader({
@@ -52,6 +53,7 @@ export function DataGridHeader({
   onDeleteColumn,
   onRenameColumn,
   showAddColumn = false,
+  onFormulaSelect,
 }: ExtendedDataGridHeaderProps) {
   const visibleColumns = columns.filter((c) => c.isVisible)
 
@@ -90,6 +92,7 @@ export function DataGridHeader({
         >
           <AddColumnButton
             onAddColumn={onAddColumn}
+            onFormulaSelect={onFormulaSelect}
             variant="header"
           />
         </div>

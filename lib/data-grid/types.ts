@@ -308,6 +308,10 @@ export interface DataGridProps {
   onAddSheet?: () => void
   /** Whether adding sheets is allowed */
   canAddSheet?: boolean
+  /** Callback when formula column is selected (opens formula editor) */
+  onFormulaColumnSelect?: () => void
+  /** Callback when formula row is selected (opens formula editor) */
+  onFormulaRowSelect?: () => void
 }
 
 /**
