@@ -17,11 +17,16 @@ export interface DetectedColumn {
   sampleValues: string[]
 }
 
+export interface RowLabel {
+  label: string
+  type: ColumnType  // Detected type from values in that row
+}
+
 export interface SchemaParseResult {
   columns: DetectedColumn[]
   sampleRows: Array<Record<string, string>>
   rowCount: number
-  rowLabels: string[]  // Values from Column A (first column) - used for row-based identity preview
+  rowLabels: RowLabel[]  // Values from Column A with detected types - used for row-based identity preview
 }
 
 export interface SchemaParseError {
@@ -109,6 +114,17 @@ function detectColumnType(values: string[]): ColumnType {
 }
 
 /**
+ * Detect the type of a row by analyzing values across columns (excluding the label column)
+ */
+function detectRowType(row: Record<string, string>, labelColumnHeader: string): ColumnType {
+  // Get all values from the row except the label column
+  const values = Object.entries(row)
+    .filter(([key]) => key !== labelColumnHeader)
+    .map(([, value]) => value)
+  return detectColumnType(values)
+}
+
+/**
  * Parse CSV content and extract schema
  */
 function parseCSVForSchema(content: string): SchemaParseResult | SchemaParseError {
@@ -157,10 +173,15 @@ function parseCSVForSchema(content: string): SchemaParseResult | SchemaParseErro
       }
     })
 
-    // Extract row labels (values from first column / Column A)
+    // Extract row labels with detected types (values from first column / Column A)
     const firstColumnHeader = headers[0]
-    const rowLabels = firstColumnHeader 
-      ? sampleRows.map(row => row[firstColumnHeader] || "").filter(v => v.trim().length > 0)
+    const rowLabels: RowLabel[] = firstColumnHeader 
+      ? sampleRows
+          .filter(row => (row[firstColumnHeader] || "").trim().length > 0)
+          .map(row => ({
+            label: row[firstColumnHeader] || "",
+            type: detectRowType(row, firstColumnHeader)
+          }))
       : []
 
     return {
@@ -309,10 +330,15 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
       }
     })
 
-    // Extract row labels (values from first column / Column A)
+    // Extract row labels with detected types (values from first column / Column A)
     const firstColumnHeader = headers[0]
-    const rowLabels = firstColumnHeader 
-      ? sampleRows.map(row => row[firstColumnHeader] || "").filter(v => v.trim().length > 0)
+    const rowLabels: RowLabel[] = firstColumnHeader 
+      ? sampleRows
+          .filter(row => (row[firstColumnHeader] || "").trim().length > 0)
+          .map(row => ({
+            label: row[firstColumnHeader] || "",
+            type: detectRowType(row, firstColumnHeader)
+          }))
       : []
 
     return {

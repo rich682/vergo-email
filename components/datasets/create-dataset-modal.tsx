@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Upload, FileSpreadsheet, ArrowLeft, Trash2, AlertCircle } from "lucide-react"
-import { parseFileForSchema, isSchemaParseError, DetectedColumn, ColumnType } from "@/lib/utils/schema-parser"
+import { parseFileForSchema, isSchemaParseError, DetectedColumn, ColumnType, RowLabel } from "@/lib/utils/schema-parser"
 
 interface SchemaColumn {
   key: string
@@ -75,7 +75,7 @@ export function CreateDatasetModal({
   
   // Schema data state
   const [columns, setColumns] = useState<SchemaColumn[]>([])
-  const [rowLabels, setRowLabels] = useState<string[]>([])  // Values from Column A
+  const [rowLabels, setRowLabels] = useState<RowLabel[]>([])  // Values from Column A with types
   const [rowCount, setRowCount] = useState(0)
   
   // Configuration state
@@ -179,6 +179,12 @@ export function CreateDatasetModal({
     if (removedKey === stakeholderColumn) {
       setStakeholderColumn(null)
     }
+  }
+
+  const updateRowLabel = (index: number, updates: Partial<RowLabel>) => {
+    const newRowLabels = [...rowLabels]
+    newRowLabels[index] = { ...newRowLabels[index], ...updates }
+    setRowLabels(newRowLabels)
   }
 
   const handleSave = async () => {
@@ -429,16 +435,31 @@ export function CreateDatasetModal({
                     </div>
                   ))
                 ) : (
-                  // Row orientation: show row labels from Column A
+                  // Row orientation: show row labels from Column A with type dropdowns
                   rowLabels.length > 0 ? (
-                    rowLabels.slice(0, 20).map((label, index) => (
+                    rowLabels.slice(0, 20).map((row, index) => (
                       <div
                         key={index}
                         className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
                       >
                         <p className="text-sm font-medium text-gray-900 truncate flex-1">
-                          {label}
+                          {row.label}
                         </p>
+                        <Select
+                          value={row.type}
+                          onValueChange={(value) => updateRowLabel(index, { type: value as ColumnType })}
+                        >
+                          <SelectTrigger className="w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COLUMN_TYPES.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     ))
                   ) : (
