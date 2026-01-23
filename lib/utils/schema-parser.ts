@@ -263,17 +263,45 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
       return { message: "Sheet is empty", code: "NO_DATA" }
     }
 
-    // Track which columns have currency formatting
+    // Track which columns and rows have currency formatting
     const currencyColumns = new Set<number>()
+    const currencyRowCounts = new Map<number, number>()  // row index -> count of currency cells
+    const rowCellCounts = new Map<number, number>()       // row index -> total data cells
     
-    // Check cell formats for currency columns (sample first 20 data rows)
+    // Check cell formats for currency (sample first 20 data rows)
     for (let row = 1; row <= Math.min(range.e.r, MAX_SAMPLE_ROWS); row++) {
+      let currencyCount = 0
+      let totalCells = 0
+      
       for (let col = 0; col <= range.e.c; col++) {
         const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
         const cell = sheet[cellAddress]
+        
+        // Skip first column (row labels) for row currency detection
+        if (col > 0 && cell && cell.v !== undefined && cell.v !== null && cell.v !== "") {
+          totalCells++
+          if (cell.z && isCurrencyFormat(cell.z)) {
+            currencyCount++
+          }
+        }
+        
+        // Track column currency (all columns including first)
         if (cell && cell.z && isCurrencyFormat(cell.z)) {
           currencyColumns.add(col)
         }
+      }
+      
+      currencyRowCounts.set(row, currencyCount)
+      rowCellCounts.set(row, totalCells)
+    }
+    
+    // Determine which rows are currency (>80% of data cells have currency format)
+    const currencyRows = new Set<number>()
+    for (let row = 1; row <= Math.min(range.e.r, MAX_SAMPLE_ROWS); row++) {
+      const currencyCount = currencyRowCounts.get(row) || 0
+      const totalCells = rowCellCounts.get(row) || 0
+      if (totalCells > 0 && currencyCount >= totalCells * 0.8) {
+        currencyRows.add(row)
       }
     }
 
@@ -331,14 +359,25 @@ function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaPars
     })
 
     // Extract row labels with detected types (values from first column / Column A)
+    // Use Excel cell format info if available, otherwise detect from values
     const firstColumnHeader = headers[0]
     const rowLabels: RowLabel[] = firstColumnHeader 
       ? sampleRows
-          .filter(row => (row[firstColumnHeader] || "").trim().length > 0)
-          .map(row => ({
-            label: row[firstColumnHeader] || "",
-            type: detectRowType(row, firstColumnHeader)
-          }))
+          .map((row, index) => {
+            const label = (row[firstColumnHeader] || "").trim()
+            if (!label) return null
+            
+            // Excel row index is index + 1 (1-based Excel rows after header)
+            const excelRowIndex = index + 1
+            
+            // Use Excel format info if row is currency, otherwise detect from values
+            const type = currencyRows.has(excelRowIndex) 
+              ? "currency" as ColumnType
+              : detectRowType(row, firstColumnHeader)
+            
+            return { label, type }
+          })
+          .filter((row): row is RowLabel => row !== null)
       : []
 
     return {
