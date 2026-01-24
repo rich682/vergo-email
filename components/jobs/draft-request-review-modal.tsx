@@ -241,7 +241,15 @@ export function DraftRequestReviewModal({
               {draft.sourceInfo.boardName || "Unknown board"}
               {draft.sourceInfo.periodStart && draft.sourceInfo.periodEnd && (
                 <span className="text-amber-600">
-                  {" "}({new Date(draft.sourceInfo.periodStart).toLocaleDateString()} - {new Date(draft.sourceInfo.periodEnd).toLocaleDateString()})
+                  {" "}({(() => {
+                    const startPart = draft.sourceInfo.periodStart.split("T")[0]
+                    const [sy, sm, sd] = startPart.split("-").map(Number)
+                    return new Date(sy, sm - 1, sd).toLocaleDateString()
+                  })()} - {(() => {
+                    const endPart = draft.sourceInfo.periodEnd.split("T")[0]
+                    const [ey, em, ed] = endPart.split("-").map(Number)
+                    return new Date(ey, em - 1, ed).toLocaleDateString()
+                  })()})
                 </span>
               )}
             </p>

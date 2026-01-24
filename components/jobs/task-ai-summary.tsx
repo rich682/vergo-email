@@ -3,6 +3,15 @@
 import { useState, useEffect } from "react"
 import { ChevronDown, ChevronUp, Sparkles, RefreshCw, AlertTriangle, CheckCircle2, Clock, Mail, Users } from "lucide-react"
 
+/**
+ * Parse a date string for calculations, handling timezone correctly.
+ */
+function parseDateForCalc(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 interface RequestRecipient {
   name: string
   email: string
@@ -114,7 +123,7 @@ export function TaskAISummary({
   const getStatusColor = () => {
     if (jobStatus === "COMPLETE") return "green"
     if (pendingRecipients > 0 && dueDate) {
-      const daysUntilDue = Math.ceil((new Date(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      const daysUntilDue = Math.ceil((parseDateForCalc(dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       if (daysUntilDue < 0) return "red"
       if (daysUntilDue <= 3) return "amber"
     }

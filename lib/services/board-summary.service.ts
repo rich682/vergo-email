@@ -115,16 +115,22 @@ export class BoardSummaryService {
         riskReason: r.riskReason
       }))
 
-    // Build period description
+    // Build period description (parse date part only to avoid timezone shift)
     let periodDescription: string | null = null
     if (board.periodStart) {
-      const start = new Date(board.periodStart).toLocaleDateString("en-US", {
+      const startDateStr = (board.periodStart as unknown as Date).toISOString?.() || String(board.periodStart)
+      const startPart = startDateStr.split("T")[0]
+      const [sy, sm, sd] = startPart.split("-").map(Number)
+      const start = new Date(sy, sm - 1, sd).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric"
       })
       if (board.periodEnd) {
-        const end = new Date(board.periodEnd).toLocaleDateString("en-US", {
+        const endDateStr = (board.periodEnd as unknown as Date).toISOString?.() || String(board.periodEnd)
+        const endPart = endDateStr.split("T")[0]
+        const [ey, em, ed] = endPart.split("-").map(Number)
+        const end = new Date(ey, em - 1, ed).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric"

@@ -166,7 +166,7 @@ export async function POST(
         rowType,
         label: label.trim(),
         position: nextPosition,
-        formula: processedFormula ?? null,
+        formula: processedFormula ?? undefined,
         createdById: userId,
       },
       include: {

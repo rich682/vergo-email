@@ -36,6 +36,7 @@ import {
   ChevronDown
 } from "lucide-react"
 import { format } from "date-fns"
+import { formatDateInTimezone } from "@/lib/utils/timezone"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -138,6 +139,7 @@ export default function JobsPage() {
   // Board context from URL
   const boardId = searchParams.get("boardId")
   const [currentBoard, setCurrentBoard] = useState<Board | null>(null)
+  const [organizationTimezone, setOrganizationTimezone] = useState<string | null>(null)
   
   // Data state
   const [jobs, setJobs] = useState<Job[]>([])
@@ -307,6 +309,22 @@ export default function JobsPage() {
       fetchStakeholderOptions()
     }
   }, [isCreateOpen, fetchStakeholderOptions])
+  
+  // Fetch organization timezone
+  useEffect(() => {
+    const fetchOrgSettings = async () => {
+      try {
+        const response = await fetch("/api/org/accounting-calendar")
+        if (response.ok) {
+          const data = await response.json()
+          setOrganizationTimezone(data.timezone || null)
+        }
+      } catch (error) {
+        console.error("Error fetching org settings:", error)
+      }
+    }
+    fetchOrgSettings()
+  }, [])
 
   // Search stakeholders (contacts/entities)
   useEffect(() => {
@@ -794,8 +812,10 @@ export default function JobsPage() {
                     <Calendar className="w-4 h-4 text-gray-400" />
                     <span className="font-medium text-gray-700">Period:</span>
                     <span className="text-gray-600">
-                      {currentBoard.periodStart && currentBoard.periodEnd
-                        ? `${format(new Date(currentBoard.periodStart), "MMM d, yyyy")} - ${format(new Date(currentBoard.periodEnd), "MMM d, yyyy")}`
+                      {currentBoard.periodStart && currentBoard.periodEnd && organizationTimezone
+                        ? `${formatDateInTimezone(new Date(currentBoard.periodStart), organizationTimezone)} - ${formatDateInTimezone(new Date(currentBoard.periodEnd), organizationTimezone)}`
+                        : currentBoard.periodStart && organizationTimezone
+                        ? formatDateInTimezone(new Date(currentBoard.periodStart), organizationTimezone)
                         : currentBoard.periodStart
                         ? format(new Date(currentBoard.periodStart), "MMM d, yyyy")
                         : "Not set"}

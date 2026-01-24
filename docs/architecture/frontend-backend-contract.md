@@ -38,7 +38,7 @@ A Job (TaskInstance) is the atomic unit in the system. Rather than having differ
 | **Reconciliation** | Document comparison, anchor/supporting model | `/api/task-instances/[id]/reconciliations/*` | WF-03c, WF-03h, WF-03i |
 | **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-r |
 | **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
-| **Data** | Opt-in spreadsheet data management with custom columns | `/api/task-instances/[id]/data/*`, `/api/datasets/*`, `/api/task-lineages/[id]/app-columns/*` | WF-10a-j |
+| **Data** | Opt-in spreadsheet data management with custom columns/rows, formulas, and period navigation | `/api/task-instances/[id]/data/*`, `/api/datasets/*`, `/api/task-lineages/[id]/app-columns/*`, `/api/task-lineages/[id]/app-rows/*` | WF-10a-p |
 
 ### UI Terminology Mapping
 
@@ -217,7 +217,7 @@ Every route has two classification fields:
 
 ## Section C: API Route Inventory
 
-### FRONTEND Routes (79 routes)
+### FRONTEND Routes (83 routes)
 
 Routes with verified `fetch()` calls from `app/` or `components/`.
 
@@ -299,6 +299,10 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-lineages/[id]/app-columns/[columnId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10j) |
 | `/api/task-lineages/[id]/app-columns/[columnId]/values` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10h) |
 | `/api/task-lineages/[id]/app-columns/[columnId]/values/[rowIdentity]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10h) |
+| `/api/task-lineages/[id]/app-rows` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10k) |
+| `/api/task-lineages/[id]/app-rows/[rowId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10m) |
+| `/api/task-lineages/[id]/app-rows/[rowId]/values` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10l) |
+| `/api/task-lineages/[id]/app-rows/[rowId]/values/[columnIdentity]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10l) |
 | `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
 | `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
 | `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
@@ -472,6 +476,63 @@ Only items with workflow justification and verified no current frontend caller.
 
 ## Section F: Rules of the Road
 
+### Date & Timezone Handling Contract
+
+> **CRITICAL**: All date-only fields must be parsed without timezone conversion to prevent off-by-one day errors.
+
+#### Date Field Categories
+
+| Category | Fields | Storage Format | Frontend Parsing |
+|----------|--------|----------------|------------------|
+| **Date-only** | `dueDate`, `periodStart`, `periodEnd` | `YYYY-MM-DDT00:00:00.000Z` | Extract date part, create local Date |
+| **Timestamp** | `createdAt`, `updatedAt`, `sentAt` | Full ISO timestamp | Standard `new Date()` OK |
+
+#### Required Pattern for Date-Only Fields
+
+```typescript
+// WRONG - causes off-by-one errors due to UTC→local conversion
+format(new Date(task.dueDate), "MMM d")  // Jan 31 UTC → Jan 30 in EST
+
+// CORRECT - parse date part only
+function parseDateOnly(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+format(parseDateOnly(task.dueDate), "MMM d")  // Correctly shows Jan 31
+```
+
+#### API Response Contract
+
+All date-only fields returned from API routes MUST:
+1. Be stored as midnight UTC in the database
+2. Be returned as ISO strings (`YYYY-MM-DDT00:00:00.000Z`)
+3. Be documented in this contract as date-only fields
+
+#### Timezone Configuration
+
+Organizations have a `timezone` field (e.g., `"America/New_York"`).
+
+| Endpoint | Timezone Behavior |
+|----------|-------------------|
+| `GET /api/boards` | Returns `timezone` (nullable) and `timezoneConfigured` boolean |
+| `GET /api/org/accounting-calendar` | Returns `timezone` setting |
+| Board automation (Inngest) | Skips orgs without configured timezone |
+
+#### Utility Location
+
+Shared timezone utilities: `lib/utils/timezone.ts`
+
+Key exports:
+- `parseDateOnly()` - Parse date-only strings
+- `formatDateInTimezone()` - Format with timezone
+- `getTodayInTimezone()` - Get today's date in org timezone
+- `getStartOfPeriod()` / `getEndOfPeriod()` - Period boundary calculations
+- `generatePeriodBoardName()` - Timezone-aware board naming
+- `formatPeriodDisplay()` - Format period ranges for display
+
+---
+
 ### Classification Rules
 
 1. **No caller claims without evidence**: Every Caller Type assertion must cite `file:line`
@@ -537,8 +598,8 @@ awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
 
 | Metric | Count | Source |
 |--------|-------|--------|
-| Total API Routes | 126 | `find app/api -name "route.ts" \| wc -l` |
-| FRONTEND | 79 | This document |
+| Total API Routes | 130 | `find app/api -name "route.ts" \| wc -l` |
+| FRONTEND | 83 | This document |
 | ADMIN | 18 | Routes in `/api/admin/*` |
 | EXTERNAL | 8 | OAuth, webhooks, tracking |
 | TEST_ONLY | 3 | Only test file callers |

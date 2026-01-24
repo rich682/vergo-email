@@ -15,10 +15,18 @@ export function DateCell({ value, onChange, className = "" }: DateCellProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const parsedDate = value ? parseISO(value) : null
+  // Parse date for display - extract just the date part to avoid timezone shifts
+  const parseDateForDisplay = (dateStr: string): Date | null => {
+    const datePart = dateStr.split("T")[0]
+    const [year, month, day] = datePart.split("-").map(Number)
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return null
+    return new Date(year, month - 1, day)
+  }
+  
+  const parsedDate = value ? parseDateForDisplay(value) : null
   const isValidDate = parsedDate && isValid(parsedDate)
   const displayValue = isValidDate ? format(parsedDate, "MMM d") : null
-  const inputValue = isValidDate ? format(parsedDate, "yyyy-MM-dd") : ""
+  const inputValue = value ? value.split("T")[0] : "" // Use date part directly for input
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

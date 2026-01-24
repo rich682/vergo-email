@@ -69,9 +69,14 @@ export async function GET(request: NextRequest) {
       includeTaskInstanceCount: true
     })
 
+    // Return timezone, or null if not configured (don't default to UTC)
+    const timezone = organization?.timezone
+    const timezoneConfigured = timezone && timezone !== "UTC"
+    
     return NextResponse.json({ 
       boards,
-      organizationTimezone: organization?.timezone ?? "UTC"
+      organizationTimezone: timezone || null,
+      timezoneConfigured
     })
   } catch (error: any) {
     console.error("[API/boards] Error listing boards:", error)

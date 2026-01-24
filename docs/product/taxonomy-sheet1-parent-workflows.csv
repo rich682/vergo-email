@@ -8,4 +8,4 @@
 "PWF-07","Contact Management","Managing contacts, groups, and contact organization","6","N/A","6 GREEN, 0 YELLOW, 0 RED","/dashboard/contacts","TBD","TBD"
 "PWF-08","Email Account Management","Connecting and managing email accounts for sending/receiving","3","N/A","3 GREEN, 0 YELLOW, 0 RED","/dashboard/settings/team","TBD","TBD"
 "PWF-09","System Automation","Background processes that run without direct user action including AI processing","6","N/A","6 GREEN, 0 YELLOW, 0 RED","None (Inngest)","TBD","TBD"
-"PWF-10","Data Management","Opt-in spreadsheet data management for any task. Define schemas, upload period data, track changes, add custom columns. Separate from TABLE task type.","10","Data (opt-in)","10 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id] (Data tab), /dashboard/data","TBD","TBD"
+"PWF-10","Data Management","Opt-in spreadsheet data management for any task. Define schemas, upload period data, track changes, add custom columns/rows, formula calculations, and cross-period navigation. Separate from TABLE task type.","16","Data (opt-in)","16 GREEN, 0 YELLOW, 0 RED","/dashboard/jobs/[id] (Data tab), /dashboard/data","TBD","TBD"

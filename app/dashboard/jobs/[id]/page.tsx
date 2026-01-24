@@ -28,7 +28,18 @@ import {
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
   FileText, FolderOpen, FileSpreadsheet, ExternalLink
 } from "lucide-react"
-import { formatDistanceToNow, format, differenceInDays, differenceInHours } from "date-fns"
+import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO } from "date-fns"
+
+/**
+ * Parse a date string for display, handling timezone correctly.
+ * Dates stored as "2026-01-31T00:00:00.000Z" should display as Jan 31, not Jan 30.
+ */
+function parseDateForDisplay(dateStr: string): Date {
+  // Extract just the date part (YYYY-MM-DD) and create a local date
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
 import { UI_LABELS } from "@/lib/ui-labels"
 
 // Design system components
@@ -1055,7 +1066,7 @@ export default function JobDetailPage() {
             Evidence ({job.collectedItemCount || 0})
           </button>
 
-          {false && job.type === "RECONCILIATION" && (
+          {false && job?.type === "RECONCILIATION" && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -1256,13 +1267,13 @@ export default function JobDetailPage() {
                       <div className="group flex items-center gap-2">
                         {job.dueDate ? (
                           <span className={`${
-                            differenceInDays(new Date(job.dueDate), new Date()) < 0 
+                            differenceInDays(parseDateForDisplay(job.dueDate), new Date()) < 0 
                               ? "text-red-600 font-medium" 
-                              : differenceInDays(new Date(job.dueDate), new Date()) <= 3
+                              : differenceInDays(parseDateForDisplay(job.dueDate), new Date()) <= 3
                               ? "text-amber-600 font-medium"
                               : "text-gray-700"
                           }`}>
-                            {format(new Date(job.dueDate), "EEEE, MMMM d, yyyy")}
+                            {format(parseDateForDisplay(job.dueDate), "EEEE, MMMM d, yyyy")}
                           </span>
                         ) : (
                           <span className="text-gray-400 italic">Not set</span>

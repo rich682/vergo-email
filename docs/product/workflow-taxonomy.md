@@ -1,6 +1,6 @@
 # Workflow Taxonomy
 
-**Version**: 1.1  
+**Version**: 1.3  
 **Last Updated**: January 22, 2026  
 **Purpose**: Hierarchical workflow structure enabling safe, ring-fenced refactoring
 
@@ -82,6 +82,8 @@
 
 **Description**: Period-based organization of jobs through boards.
 
+**Timezone Requirement**: Recurring boards require organization timezone to be configured. See `DEVELOPMENT_GUIDELINES.md` for date handling rules.
+
 **Sub-Workflows**:
 | Sub-ID | Name | User Goal | Status |
 |--------|------|-----------|--------|
@@ -89,7 +91,7 @@
 | WF-02b | Edit Board Settings | User modifies board name, dates, or settings | GREEN |
 | WF-02c | View Board with Jobs | User views all jobs assigned to a board | GREEN |
 | WF-02d | Assign Board Collaborators | User adds team members to collaborate on a board | GREEN |
-| WF-02e | Set Board Cadence / Periods | User configures recurring board schedule | YELLOW |
+| WF-02e | Set Board Cadence / Periods | User configures recurring board schedule (requires timezone) | GREEN |
 | WF-02f | Mark Board Complete | User marks board done, triggering snapshots | GREEN |
 | WF-02g | Archive / Restore Board | User archives old boards or restores them | GREEN |
 | WF-02h | Delete Board | User permanently removes a board | GREEN |
@@ -210,6 +212,32 @@
 
 ---
 
+### PWF-10: Data Management (Opt-In)
+
+**Description**: Opt-in spreadsheet data management for any task. Define schemas, upload period data, track changes, add custom columns/rows, formula calculations, and cross-period navigation.
+
+**Sub-Workflows**:
+| Sub-ID | Name | User Goal | Status |
+|--------|------|-----------|--------|
+| WF-10a | Enable Data for Task | User opts-in to Data management for any task | GREEN |
+| WF-10b | Configure Data Schema | User uploads file to auto-detect columns, sets identity | GREEN |
+| WF-10c | Upload Period Data | User uploads CSV data for current period | GREEN |
+| WF-10d | Download Data Template | User downloads empty CSV template with headers | GREEN |
+| WF-10e | Delete Data Schema | User deletes schema (only if no snapshots) | GREEN |
+| WF-10f | View Data Hub | User views all tasks with Data enabled | GREEN |
+| WF-10g | Add App Column to Data Grid | User adds custom columns (Notes, Status, Owner, Attachments, Formula) | GREEN |
+| WF-10h | Update App Column Cell Values | User edits app column cell values for rows | GREEN |
+| WF-10i | Filter Data Grid by Values | User filters columns using Excel-style multi-select | GREEN |
+| WF-10j | Manage App Column Settings | User renames, reorders, or deletes app columns | GREEN |
+| WF-10k | Add App Row to Data Grid | User adds custom rows (Text, Formula) | GREEN |
+| WF-10l | Update App Row Cell Values | User edits text-type app row cell values | GREEN |
+| WF-10m | Manage App Row Settings | User renames, reorders, or deletes app rows | GREEN |
+| WF-10n | Navigate Period Sheets | User navigates between historical periods via tabs | GREEN |
+| WF-10o | Create Formula Column | User creates formula column with per-row calculations | GREEN |
+| WF-10p | Create Formula Row | User creates formula row with per-column aggregations | GREEN |
+
+---
+
 ## Sub-Workflow Reference
 
 ### Complete Sub-Workflow Index
@@ -272,6 +300,22 @@
 | WF-09b | PWF-09 | Message Classification | WF-17 | None (System) | None (Inngest) |
 | WF-09c | PWF-09 | Reminder Sending | WF-18 | None (System) | None (Inngest) |
 | WF-09d | PWF-09 | Email Queue Processing | WF-19 | None (System) | None (Inngest) |
+| WF-10a | PWF-10 | Enable Data for Task | - | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/data/enable` |
+| WF-10b | PWF-10 | Configure Data Schema | - | `/dashboard/jobs/[id]` | `POST /api/data/tasks/[taskId]/schema` |
+| WF-10c | PWF-10 | Upload Period Data | - | `/dashboard/jobs/[id]` | `POST /api/datasets/[id]/snapshots` |
+| WF-10d | PWF-10 | Download Data Template | - | `/dashboard/jobs/[id]` | Client-side generation |
+| WF-10e | PWF-10 | Delete Data Schema | - | `/dashboard/jobs/[id]` | `DELETE /api/datasets/[id]` |
+| WF-10f | PWF-10 | View Data Hub | - | `/dashboard/data` | `GET /api/data/tasks` |
+| WF-10g | PWF-10 | Add App Column to Data Grid | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-columns` |
+| WF-10h | PWF-10 | Update App Column Cell Values | - | `/dashboard/jobs/[id]` | `PATCH /api/task-lineages/[id]/app-columns/[id]/values/[row]` |
+| WF-10i | PWF-10 | Filter Data Grid by Values | - | `/dashboard/jobs/[id]` | Client-side filtering |
+| WF-10j | PWF-10 | Manage App Column Settings | - | `/dashboard/jobs/[id]` | `PATCH/DELETE /api/task-lineages/[id]/app-columns/[id]` |
+| WF-10k | PWF-10 | Add App Row to Data Grid | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-rows` |
+| WF-10l | PWF-10 | Update App Row Cell Values | - | `/dashboard/jobs/[id]` | `PATCH /api/task-lineages/[id]/app-rows/[id]/values/[col]` |
+| WF-10m | PWF-10 | Manage App Row Settings | - | `/dashboard/jobs/[id]` | `PATCH/DELETE /api/task-lineages/[id]/app-rows/[id]` |
+| WF-10n | PWF-10 | Navigate Period Sheets | - | `/dashboard/jobs/[id]` | Client-side tab navigation |
+| WF-10o | PWF-10 | Create Formula Column | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-columns` (formula) |
+| WF-10p | PWF-10 | Create Formula Row | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-rows` (formula) |
 
 ---
 
@@ -279,10 +323,10 @@
 
 | Metric | Count |
 |--------|-------|
-| Parent Workflows | 9 |
-| Sub-Workflows | 51 |
-| GREEN Status | 42 |
-| YELLOW Status | 9 |
+| Parent Workflows | 10 |
+| Sub-Workflows | 67 |
+| GREEN Status | 59 |
+| YELLOW Status | 8 |
 | RED Status | 0 |
 | System Automation | 4 |
-| User-Initiated | 47 |
+| User-Initiated | 63 |

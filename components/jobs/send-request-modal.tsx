@@ -1421,7 +1421,11 @@ export function SendRequestModal({
                     </div>
                     {job.board?.periodEnd && (
                       <p className="text-xs text-gray-500 mt-2">
-                        Current period ends: {new Date(job.board.periodEnd).toLocaleDateString()}
+                        Current period ends: {(() => {
+                          const datePart = job.board.periodEnd.split("T")[0]
+                          const [year, month, day] = datePart.split("-").map(Number)
+                          return new Date(year, month - 1, day).toLocaleDateString()
+                        })()}
                       </p>
                     )}
                   </div>

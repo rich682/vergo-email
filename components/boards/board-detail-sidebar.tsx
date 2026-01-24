@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X, Calendar, Users, Zap, Settings2 } from "lucide-react"
+import { formatPeriodDisplay } from "@/lib/utils/timezone"
 
 // Types - use string for status to support legacy values
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "OPEN" | "CLOSED"
@@ -103,59 +104,14 @@ function getInitials(name: string | null, email: string): string {
 }
 
 /**
- * Format date in a specific timezone.
+ * Format period using the shared timezone utility.
+ * Wrapper to maintain existing function signature.
  */
-function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: timezone,
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  })
-}
-
-function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: timezone,
-    month: "long",
-    year: "numeric"
-  })
-}
-
-function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "numeric" }).formatToParts(date)
-  const monthPart = parts.find(p => p.type === "month")
-  return monthPart ? parseInt(monthPart.value, 10) - 1 : date.getMonth()
-}
-
-function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric" }).formatToParts(date)
-  const yearPart = parts.find(p => p.type === "year")
-  return yearPart ? parseInt(yearPart.value, 10) : date.getFullYear()
-}
-
-function formatPeriod(periodStart: string | null, cadence: BoardCadence | null, timezone: string = "UTC"): string {
-  if (!periodStart) return "—"
-  
-  const start = new Date(periodStart)
-  
-  switch (cadence) {
-    case "MONTHLY":
-      return formatMonthYearInTimezone(start, timezone)
-    case "WEEKLY":
-      return `Week of ${formatDateInTimezone(start, timezone)}`
-    case "QUARTERLY":
-      const month = getMonthInTimezone(start, timezone)
-      const year = getYearInTimezone(start, timezone)
-      const q = Math.floor(month / 3) + 1
-      return `Q${q} ${year}`
-    case "YEAR_END":
-      return getYearInTimezone(start, timezone).toString()
-    case "DAILY":
-      return formatDateInTimezone(start, timezone)
-    default:
-      return formatDateInTimezone(start, timezone)
+function formatPeriod(periodStart: string | null, cadence: BoardCadence | null, timezone: string): string {
+  if (!timezone) {
+    console.warn("[BoardDetailSidebar] formatPeriod called without timezone")
   }
+  return formatPeriodDisplay(periodStart, null, cadence, timezone)
 }
 
 export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps) {

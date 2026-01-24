@@ -175,31 +175,46 @@ export function calculateNextPeriodStart(
 
 /**
  * Format a date as "MMM d, yyyy" in the specified timezone.
- * Uses the organization's timezone for consistent display.
+ * IMPORTANT: timezone is required - never default to UTC.
  */
-function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
+function formatDateInTimezone(date: Date, timezone: string): string {
+  if (!timezone) {
+    console.warn("[BoardService] formatDateInTimezone called without timezone")
+  }
   return formatInTimeZone(date, timezone, "MMM d, yyyy")
 }
 
 /**
  * Format a date as full month name and year in the specified timezone.
+ * IMPORTANT: timezone is required - never default to UTC.
  */
-function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
+function formatMonthYearInTimezone(date: Date, timezone: string): string {
+  if (!timezone) {
+    console.warn("[BoardService] formatMonthYearInTimezone called without timezone")
+  }
   return formatInTimeZone(date, timezone, "MMMM yyyy")
 }
 
 /**
  * Get the month index (0-11) in the specified timezone.
+ * IMPORTANT: timezone is required - never default to UTC.
  */
-function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
+function getMonthInTimezone(date: Date, timezone: string): number {
+  if (!timezone) {
+    console.warn("[BoardService] getMonthInTimezone called without timezone")
+  }
   const formatted = formatInTimeZone(date, timezone, "M")
   return parseInt(formatted, 10) - 1 // Convert 1-12 to 0-11
 }
 
 /**
  * Get the year in the specified timezone.
+ * IMPORTANT: timezone is required - never default to UTC.
  */
-function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
+function getYearInTimezone(date: Date, timezone: string): number {
+  if (!timezone) {
+    console.warn("[BoardService] getYearInTimezone called without timezone")
+  }
   const formatted = formatInTimeZone(date, timezone, "yyyy")
   return parseInt(formatted, 10)
 }
@@ -207,17 +222,22 @@ function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
 /**
  * Generate a board name for a given period.
  * Uses timezone-aware formatting based on organization settings.
+ * IMPORTANT: timezone is required in options - never defaults to UTC.
  */
 export function generatePeriodBoardName(
   cadence: BoardCadence,
   periodStart: Date,
-  options?: {
+  options: {
     fiscalYearStartMonth?: number
-    timezone?: string
+    timezone: string  // Required - no default
   }
 ): string {
-  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
-  const timezone = options?.timezone ?? "UTC"
+  const fiscalYearStartMonth = options.fiscalYearStartMonth ?? 1
+  const timezone = options.timezone
+
+  if (!timezone) {
+    console.warn("[BoardService] generatePeriodBoardName called without timezone")
+  }
 
   switch (cadence) {
     case "DAILY":
@@ -607,7 +627,15 @@ export class BoardService {
 
     const referenceDate = completedBoard.periodStart || new Date()
     const fiscalYearStartMonth = completedBoard.organization?.fiscalYearStartMonth ?? 1
-    const timezone = completedBoard.organization?.timezone ?? "UTC"
+    const timezone = completedBoard.organization?.timezone
+    
+    // Warn if timezone not configured - this indicates the org needs to set their timezone
+    if (!timezone || timezone === "UTC") {
+      console.warn(`[BoardService] Organization ${organizationId} has no timezone configured (using "${timezone || 'none'}"). Board periods may be incorrect.`)
+    }
+    
+    // Use organization timezone, or fall back to UTC only with warning logged above
+    const effectiveTimezone = timezone || "UTC"
 
     const nextPeriodStart = calculateNextPeriodStart(
       completedBoard.cadence,
@@ -632,7 +660,7 @@ export class BoardService {
     }
 
     const nextPeriodEnd = derivePeriodEnd(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth })
-    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth, timezone })
+    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, { fiscalYearStartMonth, timezone: effectiveTimezone })
 
     const newBoard = await prisma.board.create({
       data: {

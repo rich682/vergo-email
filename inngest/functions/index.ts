@@ -799,7 +799,7 @@ Use plain language. Be concise.`
   ),
 
   // Auto-create recurring boards based on schedule
-  // Runs daily at midnight to ensure all scheduled boards exist up to today
+  // Runs every hour to ensure all scheduled boards exist up to today
   // Schedule-based: creates boards regardless of previous board status
   // No auto-completion: users manually complete boards when ready
   inngest.createFunction(
@@ -807,19 +807,23 @@ Use plain language. Be concise.`
       id: "auto-create-period-boards",
       throttle: {
         limit: 1,
-        period: "1h"  // Prevent concurrent runs
+        period: "30m"  // Prevent concurrent runs
       }
     },
-    { cron: "0 0 * * *" },  // Daily at midnight
+    { cron: "0 * * * *" },  // Every hour on the hour (more reliable than just midnight)
     async () => {
-      console.log("[Board Automation] Starting schedule-based board creation...")
+      const now = new Date()
+      console.log(`[Board Automation] Starting at ${now.toISOString()} (server time)`)
       
       try {
-        const now = new Date()
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-        
         // Import BoardService dynamically to avoid circular deps
         const { BoardService, calculateNextPeriodStart } = await import("@/lib/services/board.service")
+        const { toZonedTime, formatInTimeZone } = await import("date-fns-tz")
+        
+        // Helper to get today's date (YYYY-MM-DD) in a specific timezone
+        const getTodayInTimezone = (timezone: string): string => {
+          return formatInTimeZone(now, timezone, "yyyy-MM-dd")
+        }
         
         // Find the latest board for each recurring series
         // Group by organization + cadence to find each unique recurring series
@@ -837,8 +841,10 @@ Use plain language. Be concise.`
         
         if (latestBoards.length === 0) {
           console.log("[Board Automation] No recurring boards with automation enabled")
-          return { success: true, processed: 0, created: 0 }
+          return { success: true, processed: 0, created: 0, note: "No automated boards found" }
         }
+        
+        console.log(`[Board Automation] Found ${latestBoards.length} boards with automation enabled`)
         
         // Group boards by organization + cadence to find the latest in each series
         const seriesMap = new Map<string, typeof latestBoards[0]>()
@@ -853,29 +859,66 @@ Use plain language. Be concise.`
         
         let totalCreated = 0
         let failed = 0
-        const results: { seriesKey: string; boardsCreated: number; error?: string }[] = []
+        const results: { seriesKey: string; boardsCreated: number; latestPeriod?: string; nextPeriod?: string; orgTimezone?: string; todayInTz?: string; error?: string }[] = []
         
         for (const [seriesKey, latestBoard] of seriesMap) {
           try {
-            console.log(`[Board Automation] Processing series: ${seriesKey}, latest board: ${latestBoard.name} (period: ${latestBoard.periodStart?.toISOString()})`)
+            // Use the organization's timezone to determine "today"
+            const orgTimezone = latestBoard.organization?.timezone
+            
+            // Skip orgs without timezone configured (or with UTC default which indicates not configured)
+            if (!orgTimezone || orgTimezone === "UTC") {
+              console.warn(`[Board Automation] Skipping series ${seriesKey}: Organization timezone not configured (current: "${orgTimezone || 'null'}")`)
+              results.push({ 
+                seriesKey, 
+                boardsCreated: 0, 
+                error: `Skipped: Organization timezone not configured. Please set timezone in Settings → Accounting Calendar.` 
+              })
+              continue
+            }
+            
+            const todayStr = getTodayInTimezone(orgTimezone)
+            
+            const latestPeriodStr = latestBoard.periodStart?.toISOString().split('T')[0] || 'N/A'
+            console.log(`[Board Automation] Processing series: ${seriesKey}`)
+            console.log(`[Board Automation]   Org timezone: ${orgTimezone}, today in org tz: ${todayStr}`)
+            console.log(`[Board Automation]   Latest board: "${latestBoard.name}" (id: ${latestBoard.id})`)
+            console.log(`[Board Automation]   Latest periodStart: ${latestPeriodStr}`)
+            console.log(`[Board Automation]   Cadence: ${latestBoard.cadence}, skipWeekends: ${latestBoard.skipWeekends}`)
             
             const fiscalYearStartMonth = latestBoard.organization?.fiscalYearStartMonth ?? 1
             let seriesCreated = 0
             let currentBoardId = latestBoard.id
             let currentPeriodStart = latestBoard.periodStart
+            let iterations = 0
+            const maxIterations = 365 // Safety limit
             
-            // Keep creating boards until we've caught up to today
-            while (currentPeriodStart) {
+            // Keep creating boards until we've caught up to today (in org's timezone)
+            while (currentPeriodStart && iterations < maxIterations) {
+              iterations++
+              
               const nextPeriodStart = calculateNextPeriodStart(
                 latestBoard.cadence,
                 currentPeriodStart,
                 { skipWeekends: latestBoard.skipWeekends, fiscalYearStartMonth }
               )
               
-              if (!nextPeriodStart || nextPeriodStart > today) {
-                // We've caught up or no more periods to create
+              // Format nextPeriodStart as YYYY-MM-DD for comparison
+              const nextPeriodStr = nextPeriodStart?.toISOString().split('T')[0] || 'null'
+              
+              if (!nextPeriodStart) {
+                console.log(`[Board Automation]   No next period calculated, stopping`)
                 break
               }
+              
+              // Compare dates as strings (YYYY-MM-DD) - both are date-only so this works
+              if (nextPeriodStr > todayStr) {
+                console.log(`[Board Automation]   Next period ${nextPeriodStr} > today ${todayStr} (${orgTimezone}), caught up`)
+                results.push({ seriesKey, boardsCreated: seriesCreated, latestPeriod: latestPeriodStr, nextPeriod: nextPeriodStr, orgTimezone, todayInTz: todayStr })
+                break
+              }
+              
+              console.log(`[Board Automation]   Attempting to create board for period ${nextPeriodStr}...`)
               
               // Try to create the next board (has idempotency check)
               const newBoard = await BoardService.createNextPeriodBoard(
@@ -887,7 +930,7 @@ Use plain language. Be concise.`
               if (newBoard) {
                 seriesCreated++
                 totalCreated++
-                console.log(`[Board Automation] Created board: ${newBoard.name} (${newBoard.id})`)
+                console.log(`[Board Automation]   Created board: "${newBoard.name}" (${newBoard.id})`)
                 currentBoardId = newBoard.id
                 currentPeriodStart = newBoard.periodStart
               } else {
@@ -901,19 +944,26 @@ Use plain language. Be concise.`
                 })
                 
                 if (existingBoard) {
-                  console.log(`[Board Automation] Board already exists for ${nextPeriodStart.toISOString()}, continuing from there`)
+                  console.log(`[Board Automation]   Board already exists: "${existingBoard.name}" (${existingBoard.id})`)
                   currentBoardId = existingBoard.id
                   currentPeriodStart = existingBoard.periodStart
                 } else {
                   // Something else went wrong, stop this series
-                  console.log(`[Board Automation] Could not create or find board for ${nextPeriodStart.toISOString()}, stopping series`)
+                  console.log(`[Board Automation]   ERROR: Could not create or find board for ${nextPeriodStr}`)
+                  results.push({ seriesKey, boardsCreated: seriesCreated, latestPeriod: latestPeriodStr, error: `Failed at ${nextPeriodStr}` })
                   break
                 }
               }
             }
             
-            results.push({ seriesKey, boardsCreated: seriesCreated })
-            console.log(`[Board Automation] Series ${seriesKey}: created ${seriesCreated} boards`)
+            if (iterations >= maxIterations) {
+              console.warn(`[Board Automation]   Hit max iterations for series ${seriesKey}`)
+            }
+            
+            if (!results.find(r => r.seriesKey === seriesKey)) {
+              results.push({ seriesKey, boardsCreated: seriesCreated, latestPeriod: latestPeriodStr })
+            }
+            console.log(`[Board Automation]   Series complete: ${seriesCreated} boards created`)
             
           } catch (error: any) {
             console.error(`[Board Automation] Failed to process series ${seriesKey}:`, error.message)
@@ -926,6 +976,7 @@ Use plain language. Be concise.`
         
         return {
           success: true,
+          runTime: now.toISOString(),
           seriesProcessed: seriesMap.size,
           totalCreated,
           failed,

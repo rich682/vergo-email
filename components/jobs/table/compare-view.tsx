@@ -14,6 +14,15 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { TableGrid } from "./table-grid"
+
+/**
+ * Parse a date-only field for display without timezone shift.
+ */
+function parseDateOnly(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
 import { VarianceFilter, VarianceFilterState, applyVarianceFilters } from "./variance-filter"
 import { TableSchema } from "./schema-editor"
 import { TableRowData, RowDeltaType } from "./table-row"
@@ -182,7 +191,7 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
             {data.priorPeriod.periodStart && (
               <div className="text-xs text-gray-400 flex items-center gap-1 justify-center mt-0.5">
                 <Calendar className="w-3 h-3" />
-                {format(new Date(data.priorPeriod.periodStart), "MMM d, yyyy")}
+                {format(parseDateOnly(data.priorPeriod.periodStart), "MMM d, yyyy")}
               </div>
             )}
           </div>
@@ -198,7 +207,7 @@ export function CompareView({ taskInstanceId, onRefresh }: CompareViewProps) {
             {data.currentPeriod.periodStart && (
               <div className="text-xs text-gray-400 flex items-center gap-1 justify-center mt-0.5">
                 <Calendar className="w-3 h-3" />
-                {format(new Date(data.currentPeriod.periodStart), "MMM d, yyyy")}
+                {format(parseDateOnly(data.currentPeriod.periodStart), "MMM d, yyyy")}
               </div>
             )}
           </div>

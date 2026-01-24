@@ -9,6 +9,15 @@ import {
 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 import Link from "next/link"
+
+/**
+ * Parse a date-only field for display without timezone shift.
+ */
+function parseDateOnly(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
 import { UploadDataModal } from "@/components/datasets/upload-data-modal"
 import { SnapshotDetailModal } from "@/components/datasets/snapshot-detail-modal"
 
@@ -267,9 +276,9 @@ export default function DatasetDetailPage() {
                           {snapshot.periodStart && (
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3.5 h-3.5" />
-                              {format(new Date(snapshot.periodStart), "MMM d, yyyy")}
+                              {format(parseDateOnly(snapshot.periodStart), "MMM d, yyyy")}
                               {snapshot.periodEnd && (
-                                <> - {format(new Date(snapshot.periodEnd), "MMM d, yyyy")}</>
+                                <> - {format(parseDateOnly(snapshot.periodEnd), "MMM d, yyyy")}</>
                               )}
                             </span>
                           )}

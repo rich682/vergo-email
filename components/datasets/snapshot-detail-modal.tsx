@@ -11,6 +11,15 @@ import {
 import { RefreshCw, Calendar, FileSpreadsheet, Plus, Minus, CheckCircle2 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
 
+/**
+ * Parse a date-only field for display without timezone shift.
+ */
+function parseDateOnly(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 interface DiffSummary {
   addedCount: number
   removedCount: number
@@ -106,9 +115,9 @@ export function SnapshotDetailModal({
               {snapshot.periodStart && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Calendar className="w-4 h-4" />
-                  {format(new Date(snapshot.periodStart), "MMM d, yyyy")}
+                  {format(parseDateOnly(snapshot.periodStart), "MMM d, yyyy")}
                   {snapshot.periodEnd && (
-                    <> - {format(new Date(snapshot.periodEnd), "MMM d, yyyy")}</>
+                    <> - {format(parseDateOnly(snapshot.periodEnd), "MMM d, yyyy")}</>
                   )}
                 </div>
               )}

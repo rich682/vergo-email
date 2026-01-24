@@ -97,9 +97,13 @@ interface AppColumnDef {
   id: string
   key: string
   label: string
-  dataType: "text" | "status" | "attachment" | "user"
+  dataType: "text" | "status" | "attachment" | "user" | "formula"
   config?: {
     options?: StatusOption[]
+    // Formula config
+    expression?: string
+    resultType?: "number" | "currency" | "text"
+    references?: string[]
   } | null
   position: number
 }
@@ -284,8 +288,33 @@ export function DataTabUniversal({
     }
   }, [])
 
+  // Fetch app rows
+  const fetchAppRows = useCallback(async () => {
+    if (!currentLineageId) return
+
+    setLoadingAppRows(true)
+    try {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows`,
+        { credentials: "include" }
+      )
+
+      if (!response.ok) {
+        console.error("Failed to fetch app rows")
+        return
+      }
+
+      const data = await response.json()
+      setAppRows(data.rows || [])
+    } catch (err) {
+      console.error("Error fetching app rows:", err)
+    } finally {
+      setLoadingAppRows(false)
+    }
+  }, [currentLineageId])
+
   // Handle adding a new app column
-  const handleAddColumn = useCallback(async (type: AppColumnType, label: string) => {
+  const handleAddColumn = useCallback(async (type: string, label: string) => {
     if (!currentLineageId) throw new Error("No lineage ID")
 
     const response = await fetch(
@@ -441,33 +470,8 @@ export function DataTabUniversal({
     fetchAppColumns()
   }, [currentLineageId, fetchAppColumns])
 
-  // Fetch app rows
-  const fetchAppRows = useCallback(async () => {
-    if (!currentLineageId) return
-
-    setLoadingAppRows(true)
-    try {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-rows`,
-        { credentials: "include" }
-      )
-
-      if (!response.ok) {
-        console.error("Failed to fetch app rows")
-        return
-      }
-
-      const data = await response.json()
-      setAppRows(data.rows || [])
-    } catch (err) {
-      console.error("Error fetching app rows:", err)
-    } finally {
-      setLoadingAppRows(false)
-    }
-  }, [currentLineageId])
-
   // Handle adding a new app row
-  const handleAddRow = useCallback(async (type: AppRowType, label: string) => {
+  const handleAddRow = useCallback(async (type: string, label: string) => {
     if (!currentLineageId) throw new Error("No lineage ID")
 
     const response = await fetch(
@@ -640,8 +644,13 @@ export function DataTabUniversal({
           
           // Handle formula columns - evaluate the expression
           if (appCol?.dataType === "formula" && appCol.config?.expression) {
+            // Defensive check: ensure we have the necessary data to evaluate
+            const schemaColumns = dataStatus?.datasetTemplate?.schema
+            if (!schemaColumns || schemaColumns.length === 0) {
+              return { type: "empty" }
+            }
+            
             try {
-              const schemaColumns = dataStatus?.datasetTemplate?.schema || []
               const context = buildFormulaContext(
                 "current",
                 [{ id: "current", label: "Current", rows: snapshotRows }],
@@ -664,6 +673,7 @@ export function DataTabUniversal({
                 return { type: "error", message: result.error }
               }
             } catch (err) {
+              console.error("[DataTabUniversal] Formula evaluation error:", err)
               return { type: "error", message: err instanceof Error ? err.message : "Formula error" }
             }
           }

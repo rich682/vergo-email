@@ -228,7 +228,8 @@ function evaluateNode(
           }
           return { ok: true, value: leftResult.value / rightResult.value }
         default:
-          return { ok: false, error: `Unknown operator "${node.operator}"` }
+          // This should never happen if types are correct
+          return { ok: false, error: `Unknown operator "${(node as any).operator}"` }
       }
     }
 
@@ -236,10 +237,13 @@ function evaluateNode(
       const operandResult = evaluateNode(node.operand, context, rowContext)
       if (!operandResult.ok) return operandResult
 
-      if (node.operator === "-") {
-        return { ok: true, value: -operandResult.value }
+      switch (node.operator) {
+        case "-":
+          return { ok: true, value: -operandResult.value }
+        default:
+          // This should never happen if types are correct
+          return { ok: false, error: `Unknown unary operator "${(node as any).operator}"` }
       }
-      return { ok: false, error: `Unknown unary operator "${node.operator}"` }
     }
 
     case "group":
@@ -328,7 +332,8 @@ function evaluateRowFormulaNode(
           }
           return { ok: true, value: leftResult.value / rightResult.value }
         default:
-          return { ok: false, error: `Unknown operator "${node.operator}"` }
+          // This should never happen if types are correct
+          return { ok: false, error: `Unknown operator "${(node as any).operator}"` }
       }
     }
 
@@ -336,10 +341,13 @@ function evaluateRowFormulaNode(
       const operandResult = evaluateRowFormulaNode(node.operand, context, columnContext)
       if (!operandResult.ok) return operandResult
 
-      if (node.operator === "-") {
-        return { ok: true, value: -operandResult.value }
+      switch (node.operator) {
+        case "-":
+          return { ok: true, value: -operandResult.value }
+        default:
+          // This should never happen if types are correct
+          return { ok: false, error: `Unknown unary operator "${(node as any).operator}"` }
       }
-      return { ok: false, error: `Unknown unary operator "${node.operator}"` }
     }
 
     case "group":

@@ -29,7 +29,24 @@ import {
   Calendar
 } from "lucide-react"
 import { format, formatDistanceToNow } from "date-fns"
+import { 
+  formatDateInTimezone, 
+  formatMonthYearInTimezone, 
+  getMonthInTimezone, 
+  getYearInTimezone,
+  formatPeriodDisplay 
+} from "@/lib/utils/timezone"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
+
+/**
+ * Parse a date-only field (dueDate, periodStart, etc.) for display.
+ * Avoids timezone shift by using the date part directly.
+ */
+function parseDateOnly(dateStr: string): Date {
+  const datePart = dateStr.split("T")[0]
+  const [year, month, day] = datePart.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -220,64 +237,14 @@ function getCadenceBadge(cadence: BoardCadence | null) {
 }
 
 /**
- * Format date in a specific timezone.
- * Uses Intl.DateTimeFormat for browser-native timezone support.
+ * Format period using the shared timezone utility.
+ * Wrapper to maintain existing function signature.
  */
-function formatDateInTimezone(date: Date, timezone: string = "UTC"): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: timezone,
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  })
-}
-
-function formatMonthYearInTimezone(date: Date, timezone: string = "UTC"): string {
-  return date.toLocaleDateString("en-US", {
-    timeZone: timezone,
-    month: "long",
-    year: "numeric"
-  })
-}
-
-function getMonthInTimezone(date: Date, timezone: string = "UTC"): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "numeric" }).formatToParts(date)
-  const monthPart = parts.find(p => p.type === "month")
-  return monthPart ? parseInt(monthPart.value, 10) - 1 : date.getMonth()
-}
-
-function getYearInTimezone(date: Date, timezone: string = "UTC"): number {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric" }).formatToParts(date)
-  const yearPart = parts.find(p => p.type === "year")
-  return yearPart ? parseInt(yearPart.value, 10) : date.getFullYear()
-}
-
-function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null, timezone: string = "UTC"): string {
-  if (!periodStart) return "—"
-  
-  const start = new Date(periodStart)
-  
-  switch (cadence) {
-    case "MONTHLY":
-      return formatMonthYearInTimezone(start, timezone)
-    case "WEEKLY":
-      return `Week of ${formatDateInTimezone(start, timezone)}`
-    case "QUARTERLY":
-      const month = getMonthInTimezone(start, timezone)
-      const year = getYearInTimezone(start, timezone)
-      const q = Math.floor(month / 3) + 1
-      return `Q${q} ${year}`
-    case "YEAR_END":
-      return getYearInTimezone(start, timezone).toString()
-    case "DAILY":
-      return formatDateInTimezone(start, timezone)
-    default:
-      if (periodEnd) {
-        const end = new Date(periodEnd)
-        return `${formatDateInTimezone(start, timezone).split(",")[0]} - ${formatDateInTimezone(end, timezone)}`
-      }
-      return formatDateInTimezone(start, timezone)
+function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null, timezone: string): string {
+  if (!timezone) {
+    console.warn("[BoardsPage] formatPeriod called without timezone")
   }
+  return formatPeriodDisplay(periodStart, periodEnd, cadence, timezone)
 }
 
 const STATUS_ORDER: Record<BoardStatus, number> = {
@@ -1221,7 +1188,7 @@ function BoardRow({
                                 {job.dueDate ? (
                                   <div className="flex items-center gap-1 text-sm text-gray-600">
                                     <Calendar className="w-3.5 h-3.5" />
-                                    {format(new Date(job.dueDate), "MMM d")}
+                                    {format(parseDateOnly(job.dueDate), "MMM d")}
                                   </div>
                                 ) : (
                                   <span className="text-gray-400 text-sm">—</span>

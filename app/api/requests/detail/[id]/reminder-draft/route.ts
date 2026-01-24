@@ -136,7 +136,12 @@ Original Message Preview: ${(originalMessage.body || "").substring(0, 300)}...
 
 Recipient Name: ${recipientName}
 Days Since Original Sent: ${daysSinceSent}
-${task.taskInstance?.dueDate ? `Deadline: ${new Date(task.taskInstance.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}
+${task.taskInstance?.dueDate ? (() => {
+            const dateStr = String(task.taskInstance.dueDate)
+            const datePart = dateStr.split("T")[0]
+            const [y, m, d] = datePart.split("-").map(Number)
+            return `Deadline: ${new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+          })() : ''}
 
 Generate a ${reminderNumber === 1 ? 'friendly' : reminderNumber === 2 ? 'polite but direct' : 'professionally urgent'} reminder email.`
         }
@@ -282,7 +287,12 @@ Respond with JSON: { "subject": "...", "body": "...", "htmlBody": "..." }
 Subject: ${originalMessage.subject || "Request"}
 Recipient: ${recipientName}
 Days since sent: ${daysSinceSent}
-${task.taskInstance?.dueDate ? `Deadline: ${new Date(task.taskInstance.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}`
+${task.taskInstance?.dueDate ? (() => {
+                const dateStr = String(task.taskInstance.dueDate)
+                const datePart = dateStr.split("T")[0]
+                const [y, m, d] = datePart.split("-").map(Number)
+                return `Deadline: ${new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+              })() : ''}`
             }
           ],
           response_format: { type: "json_object" },

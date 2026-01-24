@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info, Calendar } from "lucide-react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info, Calendar, AlertTriangle, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,57 +37,15 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { format, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns"
+import Link from "next/link"
+import {
+  isTimezoneConfigured,
+  getStartOfPeriod,
+  generatePeriodBoardName,
+  formatDateInTimezone,
+} from "@/lib/utils/timezone"
 
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
-
-/**
- * Calculate periodStart based on today's date and cadence
- */
-function calculatePeriodStart(cadence: BoardCadence): Date | null {
-  const today = new Date()
-  
-  switch (cadence) {
-    case "DAILY":
-      return today
-    case "WEEKLY":
-      return startOfWeek(today, { weekStartsOn: 1 }) // Monday
-    case "MONTHLY":
-      return startOfMonth(today)
-    case "QUARTERLY":
-      return startOfQuarter(today)
-    case "YEAR_END":
-      return startOfYear(today)
-    case "AD_HOC":
-      return null
-    default:
-      return null
-  }
-}
-
-/**
- * Generate a board name based on cadence and period
- */
-function generateBoardName(cadence: BoardCadence, periodStart: Date | null): string {
-  if (!periodStart || cadence === "AD_HOC") return ""
-  
-  switch (cadence) {
-    case "DAILY":
-      return format(periodStart, "EEEE, MMM d") // "Tuesday, Jan 20"
-    case "WEEKLY":
-      return `Week of ${format(periodStart, "MMM d, yyyy")}` // "Week of Jan 20, 2026"
-    case "MONTHLY":
-      return format(periodStart, "MMMM yyyy") // "January 2026"
-    case "QUARTERLY": {
-      const quarter = Math.floor(periodStart.getMonth() / 3) + 1
-      return `Q${quarter} ${periodStart.getFullYear()}` // "Q1 2026"
-    }
-    case "YEAR_END":
-      return `Year-End ${periodStart.getFullYear()}` // "Year-End 2026"
-    default:
-      return ""
-  }
-}
 
 interface TeamMember {
   id: string
@@ -141,21 +99,59 @@ export function CreateBoardModal({
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  
+  // Organization settings
+  const [orgTimezone, setOrgTimezone] = useState<string | null>(null)
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState<number>(1)
+  const [loadingOrgSettings, setLoadingOrgSettings] = useState(true)
+  
+  // Check if timezone is properly configured (not just the default "UTC")
+  const timezoneConfigured = isTimezoneConfigured(orgTimezone)
+  
+  // For recurring boards (non-AD_HOC), warn if timezone not configured
+  const showTimezoneWarning = cadence && cadence !== "AD_HOC" && !timezoneConfigured
+
+  // Fetch organization settings on mount
+  useEffect(() => {
+    if (open) {
+      fetchOrgSettings()
+    }
+  }, [open])
+
+  const fetchOrgSettings = async () => {
+    setLoadingOrgSettings(true)
+    try {
+      const response = await fetch("/api/org/accounting-calendar")
+      if (response.ok) {
+        const data = await response.json()
+        setOrgTimezone(data.timezone || null)
+        setFiscalYearStartMonth(data.fiscalYearStartMonth || 1)
+      }
+    } catch (err) {
+      console.error("Failed to fetch org settings:", err)
+    } finally {
+      setLoadingOrgSettings(false)
+    }
+  }
 
   // Auto-set periodStart and name when cadence changes
   const handleCadenceChange = useCallback((newCadence: BoardCadence) => {
     setCadence(newCadence)
     
-    // Calculate period start based on today
-    const newPeriodStart = calculatePeriodStart(newCadence)
+    // Calculate period start using timezone-aware function
+    // If timezone not configured, fall back to the org's stored timezone (even if UTC)
+    const timezone = orgTimezone || "UTC"
+    const newPeriodStart = getStartOfPeriod(newCadence, timezone, { fiscalYearStartMonth })
     setPeriodStart(newPeriodStart)
     
     // Auto-generate board name if not manually edited
     if (!nameManuallyEdited || !name.trim()) {
-      const suggestedName = generateBoardName(newCadence, newPeriodStart)
+      const suggestedName = newPeriodStart 
+        ? generatePeriodBoardName(newCadence, newPeriodStart, timezone, { fiscalYearStartMonth })
+        : ""
       setName(suggestedName)
     }
-  }, [nameManuallyEdited, name])
+  }, [nameManuallyEdited, name, orgTimezone, fiscalYearStartMonth])
 
   // Track if name was manually edited
   const handleNameChange = useCallback((newName: string) => {
@@ -287,6 +283,30 @@ export function CreateBoardModal({
               {error}
             </div>
           )}
+
+          {/* Timezone Warning for Recurring Boards */}
+          {showTimezoneWarning && (
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-amber-800">Timezone Not Configured</p>
+                  <p className="text-amber-700 mt-1">
+                    Your organization timezone is not set. Recurring boards require a timezone 
+                    to ensure periods are created correctly.
+                  </p>
+                  <Link 
+                    href="/dashboard/settings/accounting" 
+                    className="inline-flex items-center gap-1 mt-2 text-amber-800 hover:text-amber-900 font-medium underline"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <Settings className="h-3 w-3" />
+                    Configure in Settings
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="py-4 space-y-4">
             {/* Board Type (Cadence) - Show first to auto-generate name */}
@@ -319,10 +339,10 @@ export function CreateBoardModal({
                 onChange={(e) => handleNameChange(e.target.value)}
                 placeholder={cadence && cadence !== "AD_HOC" ? "Auto-generated from board type" : "e.g., Q1 Tax Prep"}
               />
-              {periodStart && cadence && cadence !== "AD_HOC" && (
+              {periodStart && cadence && cadence !== "AD_HOC" && orgTimezone && (
                 <div className="flex items-center gap-1 text-xs text-gray-500">
                   <Calendar className="h-3 w-3" />
-                  <span>Period: {format(periodStart, "MMM d, yyyy")}</span>
+                  <span>Period: {formatDateInTimezone(periodStart, orgTimezone)}</span>
                 </div>
               )}
             </div>
@@ -520,7 +540,7 @@ export function CreateBoardModal({
             </Button>
             <Button 
               type="submit" 
-              disabled={loading || !name.trim() || !cadence}
+              disabled={loading || !name.trim() || !cadence || loadingOrgSettings}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Board

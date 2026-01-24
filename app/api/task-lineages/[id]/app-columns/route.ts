@@ -184,7 +184,7 @@ export async function POST(
         key,
         label: label.trim(),
         dataType,
-        config: columnConfig ?? null,
+        config: columnConfig ?? undefined,
         position: nextPosition,
         createdById: userId,
       },

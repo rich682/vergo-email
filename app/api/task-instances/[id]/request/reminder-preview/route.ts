@@ -114,7 +114,12 @@ Original Subject: ${subject}
 Original Body Preview: ${emailBody.substring(0, 300)}...
 Recipient: ${recipient}
 Days since sent: ${daysSinceSent}
-${job.dueDate ? `Deadline: ${new Date(job.dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}`
+${job.dueDate ? (() => {
+                const dateStr = String(job.dueDate)
+                const datePart = dateStr.split("T")[0]
+                const [y, m, d] = datePart.split("-").map(Number)
+                return `Deadline: ${new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+              })() : ''}`
             }
           ],
           response_format: { type: "json_object" },
