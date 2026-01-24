@@ -35,8 +35,10 @@ import { DataGridHeader } from "./data-grid-header"
 import { CellRenderer, getAlignmentClass } from "./cell-renderers"
 import { AddRowButton, type AppRowType } from "./add-row-button"
 import { SheetTabBar } from "./sheet-tab-bar"
-import { Loader2 } from "lucide-react"
+import { Loader2, Trash2, FunctionSquare, Edit2 } from "lucide-react"
 import type { AppColumnType } from "./add-column-button"
+import { evaluateRowFormula, buildFormulaContext } from "@/lib/formula"
+import type { FormulaDefinition } from "@/lib/formula"
 
 // Constants
 const ROW_HEIGHT = 36
@@ -69,7 +71,15 @@ export function DataGrid({
   canAddSheet = false,
   onFormulaColumnSelect,
   onFormulaRowSelect,
-}: DataGridProps) {
+  onEditFormulaColumn,
+  onEditFormulaRow,
+  formulaColumns,
+}: DataGridProps & { 
+  onDeleteRow?: (rowId: string) => Promise<void>
+  onEditFormulaColumn?: (columnId: string) => void
+  onEditFormulaRow?: (rowId: string) => void
+  formulaColumns?: Map<string, { expression: string; resultType: string; label: string }>
+}) {
   // Container ref for virtualization
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -216,6 +226,8 @@ export function DataGrid({
           onDeleteColumn={handleDeleteColumn}
           showAddColumn={showAddColumn}
           onFormulaSelect={onFormulaColumnSelect}
+          onEditFormulaColumn={onEditFormulaColumn}
+          formulaColumns={formulaColumns}
         />
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <p className="text-gray-500 text-sm">
@@ -250,6 +262,8 @@ export function DataGrid({
             onDeleteColumn={handleDeleteColumn}
             showAddColumn={showAddColumn}
             onFormulaSelect={onFormulaColumnSelect}
+            onEditFormulaColumn={onEditFormulaColumn}
+            formulaColumns={formulaColumns}
           />
           
           {/* Body rows */}
@@ -279,26 +293,26 @@ export function DataGrid({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  {visibleColumns.map((column) => {
+                  {visibleColumns.map((column, colIndex) => {
                     const cellValue = resolver.getCellValue({
                       row,
                       column,
                       sheet,
                     })
-                    const alignClass = getAlignmentClass(column.dataType)
                     const isAppColumn = column.kind === "app"
                     const columnId = column.id.replace("app_", "")
+                    const isFirstColumn = colIndex === 0
 
                     return (
                       <DataGridCell
                         key={column.id}
                         column={column}
                         cellValue={cellValue}
-                        alignClass={alignClass}
                         isAppColumn={isAppColumn}
                         columnId={columnId}
                         rowIdentity={rowIdentity}
                         onCellValueChange={onCellValueChange}
+                        isFirstColumn={isFirstColumn}
                       />
                     )
                   })}
@@ -325,6 +339,10 @@ export function DataGrid({
                   visibleColumns={visibleColumns}
                   showAddColumn={showAddColumn}
                   onRowCellValueChange={onRowCellValueChange}
+                  onDeleteRow={onDeleteRow}
+                  onEditFormulaRow={onEditFormulaRow}
+                  allRows={rows}
+                  allColumns={columns}
                 />
               ))}
             </div>
@@ -385,6 +403,10 @@ interface AppRowComponentProps {
   visibleColumns: ColumnDefinition[]
   showAddColumn: boolean
   onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
+  onDeleteRow?: (rowId: string) => Promise<void>
+  onEditFormulaRow?: (rowId: string) => void
+  allRows: Record<string, unknown>[]
+  allColumns: ColumnDefinition[]
 }
 
 function AppRowComponent({
@@ -392,7 +414,82 @@ function AppRowComponent({
   visibleColumns,
   showAddColumn,
   onRowCellValueChange,
+  onDeleteRow,
+  onEditFormulaRow,
+  allRows,
+  allColumns,
 }: AppRowComponentProps) {
+  const [isHovered, setIsHovered] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Build formula context for row formula evaluation
+  const formulaContext = useMemo(() => {
+    if (appRow.rowType !== "formula" || !appRow.formula) return null
+    
+    // Build column definitions from all columns (for formula context)
+    const schemaColumns = allColumns
+      .filter(c => c.kind === "source")
+      .map(c => ({ key: c.key, label: c.label, dataType: c.dataType }))
+    
+    return buildFormulaContext(
+      "current",
+      [{ id: "current", label: "Current", rows: allRows }],
+      schemaColumns
+    )
+  }, [appRow.rowType, appRow.formula, allRows, allColumns])
+
+  // Evaluate formula for a specific column
+  const evaluateFormulaForColumn = useCallback((column: ColumnDefinition): string => {
+    if (!formulaContext || !appRow.formula) return "—"
+    
+    try {
+      const formula: FormulaDefinition = {
+        expression: appRow.formula.expression as string,
+        references: [],
+        resultType: (appRow.formula.resultType as "number" | "currency" | "text") || "number",
+      }
+      
+      const columnContext = {
+        columnKey: column.key,
+        columnLabel: column.label,
+      }
+      
+      const result = evaluateRowFormula(formula, formulaContext, columnContext)
+      
+      if (result.ok) {
+        // Format based on result type
+        const resultType = appRow.formula.resultType as string
+        if (resultType === "currency") {
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(result.value)
+        }
+        return result.value.toLocaleString()
+      }
+      return "Error"
+    } catch (err) {
+      console.error("[AppRowComponent] Formula evaluation error:", err)
+      return "Error"
+    }
+  }, [formulaContext, appRow.formula])
+
+  const handleDelete = useCallback(async () => {
+    if (!onDeleteRow || isDeleting) return
+    setIsDeleting(true)
+    try {
+      await onDeleteRow(appRow.id)
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [onDeleteRow, appRow.id, isDeleting])
+
+  const handleEditFormula = useCallback(() => {
+    if (onEditFormulaRow && appRow.rowType === "formula") {
+      onEditFormulaRow(appRow.id)
+    }
+  }, [onEditFormulaRow, appRow.id, appRow.rowType])
+
   return (
     <div
       className={`
@@ -400,24 +497,76 @@ function AppRowComponent({
         border-b border-gray-200
         bg-gray-50
         hover:bg-gray-100
+        group
       `}
       style={{ height: `${ROW_HEIGHT}px` }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Row label in first column position */}
+      {/* Row label in first column position with action buttons */}
       <div
-        className="px-2 py-1.5 border-r border-gray-200 flex items-center font-medium text-gray-700 text-sm"
+        className="px-2 py-1.5 border-r border-gray-200 flex items-center gap-1.5 font-medium text-gray-700 text-sm relative"
         style={{
           width: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
           minWidth: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
           flexShrink: 0,
         }}
       >
-        {appRow.label}
+        {/* Formula icon for formula rows */}
+        {appRow.rowType === "formula" && (
+          <FunctionSquare className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
+        )}
+        <span className="truncate">{appRow.label}</span>
+        
+        {/* Action buttons on hover */}
+        {isHovered && (
+          <div className="absolute right-1 flex items-center gap-0.5">
+            {/* Edit formula button for formula rows */}
+            {appRow.rowType === "formula" && onEditFormulaRow && (
+              <button
+                onClick={handleEditFormula}
+                className="p-0.5 rounded hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-colors"
+                title="Edit formula"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {/* Delete button */}
+            {onDeleteRow && (
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors"
+                title="Delete row"
+              >
+                {isDeleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+          </div>
+        )}
       </div>
       
       {/* Rest of the columns */}
       {visibleColumns.slice(1).map((column) => {
-        // Find the value for this column
+        // For formula rows, evaluate the formula
+        if (appRow.rowType === "formula") {
+          const formulaValue = evaluateFormulaForColumn(column)
+          return (
+            <AppRowCell
+              key={column.id}
+              column={column}
+              value={formulaValue}
+              appRow={appRow}
+              onRowCellValueChange={onRowCellValueChange}
+            />
+          )
+        }
+        
+        // For text rows, find the stored value
         const cellValue = appRow.values.find((v) => v.columnKey === column.key)
         const displayValue = cellValue?.value || ""
         
@@ -498,7 +647,7 @@ function AppRowCell({
         className={`
           px-2 py-1.5
           border-r border-gray-200
-          flex items-center
+          flex items-center justify-center
           text-sm text-gray-500 italic
         `}
         style={{
@@ -518,7 +667,7 @@ function AppRowCell({
       className={`
         px-2 py-1.5
         border-r border-gray-200
-        flex items-center
+        flex items-center justify-center
         cursor-pointer hover:bg-blue-50
       `}
       style={{
@@ -536,10 +685,10 @@ function AppRowCell({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
-          className="w-full h-full px-1 text-sm border border-blue-500 rounded outline-none"
+          className="w-full h-full px-1 text-sm border border-blue-500 rounded outline-none text-center"
         />
       ) : (
-        <span className="text-sm text-gray-600 truncate">
+        <span className="text-sm text-gray-600 truncate text-center">
           {value || <span className="text-gray-400 italic">Click to edit</span>}
         </span>
       )}
@@ -554,21 +703,21 @@ function AppRowCell({
 interface DataGridCellProps {
   column: ColumnDefinition
   cellValue: CellValue
-  alignClass: string
   isAppColumn: boolean
   columnId: string
   rowIdentity: string
   onCellValueChange?: (columnId: string, rowIdentity: string, value: unknown) => Promise<void>
+  isFirstColumn?: boolean
 }
 
 function DataGridCell({
   column,
   cellValue,
-  alignClass,
   isAppColumn,
   columnId,
   rowIdentity,
   onCellValueChange,
+  isFirstColumn = false,
 }: DataGridCellProps) {
   const [isHovered, setIsHovered] = useState(false)
 
@@ -577,13 +726,19 @@ function DataGridCell({
     // This is handled by the individual cell editor components
   }, [])
 
+  // First column: left-aligned, bold
+  // Other columns: centered
+  const alignmentClass = isFirstColumn ? "justify-start" : "justify-center"
+  const fontClass = isFirstColumn ? "font-semibold" : ""
+
   return (
     <div
       className={`
         px-2 py-1.5
         border-r border-gray-200
         flex items-center
-        ${alignClass}
+        ${alignmentClass}
+        ${fontClass}
         ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
       `}
       style={{
@@ -600,6 +755,7 @@ function DataGridCell({
         column={column}
         isHovered={isHovered}
         isAppColumn={isAppColumn}
+        isFirstColumn={isFirstColumn}
       />
     </div>
   )

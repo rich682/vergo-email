@@ -38,6 +38,10 @@ interface ExtendedDataGridHeaderProps extends DataGridHeaderProps {
   onRenameColumn?: (columnId: string, newLabel: string) => Promise<void>
   showAddColumn?: boolean
   onFormulaSelect?: () => void
+  /** Called when user wants to edit a formula column */
+  onEditFormulaColumn?: (columnId: string) => void
+  /** Map of column IDs to their formula data (for formula columns) */
+  formulaColumns?: Map<string, { expression: string; resultType: string; label: string }>
 }
 
 export function DataGridHeader({
@@ -54,6 +58,8 @@ export function DataGridHeader({
   onRenameColumn,
   showAddColumn = false,
   onFormulaSelect,
+  onEditFormulaColumn,
+  formulaColumns,
 }: ExtendedDataGridHeaderProps) {
   const visibleColumns = columns.filter((c) => c.isVisible)
 
@@ -80,6 +86,8 @@ export function DataGridHeader({
             onHideColumn={onHideColumn}
             onDeleteColumn={onDeleteColumn}
             onRenameColumn={onRenameColumn}
+            onEditFormulaColumn={onEditFormulaColumn}
+            isFormulaColumn={formulaColumns?.has(column.id) || false}
           />
         )
       })}
@@ -116,6 +124,8 @@ interface ColumnHeaderProps {
   onHideColumn?: (columnId: string) => void
   onDeleteColumn?: (columnId: string) => Promise<void>
   onRenameColumn?: (columnId: string, newLabel: string) => Promise<void>
+  onEditFormulaColumn?: (columnId: string) => void
+  isFormulaColumn?: boolean
 }
 
 function ColumnHeader({
@@ -129,6 +139,8 @@ function ColumnHeader({
   onHideColumn,
   onDeleteColumn,
   onRenameColumn,
+  onEditFormulaColumn,
+  isFormulaColumn = false,
 }: ColumnHeaderProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isActionsOpen, setIsActionsOpen] = useState(false)
@@ -223,16 +235,21 @@ function ColumnHeader({
     setIsActionsOpen(false)
   }, [column.id, onDeleteColumn])
 
+  const handleEditFormula = useCallback(() => {
+    onEditFormulaColumn?.(column.id)
+    setIsActionsOpen(false)
+  }, [column.id, onEditFormulaColumn])
+
   const hasFilter = currentFilter !== null
   const isAppColumn = column.kind === "app"
-  const showActions = isAppColumn && (onHideColumn || onDeleteColumn)
+  const showActions = isAppColumn && (onHideColumn || onDeleteColumn || (isFormulaColumn && onEditFormulaColumn))
 
   return (
     <div
       className={`
-        group flex items-center justify-between
+        group flex items-center justify-center
         px-2 py-2 
-        text-xs font-medium text-gray-700 
+        text-xs font-bold text-gray-700 
         border-r border-gray-300
         select-none bg-gray-100
         hover:bg-gray-50
@@ -243,7 +260,7 @@ function ColumnHeader({
         flexShrink: 0,
       }}
     >
-      <span className="truncate flex-1">
+      <span className="text-center flex-1 whitespace-normal leading-tight">
         {column.label}
       </span>
       
@@ -260,6 +277,15 @@ function ColumnHeader({
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-40 p-1" align="start">
+              {isFormulaColumn && onEditFormulaColumn && (
+                <button
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-blue-50 text-blue-600 text-left"
+                  onClick={handleEditFormula}
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Edit formula
+                </button>
+              )}
               {onHideColumn && (
                 <button
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-gray-100 text-left"

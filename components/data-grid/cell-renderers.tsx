@@ -22,11 +22,13 @@ interface CellRendererProps {
   column?: ColumnDefinition
   isHovered?: boolean
   isAppColumn?: boolean
+  isFirstColumn?: boolean
 }
 
 /**
  * Render a CellValue based on its type.
  * Shows interactive hints for app columns.
+ * First column is left-aligned and bold, others are centered.
  */
 export function CellRenderer({ 
   value, 
@@ -34,8 +36,11 @@ export function CellRenderer({
   column,
   isHovered = false,
   isAppColumn = false,
+  isFirstColumn = false,
 }: CellRendererProps) {
-  const baseClass = "truncate w-full"
+  // First column: left-aligned, others: centered (alignment is handled by parent, but text-align matters for truncate)
+  const textAlign = isFirstColumn ? "text-left" : "text-center"
+  const baseClass = `truncate w-full ${textAlign}`
 
   switch (value.type) {
     case "empty":
@@ -56,14 +61,14 @@ export function CellRenderer({
 
     case "number":
       return (
-        <span className={`${baseClass} tabular-nums text-right ${className}`}>
+        <span className={`${baseClass} tabular-nums ${className}`}>
           {value.value.toLocaleString()}
         </span>
       )
 
     case "currency":
       return (
-        <span className={`${baseClass} tabular-nums text-right ${className}`}>
+        <span className={`${baseClass} tabular-nums ${className}`}>
           ${value.value.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,

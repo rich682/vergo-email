@@ -167,6 +167,9 @@ export function DataTabUniversal({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isFormulaEditorOpen, setIsFormulaEditorOpen] = useState(false)
   const [formulaEditorMode, setFormulaEditorMode] = useState<"column" | "row">("column")
+  // Editing state for formula columns/rows (null = creating new, string = editing existing)
+  const [editingFormulaColumnId, setEditingFormulaColumnId] = useState<string | null>(null)
+  const [editingFormulaRowId, setEditingFormulaRowId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deletingData, setDeletingData] = useState(false)
   const [updatingVisibility, setUpdatingVisibility] = useState(false)
@@ -336,77 +339,147 @@ export function DataTabUniversal({
     fetchAppColumns()
   }, [currentLineageId, fetchAppColumns])
 
-  // Handle opening formula editor for column formulas
+  // Handle opening formula editor for column formulas (new)
   const handleOpenFormulaEditor = useCallback(() => {
     setFormulaEditorMode("column")
+    setEditingFormulaColumnId(null) // Creating new
     setIsFormulaEditorOpen(true)
   }, [])
 
-  // Handle opening formula editor for row formulas
+  // Handle opening formula editor for row formulas (new)
   const handleOpenRowFormulaEditor = useCallback(() => {
     setFormulaEditorMode("row")
+    setEditingFormulaRowId(null) // Creating new
     setIsFormulaEditorOpen(true)
   }, [])
 
-  // Handle saving a formula column
+  // Handle editing an existing formula column
+  const handleEditFormulaColumn = useCallback((columnId: string) => {
+    // Extract actual column ID (remove "app_" prefix if present)
+    const actualColumnId = columnId.replace("app_", "")
+    setFormulaEditorMode("column")
+    setEditingFormulaColumnId(actualColumnId)
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  // Handle editing an existing formula row
+  const handleEditFormulaRow = useCallback((rowId: string) => {
+    setFormulaEditorMode("row")
+    setEditingFormulaRowId(rowId)
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  // Handle saving a formula column (create or update)
   const handleSaveFormulaColumn = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
     if (!currentLineageId) throw new Error("No lineage ID")
 
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-columns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          label: formula.label,
-          dataType: "formula",
-          config: {
-            expression: formula.expression,
-            resultType: formula.resultType,
-          },
-        }),
-      }
-    )
+    // If editing, use PATCH to update
+    if (editingFormulaColumnId) {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-columns/${editingFormulaColumnId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            config: {
+              expression: formula.expression,
+              resultType: formula.resultType,
+            },
+          }),
+        }
+      )
 
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to add formula column")
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to update formula column")
+      }
+    } else {
+      // Creating new
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-columns`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            dataType: "formula",
+            config: {
+              expression: formula.expression,
+              resultType: formula.resultType,
+            },
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to add formula column")
+      }
     }
 
-    // Refresh app columns
+    // Clear editing state and refresh
+    setEditingFormulaColumnId(null)
     fetchAppColumns()
-  }, [currentLineageId, fetchAppColumns])
+  }, [currentLineageId, fetchAppColumns, editingFormulaColumnId])
 
-  // Handle saving a formula row
+  // Handle saving a formula row (create or update)
   const handleSaveFormulaRow = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
     if (!currentLineageId) throw new Error("No lineage ID")
 
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-rows`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          label: formula.label,
-          rowType: "formula",
-          formula: {
-            expression: formula.expression,
-            resultType: formula.resultType,
-          },
-        }),
-      }
-    )
+    // If editing, use PATCH to update
+    if (editingFormulaRowId) {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows/${editingFormulaRowId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            formula: {
+              expression: formula.expression,
+              resultType: formula.resultType,
+            },
+          }),
+        }
+      )
 
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to add formula row")
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to update formula row")
+      }
+    } else {
+      // Creating new
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            rowType: "formula",
+            formula: {
+              expression: formula.expression,
+              resultType: formula.resultType,
+            },
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to add formula row")
+      }
     }
 
-    // Refresh app rows
+    // Clear editing state and refresh
+    setEditingFormulaRowId(null)
     fetchAppRows()
-  }, [currentLineageId, fetchAppRows])
+  }, [currentLineageId, fetchAppRows, editingFormulaRowId])
 
   // Handle updating a cell value
   const handleCellValueUpdate = useCallback(async (
@@ -517,6 +590,27 @@ export function DataTabUniversal({
     }
 
     // Refresh app rows to get updated values
+    fetchAppRows()
+  }, [currentLineageId, fetchAppRows])
+
+  // Handle deleting an app row
+  const handleDeleteAppRow = useCallback(async (rowId: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}`,
+      {
+        method: "DELETE",
+        credentials: "include",
+      }
+    )
+
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to delete row")
+    }
+
+    // Refresh app rows
     fetchAppRows()
   }, [currentLineageId, fetchAppRows])
 
@@ -741,6 +835,44 @@ export function DataTabUniversal({
   const sampleRow = useMemo(() => {
     return snapshotRows.length > 0 ? snapshotRows[0] : undefined
   }, [snapshotRows])
+
+  // Build formula columns map for DataGrid (tracks which columns are formula columns)
+  const formulaColumnsMap = useMemo(() => {
+    const map = new Map<string, { expression: string; resultType: string; label: string }>()
+    for (const col of appColumns) {
+      if (col.dataType === "formula" && col.config?.expression) {
+        map.set(`app_${col.id}`, {
+          expression: col.config.expression as string,
+          resultType: (col.config.resultType as string) || "number",
+          label: col.label,
+        })
+      }
+    }
+    return map
+  }, [appColumns])
+
+  // Get initial values for formula editor when editing
+  const editingFormulaColumnData = useMemo(() => {
+    if (!editingFormulaColumnId) return null
+    const col = appColumns.find(c => c.id === editingFormulaColumnId)
+    if (!col || col.dataType !== "formula") return null
+    return {
+      expression: (col.config?.expression as string) || "",
+      resultType: (col.config?.resultType as FormulaResultType) || "number",
+      label: col.label,
+    }
+  }, [editingFormulaColumnId, appColumns])
+
+  const editingFormulaRowData = useMemo(() => {
+    if (!editingFormulaRowId) return null
+    const row = appRows.find(r => r.id === editingFormulaRowId)
+    if (!row || row.rowType !== "formula" || !row.formula) return null
+    return {
+      expression: (row.formula.expression as string) || "",
+      resultType: (row.formula.resultType as FormulaResultType) || "number",
+      label: row.label,
+    }
+  }, [editingFormulaRowId, appRows])
 
   // Handle sheet change
   const handleSheetChange = useCallback((sheet: SheetContext) => {
@@ -1075,14 +1207,16 @@ export function DataTabUniversal({
                 showAddColumn={!!currentLineageId}
                 appRows={appRows}
                 onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteAppRow}
                 onRowCellValueChange={handleRowCellValueUpdate}
                 showAddRow={!!currentLineageId}
                 sheets={sheets}
                 onSheetChange={handleSheetChange}
-                onAddSheet={() => setIsUploadModalOpen(true)}
-                canAddSheet={dataStatus?.schemaConfigured && !hasSnapshots ? false : dataStatus?.schemaConfigured}
                 onFormulaColumnSelect={handleOpenFormulaEditor}
                 onFormulaRowSelect={handleOpenRowFormulaEditor}
+                onEditFormulaColumn={handleEditFormulaColumn}
+                onEditFormulaRow={handleEditFormulaRow}
+                formulaColumns={formulaColumnsMap}
               />
             </div>
           </div>
@@ -1240,12 +1374,34 @@ export function DataTabUniversal({
       {/* Formula Editor Modal */}
       <FormulaEditorModal
         open={isFormulaEditorOpen}
-        onOpenChange={setIsFormulaEditorOpen}
+        onOpenChange={(open) => {
+          setIsFormulaEditorOpen(open)
+          // Clear editing state when modal closes
+          if (!open) {
+            setEditingFormulaColumnId(null)
+            setEditingFormulaRowId(null)
+          }
+        }}
         mode={formulaEditorMode}
         columns={formulaColumnResources}
         sampleRow={sampleRow}
         allRows={snapshotRows}
         onSave={formulaEditorMode === "column" ? handleSaveFormulaColumn : handleSaveFormulaRow}
+        initialExpression={
+          formulaEditorMode === "column" 
+            ? editingFormulaColumnData?.expression || "" 
+            : editingFormulaRowData?.expression || ""
+        }
+        initialResultType={
+          formulaEditorMode === "column" 
+            ? editingFormulaColumnData?.resultType || "number" 
+            : editingFormulaRowData?.resultType || "number"
+        }
+        initialLabel={
+          formulaEditorMode === "column" 
+            ? editingFormulaColumnData?.label || "" 
+            : editingFormulaRowData?.label || ""
+        }
       />
     </>
   )
