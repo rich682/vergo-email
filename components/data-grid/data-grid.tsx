@@ -790,11 +790,11 @@ function DataGridCell({
   }, [cellFormula, cellValue, allRows, allColumns])
 
   const handleDoubleClick = useCallback(() => {
-    // Allow editing any cell for formulas
-    if (onCellFormulaChange) {
+    // Only allow editing for app-owned columns (source data is read-only)
+    if (onCellFormulaChange && isAppColumn) {
       setIsEditing(true)
     }
-  }, [onCellFormulaChange])
+  }, [onCellFormulaChange, isAppColumn])
 
   const handleSave = useCallback(async (value: string, isFormulaValue: boolean) => {
     setIsEditing(false)
@@ -841,7 +841,7 @@ function DataGridCell({
         text-xs text-gray-700
         ${alignmentClass}
         ${fontClass}
-        ${onCellFormulaChange ? "cursor-pointer hover:bg-blue-50" : ""}
+        ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
         ${hasFormula ? "relative" : ""}
       `}
       style={{
