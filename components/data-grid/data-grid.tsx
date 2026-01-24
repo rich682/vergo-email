@@ -648,7 +648,7 @@ function AppRowCell({
           px-2 py-1.5
           border-r border-gray-200
           flex items-center justify-center
-          text-xs text-gray-500 italic
+          text-xs text-gray-700
         `}
         style={{
           width: column.width ?? getDefaultColumnWidth(column.dataType),
@@ -688,7 +688,7 @@ function AppRowCell({
           className="w-full h-full px-1 text-xs border border-blue-500 rounded outline-none text-center"
         />
       ) : (
-        <span className="text-xs text-gray-600 truncate text-center">
+        <span className="text-xs text-gray-700 truncate text-center">
           {value || <span className="text-gray-400 italic">Click to edit</span>}
         </span>
       )}
