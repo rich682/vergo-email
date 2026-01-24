@@ -5,11 +5,17 @@
  *
  * Allows editing cells with Excel-style formulas.
  * When user types = as the first character, enters formula mode.
+ * Supports click-to-select cell references when in formula mode.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useImperativeHandle, forwardRef } from "react"
 import { FunctionSquare } from "lucide-react"
 import { isFormula, parseCellFormula } from "@/lib/formula"
+
+export interface FormulaCellEditorRef {
+  insertCellRef: (ref: string) => void
+  isInFormulaMode: () => boolean
+}
 
 interface FormulaCellEditorProps {
   value: string | number
@@ -18,16 +24,18 @@ interface FormulaCellEditorProps {
   isFormulaCell: boolean
   onSave: (value: string, isFormula: boolean) => Promise<void>
   onCancel: () => void
+  onFormulaModeChange?: (isFormulaMode: boolean) => void
 }
 
-export function FormulaCellEditor({
+export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEditorProps>(function FormulaCellEditor({
   value,
   formula,
   cellRef,
   isFormulaCell,
   onSave,
   onCancel,
-}: FormulaCellEditorProps) {
+  onFormulaModeChange,
+}, ref) {
   // Start with formula if it exists, otherwise the display value
   const [inputValue, setInputValue] = useState(
     isFormulaCell && formula ? formula : String(value ?? "")
@@ -35,12 +43,39 @@ export function FormulaCellEditor({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const isInFormulaMode = inputValue.startsWith("=")
+
+  // Notify parent when formula mode changes
+  useEffect(() => {
+    onFormulaModeChange?.(isInFormulaMode)
+  }, [isInFormulaMode, onFormulaModeChange])
+
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus()
       inputRef.current.select()
     }
   }, [])
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    insertCellRef: (cellReference: string) => {
+      if (inputRef.current && isInFormulaMode) {
+        const input = inputRef.current
+        const start = input.selectionStart ?? inputValue.length
+        const end = input.selectionEnd ?? inputValue.length
+        const newValue = inputValue.slice(0, start) + cellReference + inputValue.slice(end)
+        setInputValue(newValue)
+        // Set cursor position after the inserted reference
+        setTimeout(() => {
+          input.focus()
+          const newPos = start + cellReference.length
+          input.setSelectionRange(newPos, newPos)
+        }, 0)
+      }
+    },
+    isInFormulaMode: () => isInFormulaMode,
+  }), [inputValue, isInFormulaMode])
 
   const handleSave = useCallback(async () => {
     const trimmed = inputValue.trim()
@@ -80,8 +115,6 @@ export function FormulaCellEditor({
     setError(null)
   }, [])
 
-  const showFormulaHint = inputValue.startsWith("=")
-
   return (
     <div className="relative w-full h-full">
       <input
@@ -95,14 +128,14 @@ export function FormulaCellEditor({
           w-full h-full px-1 text-xs
           border rounded outline-none text-center
           ${error ? "border-red-500 bg-red-50" : "border-blue-500"}
-          ${showFormulaHint ? "font-mono" : ""}
+          ${isInFormulaMode ? "font-mono text-left" : ""}
         `}
-        placeholder={`${cellRef}`}
+        placeholder={isInFormulaMode ? "Click cells to add references" : cellRef}
       />
-      {showFormulaHint && (
-        <div className="absolute -top-5 left-0 flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-1 rounded">
+      {isInFormulaMode && (
+        <div className="absolute -top-5 left-0 flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-1 rounded whitespace-nowrap">
           <FunctionSquare className="w-3 h-3" />
-          Formula
+          Click cells to add references
         </div>
       )}
       {error && (
@@ -112,7 +145,7 @@ export function FormulaCellEditor({
       )}
     </div>
   )
-}
+})
 
 /**
  * Formula Cell Display

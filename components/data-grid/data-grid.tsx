@@ -103,6 +103,18 @@ export function DataGrid({
     ...initialFilterState,
   }))
 
+  // Formula editing state (for click-to-select cell references)
+  const [formulaEditingCell, setFormulaEditingCell] = useState<string | null>(null)
+  const [isInFormulaMode, setIsInFormulaMode] = useState(false)
+  const formulaEditorRef = useRef<import("./cell-editors/formula-cell").FormulaCellEditorRef | null>(null)
+
+  // Handler for when a cell is clicked while in formula editing mode
+  const handleCellClickForReference = useCallback((clickedCellRef: string) => {
+    if (isInFormulaMode && formulaEditorRef.current) {
+      formulaEditorRef.current.insertCellRef(clickedCellRef)
+    }
+  }, [isInFormulaMode])
+
   // Update filter state when it changes externally
   useEffect(() => {
     if (initialFilterState) {
@@ -336,6 +348,12 @@ export function DataGrid({
                         allRows={rows}
                         allColumns={visibleColumns}
                         currentRowIndex={virtualRow.index}
+                        isFormulaEditingActive={isInFormulaMode}
+                        onCellClickForReference={handleCellClickForReference}
+                        onStartFormulaEdit={(ref) => setFormulaEditingCell(ref)}
+                        onEndFormulaEdit={() => { setFormulaEditingCell(null); setIsInFormulaMode(false) }}
+                        onFormulaModeChange={setIsInFormulaMode}
+                        formulaEditorRef={formulaEditorRef}
                       />
                     )
                   })}
@@ -738,6 +756,13 @@ interface DataGridCellProps {
   allRows: Record<string, unknown>[]
   allColumns: ColumnDefinition[]
   currentRowIndex: number
+  // Click-to-select props
+  isFormulaEditingActive?: boolean
+  onCellClickForReference?: (cellRef: string) => void
+  onStartFormulaEdit?: (cellRef: string) => void
+  onEndFormulaEdit?: () => void
+  onFormulaModeChange?: (isFormulaMode: boolean) => void
+  formulaEditorRef?: React.MutableRefObject<import("./cell-editors/formula-cell").FormulaCellEditorRef | null>
 }
 
 function DataGridCell({
@@ -754,6 +779,12 @@ function DataGridCell({
   allRows,
   allColumns,
   currentRowIndex,
+  isFormulaEditingActive,
+  onCellClickForReference,
+  onStartFormulaEdit,
+  onEndFormulaEdit,
+  onFormulaModeChange,
+  formulaEditorRef,
 }: DataGridCellProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -789,15 +820,27 @@ function DataGridCell({
     return cellValue
   }, [cellFormula, cellValue, allRows, allColumns])
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // If formula editing is active in another cell, insert this cell's reference
+    if (isFormulaEditingActive && !isEditing && onCellClickForReference) {
+      e.preventDefault()
+      e.stopPropagation()
+      onCellClickForReference(cellRef)
+      return
+    }
+  }, [isFormulaEditingActive, isEditing, onCellClickForReference, cellRef])
+
   const handleDoubleClick = useCallback(() => {
     // Only allow editing for app-owned columns (source data is read-only)
     if (onCellFormulaChange && isAppColumn) {
       setIsEditing(true)
+      onStartFormulaEdit?.(cellRef)
     }
-  }, [onCellFormulaChange, isAppColumn])
+  }, [onCellFormulaChange, isAppColumn, onStartFormulaEdit, cellRef])
 
   const handleSave = useCallback(async (value: string, isFormulaValue: boolean) => {
     setIsEditing(false)
+    onEndFormulaEdit?.()
     if (onCellFormulaChange) {
       if (isFormulaValue) {
         await onCellFormulaChange(cellRef, value)
@@ -806,11 +849,12 @@ function DataGridCell({
         await onCellFormulaChange(cellRef, null)
       }
     }
-  }, [onCellFormulaChange, cellRef, cellFormula])
+  }, [onCellFormulaChange, cellRef, cellFormula, onEndFormulaEdit])
 
   const handleCancel = useCallback(() => {
     setIsEditing(false)
-  }, [])
+    onEndFormulaEdit?.()
+  }, [onEndFormulaEdit])
 
   // Get raw display value as string/number
   const rawValue = useMemo(() => {
@@ -831,6 +875,8 @@ function DataGridCell({
   const alignmentClass = isFirstColumn ? "justify-start" : "justify-center"
   const fontClass = isFirstColumn ? "font-semibold" : ""
   const hasFormula = !!cellFormula?.formula
+  // Highlight cells when in formula mode (showing they're clickable for reference insertion)
+  const isClickableForReference = isFormulaEditingActive && !isEditing
 
   return (
     <div
@@ -843,6 +889,7 @@ function DataGridCell({
         ${fontClass}
         ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
         ${hasFormula ? "relative" : ""}
+        ${isClickableForReference ? "cursor-cell hover:bg-green-100 hover:outline hover:outline-2 hover:outline-green-400" : ""}
       `}
       style={{
         width: column.width ?? getDefaultColumnWidth(column.dataType),
@@ -851,16 +898,19 @@ function DataGridCell({
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
     >
       {isEditing ? (
         <FormulaCellEditor
+          ref={formulaEditorRef}
           value={rawValue}
           formula={cellFormula?.formula}
           cellRef={cellRef}
           isFormulaCell={hasFormula}
           onSave={handleSave}
           onCancel={handleCancel}
+          onFormulaModeChange={onFormulaModeChange}
         />
       ) : (
         <>
