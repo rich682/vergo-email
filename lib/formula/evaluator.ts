@@ -250,12 +250,43 @@ function evaluateNode(
       return evaluateNode(node.expression, context, rowContext)
 
     case "function_call": {
-      // For column formulas, functions aggregate over the column in current row context
-      // This is a bit unusual - typically functions in column formulas are used
-      // to reference aggregates from other sheets
+      // For column formulas, functions aggregate values
+      // Special case: SUM({column}) means sum ALL numeric columns in the current row
       
-      // For now, if a function is used in a column formula, we evaluate each arg
-      // and pass to the aggregate function
+      // Check if this is a special {column} placeholder (aggregate across all columns in row)
+      const hasColumnPlaceholder = node.args.length === 1 && 
+        node.args[0].type === "column_ref" && 
+        node.args[0].columnName.toLowerCase() === "column"
+      
+      if (hasColumnPlaceholder) {
+        // Get all numeric values from the current row across all columns
+        const values: number[] = []
+        
+        for (const col of context.columns) {
+          const rawValue = rowContext.row[col.key]
+          
+          if (rawValue === null || rawValue === undefined || rawValue === "") {
+            continue
+          }
+          
+          if (typeof rawValue === "number") {
+            values.push(rawValue)
+            continue
+          }
+          
+          if (typeof rawValue === "string") {
+            const cleaned = rawValue.replace(/[$,€£¥]/g, "").trim()
+            const num = parseFloat(cleaned)
+            if (!isNaN(num)) {
+              values.push(num)
+            }
+          }
+        }
+        
+        return executeAggregate(node.name, values)
+      }
+      
+      // Standard case: evaluate each argument and aggregate
       const values: number[] = []
       
       for (const arg of node.args) {
