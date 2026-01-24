@@ -737,6 +737,7 @@ function DataGridCell({
         px-2 py-1.5
         border-r border-gray-200
         flex items-center
+        text-xs text-gray-700
         ${alignmentClass}
         ${fontClass}
         ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
