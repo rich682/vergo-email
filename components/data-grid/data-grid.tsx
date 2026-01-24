@@ -505,7 +505,7 @@ function AppRowComponent({
     >
       {/* Row label in first column position with action buttons */}
       <div
-        className="px-2 py-1.5 border-r border-gray-200 flex items-center gap-1.5 font-medium text-gray-700 text-sm relative"
+        className="px-2 py-1.5 border-r border-gray-200 flex items-center gap-1.5 font-medium text-gray-700 text-xs relative"
         style={{
           width: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
           minWidth: visibleColumns[0]?.width ?? getDefaultColumnWidth(visibleColumns[0]?.dataType || "text"),
@@ -648,7 +648,7 @@ function AppRowCell({
           px-2 py-1.5
           border-r border-gray-200
           flex items-center justify-center
-          text-sm text-gray-500 italic
+          text-xs text-gray-500 italic
         `}
         style={{
           width: column.width ?? getDefaultColumnWidth(column.dataType),
@@ -685,10 +685,10 @@ function AppRowCell({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
-          className="w-full h-full px-1 text-sm border border-blue-500 rounded outline-none text-center"
+          className="w-full h-full px-1 text-xs border border-blue-500 rounded outline-none text-center"
         />
       ) : (
-        <span className="text-sm text-gray-600 truncate text-center">
+        <span className="text-xs text-gray-600 truncate text-center">
           {value || <span className="text-gray-400 italic">Click to edit</span>}
         </span>
       )}

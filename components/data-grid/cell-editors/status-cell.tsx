@@ -135,7 +135,7 @@ export function StatusCell({
 function StatusBadge({ option }: { option?: StatusOption }) {
   if (!option) {
     return (
-      <span className="text-sm text-gray-400 italic">
+      <span className="text-xs text-gray-400 italic">
         No status
       </span>
     )

@@ -194,9 +194,9 @@ function EmptyAppColumnCell({ dataType }: { dataType?: DataType | string }) {
       )
     case "user":
       return (
-        <span className="flex items-center text-gray-400 text-sm">
+        <span className="flex items-center text-gray-400 text-xs">
           <UserIcon className="w-4 h-4 mr-1" />
-          <span className="text-xs">Assign</span>
+          <span>Assign</span>
         </span>
       )
     case "status":

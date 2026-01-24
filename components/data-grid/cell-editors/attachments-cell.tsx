@@ -100,7 +100,7 @@ export function AttachmentsCell({
             onClick={handleClick}
           >
             <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="text-sm truncate">
+            <span className="text-xs truncate">
               {fileCount === 0
                 ? readOnly
                   ? "None"

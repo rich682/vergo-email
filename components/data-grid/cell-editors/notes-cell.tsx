@@ -108,7 +108,7 @@ export function NotesCell({
   return (
     <div
       className={`
-        w-full h-full truncate text-sm
+        w-full h-full truncate text-xs
         ${!readOnly ? "cursor-text hover:bg-blue-50" : ""}
         ${!displayText ? "text-gray-400 italic" : ""}
       `}

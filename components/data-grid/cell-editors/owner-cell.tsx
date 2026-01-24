@@ -181,7 +181,7 @@ export function OwnerCell({
 function OwnerBadge({ member }: { member?: TeamMember }) {
   if (!member) {
     return (
-      <span className="flex items-center gap-1.5 text-sm text-gray-400 italic">
+      <span className="flex items-center gap-1.5 text-xs text-gray-400 italic">
         <User className="w-3.5 h-3.5" />
         Unassigned
       </span>
@@ -189,7 +189,7 @@ function OwnerBadge({ member }: { member?: TeamMember }) {
   }
 
   return (
-    <span className="flex items-center gap-1.5 text-sm">
+    <span className="flex items-center gap-1.5 text-xs">
       <UserAvatar name={member.name} email={member.email} size="sm" />
       <span className="truncate">{member.name || member.email}</span>
     </span>
