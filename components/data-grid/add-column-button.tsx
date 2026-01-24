@@ -11,7 +11,7 @@
 
 import { useState, useMemo } from "react"
 import { 
-  Plus, Search, Type, Calculator, X, Loader2
+  Plus, Search, Type, X, Loader2
 } from "lucide-react"
 import {
   Popover,
@@ -21,7 +21,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-export type AppColumnType = "text" | "formula"
+// Note: formula type removed - now using Excel-style cell formulas instead
+export type AppColumnType = "text"
 
 interface ColumnTypeOption {
   type: AppColumnType
@@ -29,7 +30,7 @@ interface ColumnTypeOption {
   description: string
   icon: React.ReactNode
   iconBg: string
-  category: "essentials" | "super_useful"
+  category: "essentials"
 }
 
 const COLUMN_TYPES: ColumnTypeOption[] = [
@@ -41,15 +42,6 @@ const COLUMN_TYPES: ColumnTypeOption[] = [
     icon: <Type className="w-4 h-4 text-white" />,
     iconBg: "bg-orange-500",
     category: "essentials",
-  },
-  // Super useful
-  {
-    type: "formula",
-    label: "Formula",
-    description: "Calculate values automatically",
-    icon: <Calculator className="w-4 h-4 text-white" />,
-    iconBg: "bg-cyan-500",
-    category: "super_useful",
   },
 ]
 
@@ -78,22 +70,8 @@ export function AddColumnButton({ onAddColumn, onFormulaSelect, disabled, varian
   }, [searchQuery])
 
   const essentials = filteredTypes.filter((t) => t.category === "essentials")
-  const superUseful = filteredTypes.filter((t) => t.category === "super_useful")
 
   const handleSelectType = async (option: ColumnTypeOption) => {
-    // Formula opens the formula editor modal
-    if (option.type === "formula") {
-      if (onFormulaSelect) {
-        setIsOpen(false)
-        setSearchQuery("")
-        onFormulaSelect()
-      } else {
-        setError("Formula columns coming soon!")
-        setTimeout(() => setError(null), 2000)
-      }
-      return
-    }
-    
     setIsSubmitting(true)
     setSubmittingType(option.type)
     setError(null)
@@ -191,26 +169,6 @@ export function AddColumnButton({ onAddColumn, onFormulaSelect, disabled, varian
                 </div>
                 <div className="grid grid-cols-2 gap-1">
                   {essentials.map((option) => (
-                    <ColumnTypeButton
-                      key={option.type}
-                      option={option}
-                      onClick={() => handleSelectType(option)}
-                      isLoading={isSubmitting && submittingType === option.type}
-                      disabled={isSubmitting}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Super useful */}
-            {superUseful.length > 0 && (
-              <>
-                <div className="px-2 py-1.5 mt-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Super useful
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {superUseful.map((option) => (
                     <ColumnTypeButton
                       key={option.type}
                       option={option}

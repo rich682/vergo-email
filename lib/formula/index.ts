@@ -65,3 +65,37 @@ export {
   createEmptyFormulaContext,
   buildFormulaContext,
 } from "./evaluator"
+
+// Cell Formula Parser (Excel-style A1 references)
+export {
+  parseCellFormula,
+  isFormula,
+  columnToLetter,
+  letterToColumn,
+  formatCellRef,
+  adjustCellRef,
+  extractCellRefs,
+  adjustFormulaRefs,
+  astToFormula,
+} from "./cell-parser"
+
+export type {
+  CellRef,
+  CellRange,
+  CellFormulaNode,
+  ParseResult as CellParseResult,
+} from "./cell-parser"
+
+// Cell Formula Evaluator
+export {
+  evaluateCellFormula,
+  evaluateCellFormulaString,
+  buildCellEvalContext,
+  formatCellResult,
+} from "./cell-evaluator"
+
+export type {
+  SheetData as CellSheetData,
+  CellEvalContext,
+  CellEvalResult,
+} from "./cell-evaluator"

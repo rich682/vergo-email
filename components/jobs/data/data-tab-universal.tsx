@@ -34,6 +34,7 @@ import {
   createV1CellResolver,
   createEmptyFilterState,
   FormulaEditorModal,
+  type CellFormulaData,
 } from "@/components/data-grid"
 import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue, ColumnResource } from "@/components/data-grid"
 import { evaluateExpression, buildFormulaContext } from "@/lib/formula"
@@ -195,6 +196,10 @@ export function DataTabUniversal({
   const [appRows, setAppRows] = useState<AppRowDef[]>([])
   const [loadingAppRows, setLoadingAppRows] = useState(false)
 
+  // Cell formulas state (Excel-style)
+  const [cellFormulas, setCellFormulas] = useState<Map<string, CellFormulaData>>(new Map())
+  const [loadingCellFormulas, setLoadingCellFormulas] = useState(false)
+
   const fetchDataStatus = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -315,6 +320,83 @@ export function DataTabUniversal({
       setLoadingAppRows(false)
     }
   }, [currentLineageId])
+
+  // Fetch cell formulas (Excel-style)
+  const fetchCellFormulas = useCallback(async () => {
+    if (!currentLineageId) return
+
+    setLoadingCellFormulas(true)
+    try {
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/cell-formulas`,
+        { credentials: "include" }
+      )
+
+      if (!response.ok) {
+        console.error("Failed to fetch cell formulas")
+        return
+      }
+
+      const data = await response.json()
+      const formulasMap = new Map<string, CellFormulaData>()
+      for (const f of data.formulas || []) {
+        formulasMap.set(f.cellRef, {
+          cellRef: f.cellRef,
+          formula: f.formula,
+        })
+      }
+      setCellFormulas(formulasMap)
+    } catch (err) {
+      console.error("Error fetching cell formulas:", err)
+    } finally {
+      setLoadingCellFormulas(false)
+    }
+  }, [currentLineageId])
+
+  // Handle cell formula change (save or delete)
+  const handleCellFormulaChange = useCallback(async (cellRef: string, formula: string | null) => {
+    if (!currentLineageId) return
+
+    try {
+      if (formula) {
+        // Save formula
+        const response = await fetch(
+          `/api/task-lineages/${currentLineageId}/cell-formulas`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ cellRef, formula }),
+          }
+        )
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to save formula")
+        }
+      } else {
+        // Delete formula
+        const response = await fetch(
+          `/api/task-lineages/${currentLineageId}/cell-formulas?cellRef=${encodeURIComponent(cellRef)}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          }
+        )
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to delete formula")
+        }
+      }
+
+      // Refresh cell formulas
+      fetchCellFormulas()
+    } catch (err) {
+      console.error("Error saving cell formula:", err)
+      throw err
+    }
+  }, [currentLineageId, fetchCellFormulas])
 
   // Handle adding a new app column
   const handleAddColumn = useCallback(async (type: string, label: string) => {
@@ -619,14 +701,15 @@ export function DataTabUniversal({
     setCurrentLineageId(lineageId)
   }, [lineageId])
 
-  // Fetch app columns and rows when lineageId becomes available
+  // Fetch app columns, rows, and cell formulas when lineageId becomes available
   useEffect(() => {
     if (currentLineageId) {
       fetchAppColumns()
       fetchAppRows()
       fetchTeamMembers()
+      fetchCellFormulas()
     }
-  }, [currentLineageId, fetchAppColumns, fetchAppRows, fetchTeamMembers])
+  }, [currentLineageId, fetchAppColumns, fetchAppRows, fetchTeamMembers, fetchCellFormulas])
 
   // Initialize columns from schema and app columns
   useEffect(() => {
@@ -1217,6 +1300,8 @@ export function DataTabUniversal({
                 onEditFormulaColumn={handleEditFormulaColumn}
                 onEditFormulaRow={handleEditFormulaRow}
                 formulaColumns={formulaColumnsMap}
+                cellFormulas={cellFormulas}
+                onCellFormulaChange={handleCellFormulaChange}
               />
             </div>
           </div>

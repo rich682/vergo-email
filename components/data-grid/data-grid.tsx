@@ -37,8 +37,16 @@ import { AddRowButton, type AppRowType } from "./add-row-button"
 import { SheetTabBar } from "./sheet-tab-bar"
 import { Loader2, Trash2, FunctionSquare, Edit2 } from "lucide-react"
 import type { AppColumnType } from "./add-column-button"
-import { evaluateRowFormula, buildFormulaContext } from "@/lib/formula"
+import { evaluateRowFormula, buildFormulaContext, columnToLetter } from "@/lib/formula"
 import type { FormulaDefinition } from "@/lib/formula"
+import { FormulaCellEditor, FormulaCellDisplay } from "./cell-editors/formula-cell"
+
+// Cell formula type
+export interface CellFormulaData {
+  cellRef: string
+  formula: string
+  evaluatedValue?: number | string
+}
 
 // Constants
 const ROW_HEIGHT = 36
@@ -74,11 +82,17 @@ export function DataGrid({
   onEditFormulaColumn,
   onEditFormulaRow,
   formulaColumns,
+  // Cell formula props (Excel-style)
+  cellFormulas,
+  onCellFormulaChange,
 }: DataGridProps & { 
   onDeleteRow?: (rowId: string) => Promise<void>
   onEditFormulaColumn?: (columnId: string) => void
   onEditFormulaRow?: (rowId: string) => void
   formulaColumns?: Map<string, { expression: string; resultType: string; label: string }>
+  // Cell formula props (Excel-style)
+  cellFormulas?: Map<string, CellFormulaData>  // cellRef -> formula data
+  onCellFormulaChange?: (cellRef: string, formula: string | null) => Promise<void>
 }) {
   // Container ref for virtualization
   const parentRef = useRef<HTMLDivElement>(null)
@@ -302,6 +316,9 @@ export function DataGrid({
                     const isAppColumn = column.kind === "app"
                     const columnId = column.id.replace("app_", "")
                     const isFirstColumn = colIndex === 0
+                    // Calculate cell reference (A1 style) - row is 1-indexed in Excel
+                    const cellRef = `${columnToLetter(colIndex)}${virtualRow.index + 1}`
+                    const cellFormulaData = cellFormulas?.get(cellRef)
 
                     return (
                       <DataGridCell
@@ -313,6 +330,12 @@ export function DataGrid({
                         rowIdentity={rowIdentity}
                         onCellValueChange={onCellValueChange}
                         isFirstColumn={isFirstColumn}
+                        cellRef={cellRef}
+                        cellFormula={cellFormulaData}
+                        onCellFormulaChange={onCellFormulaChange}
+                        allRows={rows}
+                        allColumns={visibleColumns}
+                        currentRowIndex={virtualRow.index}
                       />
                     )
                   })}
@@ -697,7 +720,7 @@ function AppRowCell({
 }
 
 // ============================================
-// Data Grid Cell Component
+// Data Grid Cell Component (with Excel-style formula support)
 // ============================================
 
 interface DataGridCellProps {
@@ -708,6 +731,13 @@ interface DataGridCellProps {
   rowIdentity: string
   onCellValueChange?: (columnId: string, rowIdentity: string, value: unknown) => Promise<void>
   isFirstColumn?: boolean
+  // Cell formula props
+  cellRef: string
+  cellFormula?: CellFormulaData
+  onCellFormulaChange?: (cellRef: string, formula: string | null) => Promise<void>
+  allRows: Record<string, unknown>[]
+  allColumns: ColumnDefinition[]
+  currentRowIndex: number
 }
 
 function DataGridCell({
@@ -718,18 +748,89 @@ function DataGridCell({
   rowIdentity,
   onCellValueChange,
   isFirstColumn = false,
+  cellRef,
+  cellFormula,
+  onCellFormulaChange,
+  allRows,
+  allColumns,
+  currentRowIndex,
 }: DataGridCellProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
 
-  const handleClick = useCallback(() => {
-    // For app columns, clicking should trigger edit mode
-    // This is handled by the individual cell editor components
+  // Evaluate cell formula if present
+  const displayValue = useMemo(() => {
+    if (cellFormula?.formula) {
+      // Import evaluator dynamically
+      try {
+        const { parseCellFormula, evaluateCellFormula, buildCellEvalContext } = require("@/lib/formula")
+        
+        const parseResult = parseCellFormula(cellFormula.formula)
+        if (!parseResult.ok) {
+          return { type: "error" as const, message: parseResult.error }
+        }
+        
+        // Build context for evaluation
+        const context = buildCellEvalContext(
+          "current",
+          [{ id: "current", label: "Current", rows: allRows }],
+          allColumns.map((c, i) => ({ key: c.key, label: c.label }))
+        )
+        
+        const result = evaluateCellFormula(parseResult.ast, context)
+        if (result.ok) {
+          return { type: "number" as const, value: result.value }
+        }
+        return { type: "error" as const, message: result.error }
+      } catch (err) {
+        return { type: "error" as const, message: "Formula error" }
+      }
+    }
+    return cellValue
+  }, [cellFormula, cellValue, allRows, allColumns])
+
+  const handleDoubleClick = useCallback(() => {
+    // Allow editing any cell for formulas
+    if (onCellFormulaChange) {
+      setIsEditing(true)
+    }
+  }, [onCellFormulaChange])
+
+  const handleSave = useCallback(async (value: string, isFormulaValue: boolean) => {
+    setIsEditing(false)
+    if (onCellFormulaChange) {
+      if (isFormulaValue) {
+        await onCellFormulaChange(cellRef, value)
+      } else if (cellFormula) {
+        // Had a formula, now clearing it
+        await onCellFormulaChange(cellRef, null)
+      }
+    }
+  }, [onCellFormulaChange, cellRef, cellFormula])
+
+  const handleCancel = useCallback(() => {
+    setIsEditing(false)
   }, [])
+
+  // Get raw display value as string/number
+  const rawValue = useMemo(() => {
+    if (displayValue.type === "number" || displayValue.type === "currency") {
+      return displayValue.value
+    }
+    if (displayValue.type === "text") {
+      return displayValue.value
+    }
+    if (displayValue.type === "error") {
+      return `#ERR: ${displayValue.message}`
+    }
+    return ""
+  }, [displayValue])
 
   // First column: left-aligned, bold
   // Other columns: centered
   const alignmentClass = isFirstColumn ? "justify-start" : "justify-center"
   const fontClass = isFirstColumn ? "font-semibold" : ""
+  const hasFormula = !!cellFormula?.formula
 
   return (
     <div
@@ -740,7 +841,8 @@ function DataGridCell({
         text-xs text-gray-700
         ${alignmentClass}
         ${fontClass}
-        ${isAppColumn ? "cursor-pointer hover:bg-blue-50" : ""}
+        ${onCellFormulaChange ? "cursor-pointer hover:bg-blue-50" : ""}
+        ${hasFormula ? "relative" : ""}
       `}
       style={{
         width: column.width ?? getDefaultColumnWidth(column.dataType),
@@ -749,15 +851,32 @@ function DataGridCell({
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
     >
-      <CellRenderer 
-        value={cellValue} 
-        column={column}
-        isHovered={isHovered}
-        isAppColumn={isAppColumn}
-        isFirstColumn={isFirstColumn}
-      />
+      {isEditing ? (
+        <FormulaCellEditor
+          value={rawValue}
+          formula={cellFormula?.formula}
+          cellRef={cellRef}
+          isFormulaCell={hasFormula}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      ) : (
+        <>
+          <CellRenderer 
+            value={displayValue} 
+            column={column}
+            isHovered={isHovered}
+            isAppColumn={isAppColumn}
+            isFirstColumn={isFirstColumn}
+          />
+          {/* Formula indicator - blue triangle in corner */}
+          {hasFormula && (
+            <div className="absolute top-0 right-0 w-0 h-0 border-t-[6px] border-t-blue-500 border-l-[6px] border-l-transparent" />
+          )}
+        </>
+      )}
     </div>
   )
 }

@@ -6,7 +6,7 @@
 
 // Main grid component
 export { DataGrid, ControlledDataGrid } from "./data-grid"
-export type { ControlledDataGridProps } from "./data-grid"
+export type { ControlledDataGridProps, CellFormulaData } from "./data-grid"
 
 // Sub-components
 export { DataGridHeader } from "./data-grid-header"

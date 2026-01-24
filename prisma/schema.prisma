@@ -159,6 +159,7 @@ model Organization {
   appColumnValues         AppColumnValue[]
   appRowDefinitions       AppRowDefinition[]
   appRowValues            AppRowValue[]
+  cellFormulas            CellFormula[]
 
   @@index([slug])
 }
@@ -182,6 +183,7 @@ model TaskLineage {
   importRecipes ImportRecipe[]
   appColumns    AppColumnDefinition[] // App-owned columns for data grid
   appRows       AppRowDefinition[]    // App-owned rows for data grid (totals, annotations)
+  cellFormulas  CellFormula[]         // Excel-style cell formulas
 
   @@index([organizationId])
   @@index([datasetTemplateId])
@@ -244,6 +246,7 @@ model User {
   updatedAppColumnValues     AppColumnValue[]           @relation("AppColumnValueUpdater")
   createdAppRows             AppRowDefinition[]         @relation("AppRowCreator")
   updatedAppRowValues        AppRowValue[]              @relation("AppRowValueUpdater")
+  createdCellFormulas        CellFormula[]              @relation("CellFormulaCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1357,4 +1360,29 @@ model AppRowValue {
   @@unique([rowId, columnKey])
   @@index([organizationId])
   @@index([rowId])
+}
+
+// CellFormula - Excel-style cell formulas stored per cell
+// Allows typing = in any cell to enter a formula with A1-style references
+model CellFormula {
+  id             String  @id @default(cuid())
+  organizationId String
+  lineageId      String
+  snapshotId     String? // Which sheet/snapshot this applies to (null = all/current)
+
+  cellRef String // A1-style reference: "A1", "B5", etc.
+  formula String // The formula including = sign: "=SUM(A1:H1)"
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage      TaskLineage  @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("CellFormulaCreator", fields: [createdById], references: [id])
+
+  @@unique([lineageId, snapshotId, cellRef])
+  @@index([organizationId])
+  @@index([lineageId])
+  @@index([snapshotId])
 }
