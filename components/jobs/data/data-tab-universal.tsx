@@ -1031,22 +1031,30 @@ export function DataTabUniversal({
     return false
   }, [currentSheet, sheets])
 
-  // Initialize current sheet - prefer current period tab
+  // Initialize current sheet - prefer previous period with data (better UX)
   useEffect(() => {
     if (!currentSheet && sheets.length > 0) {
-      // Find the current period sheet first
-      const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
-      if (currentPeriodSheet) {
+      // Find previous period sheet with data first (show existing data by default)
+      const previousPeriodWithData = sheets.find(s => !s.isCurrentPeriod && s.rowCount > 0)
+      if (previousPeriodWithData) {
         setCurrentSheet({
           kind: "snapshot",
-          snapshotId: currentPeriodSheet.id,
+          snapshotId: previousPeriodWithData.id,
         })
-      } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
-        // Fall back to latest snapshot
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
-        })
+      } else {
+        // Fall back to current period or latest snapshot
+        const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
+        if (currentPeriodSheet) {
+          setCurrentSheet({
+            kind: "snapshot",
+            snapshotId: currentPeriodSheet.id,
+          })
+        } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
+          setCurrentSheet({
+            kind: "snapshot",
+            snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
+          })
+        }
       }
     }
   }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
