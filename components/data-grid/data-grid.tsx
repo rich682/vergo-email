@@ -343,11 +343,6 @@ export function DataGrid({
                     const cellRef = `${columnToLetter(colIndex)}${virtualRow.index + 1}`
                     const cellFormulaData = cellFormulas?.get(cellRef)
                     
-                    // Debug: Log formula lookup for first row app columns
-                    if (virtualRow.index === 0 && isAppColumn) {
-                      console.log(`[DataGrid] Cell ${cellRef}: formula lookup =`, cellFormulaData, "cellFormulas size:", cellFormulas?.size || 0)
-                    }
-
                     return (
                       <DataGridCell
                         key={column.id}
@@ -1037,26 +1032,12 @@ function DataGridCell({
 
   // Evaluate cell formula if present
   const displayValue = useMemo((): CellValue => {
-    // Debug: Log cell state
-    console.log(`[DataGridCell:${cellRef}] cellFormula:`, cellFormula, "hasFormula:", !!cellFormula?.formula)
-    
     if (cellFormula?.formula) {
       try {
-        console.log(`[DataGridCell:${cellRef}] Evaluating formula:`, cellFormula.formula)
-        
         // Parse the formula
         const parseResult = parseCellFormula(cellFormula.formula)
         if (!parseResult.ok) {
-          console.error(`[DataGridCell:${cellRef}] Parse error:`, parseResult.error)
           return { type: "error" as const, message: parseResult.error }
-        }
-        console.log(`[DataGridCell:${cellRef}] Parsed AST:`, parseResult.ast)
-        
-        // Debug: Log column mapping
-        console.log(`[DataGridCell:${cellRef}] Columns (${allColumns.length}):`, allColumns.map((c, i) => `${i}=${columnToLetter(i)}:${c.key}`).join(", "))
-        console.log(`[DataGridCell:${cellRef}] Row count:`, allRows.length)
-        if (allRows[0]) {
-          console.log(`[DataGridCell:${cellRef}] Row 0 keys:`, Object.keys(allRows[0]).join(", "))
         }
         
         // Build context for evaluation - use all columns for proper index mapping
@@ -1068,7 +1049,6 @@ function DataGridCell({
         
         // Evaluate the formula
         const result = evaluateCellFormula(parseResult.ast, context)
-        console.log(`[DataGridCell:${cellRef}] Eval result:`, result)
         
         if (result.ok) {
           // Use the detected format from the source cells
@@ -1080,15 +1060,13 @@ function DataGridCell({
           }
           return { type: "text" as const, value: String(result.value) }
         }
-        console.error(`[DataGridCell:${cellRef}] Eval error:`, result.error)
         return { type: "error" as const, message: result.error }
       } catch (err) {
-        console.error(`[DataGridCell:${cellRef}] Exception:`, err)
         return { type: "error" as const, message: err instanceof Error ? err.message : "Formula error" }
       }
     }
     return cellValue
-  }, [cellFormula, cellValue, allRows, allColumns, cellRef])
+  }, [cellFormula, cellValue, allRows, allColumns])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // If formula editing is active in another cell, insert this cell's reference
@@ -1109,18 +1087,13 @@ function DataGridCell({
   }, [onCellFormulaChange, isAppColumn, onStartFormulaEdit, cellRef])
 
   const handleSave = useCallback(async (value: string, isFormulaValue: boolean) => {
-    console.log(`[DataGridCell:${cellRef}] handleSave called - isFormulaValue:`, isFormulaValue, "value:", value)
-    console.log(`[DataGridCell:${cellRef}] Setting isEditing to false`)
     setIsEditing(false)
     onEndFormulaEdit?.()
     if (onCellFormulaChange) {
       if (isFormulaValue) {
-        console.log(`[DataGridCell:${cellRef}] Calling onCellFormulaChange with formula`)
         await onCellFormulaChange(cellRef, value)
-        console.log(`[DataGridCell:${cellRef}] onCellFormulaChange completed`)
       } else if (cellFormula) {
         // Had a formula, now clearing it
-        console.log(`[DataGridCell:${cellRef}] Clearing formula`)
         await onCellFormulaChange(cellRef, null)
       }
     }

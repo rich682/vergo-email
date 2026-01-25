@@ -80,14 +80,12 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
 
   const handleSave = useCallback(async () => {
     const trimmed = inputValue.trim()
-    console.log(`[FormulaCellEditor:${cellRef}] handleSave called, value:`, trimmed)
     
     // Mark as saving to prevent blur handler from re-focusing
     isSavingRef.current = true
     
     if (trimmed === "") {
       // Empty value - clear any formula
-      console.log(`[FormulaCellEditor:${cellRef}] Saving empty value`)
       await onSave("", false)
       return
     }
@@ -96,20 +94,16 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
       // Validate formula syntax
       const result = parseCellFormula(trimmed)
       if (!result.ok) {
-        console.error(`[FormulaCellEditor:${cellRef}] Parse error:`, result.error)
         setError(result.error)
         isSavingRef.current = false
         return
       }
-      console.log(`[FormulaCellEditor:${cellRef}] Saving formula:`, trimmed)
       await onSave(trimmed, true)
-      console.log(`[FormulaCellEditor:${cellRef}] onSave completed`)
     } else {
       // Regular value
-      console.log(`[FormulaCellEditor:${cellRef}] Saving regular value:`, trimmed)
       await onSave(trimmed, false)
     }
-  }, [inputValue, onSave, cellRef])
+  }, [inputValue, onSave])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -128,10 +122,9 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
 
   // Handle blur - don't save if in formula mode (user might be clicking cells)
   // In formula mode, user must press Enter to save
-  const handleBlur = useCallback((e: React.FocusEvent) => {
+  const handleBlur = useCallback(() => {
     // If we're in the process of saving, don't interfere
     if (isSavingRef.current) {
-      console.log(`[FormulaCellEditor:${cellRef}] handleBlur ignored (saving)`)
       return
     }
     
@@ -139,7 +132,6 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
     // This allows clicking cells to insert references
     if (isInFormulaMode) {
       // Keep focus on the input
-      console.log(`[FormulaCellEditor:${cellRef}] handleBlur re-focusing (formula mode)`)
       setTimeout(() => {
         if (!isSavingRef.current && inputRef.current) {
           inputRef.current.focus()
@@ -150,7 +142,7 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
     
     // For non-formula input, save on blur
     handleSave()
-  }, [isInFormulaMode, handleSave, cellRef])
+  }, [isInFormulaMode, handleSave])
 
   return (
     <div className="relative w-full h-full">
