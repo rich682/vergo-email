@@ -115,6 +115,27 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
     setError(null)
   }, [])
 
+  // Handle blur - don't save if in formula mode (user might be clicking cells)
+  // In formula mode, user must press Enter to save
+  const handleBlur = useCallback((e: React.FocusEvent) => {
+    // Check if the blur is due to clicking within the data grid (for cell reference insertion)
+    // We detect this by checking if the related target is within the grid
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    
+    // If in formula mode, don't auto-save on blur - require Enter key
+    // This allows clicking cells to insert references
+    if (isInFormulaMode) {
+      // Keep focus on the input
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 0)
+      return
+    }
+    
+    // For non-formula input, save on blur
+    handleSave()
+  }, [isInFormulaMode, handleSave])
+
   return (
     <div className="relative w-full h-full">
       <input
@@ -123,14 +144,14 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
         value={inputValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onBlur={handleSave}
+        onBlur={handleBlur}
         className={`
           w-full h-full px-1 text-xs
           border rounded outline-none text-center
           ${error ? "border-red-500 bg-red-50" : "border-blue-500"}
           ${isInFormulaMode ? "font-mono text-left" : ""}
         `}
-        placeholder={isInFormulaMode ? "Click cells to add references" : cellRef}
+        placeholder={isInFormulaMode ? "Click cells to add references, Enter to save" : cellRef}
       />
       {isInFormulaMode && (
         <div className="absolute -top-5 left-0 flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 px-1 rounded whitespace-nowrap">
