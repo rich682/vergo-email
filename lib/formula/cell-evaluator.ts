@@ -31,8 +31,10 @@ export interface CellEvalContext {
   columnIndexToKey: Map<number, string>   // 0-based index -> column key
 }
 
+export type CellFormat = "number" | "currency" | "percent"
+
 export type CellEvalResult =
-  | { ok: true; value: number }
+  | { ok: true; value: number; format?: CellFormat }
   | { ok: false; error: string }
 
 // ============================================
@@ -78,6 +80,21 @@ export function buildCellEvalContext(
 // ============================================
 
 /**
+ * Detect format from a raw value string.
+ */
+function detectFormat(rawValue: unknown): CellFormat | undefined {
+  if (typeof rawValue === "string") {
+    if (/^\$|USD|€|EUR|£|GBP|¥|JPY/.test(rawValue)) {
+      return "currency"
+    }
+    if (/%$/.test(rawValue.trim())) {
+      return "percent"
+    }
+  }
+  return undefined
+}
+
+/**
  * Get the numeric value of a cell.
  */
 function getCellValue(ref: CellRef, context: CellEvalContext): CellEvalResult {
@@ -116,16 +133,19 @@ function getCellValue(ref: CellRef, context: CellEvalContext): CellEvalResult {
     return { ok: true, value: 0 } // Empty cell = 0
   }
   
+  // Detect format before parsing
+  const format = detectFormat(rawValue)
+  
   if (typeof rawValue === "number") {
-    return { ok: true, value: rawValue }
+    return { ok: true, value: rawValue, format }
   }
   
   if (typeof rawValue === "string") {
     // Try to parse as number (handle currency, commas, etc.)
-    const cleaned = rawValue.replace(/[$,€£¥]/g, "").trim()
+    const cleaned = rawValue.replace(/[$,€£¥%]/g, "").trim()
     const num = parseFloat(cleaned)
     if (!isNaN(num)) {
-      return { ok: true, value: num }
+      return { ok: true, value: num, format }
     }
     return { ok: false, error: `Cannot convert "${rawValue}" to number` }
   }
@@ -134,10 +154,11 @@ function getCellValue(ref: CellRef, context: CellEvalContext): CellEvalResult {
 }
 
 /**
- * Get all numeric values in a range.
+ * Get all numeric values in a range (with format detection).
  */
-function getRangeValues(range: CellRange, context: CellEvalContext): number[] {
+function getRangeValuesWithFormat(range: CellRange, context: CellEvalContext): { values: number[]; format?: CellFormat } {
   const values: number[] = []
+  let format: CellFormat | undefined
   
   const startCol = Math.min(range.start.col, range.end.col)
   const endCol = Math.max(range.start.col, range.end.col)
@@ -156,12 +177,20 @@ function getRangeValues(range: CellRange, context: CellEvalContext): number[] {
       const result = getCellValue(ref, context)
       if (result.ok) {
         values.push(result.value)
+        format = mergeFormats(format, result.format)
       }
       // Skip non-numeric values silently (like Excel)
     }
   }
   
-  return values
+  return { values, format }
+}
+
+/**
+ * Get all numeric values in a range.
+ */
+function getRangeValues(range: CellRange, context: CellEvalContext): number[] {
+  return getRangeValuesWithFormat(range, context).values
 }
 
 // ============================================
@@ -169,45 +198,50 @@ function getRangeValues(range: CellRange, context: CellEvalContext): number[] {
 // ============================================
 
 function evaluateFunction(name: string, args: CellFormulaNode[], context: CellEvalContext): CellEvalResult {
-  // Collect all values from arguments (expanding ranges)
+  // Collect all values from arguments (expanding ranges), track format
   const values: number[] = []
+  let format: CellFormat | undefined
   
   for (const arg of args) {
     if (arg.type === "range") {
-      values.push(...getRangeValues(arg.range, context))
+      const rangeResult = getRangeValuesWithFormat(arg.range, context)
+      values.push(...rangeResult.values)
+      format = mergeFormats(format, rangeResult.format)
     } else {
       const result = evaluateNode(arg, context)
       if (!result.ok) return result
       values.push(result.value)
+      format = mergeFormats(format, result.format)
     }
   }
   
   if (values.length === 0) {
-    return { ok: true, value: 0 }
+    return { ok: true, value: 0, format }
   }
   
   switch (name) {
     case "SUM":
-      return { ok: true, value: values.reduce((a, b) => a + b, 0) }
+      return { ok: true, value: values.reduce((a, b) => a + b, 0), format }
     
     case "AVERAGE":
     case "AVG":
-      return { ok: true, value: values.reduce((a, b) => a + b, 0) / values.length }
+      return { ok: true, value: values.reduce((a, b) => a + b, 0) / values.length, format }
     
     case "COUNT":
+      // COUNT returns a plain number, not currency
       return { ok: true, value: values.length }
     
     case "MIN":
-      return { ok: true, value: Math.min(...values) }
+      return { ok: true, value: Math.min(...values), format }
     
     case "MAX":
-      return { ok: true, value: Math.max(...values) }
+      return { ok: true, value: Math.max(...values), format }
     
     case "ABS":
       if (values.length !== 1) {
         return { ok: false, error: "ABS requires exactly 1 argument" }
       }
-      return { ok: true, value: Math.abs(values[0]) }
+      return { ok: true, value: Math.abs(values[0]), format }
     
     case "ROUND":
       if (values.length < 1 || values.length > 2) {
@@ -215,7 +249,7 @@ function evaluateFunction(name: string, args: CellFormulaNode[], context: CellEv
       }
       const decimals = values.length === 2 ? values[1] : 0
       const factor = Math.pow(10, decimals)
-      return { ok: true, value: Math.round(values[0] * factor) / factor }
+      return { ok: true, value: Math.round(values[0] * factor) / factor, format }
     
     default:
       return { ok: false, error: `Unknown function: ${name}` }
@@ -226,6 +260,15 @@ function evaluateFunction(name: string, args: CellFormulaNode[], context: CellEv
 // AST Evaluation
 // ============================================
 
+/**
+ * Merge formats - currency takes priority, then percent, then number.
+ */
+function mergeFormats(a: CellFormat | undefined, b: CellFormat | undefined): CellFormat | undefined {
+  if (a === "currency" || b === "currency") return "currency"
+  if (a === "percent" || b === "percent") return "percent"
+  return a || b
+}
+
 function evaluateNode(node: CellFormulaNode, context: CellEvalContext): CellEvalResult {
   switch (node.type) {
     case "number":
@@ -234,10 +277,11 @@ function evaluateNode(node: CellFormulaNode, context: CellEvalContext): CellEval
     case "cell_ref":
       return getCellValue(node.ref, context)
     
-    case "range":
+    case "range": {
       // A range by itself sums its values (like Excel when not in a function)
-      const values = getRangeValues(node.range, context)
-      return { ok: true, value: values.reduce((a, b) => a + b, 0) }
+      const rangeResult = getRangeValuesWithFormat(node.range, context)
+      return { ok: true, value: rangeResult.values.reduce((a, b) => a + b, 0), format: rangeResult.format }
+    }
     
     case "binary_op": {
       const leftResult = evaluateNode(node.left, context)
@@ -246,25 +290,29 @@ function evaluateNode(node: CellFormulaNode, context: CellEvalContext): CellEval
       const rightResult = evaluateNode(node.right, context)
       if (!rightResult.ok) return rightResult
       
+      // Inherit format from operands (currency takes priority)
+      const format = mergeFormats(leftResult.format, rightResult.format)
+      
       switch (node.operator) {
         case "+":
-          return { ok: true, value: leftResult.value + rightResult.value }
+          return { ok: true, value: leftResult.value + rightResult.value, format }
         case "-":
-          return { ok: true, value: leftResult.value - rightResult.value }
+          return { ok: true, value: leftResult.value - rightResult.value, format }
         case "*":
-          return { ok: true, value: leftResult.value * rightResult.value }
+          return { ok: true, value: leftResult.value * rightResult.value, format }
         case "/":
           if (rightResult.value === 0) {
             return { ok: false, error: "Division by zero" }
           }
-          return { ok: true, value: leftResult.value / rightResult.value }
+          return { ok: true, value: leftResult.value / rightResult.value, format }
       }
     }
     
-    case "unary_op":
+    case "unary_op": {
       const operandResult = evaluateNode(node.operand, context)
       if (!operandResult.ok) return operandResult
-      return { ok: true, value: -operandResult.value }
+      return { ok: true, value: -operandResult.value, format: operandResult.format }
+    }
     
     case "function_call":
       return evaluateFunction(node.name, node.args, context)

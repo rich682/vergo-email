@@ -1071,8 +1071,11 @@ function DataGridCell({
         console.log(`[DataGridCell:${cellRef}] Eval result:`, result)
         
         if (result.ok) {
-          // Format as currency if the result looks like currency
+          // Use the detected format from the source cells
           if (typeof result.value === "number") {
+            if (result.format === "currency") {
+              return { type: "currency" as const, value: result.value }
+            }
             return { type: "number" as const, value: result.value }
           }
           return { type: "text" as const, value: String(result.value) }
