@@ -451,6 +451,55 @@ export function DataTabUniversal({
     setIsFormulaEditorOpen(true)
   }, [])
 
+  // Handle renaming an app column
+  const handleRenameColumn = useCallback(async (columnId: string, newLabel: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+    
+    // Extract actual column ID (remove "app_" prefix if present)
+    const actualColumnId = columnId.replace("app_", "")
+    
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-columns/${actualColumnId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ label: newLabel }),
+      }
+    )
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to rename column")
+    }
+    
+    // Refresh app columns
+    fetchAppColumns()
+  }, [currentLineageId, fetchAppColumns])
+
+  // Handle renaming an app row
+  const handleRenameRow = useCallback(async (rowId: string, newLabel: string) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+    
+    const response = await fetch(
+      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ label: newLabel }),
+      }
+    )
+    
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Failed to rename row")
+    }
+    
+    // Refresh app rows
+    fetchAppRows()
+  }, [currentLineageId, fetchAppRows])
+
   // Handle saving a formula column (create or update)
   const handleSaveFormulaColumn = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
     if (!currentLineageId) throw new Error("No lineage ID")
@@ -1285,12 +1334,14 @@ export function DataTabUniversal({
                 onAddColumn={handleAddColumn}
                 onHideColumn={handleColumnVisibilityChange ? (id) => handleColumnVisibilityChange(id, false) : undefined}
                 onDeleteColumn={handleDeleteAppColumn}
+                onRenameColumn={handleRenameColumn}
                 onCellValueChange={handleCellValueUpdate}
                 identityKey={dataStatus?.datasetTemplate?.identityKey}
                 showAddColumn={!!currentLineageId}
                 appRows={appRows}
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteAppRow}
+                onRenameRow={handleRenameRow}
                 onRowCellValueChange={handleRowCellValueUpdate}
                 showAddRow={!!currentLineageId}
                 sheets={sheets}

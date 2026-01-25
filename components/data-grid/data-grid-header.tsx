@@ -11,7 +11,7 @@
  * - Add column button at far right
  */
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useRef } from "react"
 import type {
   ColumnDefinition,
   ColumnSort,
@@ -145,6 +145,9 @@ function ColumnHeader({
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isActionsOpen, setIsActionsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isEditingLabel, setIsEditingLabel] = useState(false)
+  const [editLabelValue, setEditLabelValue] = useState(column.label)
+  const labelInputRef = useRef<HTMLInputElement>(null)
   
   // Track selected values
   const [selectedValues, setSelectedValues] = useState<Set<string>>(() => {
@@ -240,9 +243,40 @@ function ColumnHeader({
     setIsActionsOpen(false)
   }, [column.id, onEditFormulaColumn])
 
+  // Handle starting label edit
+  const handleStartLabelEdit = useCallback(() => {
+    if (onRenameColumn && column.kind === "app") {
+      setEditLabelValue(column.label)
+      setIsEditingLabel(true)
+      setIsActionsOpen(false)
+      setTimeout(() => labelInputRef.current?.select(), 0)
+    }
+  }, [onRenameColumn, column.kind, column.label])
+
+  // Handle saving label
+  const handleSaveLabel = useCallback(async () => {
+    const trimmed = editLabelValue.trim()
+    if (trimmed && trimmed !== column.label && onRenameColumn) {
+      await onRenameColumn(column.id, trimmed)
+    }
+    setIsEditingLabel(false)
+  }, [editLabelValue, column.label, column.id, onRenameColumn])
+
+  // Handle label input keydown
+  const handleLabelKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleSaveLabel()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      setEditLabelValue(column.label)
+      setIsEditingLabel(false)
+    }
+  }, [handleSaveLabel, column.label])
+
   const hasFilter = currentFilter !== null
   const isAppColumn = column.kind === "app"
-  const showActions = isAppColumn && (onHideColumn || onDeleteColumn || (isFormulaColumn && onEditFormulaColumn))
+  const showActions = isAppColumn && (onHideColumn || onDeleteColumn || onRenameColumn || (isFormulaColumn && onEditFormulaColumn))
 
   return (
     <div
@@ -260,13 +294,32 @@ function ColumnHeader({
         flexShrink: 0,
       }}
     >
-      <span className="text-center flex-1 whitespace-normal leading-tight">
-        {column.label}
-      </span>
+      {/* Editable column label */}
+      {isEditingLabel ? (
+        <input
+          ref={labelInputRef}
+          type="text"
+          value={editLabelValue}
+          onChange={(e) => setEditLabelValue(e.target.value)}
+          onBlur={handleSaveLabel}
+          onKeyDown={handleLabelKeyDown}
+          className="flex-1 min-w-0 px-1 py-0.5 text-xs font-bold border border-blue-500 rounded outline-none bg-white text-center"
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span 
+          className={`text-center flex-1 whitespace-normal leading-tight ${isAppColumn && onRenameColumn ? "cursor-pointer" : ""}`}
+          onDoubleClick={isAppColumn ? handleStartLabelEdit : undefined}
+          title={isAppColumn && onRenameColumn ? "Double-click to rename" : undefined}
+        >
+          {column.label}
+        </span>
+      )}
       
       <div className="flex items-center gap-0.5">
         {/* Three dots menu for app columns */}
-        {showActions && (
+        {showActions && !isEditingLabel && (
           <Popover open={isActionsOpen} onOpenChange={setIsActionsOpen}>
             <PopoverTrigger asChild>
               <button
@@ -277,6 +330,15 @@ function ColumnHeader({
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-40 p-1" align="start">
+              {onRenameColumn && (
+                <button
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-gray-100 text-left"
+                  onClick={handleStartLabelEdit}
+                >
+                  <Edit2 className="w-4 h-4 text-gray-500" />
+                  Rename
+                </button>
+              )}
               {isFormulaColumn && onEditFormulaColumn && (
                 <button
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-blue-50 text-blue-600 text-left"
@@ -309,6 +371,7 @@ function ColumnHeader({
         )}
 
         {/* Filter dropdown */}
+        {!isEditingLabel && (
         <Popover open={isFilterOpen} onOpenChange={handleFilterOpenChange}>
           <PopoverTrigger asChild>
             <button
@@ -449,6 +512,7 @@ function ColumnHeader({
             </div>
           </PopoverContent>
         </Popover>
+        )}
       </div>
     </div>
   )

@@ -65,12 +65,14 @@ export function DataGrid({
   onAddColumn,
   onHideColumn,
   onDeleteColumn,
+  onRenameColumn,
   onCellValueChange,
   identityKey,
   showAddColumn = false,
   appRows = [],
   onAddRow,
   onDeleteRow,
+  onRenameRow,
   onRowCellValueChange,
   showAddRow = false,
   sheets = [],
@@ -250,6 +252,7 @@ export function DataGrid({
           onAddColumn={handleAddColumn}
           onHideColumn={handleHideColumn}
           onDeleteColumn={handleDeleteColumn}
+          onRenameColumn={onRenameColumn}
           showAddColumn={showAddColumn}
           onFormulaSelect={onFormulaColumnSelect}
           onEditFormulaColumn={onEditFormulaColumn}
@@ -286,6 +289,7 @@ export function DataGrid({
             onAddColumn={handleAddColumn}
             onHideColumn={handleHideColumn}
             onDeleteColumn={handleDeleteColumn}
+            onRenameColumn={onRenameColumn}
             showAddColumn={showAddColumn}
             onFormulaSelect={onFormulaColumnSelect}
             onEditFormulaColumn={onEditFormulaColumn}
@@ -381,6 +385,7 @@ export function DataGrid({
                   showAddColumn={showAddColumn}
                   onRowCellValueChange={onRowCellValueChange}
                   onDeleteRow={onDeleteRow}
+                  onRenameRow={onRenameRow}
                   onEditFormulaRow={onEditFormulaRow}
                   allRows={rows}
                   allColumns={columns}
@@ -445,6 +450,7 @@ interface AppRowComponentProps {
   showAddColumn: boolean
   onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
   onDeleteRow?: (rowId: string) => Promise<void>
+  onRenameRow?: (rowId: string, newLabel: string) => Promise<void>
   onEditFormulaRow?: (rowId: string) => void
   allRows: Record<string, unknown>[]
   allColumns: ColumnDefinition[]
@@ -456,12 +462,16 @@ function AppRowComponent({
   showAddColumn,
   onRowCellValueChange,
   onDeleteRow,
+  onRenameRow,
   onEditFormulaRow,
   allRows,
   allColumns,
 }: AppRowComponentProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isEditingLabel, setIsEditingLabel] = useState(false)
+  const [editLabelValue, setEditLabelValue] = useState(appRow.label)
+  const labelInputRef = useRef<HTMLInputElement>(null)
 
   // Build formula context for row formula evaluation
   const formulaContext = useMemo(() => {
@@ -531,6 +541,36 @@ function AppRowComponent({
     }
   }, [onEditFormulaRow, appRow.id, appRow.rowType])
 
+  // Handle starting label edit
+  const handleStartLabelEdit = useCallback(() => {
+    if (onRenameRow) {
+      setEditLabelValue(appRow.label)
+      setIsEditingLabel(true)
+      setTimeout(() => labelInputRef.current?.select(), 0)
+    }
+  }, [onRenameRow, appRow.label])
+
+  // Handle saving label
+  const handleSaveLabel = useCallback(async () => {
+    const trimmed = editLabelValue.trim()
+    if (trimmed && trimmed !== appRow.label && onRenameRow) {
+      await onRenameRow(appRow.id, trimmed)
+    }
+    setIsEditingLabel(false)
+  }, [editLabelValue, appRow.label, appRow.id, onRenameRow])
+
+  // Handle label input keydown
+  const handleLabelKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleSaveLabel()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      setEditLabelValue(appRow.label)
+      setIsEditingLabel(false)
+    }
+  }, [handleSaveLabel, appRow.label])
+
   return (
     <div
       className={`
@@ -557,11 +597,42 @@ function AppRowComponent({
         {appRow.rowType === "formula" && (
           <FunctionSquare className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
         )}
-        <span className="truncate">{appRow.label}</span>
+        
+        {/* Editable label */}
+        {isEditingLabel ? (
+          <input
+            ref={labelInputRef}
+            type="text"
+            value={editLabelValue}
+            onChange={(e) => setEditLabelValue(e.target.value)}
+            onBlur={handleSaveLabel}
+            onKeyDown={handleLabelKeyDown}
+            className="flex-1 min-w-0 px-1 py-0.5 text-xs border border-blue-500 rounded outline-none bg-white"
+            autoFocus
+          />
+        ) : (
+          <span 
+            className={`truncate ${onRenameRow ? "cursor-pointer hover:text-blue-600" : ""}`}
+            onDoubleClick={handleStartLabelEdit}
+            title={onRenameRow ? "Double-click to rename" : undefined}
+          >
+            {appRow.label}
+          </span>
+        )}
         
         {/* Action buttons on hover */}
-        {isHovered && (
+        {isHovered && !isEditingLabel && (
           <div className="absolute right-1 flex items-center gap-0.5">
+            {/* Rename button */}
+            {onRenameRow && (
+              <button
+                onClick={handleStartLabelEdit}
+                className="p-0.5 rounded hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-colors"
+                title="Rename row"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+            )}
             {/* Edit formula button for formula rows */}
             {appRow.rowType === "formula" && onEditFormulaRow && (
               <button
@@ -569,7 +640,7 @@ function AppRowComponent({
                 className="p-0.5 rounded hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-colors"
                 title="Edit formula"
               >
-                <Edit2 className="w-3.5 h-3.5" />
+                <FunctionSquare className="w-3.5 h-3.5" />
               </button>
             )}
             {/* Delete button */}

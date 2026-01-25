@@ -284,6 +284,8 @@ export interface DataGridProps {
   onHideColumn?: (columnId: string) => void
   /** Callback to delete an app column */
   onDeleteColumn?: (columnId: string) => Promise<void>
+  /** Callback to rename an app column */
+  onRenameColumn?: (columnId: string, newLabel: string) => Promise<void>
   /** Callback when an app column cell value changes */
   onCellValueChange?: (columnId: string, rowIdentity: string, value: unknown) => Promise<void>
   /** Identity key for row identification */
@@ -296,6 +298,8 @@ export interface DataGridProps {
   onAddRow?: (type: string, label: string) => Promise<void>
   /** Callback to delete an app row */
   onDeleteRow?: (rowId: string) => Promise<void>
+  /** Callback to rename an app row */
+  onRenameRow?: (rowId: string, newLabel: string) => Promise<void>
   /** Callback when an app row cell value changes */
   onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
   /** Whether to show the add row button */
