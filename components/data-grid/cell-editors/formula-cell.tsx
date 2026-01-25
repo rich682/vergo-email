@@ -62,14 +62,14 @@ export const FormulaCellEditor = forwardRef<FormulaCellEditorRef, FormulaCellEdi
     insertCellRef: (cellReference: string) => {
       if (inputRef.current && isInFormulaMode) {
         const input = inputRef.current
-        const start = input.selectionStart ?? inputValue.length
-        const end = input.selectionEnd ?? inputValue.length
-        const newValue = inputValue.slice(0, start) + cellReference + inputValue.slice(end)
+        // Always append to the end when clicking cells to insert references
+        // This is the expected behavior when building formulas like =A1+B1+C1
+        const newValue = inputValue + cellReference
         setInputValue(newValue)
         // Set cursor position after the inserted reference
         setTimeout(() => {
           input.focus()
-          const newPos = start + cellReference.length
+          const newPos = newValue.length
           input.setSelectionRange(newPos, newPos)
         }, 0)
       }
