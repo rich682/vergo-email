@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { DatasetTemplate, DatasetSnapshot, Prisma } from "@prisma/client"
+import { FormulaExpansionService } from "./formula-expansion.service"
 
 // ============================================
 // Types
@@ -488,7 +489,7 @@ export class DatasetService {
     }
 
     // Create snapshot and mark previous as not latest
-    return prisma.$transaction(async (tx) => {
+    const snapshot = await prisma.$transaction(async (tx) => {
       // Mark previous latest as not latest
       if (latestSnapshot) {
         await tx.datasetSnapshot.update({
@@ -517,6 +518,62 @@ export class DatasetService {
         },
       })
     })
+
+    // Auto-expand formulas for linked lineages
+    // This runs after the transaction to avoid blocking the snapshot creation
+    this.expandFormulasForTemplate(templateId, orgId, rows.length, template, identity).catch(
+      (err) => console.error("[DatasetService] Formula expansion failed:", err)
+    )
+
+    return snapshot
+  }
+
+  /**
+   * Expand formulas for all lineages linked to a template.
+   * Called after a new snapshot is created with new data.
+   */
+  private static async expandFormulasForTemplate(
+    templateId: string,
+    orgId: string,
+    newRowCount: number,
+    template: DatasetTemplate,
+    identity: IdentityConfig
+  ): Promise<void> {
+    // Find all lineages linked to this template
+    const lineages = await prisma.taskLineage.findMany({
+      where: {
+        datasetTemplateId: templateId,
+        organizationId: orgId,
+      },
+      select: { id: true },
+    })
+
+    if (lineages.length === 0) return
+
+    // Get column count from schema
+    const schema = template.schema as unknown as SchemaColumn[]
+    const newColCount = schema.length
+
+    // Expand formulas for each lineage
+    for (const lineage of lineages) {
+      const result = await FormulaExpansionService.expandFormulasForNewData(
+        lineage.id,
+        newRowCount,
+        newColCount,
+        identity.orientation
+      )
+      if (result.expanded > 0) {
+        console.log(
+          `[DatasetService] Expanded ${result.expanded} formulas for lineage ${lineage.id}`
+        )
+      }
+      if (result.errors.length > 0) {
+        console.error(
+          `[DatasetService] Formula expansion errors for lineage ${lineage.id}:`,
+          result.errors
+        )
+      }
+    }
   }
 
   /**

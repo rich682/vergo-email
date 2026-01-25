@@ -10,7 +10,40 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { parseCellFormula } from "@/lib/formula"
+import { parseCellFormula, extractCellRefs } from "@/lib/formula"
+
+interface IdentityConfig {
+  orientation: "row" | "column"
+  rowKey?: string
+  columnIdentitySource?: string
+}
+
+/**
+ * Extract the maximum row and column indices from a formula AST.
+ * Used to track original bounds for auto-expansion.
+ */
+function extractFormulaBounds(formula: string): { maxRow: number; maxCol: number } | null {
+  const parseResult = parseCellFormula(formula)
+  if (!parseResult.ok) return null
+  
+  const refs = extractCellRefs(parseResult.ast)
+  if (refs.length === 0) return null
+  
+  let maxRow = 0
+  let maxCol = 0
+  
+  for (const ref of refs) {
+    // Skip absolute references - they shouldn't expand
+    if (!ref.absRow && ref.row > maxRow) {
+      maxRow = ref.row
+    }
+    if (!ref.absCol && ref.col > maxCol) {
+      maxCol = ref.col
+    }
+  }
+  
+  return { maxRow, maxCol }
+}
 
 /**
  * GET /api/task-lineages/[id]/cell-formulas
@@ -114,13 +147,28 @@ export async function POST(
       return NextResponse.json({ error: `Invalid formula: ${parseResult.error}` }, { status: 400 })
     }
 
-    // Verify lineage exists and belongs to org
+    // Verify lineage exists and belongs to org, include dataset template for orientation
     const lineage = await prisma.taskLineage.findFirst({
       where: { id: lineageId, organizationId },
+      include: {
+        datasetTemplate: {
+          select: { identity: true },
+        },
+      },
     })
 
     if (!lineage) {
       return NextResponse.json({ error: "Lineage not found" }, { status: 404 })
+    }
+
+    // Extract formula bounds for auto-expansion
+    const bounds = extractFormulaBounds(formula)
+    
+    // Get orientation from dataset template identity config
+    let expansionAxis: string | null = null
+    if (lineage.datasetTemplate?.identity) {
+      const identity = lineage.datasetTemplate.identity as unknown as IdentityConfig
+      expansionAxis = identity.orientation || null
     }
 
     // Find existing formula (upsert doesn't work well with nullable compound keys)
@@ -135,12 +183,16 @@ export async function POST(
 
     let cellFormula
     if (existingFormula) {
-      // Update existing formula
+      // Update existing formula - also update bounds if formula changed
       cellFormula = await prisma.cellFormula.update({
         where: { id: existingFormula.id },
         data: {
           formula,
           updatedAt: new Date(),
+          // Update expansion metadata when formula changes
+          expansionAxis,
+          originalMaxRow: bounds?.maxRow ?? null,
+          originalMaxCol: bounds?.maxCol ?? null,
         },
         include: {
           createdBy: {
@@ -149,7 +201,7 @@ export async function POST(
         },
       })
     } else {
-      // Create new formula
+      // Create new formula with expansion metadata
       cellFormula = await prisma.cellFormula.create({
         data: {
           organizationId,
@@ -158,6 +210,11 @@ export async function POST(
           cellRef: cellRef.toUpperCase(),
           formula,
           createdById: userId,
+          // Auto-expansion metadata
+          autoExpand: true,
+          expansionAxis,
+          originalMaxRow: bounds?.maxRow ?? null,
+          originalMaxCol: bounds?.maxCol ?? null,
         },
         include: {
           createdBy: {

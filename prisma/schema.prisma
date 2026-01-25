@@ -1373,6 +1373,12 @@ model CellFormula {
   cellRef String // A1-style reference: "A1", "B5", etc.
   formula String // The formula including = sign: "=SUM(A1:H1)"
 
+  // Auto-expansion tracking - formulas automatically expand when new data is added
+  autoExpand     Boolean @default(true) // Enable auto-expansion for this formula
+  expansionAxis  String? // "row" | "column" - derived from data orientation
+  originalMaxRow Int?    // Max row index when formula was created (for row expansion)
+  originalMaxCol Int?    // Max column index when formula was created (for column expansion)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById String
