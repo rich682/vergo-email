@@ -123,33 +123,49 @@ export async function POST(
       return NextResponse.json({ error: "Lineage not found" }, { status: 404 })
     }
 
-    // Upsert the cell formula
-    const cellFormula = await prisma.cellFormula.upsert({
+    // Find existing formula (upsert doesn't work well with nullable compound keys)
+    const existingFormula = await prisma.cellFormula.findFirst({
       where: {
-        lineageId_snapshotId_cellRef: {
+        lineageId,
+        organizationId,
+        cellRef: cellRef.toUpperCase(),
+        snapshotId: snapshotId || null,
+      },
+    })
+
+    let cellFormula
+    if (existingFormula) {
+      // Update existing formula
+      cellFormula = await prisma.cellFormula.update({
+        where: { id: existingFormula.id },
+        data: {
+          formula,
+          updatedAt: new Date(),
+        },
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      })
+    } else {
+      // Create new formula
+      cellFormula = await prisma.cellFormula.create({
+        data: {
+          organizationId,
           lineageId,
           snapshotId: snapshotId || null,
           cellRef: cellRef.toUpperCase(),
+          formula,
+          createdById: userId,
         },
-      },
-      update: {
-        formula,
-        updatedAt: new Date(),
-      },
-      create: {
-        organizationId,
-        lineageId,
-        snapshotId: snapshotId || null,
-        cellRef: cellRef.toUpperCase(),
-        formula,
-        createdById: userId,
-      },
-      include: {
-        createdBy: {
-          select: { id: true, name: true, email: true },
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
         },
-      },
-    })
+      })
+    }
 
     return NextResponse.json({ formula: cellFormula })
   } catch (error: unknown) {
