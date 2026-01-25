@@ -25,7 +25,7 @@ export class LocalStorageService implements StorageService {
     await fs.writeFile(filePath, file)
 
     // Return a URL that can be used to access the file
-    const url = `/api/attachments/${key}`
+    const url = `/api/attachments/by-key/${key}`
     return { url, key }
   }
 
@@ -46,7 +46,7 @@ export class LocalStorageService implements StorageService {
   }
 
   async getUrl(key: string): Promise<string> {
-    return `/api/attachments/${key}`
+    return `/api/attachments/by-key/${key}`
   }
 }
 
