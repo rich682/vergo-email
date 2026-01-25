@@ -74,3 +74,4 @@
 "/api/task-lineages/[id]/app-rows/[rowId]","GET, PATCH, DELETE","WF-10m","PWF-10","Data (opt-in)","FRONTEND","DIRECT_FETCH","components/jobs/data/data-tab-universal.tsx","AppRowDefinition model","GREEN"
 "/api/task-lineages/[id]/app-rows/[rowId]/values","GET, POST","WF-10l","PWF-10","Data (opt-in)","FRONTEND","DIRECT_FETCH","components/jobs/data/data-tab-universal.tsx","AppRowValue model","GREEN"
 "/api/task-lineages/[id]/app-rows/[rowId]/values/[columnIdentity]","GET, PATCH, DELETE","WF-10l","PWF-10","Data (opt-in)","FRONTEND","DIRECT_FETCH","components/jobs/data/data-tab-universal.tsx","AppRowValue model","GREEN"
+"/api/task-lineages/[id]/cell-formulas","GET, POST, DELETE","WF-10q, WF-10r, WF-10s","PWF-10","Data (opt-in)","FRONTEND","DIRECT_FETCH","components/jobs/data/data-tab-universal.tsx","CellFormula model, formula-expansion.service.ts","GREEN"

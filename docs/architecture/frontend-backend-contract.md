@@ -1,6 +1,6 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-22  
+> **Living Document** - Last updated: 2026-01-25  
 > **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -38,7 +38,7 @@ A Job (TaskInstance) is the atomic unit in the system. Rather than having differ
 | **Reconciliation** | Document comparison, anchor/supporting model | `/api/task-instances/[id]/reconciliations/*` | WF-03c, WF-03h, WF-03i |
 | **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-r |
 | **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
-| **Data** | Opt-in spreadsheet data management with custom columns/rows, formulas, and period navigation | `/api/task-instances/[id]/data/*`, `/api/datasets/*`, `/api/task-lineages/[id]/app-columns/*`, `/api/task-lineages/[id]/app-rows/*` | WF-10a-p |
+| **Data** | Opt-in spreadsheet data management with custom columns/rows, Excel-style cell formulas with auto-expansion, and period navigation | `/api/task-instances/[id]/data/*`, `/api/datasets/*`, `/api/task-lineages/[id]/app-columns/*`, `/api/task-lineages/[id]/app-rows/*`, `/api/task-lineages/[id]/cell-formulas` | WF-10a-s |
 
 ### UI Terminology Mapping
 
@@ -303,6 +303,7 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-lineages/[id]/app-rows/[rowId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10m) |
 | `/api/task-lineages/[id]/app-rows/[rowId]/values` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10l) |
 | `/api/task-lineages/[id]/app-rows/[rowId]/values/[columnIdentity]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10l) |
+| `/api/task-lineages/[id]/cell-formulas` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/data/data-tab-universal.tsx` (WF-10q, WF-10r, WF-10s) |
 | `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
 | `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
 | `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
