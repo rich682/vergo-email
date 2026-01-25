@@ -333,7 +333,7 @@ export function DataTabUniversal({
       )
 
       if (!response.ok) {
-        console.error("Failed to fetch cell formulas")
+        console.error("[CellFormulas] Failed to fetch cell formulas")
         return
       }
 
@@ -345,9 +345,10 @@ export function DataTabUniversal({
           formula: f.formula,
         })
       }
+      console.log("[CellFormulas] Fetched formulas:", Array.from(formulasMap.entries()))
       setCellFormulas(formulasMap)
     } catch (err) {
-      console.error("Error fetching cell formulas:", err)
+      console.error("[CellFormulas] Error fetching:", err)
     } finally {
       setLoadingCellFormulas(false)
     }
@@ -357,6 +358,8 @@ export function DataTabUniversal({
   const handleCellFormulaChange = useCallback(async (cellRef: string, formula: string | null) => {
     if (!currentLineageId) return
 
+    console.log("[CellFormulas] Saving:", { cellRef, formula })
+    
     try {
       if (formula) {
         // Save formula
@@ -372,8 +375,12 @@ export function DataTabUniversal({
 
         if (!response.ok) {
           const data = await response.json()
+          console.error("[CellFormulas] Save failed:", data.error)
           throw new Error(data.error || "Failed to save formula")
         }
+        
+        const result = await response.json()
+        console.log("[CellFormulas] Saved successfully:", result)
       } else {
         // Delete formula
         const response = await fetch(
@@ -388,12 +395,14 @@ export function DataTabUniversal({
           const data = await response.json()
           throw new Error(data.error || "Failed to delete formula")
         }
+        console.log("[CellFormulas] Deleted successfully:", cellRef)
       }
 
       // Refresh cell formulas
-      fetchCellFormulas()
+      console.log("[CellFormulas] Refreshing formulas...")
+      await fetchCellFormulas()
     } catch (err) {
-      console.error("Error saving cell formula:", err)
+      console.error("[CellFormulas] Error saving:", err)
       throw err
     }
   }, [currentLineageId, fetchCellFormulas])
