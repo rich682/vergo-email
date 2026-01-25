@@ -900,6 +900,7 @@ Use plain language. Be concise.`
               const nextPeriodStart = calculateNextPeriodStart(
                 latestBoard.cadence,
                 currentPeriodStart,
+                orgTimezone,
                 { skipWeekends: latestBoard.skipWeekends, fiscalYearStartMonth }
               )
               

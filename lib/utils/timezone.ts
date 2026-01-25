@@ -165,12 +165,12 @@ export function getEndOfPeriod(
  * Calculate the next period start date based on cadence.
  */
 export function calculateNextPeriodStart(
-  cadence: BoardCadence,
-  currentPeriodStart: Date,
+  cadence: BoardCadence | null | undefined,
+  currentPeriodStart: Date | null | undefined,
   timezone: string,
   options?: { skipWeekends?: boolean; fiscalYearStartMonth?: number }
 ): Date | null {
-  if (!currentPeriodStart || cadence === "AD_HOC") return null
+  if (!cadence || !currentPeriodStart || cadence === "AD_HOC") return null
 
   const zonedCurrent = toZonedTime(currentPeriodStart, timezone)
   const skipWeekends = options?.skipWeekends ?? true
