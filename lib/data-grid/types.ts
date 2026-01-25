@@ -251,9 +251,11 @@ export interface GridFilterState {
 export interface SheetMetadata {
   id: string
   periodLabel: string | null
+  periodStart?: string | null
   createdAt: string
   rowCount: number
   isLatest: boolean
+  isCurrentPeriod?: boolean
 }
 
 /**

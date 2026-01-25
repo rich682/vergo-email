@@ -46,6 +46,10 @@ interface UploadDataModalProps {
   schema: SchemaColumn[]
   identityKey: string
   onUploaded: () => void
+  // Period info for tagging the snapshot
+  periodLabel?: string
+  periodStart?: string
+  periodEnd?: string
 }
 
 export function UploadDataModal({
@@ -55,6 +59,9 @@ export function UploadDataModal({
   schema,
   identityKey,
   onUploaded,
+  periodLabel,
+  periodStart,
+  periodEnd,
 }: UploadDataModalProps) {
   const [step, setStep] = useState<"upload" | "preview" | "success">("upload")
   const [file, setFile] = useState<File | null>(null)
@@ -190,6 +197,9 @@ export function UploadDataModal({
         body: JSON.stringify({
           rows: parsedRows,
           sourceFilename: file?.name,
+          periodLabel,
+          periodStart,
+          periodEnd,
         }),
       })
 

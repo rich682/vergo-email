@@ -1624,6 +1624,9 @@ export default function JobDetailPage() {
                 isSnapshot={job.isSnapshot}
                 isAdHoc={isAdHoc}
                 onConvertToRecurring={handleConvertToRecurring}
+                boardPeriodStart={job.board?.periodStart}
+                boardPeriodEnd={job.board?.periodEnd}
+                boardName={job.board?.name}
               />
             )}
 

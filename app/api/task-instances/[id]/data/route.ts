@@ -57,6 +57,7 @@ export async function GET(
                   select: {
                     id: true,
                     periodLabel: true,
+                    periodStart: true,
                     rowCount: true,
                     createdAt: true,
                     isLatest: true,
@@ -120,6 +121,7 @@ export async function GET(
         snapshots: template.snapshots.map(s => ({
           id: s.id,
           periodLabel: s.periodLabel || null,
+          periodStart: s.periodStart?.toISOString() || null,
           rowCount: s.rowCount,
           createdAt: s.createdAt.toISOString(),
           isLatest: s.isLatest,

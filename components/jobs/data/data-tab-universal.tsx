@@ -71,6 +71,7 @@ interface SnapshotInfo {
 interface SnapshotMetadataAPI {
   id: string
   periodLabel: string | null
+  periodStart: string | null
   rowCount: number
   createdAt: string
   isLatest: boolean
@@ -140,6 +141,10 @@ interface DataTabUniversalProps {
   isSnapshot?: boolean
   isAdHoc?: boolean
   onConvertToRecurring?: () => void
+  // Board period info for period-aware uploads
+  boardPeriodStart?: string | null
+  boardPeriodEnd?: string | null
+  boardName?: string | null
 }
 
 /**
@@ -154,6 +159,9 @@ export function DataTabUniversal({
   taskInstanceId,
   taskName,
   lineageId,
+  boardPeriodStart,
+  boardPeriodEnd,
+  boardName,
 }: DataTabUniversalProps) {
   const [dataStatus, setDataStatus] = useState<DataStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -780,19 +788,17 @@ export function DataTabUniversal({
     }
   }, [dataStatus?.datasetTemplate?.schema, appColumns])
 
-  // Initialize current sheet when snapshots are available
-  useEffect(() => {
-    if (dataStatus?.datasetTemplate?.latestSnapshot && !currentSheet) {
-      setCurrentSheet({
-        kind: "snapshot",
-        snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
-      })
-    }
-  }, [dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
-
   // Fetch snapshot rows when sheet changes
   const fetchSnapshotRows = useCallback(async (snapshotId: string) => {
     if (!dataStatus?.datasetTemplate?.id) return
+
+    // Handle empty current period placeholder
+    if (snapshotId === "current-period") {
+      setSnapshotRows([])
+      setSnapshotError(null)
+      setLoadingSnapshot(false)
+      return
+    }
 
     setLoadingSnapshot(true)
     setSnapshotError(null)
@@ -940,17 +946,110 @@ export function DataTabUniversal({
     }
   }, [dataStatus?.datasetTemplate?.identityKey, dataStatus?.datasetTemplate?.schema, appColumnValues, appColumns, teamMembers, snapshotRows])
 
-  // Convert API snapshots to SheetMetadata
+  // Compute current board period label
+  const currentPeriodLabel = useMemo(() => {
+    if (!boardPeriodStart) return null
+    try {
+      // Parse the date string and format nicely
+      const date = new Date(boardPeriodStart)
+      return format(date, "MMM d, yyyy")
+    } catch {
+      return boardName || null
+    }
+  }, [boardPeriodStart, boardName])
+
+  // Check if a snapshot exists for the current period
+  const currentPeriodSnapshot = useMemo(() => {
+    if (!boardPeriodStart || !dataStatus?.datasetTemplate?.snapshots) return null
+    const boardStart = new Date(boardPeriodStart).toISOString().split("T")[0]
+    return dataStatus.datasetTemplate.snapshots.find(s => {
+      if (!s.periodStart) return false
+      const snapshotStart = new Date(s.periodStart).toISOString().split("T")[0]
+      return snapshotStart === boardStart
+    }) || null
+  }, [boardPeriodStart, dataStatus?.datasetTemplate?.snapshots])
+
+  // Convert API snapshots to SheetMetadata with period awareness
   const sheets: SheetMetadata[] = useMemo(() => {
-    if (!dataStatus?.datasetTemplate?.snapshots) return []
-    return dataStatus.datasetTemplate.snapshots.map(s => ({
-      id: s.id,
-      periodLabel: s.periodLabel,
-      createdAt: s.createdAt,
-      rowCount: s.rowCount,
-      isLatest: s.isLatest,
-    }))
-  }, [dataStatus?.datasetTemplate?.snapshots])
+    const result: SheetMetadata[] = []
+    
+    // Add current period tab first (may be empty)
+    if (currentPeriodLabel && boardPeriodStart) {
+      if (currentPeriodSnapshot) {
+        // Current period has data
+        result.push({
+          id: currentPeriodSnapshot.id,
+          periodLabel: currentPeriodLabel,
+          createdAt: currentPeriodSnapshot.createdAt,
+          rowCount: currentPeriodSnapshot.rowCount,
+          isLatest: true,
+          isCurrentPeriod: true,
+        })
+      } else {
+        // Current period is empty - create placeholder
+        result.push({
+          id: "current-period",
+          periodLabel: currentPeriodLabel,
+          createdAt: new Date().toISOString(),
+          rowCount: 0,
+          isLatest: false,
+          isCurrentPeriod: true,
+        })
+      }
+    }
+    
+    // Add previous period snapshots (exclude current period if it exists)
+    if (dataStatus?.datasetTemplate?.snapshots) {
+      const previousSnapshots = dataStatus.datasetTemplate.snapshots.filter(s => {
+        if (currentPeriodSnapshot && s.id === currentPeriodSnapshot.id) return false
+        return true
+      })
+      
+      for (const s of previousSnapshots) {
+        result.push({
+          id: s.id,
+          periodLabel: s.periodLabel,
+          createdAt: s.createdAt,
+          rowCount: s.rowCount,
+          isLatest: s.isLatest && !currentPeriodSnapshot,
+          isCurrentPeriod: false,
+        })
+      }
+    }
+    
+    return result
+  }, [dataStatus?.datasetTemplate?.snapshots, currentPeriodLabel, boardPeriodStart, currentPeriodSnapshot])
+
+  // Check if currently viewing the current period (for upload button visibility)
+  const isViewingCurrentPeriod = useMemo(() => {
+    if (!currentSheet) return true // Default to current period
+    if (currentSheet.kind === "snapshot") {
+      // Check if this snapshot is the current period
+      const sheet = sheets.find(s => s.id === currentSheet.snapshotId)
+      return sheet?.isCurrentPeriod ?? false
+    }
+    return false
+  }, [currentSheet, sheets])
+
+  // Initialize current sheet - prefer current period tab
+  useEffect(() => {
+    if (!currentSheet && sheets.length > 0) {
+      // Find the current period sheet first
+      const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
+      if (currentPeriodSheet) {
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: currentPeriodSheet.id,
+        })
+      } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
+        // Fall back to latest snapshot
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
+        })
+      }
+    }
+  }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
 
   // Convert schema columns to ColumnResource for formula editor
   const formulaColumnResources: ColumnResource[] = useMemo(() => {
@@ -1280,7 +1379,8 @@ export function DataTabUniversal({
               </Button>
             )}
             
-            {!hasSnapshots && (
+            {/* Show Upload button when: no snapshots OR viewing current period */}
+            {(!hasSnapshots || isViewingCurrentPeriod) && (
               <Button
                 size="sm"
                 onClick={() => setIsUploadModalOpen(true)}
@@ -1290,7 +1390,8 @@ export function DataTabUniversal({
               </Button>
             )}
 
-            {hasSnapshots && (
+            {/* Show Delete Upload only when there's data for current period */}
+            {hasSnapshots && isViewingCurrentPeriod && currentPeriodSnapshot && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1359,15 +1460,17 @@ export function DataTabUniversal({
           <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
             <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
             <h4 className="text-sm font-medium text-gray-900 mb-1">
-              No data uploaded yet
+              {currentPeriodLabel ? `No data for ${currentPeriodLabel}` : "No data uploaded yet"}
             </h4>
             <p className="text-sm text-gray-500 mb-4">
-              Upload a CSV or Excel file to add data for this task.
+              Upload a CSV or Excel file to add data{currentPeriodLabel ? ` for ${currentPeriodLabel}` : " for this task"}.
             </p>
-            <Button onClick={() => setIsUploadModalOpen(true)}>
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Data
-            </Button>
+            {isViewingCurrentPeriod && (
+              <Button onClick={() => setIsUploadModalOpen(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Data
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -1380,6 +1483,9 @@ export function DataTabUniversal({
         schema={template.schema}
         identityKey={template.identityKey}
         onUploaded={handleUploadComplete}
+        periodLabel={currentPeriodLabel || undefined}
+        periodStart={boardPeriodStart || undefined}
+        periodEnd={boardPeriodEnd || undefined}
       />
 
       {/* Settings Modal */}
