@@ -652,11 +652,21 @@ export function SendRequestModal({
         })
 
         if (!draftResponse.ok) {
-          const data = await draftResponse.json()
-          throw new Error(data.error || "Failed to schedule request")
+          // Try to parse error response, but handle empty response gracefully
+          let errorMessage = "Failed to schedule request"
+          try {
+            const data = await draftResponse.json()
+            errorMessage = data.error || data.message || errorMessage
+          } catch {
+            // Response body was empty or invalid JSON
+            errorMessage = `Server error (${draftResponse.status}): ${draftResponse.statusText || "Unknown error"}`
+          }
+          throw new Error(errorMessage)
         }
 
-        console.log(`Request scheduled: ${scheduleOffsetDays} days before period end`)
+        // Parse success response
+        const result = await draftResponse.json()
+        console.log(`Request scheduled: ${scheduleOffsetDays} days before period end`, result)
         setState("success")
         
         // Auto-close after success

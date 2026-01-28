@@ -431,22 +431,29 @@ async function handleCreateDraft(
   userId: string,
   body: any
 ): Promise<NextResponse> {
-  const { 
-    entityId, 
-    subject, 
-    body: bodyContent, 
-    htmlBody,
-    scheduleConfig,
-    remindersEnabled = false,
-    remindersFrequencyHours,
-    remindersMaxCount
-  } = body
+  try {
+    console.log("[handleCreateDraft] Starting draft creation", { taskInstanceId, organizationId, userId })
+    
+    const { 
+      entityId, 
+      subject, 
+      body: bodyContent, 
+      htmlBody,
+      scheduleConfig,
+      remindersEnabled = false,
+      remindersFrequencyHours,
+      remindersMaxCount
+    } = body
+
+    console.log("[handleCreateDraft] Request body parsed", { entityId, subject: !!subject, bodyContent: !!bodyContent, scheduleConfig })
 
   // Validate required fields
   if (!entityId) {
+    console.log("[handleCreateDraft] Missing entityId")
     return NextResponse.json({ error: "entityId is required" }, { status: 400 })
   }
   if (!subject || !bodyContent) {
+    console.log("[handleCreateDraft] Missing subject or body")
     return NextResponse.json({ error: "subject and body are required" }, { status: 400 })
   }
 
@@ -455,8 +462,10 @@ async function handleCreateDraft(
     where: { id: entityId, organizationId }
   })
   if (!entity) {
+    console.log("[handleCreateDraft] Entity not found", { entityId })
     return NextResponse.json({ error: "Entity not found" }, { status: 404 })
   }
+  console.log("[handleCreateDraft] Entity found", { entityId, email: entity.email })
 
   // Get task instance with board for period-aware scheduling
   const taskInstance = await prisma.taskInstance.findFirst({
@@ -469,24 +478,34 @@ async function handleCreateDraft(
   })
 
   if (!taskInstance) {
+    console.log("[handleCreateDraft] Task instance not found", { taskInstanceId })
     return NextResponse.json({ error: "Task instance not found" }, { status: 404 })
   }
+  console.log("[handleCreateDraft] Task instance found", { 
+    taskInstanceId, 
+    boardId: taskInstance.board?.id,
+    periodStart: taskInstance.board?.periodStart,
+    periodEnd: taskInstance.board?.periodEnd
+  })
 
   // Compute scheduledSendAt if period-aware scheduling
   let scheduledSendAt: Date | null = null
   const config = scheduleConfig as ScheduleConfig | null
   if (config?.mode === "period_aware" && taskInstance.board) {
+    console.log("[handleCreateDraft] Computing scheduled date", { config })
     scheduledSendAt = BusinessDayService.computeFromConfig(
       config,
       taskInstance.board.periodStart,
       taskInstance.board.periodEnd
     )
+    console.log("[handleCreateDraft] Scheduled date computed", { scheduledSendAt })
   }
 
   // Generate a unique threadId
   const threadId = `draft-${Date.now()}-${Math.random().toString(36).substring(7)}`
 
   // Create the draft request
+  console.log("[handleCreateDraft] Creating draft in database")
   const draft = await prisma.request.create({
     data: {
       organizationId,
@@ -522,21 +541,30 @@ async function handleCreateDraft(
     }
   })
 
-  return NextResponse.json({
-    success: true,
-    message: "Draft request created",
-    draft: {
-      id: draft.id,
-      entityId: draft.entityId,
-      entity: draft.entity,
-      subject,
-      body: bodyContent,
-      scheduleConfig,
-      scheduledSendAt: draft.scheduledSendAt,
-      isDraft: true,
-      createdAt: draft.createdAt
-    }
-  })
+  console.log("[handleCreateDraft] Draft created successfully", { draftId: draft.id, scheduledSendAt: draft.scheduledSendAt })
+
+    return NextResponse.json({
+      success: true,
+      message: "Draft request created",
+      draft: {
+        id: draft.id,
+        entityId: draft.entityId,
+        entity: draft.entity,
+        subject,
+        body: bodyContent,
+        scheduleConfig,
+        scheduledSendAt: draft.scheduledSendAt,
+        isDraft: true,
+        createdAt: draft.createdAt
+      }
+    })
+  } catch (error: any) {
+    console.error("[handleCreateDraft] Error creating draft:", error)
+    return NextResponse.json(
+      { error: "Failed to create scheduled request", message: error.message },
+      { status: 500 }
+    )
+  }
 }
 
 async function handleUpdateDraft(
