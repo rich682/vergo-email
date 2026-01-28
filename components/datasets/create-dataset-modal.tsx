@@ -354,9 +354,9 @@ export function CreateDatasetModal({
                     className="mt-1"
                   />
                   <div>
-                    <span className="font-medium text-gray-900">Columns represent the primary items</span>
+                    <span className="font-medium text-gray-900">Columns represent dynamic data</span>
                     <p className="text-sm text-gray-500 mt-1">
-                      Each column header (Row 1) is a project, location, or entity that persists over time
+                      e.g. project names are in columns
                     </p>
                   </div>
                 </label>
@@ -376,9 +376,9 @@ export function CreateDatasetModal({
                     className="mt-1"
                   />
                   <div>
-                    <span className="font-medium text-gray-900">Rows represent the primary items</span>
+                    <span className="font-medium text-gray-900">Rows represent dynamic data</span>
                     <p className="text-sm text-gray-500 mt-1">
-                      Each row (Column A values) is an account or record that persists over time
+                      e.g. project names are in rows
                     </p>
                   </div>
                 </label>
