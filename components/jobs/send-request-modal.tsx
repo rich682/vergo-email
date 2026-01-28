@@ -48,6 +48,7 @@ import {
   ArrowRight,
   Calendar,
   CalendarClock,
+  ClipboardList,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -858,7 +859,7 @@ export function SendRequestModal({
               Choose how you want to send this request
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Standard Mode */}
               <button
                 onClick={() => handleModeSelect("standard")}
@@ -892,6 +893,26 @@ export function SendRequestModal({
                 </p>
                 <span className="mt-3 text-xs text-purple-600 font-medium">
                   Upload your own recipient list
+                </span>
+              </button>
+
+              {/* Form Completion Mode (Demo) */}
+              <button
+                onClick={() => {/* Demo only - no action */}}
+                className="flex flex-col items-center p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group relative"
+              >
+                <div className="absolute top-2 right-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full">
+                  Coming Soon
+                </div>
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4 group-hover:bg-green-200 transition-colors">
+                  <ClipboardList className="w-7 h-7 text-green-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Form Completion</h3>
+                <p className="text-sm text-gray-500 text-center">
+                  Send a form link for stakeholders to fill out. Collect structured data responses.
+                </p>
+                <span className="mt-3 text-xs text-green-600 font-medium">
+                  Structured data collection
                 </span>
               </button>
             </div>
