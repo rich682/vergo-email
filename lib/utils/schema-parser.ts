@@ -5,7 +5,7 @@
  * Used by the Create Schema flow in the Data workflow.
  */
 
-import * as XLSX from "xlsx"
+// xlsx imported dynamically to avoid TDZ errors
 
 export type ColumnType = "text" | "number" | "date" | "boolean" | "currency"
 
@@ -243,7 +243,7 @@ function isCurrencyFormat(format: string | undefined): boolean {
 /**
  * Parse XLSX content and extract schema
  */
-function parseXLSXForSchema(buffer: ArrayBuffer): SchemaParseResult | SchemaParseError {
+async function parseXLSXForSchema(buffer: ArrayBuffer): Promise<SchemaParseResult | SchemaParseError> {
   try {
     // Use cellDates to properly handle dates, cellNF to get number formats
     const workbook = XLSX.read(buffer, { type: "array", cellNF: true, cellStyles: true })
