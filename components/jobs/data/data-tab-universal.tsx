@@ -796,10 +796,16 @@ export function DataTabUniversal({
 
   // Fetch snapshot rows when sheet changes
   const fetchSnapshotRows = useCallback(async (snapshotId: string) => {
-    if (!dataStatus?.datasetTemplate?.id) return
+    console.log("[DataTab] fetchSnapshotRows called", { snapshotId, templateId: dataStatus?.datasetTemplate?.id })
+    
+    if (!dataStatus?.datasetTemplate?.id) {
+      console.log("[DataTab] No template ID, aborting fetch")
+      return
+    }
 
     // Handle empty current period placeholder
     if (snapshotId === "current-period") {
+      console.log("[DataTab] Current period placeholder, clearing rows")
       setSnapshotRows([])
       setSnapshotError(null)
       setLoadingSnapshot(false)
@@ -810,10 +816,10 @@ export function DataTabUniversal({
     setSnapshotError(null)
 
     try {
-      const response = await fetch(
-        `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${snapshotId}`,
-        { credentials: "include" }
-      )
+      const url = `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${snapshotId}`
+      console.log("[DataTab] Fetching from:", url)
+      
+      const response = await fetch(url, { credentials: "include" })
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -821,10 +827,13 @@ export function DataTabUniversal({
       }
 
       const data = await response.json()
+      console.log("[DataTab] API response:", { snapshot: data.snapshot, rowCount: data.snapshot?.rows?.length })
       const rows = data.snapshot?.rows || []
       setSnapshotRows(Array.isArray(rows) ? rows : [])
+      console.log("[DataTab] Rows set:", rows.length)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load snapshot data"
+      console.error("[DataTab] Error fetching rows:", message)
       setSnapshotError(message)
       setSnapshotRows([])
     } finally {
@@ -834,7 +843,9 @@ export function DataTabUniversal({
 
   // Fetch rows when sheet changes
   useEffect(() => {
+    console.log("[DataTab] Sheet change effect", { currentSheet })
     if (currentSheet?.kind === "snapshot" && currentSheet.snapshotId) {
+      console.log("[DataTab] Fetching rows for snapshot:", currentSheet.snapshotId)
       fetchSnapshotRows(currentSheet.snapshotId)
     }
   }, [currentSheet, fetchSnapshotRows])
@@ -1040,10 +1051,18 @@ export function DataTabUniversal({
 
   // Initialize current sheet - prefer sheet with data (better UX)
   useEffect(() => {
+    console.log("[DataTab] Sheet init effect", { 
+      currentSheet, 
+      sheetsLength: sheets.length, 
+      sheets: sheets.map(s => ({ id: s.id, rowCount: s.rowCount, isCurrentPeriod: s.isCurrentPeriod })),
+      latestSnapshot: dataStatus?.datasetTemplate?.latestSnapshot 
+    })
+    
     if (!currentSheet && sheets.length > 0) {
       // First, try to find a sheet with data (any sheet - prefer current period if it has data)
       const currentPeriodWithData = sheets.find(s => s.isCurrentPeriod && s.rowCount > 0)
       if (currentPeriodWithData) {
+        console.log("[DataTab] Selecting current period with data:", currentPeriodWithData.id)
         setCurrentSheet({
           kind: "snapshot",
           snapshotId: currentPeriodWithData.id,
@@ -1054,6 +1073,7 @@ export function DataTabUniversal({
       // Fall back to any sheet with data
       const anySheetWithData = sheets.find(s => s.rowCount > 0)
       if (anySheetWithData) {
+        console.log("[DataTab] Selecting any sheet with data:", anySheetWithData.id)
         setCurrentSheet({
           kind: "snapshot",
           snapshotId: anySheetWithData.id,
@@ -1064,15 +1084,19 @@ export function DataTabUniversal({
       // Fall back to current period (even if empty) or latest snapshot
       const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
       if (currentPeriodSheet) {
+        console.log("[DataTab] Selecting current period (may be empty):", currentPeriodSheet.id)
         setCurrentSheet({
           kind: "snapshot",
           snapshotId: currentPeriodSheet.id,
         })
       } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
+        console.log("[DataTab] Selecting latest snapshot:", dataStatus.datasetTemplate.latestSnapshot.id)
         setCurrentSheet({
           kind: "snapshot",
           snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
         })
+      } else {
+        console.log("[DataTab] No sheet to select!")
       }
     }
   }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
@@ -1184,9 +1208,11 @@ export function DataTabUniversal({
   }
 
   const handleUploadComplete = () => {
+    console.log("[DataTab] Upload complete, resetting sheet and fetching data status")
     setIsUploadModalOpen(false)
     // Reset current sheet to force re-initialization with new data
     setCurrentSheet(null)
+    setSnapshotRows([]) // Also clear existing rows
     fetchDataStatus()
   }
 
