@@ -25,6 +25,8 @@ Instead, Jobs have **Capabilities** that can be enabled:
 | **Request** | Email communication, reminders, tracking, draft review | WF-05a through WF-05r |
 | **Evidence** | File collection, review, export | WF-06a through WF-06e |
 
+> **Note**: The Data capability (WF-10a-s) has been deprecated and removed as of January 2026. All data tab, formula, and dataset functionality has been removed to allow for a fresh implementation approach.
+
 ### UI Terminology Note
 
 The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to reflect accounting terminology. This is a user-facing language change only—backend enums and APIs remain unchanged.
