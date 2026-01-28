@@ -245,6 +245,9 @@ function isCurrencyFormat(format: string | undefined): boolean {
  */
 async function parseXLSXForSchema(buffer: ArrayBuffer): Promise<SchemaParseResult | SchemaParseError> {
   try {
+    // Dynamic import to avoid TDZ errors with xlsx library
+    const XLSX = await import("xlsx")
+    
     // Use cellDates to properly handle dates, cellNF to get number formats
     const workbook = XLSX.read(buffer, { type: "array", cellNF: true, cellStyles: true })
     
