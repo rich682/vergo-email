@@ -1038,30 +1038,41 @@ export function DataTabUniversal({
     return false
   }, [currentSheet, sheets])
 
-  // Initialize current sheet - prefer previous period with data (better UX)
+  // Initialize current sheet - prefer sheet with data (better UX)
   useEffect(() => {
     if (!currentSheet && sheets.length > 0) {
-      // Find previous period sheet with data first (show existing data by default)
-      const previousPeriodWithData = sheets.find(s => !s.isCurrentPeriod && s.rowCount > 0)
-      if (previousPeriodWithData) {
+      // First, try to find a sheet with data (any sheet - prefer current period if it has data)
+      const currentPeriodWithData = sheets.find(s => s.isCurrentPeriod && s.rowCount > 0)
+      if (currentPeriodWithData) {
         setCurrentSheet({
           kind: "snapshot",
-          snapshotId: previousPeriodWithData.id,
+          snapshotId: currentPeriodWithData.id,
         })
-      } else {
-        // Fall back to current period or latest snapshot
-        const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
-        if (currentPeriodSheet) {
-          setCurrentSheet({
-            kind: "snapshot",
-            snapshotId: currentPeriodSheet.id,
-          })
-        } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
-          setCurrentSheet({
-            kind: "snapshot",
-            snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
-          })
-        }
+        return
+      }
+      
+      // Fall back to any sheet with data
+      const anySheetWithData = sheets.find(s => s.rowCount > 0)
+      if (anySheetWithData) {
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: anySheetWithData.id,
+        })
+        return
+      }
+      
+      // Fall back to current period (even if empty) or latest snapshot
+      const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
+      if (currentPeriodSheet) {
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: currentPeriodSheet.id,
+        })
+      } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
+        })
       }
     }
   }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
@@ -1174,6 +1185,8 @@ export function DataTabUniversal({
 
   const handleUploadComplete = () => {
     setIsUploadModalOpen(false)
+    // Reset current sheet to force re-initialization with new data
+    setCurrentSheet(null)
     fetchDataStatus()
   }
 
@@ -1371,6 +1384,11 @@ export function DataTabUniversal({
   return (
     <>
       <div className="flex flex-col h-full space-y-4">
+        {/* Task Name Header for Context */}
+        <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">{taskName}</h2>
+        </div>
+
         {/* Action Bar */}
         <div className="flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
