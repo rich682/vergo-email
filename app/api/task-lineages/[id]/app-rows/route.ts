@@ -13,8 +13,6 @@ import { parseFormula, extractColumnReferences } from "@/lib/formula"
 
 // Valid row types
 const VALID_ROW_TYPES = ["text", "formula"]
-const SUMMARY_LABEL = "Sum"
-const SUMMARY_EXPRESSION = "SUM({column})"
 
 // Valid formula result types
 const VALID_FORMULA_RESULT_TYPES = ["number", "currency", "text"]
@@ -178,55 +176,6 @@ export async function POST(
         values: true,
       },
     })
-
-    if (rowType === "formula") {
-      const existingFormulaColumns = await prisma.appColumnDefinition.findMany({
-        where: { lineageId, organizationId, dataType: "formula" },
-      })
-
-      const normalizedSummary = SUMMARY_EXPRESSION.replace(/\s+/g, "").toLowerCase()
-      const hasSummaryColumn = existingFormulaColumns.some((col) => {
-        const config = col.config as { expression?: string; isAutoSummary?: boolean } | null
-        const expression = (config?.expression || "").replace(/\s+/g, "").toLowerCase()
-        const labelMatch = col.label.trim().toLowerCase() === SUMMARY_LABEL.toLowerCase()
-        const expressionMatch = expression === normalizedSummary
-        return expressionMatch && (labelMatch || config?.isAutoSummary)
-      })
-
-      if (!hasSummaryColumn) {
-        const maxPosition = await prisma.appColumnDefinition.aggregate({
-          where: { lineageId },
-          _max: { position: true },
-        })
-        const nextPosition = (maxPosition._max.position ?? -1) + 1
-        const references = extractColumnReferences(SUMMARY_EXPRESSION)
-        const summaryResultType =
-          (processedFormula as { resultType?: string } | undefined)?.resultType || "number"
-
-        await prisma.appColumnDefinition.create({
-          data: {
-            organizationId,
-            lineageId,
-            key: `formula_${Date.now()}`,
-            label: SUMMARY_LABEL,
-            dataType: "formula",
-            config: {
-              expression: SUMMARY_EXPRESSION,
-              resultType: summaryResultType,
-              references,
-              isAutoSummary: true,
-            },
-            position: nextPosition,
-            createdById: userId,
-          },
-          include: {
-            createdBy: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-        })
-      }
-    }
 
     return NextResponse.json({ row }, { status: 201 })
   } catch (error: unknown) {

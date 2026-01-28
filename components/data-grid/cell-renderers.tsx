@@ -59,22 +59,31 @@ export function CellRenderer({
         </span>
       )
 
-    case "number":
+    case "number": {
+      // Only show decimals if the value has them
+      const hasDecimals = !Number.isInteger(value.value)
       return (
         <span className={`${baseClass} tabular-nums ${className}`}>
-          {value.value.toLocaleString()}
-        </span>
-      )
-
-    case "currency":
-      return (
-        <span className={`${baseClass} tabular-nums ${className}`}>
-          ${value.value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
+          {value.value.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: hasDecimals ? 2 : 0,
           })}
         </span>
       )
+    }
+
+    case "currency": {
+      // Only show decimals if the value has them
+      const hasDecimals = !Number.isInteger(value.value)
+      return (
+        <span className={`${baseClass} tabular-nums ${className}`}>
+          ${value.value.toLocaleString(undefined, {
+            minimumFractionDigits: hasDecimals ? 2 : 0,
+            maximumFractionDigits: hasDecimals ? 2 : 0,
+          })}
+        </span>
+      )
+    }
 
     case "date":
       return (

@@ -560,13 +560,21 @@ function AppRowComponent({
             : "number"
         const formatType = format === "inheritColumn" ? columnFormat : resultType
 
+        // Only show decimals if the value has them
+        const hasDecimals = !Number.isInteger(result.value)
+        
         if (formatType === "currency") {
           return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "USD",
+            minimumFractionDigits: hasDecimals ? 2 : 0,
+            maximumFractionDigits: hasDecimals ? 2 : 0,
           }).format(result.value)
         }
-        return result.value.toLocaleString()
+        return result.value.toLocaleString(undefined, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: hasDecimals ? 2 : 0,
+        })
       }
       return "Error"
     } catch (err) {

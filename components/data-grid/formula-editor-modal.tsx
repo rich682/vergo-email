@@ -315,12 +315,20 @@ export function FormulaEditorModal({
   // Format preview value
   const formatPreviewValue = (value: number) => {
     if (resultType === "currency") {
+      const hasDecimals = !Number.isInteger(value)
       return new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: "USD",
+        minimumFractionDigits: hasDecimals ? 2 : 0,
+        maximumFractionDigits: hasDecimals ? 2 : 0,
       }).format(value)
     }
-    return value.toLocaleString()
+    // Only show decimals if the value has them
+    const hasDecimals = !Number.isInteger(value)
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: hasDecimals ? 2 : 0,
+    })
   }
 
   return (

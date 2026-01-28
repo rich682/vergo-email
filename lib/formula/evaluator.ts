@@ -55,7 +55,7 @@ function coerceNumberValue(
 
 /**
  * Resolve a column reference to a numeric value.
- * Handles cross-sheet references.
+ * Handles cross-sheet references and dynamic columns.
  */
 function resolveColumnValue(
   columnName: string,
@@ -67,10 +67,6 @@ function resolveColumnValue(
   const column = context.columns.find(
     (c) => c.label.toLowerCase() === columnName.toLowerCase() || c.key === columnName
   )
-
-  if (!column) {
-    return { ok: false, error: `Column "${columnName}" not found` }
-  }
 
   // Determine which sheet to read from
   let sheetId = context.currentSheetId
@@ -113,10 +109,29 @@ function resolveColumnValue(
     row = rowContext.row
   }
 
-  // Get the value
-  const rawValue = row[column.key]
+  // If we found a schema column, use its key
+  if (column) {
+    const rawValue = row[column.key]
+    return coerceNumberValue(rawValue, `column "${columnName}"`)
+  }
 
-  return coerceNumberValue(rawValue, `column "${columnName}"`)
+  // Otherwise, try to find the column directly in the row data
+  // This handles dynamic columns (e.g., project names in column-oriented data)
+  const normalizedName = columnName.toLowerCase()
+  
+  // First try exact match on key
+  if (columnName in row) {
+    return coerceNumberValue(row[columnName], `column "${columnName}"`)
+  }
+  
+  // Then try case-insensitive match on keys
+  for (const key of Object.keys(row)) {
+    if (key.toLowerCase() === normalizedName) {
+      return coerceNumberValue(row[key], `column "${columnName}"`)
+    }
+  }
+
+  return { ok: false, error: `Column "${columnName}" not found` }
 }
 
 /**

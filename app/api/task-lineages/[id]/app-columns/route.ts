@@ -14,8 +14,6 @@ import { parseFormula, extractColumnReferences } from "@/lib/formula"
 
 // Valid column types
 const VALID_DATA_TYPES = ["text", "status", "attachment", "user", "formula"]
-const SUMMARY_LABEL = "Sum"
-const SUMMARY_EXPRESSION = "SUM({column})"
 
 // Default status options for new status columns
 const DEFAULT_STATUS_OPTIONS = [
@@ -196,48 +194,6 @@ export async function POST(
         },
       },
     })
-
-    if (dataType === "formula") {
-      const existingFormulaRows = await prisma.appRowDefinition.findMany({
-        where: { lineageId, organizationId, rowType: "formula" },
-      })
-
-      const normalizedSummary = SUMMARY_EXPRESSION.replace(/\s+/g, "").toLowerCase()
-      const hasSummaryRow = existingFormulaRows.some((row) => {
-        const formula = row.formula as { expression?: string; isAutoSummary?: boolean } | null
-        const expression = (formula?.expression || "").replace(/\s+/g, "").toLowerCase()
-        const labelMatch = row.label.trim().toLowerCase() === SUMMARY_LABEL.toLowerCase()
-        const expressionMatch = expression === normalizedSummary
-        return expressionMatch && (labelMatch || formula?.isAutoSummary)
-      })
-
-      if (!hasSummaryRow) {
-        const maxPosition = await prisma.appRowDefinition.aggregate({
-          where: { lineageId },
-          _max: { position: true },
-        })
-        const nextPosition = (maxPosition._max.position ?? -1) + 1
-        const references = extractColumnReferences(SUMMARY_EXPRESSION)
-
-        await prisma.appRowDefinition.create({
-          data: {
-            organizationId,
-            lineageId,
-            rowType: "formula",
-            label: SUMMARY_LABEL,
-            position: nextPosition,
-            formula: {
-              expression: SUMMARY_EXPRESSION,
-              resultType: "number",
-              references,
-              isAutoSummary: true,
-              format: "inheritColumn",
-            },
-            createdById: userId,
-          },
-        })
-      }
-    }
 
     return NextResponse.json({ column }, { status: 201 })
   } catch (error: unknown) {
