@@ -409,13 +409,44 @@ export function CreateDatasetModal({
             <div>
               <Label className="mb-3 block">
                 {orientation === "column" 
-                  ? "Columns detected (entities to track)"
-                  : "Rows detected (entities to track)"
+                  ? "Rows detected (schema items)"
+                  : "Columns detected (schema items)"
                 }
               </Label>
               <div className="space-y-2 bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
                 {orientation === "column" ? (
-                  // Column orientation: show column headers (excluding first column which is row labels)
+                  // Column orientation: show ROW labels with type dropdowns (rows are the schema)
+                  rowLabels.length > 0 ? (
+                    rowLabels.slice(0, 20).map((row, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
+                      >
+                        <p className="text-sm font-medium text-gray-900 truncate flex-1">
+                          {row.label}
+                        </p>
+                        <Select
+                          value={row.type}
+                          onValueChange={(value) => updateRowLabel(index, { type: value as ColumnType })}
+                        >
+                          <SelectTrigger className="w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COLUMN_TYPES.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 p-3">No row labels detected in Column A</p>
+                  )
+                ) : (
+                  // Row orientation: show COLUMN headers with type dropdowns (columns are the schema)
                   columns.slice(1).map((column, index) => (
                     <div
                       key={column.key}
@@ -452,39 +483,8 @@ export function CreateDatasetModal({
                       </Button>
                     </div>
                   ))
-                ) : (
-                  // Row orientation: show row labels from Column A with type dropdowns
-                  rowLabels.length > 0 ? (
-                    rowLabels.slice(0, 20).map((row, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 bg-white rounded-lg p-3 border border-gray-200"
-                      >
-                        <p className="text-sm font-medium text-gray-900 truncate flex-1">
-                          {row.label}
-                        </p>
-                        <Select
-                          value={row.type}
-                          onValueChange={(value) => updateRowLabel(index, { type: value as ColumnType })}
-                        >
-                          <SelectTrigger className="w-28">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {COLUMN_TYPES.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500 p-3">No row labels detected in Column A</p>
-                  )
                 )}
-                {orientation === "row" && rowLabels.length > 20 && (
+                {orientation === "column" && rowLabels.length > 20 && (
                   <p className="text-xs text-gray-400 text-center pt-2">
                     + {rowLabels.length - 20} more rows
                   </p>
@@ -492,84 +492,9 @@ export function CreateDatasetModal({
               </div>
             </div>
 
-            {/* Identifier selection - differs by orientation */}
-            {orientation === "column" ? (
-              // Column orientation: select which column contains row labels
-              <div>
-                <Label htmlFor="rowKey">
-                  Select the column containing row labels (line items)
-                </Label>
-                <p className="text-sm text-gray-500 mb-2">
-                  This column contains the row labels (e.g., Revenue, Expenses, Net Income)
-                </p>
-                <Select value={rowKey} onValueChange={setRowKey}>
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Select column" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {columns.map((column) => (
-                      <SelectItem key={column.key} value={column.key}>
-                        {column.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              // Row orientation: select which row contains column identifiers
-              <div>
-                <Label htmlFor="identifierRow">
-                  Select the row containing column identifiers (optional)
-                </Label>
-                <p className="text-sm text-gray-500 mb-2">
-                  Select a row if column headers need additional context (usually not needed)
-                </p>
-                <Select 
-                  value={identifierRow || "_none"} 
-                  onValueChange={(v) => setIdentifierRow(v === "_none" ? null : v)}
-                >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="None (use column headers)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None (use column headers)</SelectItem>
-                    {rowLabels.map((row, index) => (
-                      <SelectItem key={index} value={row.label}>
-                        {row.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             {/* Stakeholder selection - differs by orientation */}
             {orientation === "column" ? (
-              // Column orientation: stakeholder is a column
-              <div>
-                <Label htmlFor="stakeholderColumn">Stakeholder Column (optional)</Label>
-                <p className="text-sm text-gray-500 mb-2">
-                  Select a column containing email addresses to link rows to contacts
-                </p>
-                <Select 
-                  value={stakeholderColumn || "_none"} 
-                  onValueChange={(v) => setStakeholderColumn(v === "_none" ? null : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="None selected" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {columns.map((column) => (
-                      <SelectItem key={column.key} value={column.key}>
-                        {column.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              // Row orientation: stakeholder is a row
+              // Column orientation: stakeholder is a ROW (select which row has emails)
               <div>
                 <Label htmlFor="stakeholderRow">Stakeholder Row (optional)</Label>
                 <p className="text-sm text-gray-500 mb-2">
@@ -587,6 +512,30 @@ export function CreateDatasetModal({
                     {rowLabels.map((row, index) => (
                       <SelectItem key={index} value={row.label}>
                         {row.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // Row orientation: stakeholder is a COLUMN (select which column has emails)
+              <div>
+                <Label htmlFor="stakeholderColumn">Stakeholder Column (optional)</Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Select a column containing email addresses to link rows to contacts
+                </p>
+                <Select 
+                  value={stakeholderColumn || "_none"} 
+                  onValueChange={(v) => setStakeholderColumn(v === "_none" ? null : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="None selected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {columns.map((column) => (
+                      <SelectItem key={column.key} value={column.key}>
+                        {column.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
