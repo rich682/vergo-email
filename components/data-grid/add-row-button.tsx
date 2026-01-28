@@ -3,44 +3,30 @@
 /**
  * Add Row Button
  * 
- * Simple button that adds a new text row directly.
- * User can then double-click the row label to rename it.
+ * Button that opens the formula editor modal to add a formula row.
+ * All rows are formula rows in the Monday.com style.
  */
 
-import { useState } from "react"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus } from "lucide-react"
 
-export type AppRowType = "text"
+export type AppRowType = "formula"
 
 interface AddRowButtonProps {
-  onAddRow: (type: AppRowType, label: string) => Promise<void>
-  /** Callback when formula type is selected - opens formula editor */
-  onFormulaSelect?: () => void
+  /** Callback when clicked - opens formula editor modal */
+  onFormulaSelect: () => void
   disabled?: boolean
 }
 
-export function AddRowButton({ onAddRow, disabled }: AddRowButtonProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleClick = async () => {
-    if (isSubmitting || disabled) return
-    
-    setIsSubmitting(true)
-    try {
-      // Create a new text row with default name
-      // User can double-click to rename
-      await onAddRow("text", "New Row")
-    } catch (err) {
-      console.error("Failed to add row:", err)
-    } finally {
-      setIsSubmitting(false)
-    }
+export function AddRowButton({ onFormulaSelect, disabled }: AddRowButtonProps) {
+  const handleClick = () => {
+    if (disabled) return
+    onFormulaSelect()
   }
 
   return (
     <button
       onClick={handleClick}
-      disabled={disabled || isSubmitting}
+      disabled={disabled}
       className={`
         flex items-center justify-center
         w-full h-8
@@ -51,11 +37,7 @@ export function AddRowButton({ onAddRow, disabled }: AddRowButtonProps) {
         disabled:opacity-50 disabled:cursor-not-allowed
       `}
     >
-      {isSubmitting ? (
-        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-      ) : (
-        <Plus className="w-4 h-4 mr-1" />
-      )}
+      <Plus className="w-4 h-4 mr-1" />
       <span className="text-sm">Add Row</span>
     </button>
   )

@@ -336,7 +336,7 @@ export function FormulaEditorModal({
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* Current Sheet Columns */}
+              {/* Current Sheet Columns/Rows */}
               <Collapsible open={expandedSheets.has("current")} onOpenChange={() => toggleSheet("current")}>
                 <CollapsibleTrigger className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-100 rounded mt-3">
                   {expandedSheets.has("current") ? (
@@ -344,7 +344,7 @@ export function FormulaEditorModal({
                   ) : (
                     <ChevronRight className="w-3.5 h-3.5" />
                   )}
-                  Current Sheet
+                  {mode === "column" ? "Current Sheet Columns" : "Current Sheet Rows"}
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-1">
                   {filteredColumns.length === 0 ? (
@@ -405,12 +405,12 @@ export function FormulaEditorModal({
             {/* Label Input */}
             <div className="mb-4">
               <Label htmlFor="formula-label" className="text-sm font-medium">
-                Column Name
+                {mode === "column" ? "Column Name" : "Row Name"}
               </Label>
               <Input
                 id="formula-label"
                 type="text"
-                placeholder="e.g., Profit, Total Revenue"
+                placeholder={mode === "column" ? "e.g., Profit, Total Revenue" : "e.g., Total, Average"}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 className="mt-1"

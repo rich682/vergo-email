@@ -256,7 +256,6 @@ export function DataGrid({
           onColumnFilterChange={handleColumnFilterChange}
           totalWidth={totalWidth}
           columnUniqueValues={columnUniqueValues}
-          onAddColumn={handleAddColumn}
           onHideColumn={handleHideColumn}
           onDeleteColumn={handleDeleteColumn}
           onRenameColumn={onRenameColumn}
@@ -293,7 +292,6 @@ export function DataGrid({
             onColumnFilterChange={handleColumnFilterChange}
             totalWidth={totalWidth}
             columnUniqueValues={columnUniqueValues}
-            onAddColumn={handleAddColumn}
             onHideColumn={handleHideColumn}
             onDeleteColumn={handleDeleteColumn}
             onRenameColumn={onRenameColumn}
@@ -412,10 +410,9 @@ export function DataGrid({
           )}
           
           {/* Add Row Button */}
-          {showAddRow && (
+          {showAddRow && onFormulaRowSelect && (
             <div className="p-2 border-t border-gray-200 bg-gray-50">
               <AddRowButton
-                onAddRow={handleAddRow}
                 onFormulaSelect={onFormulaRowSelect}
                 disabled={isLoading}
               />

@@ -1069,6 +1069,21 @@ export function DataTabUniversal({
     }))
   }, [dataStatus?.datasetTemplate?.schema])
 
+  // Build otherSheets for cross-sheet formula references
+  const otherSheets = useMemo(() => {
+    if (!currentSheet || sheets.length <= 1) return []
+    
+    const currentSheetId = currentSheet.kind === "snapshot" ? currentSheet.snapshotId : null
+    
+    return sheets
+      .filter(s => s.id !== currentSheetId && s.id !== "current-period")
+      .map(s => ({
+        id: s.id,
+        label: s.periodLabel || s.id,
+        columns: formulaColumnResources,
+      }))
+  }, [sheets, currentSheet, formulaColumnResources])
+
   // Get sample row for formula preview
   const sampleRow = useMemo(() => {
     return snapshotRows.length > 0 ? snapshotRows[0] : undefined
@@ -1633,6 +1648,7 @@ export function DataTabUniversal({
         }}
         mode={formulaEditorMode}
         columns={formulaColumnResources}
+        otherSheets={otherSheets}
         sampleRow={sampleRow}
         allRows={snapshotRows}
         onSave={formulaEditorMode === "column" ? handleSaveFormulaColumn : handleSaveFormulaRow}

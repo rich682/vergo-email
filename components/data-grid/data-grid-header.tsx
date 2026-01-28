@@ -32,11 +32,11 @@ import { Input } from "@/components/ui/input"
 import { AddColumnButton, type AppColumnType } from "./add-column-button"
 
 interface ExtendedDataGridHeaderProps extends DataGridHeaderProps {
-  onAddColumn?: (type: AppColumnType, label: string) => Promise<void>
   onHideColumn?: (columnId: string) => void
   onDeleteColumn?: (columnId: string) => Promise<void>
   onRenameColumn?: (columnId: string, newLabel: string) => Promise<void>
   showAddColumn?: boolean
+  /** Called when add column button is clicked - opens formula editor */
   onFormulaSelect?: () => void
   /** Called when user wants to edit a formula column */
   onEditFormulaColumn?: (columnId: string) => void
@@ -52,7 +52,6 @@ export function DataGridHeader({
   onColumnFilterChange,
   totalWidth,
   columnUniqueValues,
-  onAddColumn,
   onHideColumn,
   onDeleteColumn,
   onRenameColumn,
@@ -93,13 +92,12 @@ export function DataGridHeader({
       })}
       
       {/* Add Column - proper column cell like Monday */}
-      {showAddColumn && onAddColumn && (
+      {showAddColumn && onFormulaSelect && (
         <div
           className="flex items-center justify-center px-2 py-2 bg-gray-100 border-r border-gray-300"
           style={{ width: 60, minWidth: 60, flexShrink: 0 }}
         >
           <AddColumnButton
-            onAddColumn={onAddColumn}
             onFormulaSelect={onFormulaSelect}
             variant="header"
           />
