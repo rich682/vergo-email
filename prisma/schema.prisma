@@ -154,6 +154,7 @@ model Organization {
   reconciliations         Reconciliation[]
   reconciliationTemplates ReconciliationTemplate[]
   databases               Database[]
+  reportDefinitions       ReportDefinition[]
 
   @@index([slug])
 }
@@ -228,6 +229,7 @@ model User {
   connectedEmailAccounts     ConnectedEmailAccount[]
   createdDatabases           Database[]                 @relation("DatabaseCreator")
   importedDatabases          Database[]                 @relation("DatabaseImporter")
+  createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1164,11 +1166,43 @@ model Database {
   lastImportedAt  DateTime?
   lastImportedById String?
   
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy       User         @relation("DatabaseCreator", fields: [createdById], references: [id])
-  lastImportedBy  User?        @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy          User               @relation("DatabaseCreator", fields: [createdById], references: [id])
+  lastImportedBy     User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
+  reportDefinitions  ReportDefinition[]
   
   @@index([organizationId])
   @@index([organizationId, name])
+}
+
+// ReportDefinition represents an Excel-like report template
+// Users define columns (source + formula) and formula rows (aggregations)
+// The report renders data from a linked Database
+model ReportDefinition {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  organizationId  String
+  databaseId      String
+  
+  // Column configuration (selected database columns + formula columns)
+  // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, dataType, order }
+  columns         Json     @default("[]")
+  
+  // Formula rows (aggregation rows at bottom, like Excel SUM rows)
+  // Array of: { key, label, columnFormulas: { [colKey]: "SUM"|"AVG"|expression }, order }
+  formulaRows     Json     @default("[]")
+  
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  database        Database     @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
+  
+  @@index([organizationId])
+  @@index([databaseId])
 }
 
