@@ -1,5 +1,5 @@
 // Column types supported by the configurable table
-export type ColumnType = "text" | "status" | "person" | "date" | "notes" | "files" | "responses" | "dataStatus"
+export type ColumnType = "text" | "status" | "person" | "date" | "notes" | "files" | "responses"
 
 // Column definition structure
 export interface ColumnDefinition {
@@ -24,7 +24,6 @@ export const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 4, field: "responses", isSystem: true },
   { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 5, field: "notes", isSystem: true },
   { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 6, field: "collectedItemCount", isSystem: true },
-  { id: "data", type: "dataStatus", label: "Data", width: 80, visible: true, order: 7, field: "dataStatus", isSystem: true },
 ]
 
 // Job data structure expected by the table
@@ -43,7 +42,6 @@ export interface JobRow {
   taskCount?: number // Number of requests - used for delete/archive logic
   respondedCount?: number // Number of requests that received responses
   draftRequestCount?: number // Number of draft requests awaiting review
-  dataStatus?: "none" | "schema_only" | "has_data" // Data workflow status
 }
 
 // Team member for person cells

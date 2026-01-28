@@ -73,8 +73,6 @@ import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 // Table components for TABLE type tasks
 import { CompareView } from "@/components/jobs/table"
 
-// Universal Data tab (opt-in for all task types)
-import { DataTabUniversal } from "@/components/jobs/data"
 
 // ============================================
 // Types
@@ -275,7 +273,7 @@ export default function JobDetailPage() {
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "data" | "compare">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare">("overview")
   const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
   
   // Inline editing states
@@ -1019,13 +1017,6 @@ export default function JobDetailPage() {
             Overview
           </button>
           
-          <button
-            onClick={() => setActiveTab("data")}
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "data" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Data
-          </button>
-
           {job.type === "TABLE" && (
             <div className="relative group">
               <button
@@ -1614,20 +1605,6 @@ export default function JobDetailPage() {
                   )}
                 </div>
               </div>
-            )}
-
-            {activeTab === "data" && (
-              <DataTabUniversal
-                taskInstanceId={jobId}
-                taskName={job.name}
-                lineageId={job.lineageId}
-                isSnapshot={job.isSnapshot}
-                isAdHoc={isAdHoc}
-                onConvertToRecurring={handleConvertToRecurring}
-                boardPeriodStart={job.board?.periodStart}
-                boardPeriodEnd={job.board?.periodEnd}
-                boardName={job.board?.name}
-              />
             )}
 
             {activeTab === "compare" && (

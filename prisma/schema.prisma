@@ -153,13 +153,6 @@ model Organization {
   emailQueue              EmailQueue[]
   reconciliations         Reconciliation[]
   reconciliationTemplates ReconciliationTemplate[]
-  datasetTemplates        DatasetTemplate[]
-  datasetSnapshots        DatasetSnapshot[]
-  appColumnDefinitions    AppColumnDefinition[]
-  appColumnValues         AppColumnValue[]
-  appRowDefinitions       AppRowDefinition[]
-  appRowValues            AppRowValue[]
-  cellFormulas            CellFormula[]
 
   @@index([slug])
 }
@@ -174,19 +167,11 @@ model TaskLineage {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  // Data workflow linkage (optional)
-  datasetTemplateId String?
-  datasetTemplate   DatasetTemplate? @relation(fields: [datasetTemplateId], references: [id], onDelete: SetNull)
-
-  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   instances     TaskInstance[]
   importRecipes ImportRecipe[]
-  appColumns    AppColumnDefinition[] // App-owned columns for data grid
-  appRows       AppRowDefinition[]    // App-owned rows for data grid (totals, annotations)
-  cellFormulas  CellFormula[]         // Excel-style cell formulas
 
   @@index([organizationId])
-  @@index([datasetTemplateId])
 }
 
 model ImportRecipe {
@@ -240,13 +225,6 @@ model User {
   reviewAuditLogs            ReviewAuditLog[]           @relation("ReviewAuditAuthor")
   reconciliations            Reconciliation[]           @relation("ReconciliationCreator")
   connectedEmailAccounts     ConnectedEmailAccount[]
-  createdDatasetTemplates    DatasetTemplate[]          @relation("DatasetTemplateCreator")
-  uploadedDatasetSnapshots   DatasetSnapshot[]          @relation("DatasetSnapshotUploader")
-  createdAppColumns          AppColumnDefinition[]      @relation("AppColumnCreator")
-  updatedAppColumnValues     AppColumnValue[]           @relation("AppColumnValueUpdater")
-  createdAppRows             AppRowDefinition[]         @relation("AppRowCreator")
-  updatedAppRowValues        AppRowValue[]              @relation("AppRowValueUpdater")
-  createdCellFormulas        CellFormula[]              @relation("CellFormulaCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1159,236 +1137,3 @@ model ReconciliationTemplate {
   @@index([organizationId])
 }
 
-// ============================================
-// Dataset Workflow Models (Top-Level Data Hub)
-// ============================================
-
-// DatasetTemplate - defines the structure and identity for a dataset
-// Used for creating reusable data schemas with identity keys
-model DatasetTemplate {
-  id             String  @id @default(cuid())
-  organizationId String
-  name           String
-  description    String?
-
-  // Schema definition (columns with types)
-  // JSON: [{ key: string, label: string, type: "text"|"number"|"date"|"boolean"|"currency", required: boolean }]
-  schema Json
-
-  // Identity key - column key that uniquely identifies rows (LEGACY - use identity instead)
-  identityKey String
-
-  // Identity configuration (replaces identityKey)
-  // JSON: { orientation: "row"|"column", rowKey: string, columnIdentitySource?: "headers" }
-  identity Json?
-
-  // Stakeholder column mapping (optional)
-  // JSON: { columnKey: string, matchedField: "email" } | null
-  stakeholderMapping Json?
-
-  isArchived  Boolean  @default(false)
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy      User              @relation("DatasetTemplateCreator", fields: [createdById], references: [id])
-  snapshots      DatasetSnapshot[]
-  linkedLineages TaskLineage[]
-
-  @@unique([organizationId, name])
-  @@index([organizationId])
-  @@index([createdById])
-}
-
-// DatasetSnapshot - immutable snapshot of data for a specific period
-// Snapshots are versioned and support diff computation against prior snapshots
-model DatasetSnapshot {
-  id             String @id @default(cuid())
-  organizationId String
-  templateId     String
-
-  // Period metadata
-  periodLabel String? // "January 2025", "Q1 2025"
-  periodStart DateTime?
-  periodEnd   DateTime?
-
-  // Version control for same-period re-uploads
-  version  Int     @default(1)
-  isLatest Boolean @default(true)
-
-  // Row data - immutable once created
-  // JSON: Array<Record<string, any>> keyed by schema columns
-  rows     Json
-  rowCount Int
-
-  // Stakeholder matching results
-  // JSON: { matched: [{ rowIdentity, userId, email }], unmatched: [{ rowIdentity, email }] }
-  stakeholderResults Json?
-
-  // Diff from prior snapshot (computed at creation)
-  // JSON: { addedCount, removedCount, addedIdentities: string[], removedIdentities: string[] }
-  diffSummary     Json?
-  priorSnapshotId String? // Reference to compared snapshot
-
-  // Upload metadata
-  sourceFilename String?
-  uploadedById   String
-  createdAt      DateTime @default(now())
-
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  template       DatasetTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  uploadedBy     User              @relation("DatasetSnapshotUploader", fields: [uploadedById], references: [id])
-  priorSnapshot  DatasetSnapshot?  @relation("SnapshotDiff", fields: [priorSnapshotId], references: [id])
-  laterSnapshots DatasetSnapshot[] @relation("SnapshotDiff")
-
-  @@index([organizationId])
-  @@index([templateId])
-  @@index([templateId, isLatest])
-  @@index([templateId, periodStart])
-}
-
-// ============================================
-// App-Owned Columns (User-Added Columns for Data Grid)
-// ============================================
-
-// AppColumnDefinition - custom column definitions stored at TaskLineage level
-// These columns persist across all task instances in a recurring board
-model AppColumnDefinition {
-  id             String @id @default(cuid())
-  organizationId String
-  lineageId      String // Stored at TaskLineage level for inheritance
-
-  key      String // Stable key (e.g., "notes", "status_1", "owner_2")
-  label    String // Display name
-  dataType String // "text" | "status" | "attachment" | "user"
-
-  // Type-specific configuration
-  // For status: { options: [{ key: string, label: string, color: string }] }
-  // For others: null
-  config Json?
-
-  position Int // Column display order (0-indexed)
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String
-
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lineage      TaskLineage      @relation(fields: [lineageId], references: [id], onDelete: Cascade)
-  createdBy    User             @relation("AppColumnCreator", fields: [createdById], references: [id])
-  values       AppColumnValue[]
-
-  @@unique([lineageId, key])
-  @@index([organizationId])
-  @@index([lineageId])
-}
-
-// AppColumnValue - cell values for app-owned columns
-// Keyed by rowIdentity (the identity key value from source data)
-model AppColumnValue {
-  id             String @id @default(cuid())
-  organizationId String
-  columnId       String // FK to AppColumnDefinition
-  rowIdentity    String // Identity key value from source data (e.g., email address)
-
-  // Stored value (format depends on column type)
-  // text: { text: string }
-  // status: { statusKey: string }
-  // attachment: { files: AttachmentRef[] }
-  // user: { userId: string }
-  value Json
-
-  updatedAt   DateTime @updatedAt
-  updatedById String
-
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  column       AppColumnDefinition @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  updatedBy    User                @relation("AppColumnValueUpdater", fields: [updatedById], references: [id])
-
-  @@unique([columnId, rowIdentity])
-  @@index([organizationId])
-  @@index([columnId])
-}
-
-// AppRowDefinition - custom rows at bottom of data grid (text annotations, formulas)
-// Stored at TaskLineage level for inheritance across recurring tasks
-model AppRowDefinition {
-  id             String @id @default(cuid())
-  organizationId String
-  lineageId      String // Stored at TaskLineage level for inheritance
-
-  rowType  String // "text" | "formula"
-  label    String // Display name (e.g., "Total", "Notes")
-  position Int    // Row display order (0-indexed)
-
-  // Formula configuration (for formula rows only)
-  // { expression: string, references: string[] }
-  formula Json?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String
-
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lineage      TaskLineage     @relation(fields: [lineageId], references: [id], onDelete: Cascade)
-  createdBy    User            @relation("AppRowCreator", fields: [createdById], references: [id])
-  values       AppRowValue[]
-
-  @@index([organizationId])
-  @@index([lineageId])
-}
-
-// AppRowValue - cell values for app-owned rows
-// Keyed by columnKey (which column this value is in)
-model AppRowValue {
-  id             String @id @default(cuid())
-  organizationId String
-  rowId          String // FK to AppRowDefinition
-  columnKey      String // Which column this value belongs to
-
-  // Stored value (text for text rows, null for formula - calculated on read)
-  value String?
-
-  updatedAt   DateTime @updatedAt
-  updatedById String
-
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  row          AppRowDefinition  @relation(fields: [rowId], references: [id], onDelete: Cascade)
-  updatedBy    User              @relation("AppRowValueUpdater", fields: [updatedById], references: [id])
-
-  @@unique([rowId, columnKey])
-  @@index([organizationId])
-  @@index([rowId])
-}
-
-// CellFormula - Excel-style cell formulas stored per cell
-// Allows typing = in any cell to enter a formula with A1-style references
-model CellFormula {
-  id             String  @id @default(cuid())
-  organizationId String
-  lineageId      String
-  snapshotId     String? // Which sheet/snapshot this applies to (null = all/current)
-
-  cellRef String // A1-style reference: "A1", "B5", etc.
-  formula String // The formula including = sign: "=SUM(A1:H1)"
-
-  // Auto-expansion tracking - formulas automatically expand when new data is added
-  autoExpand     Boolean @default(true) // Enable auto-expansion for this formula
-  expansionAxis  String? // "row" | "column" - derived from data orientation
-  originalMaxRow Int?    // Max row index when formula was created (for row expansion)
-  originalMaxCol Int?    // Max column index when formula was created (for column expansion)
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lineage      TaskLineage  @relation(fields: [lineageId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation("CellFormulaCreator", fields: [createdById], references: [id])
-
-  @@unique([lineageId, snapshotId, cellRef])
-  @@index([organizationId])
-  @@index([lineageId])
-  @@index([snapshotId])
-}

@@ -344,17 +344,6 @@ export class TaskInstanceService {
           },
           client: { select: { id: true, firstName: true, lastName: true, email: true } },
           requests: { select: { id: true, status: true } },
-          lineage: {
-            select: {
-              datasetTemplateId: true,
-              datasetTemplate: {
-                select: {
-                  id: true,
-                  _count: { select: { snapshots: true } }
-                }
-              }
-            }
-          },
           _count: { select: { collectedItems: true } }
         },
         orderBy: { updatedAt: "desc" },
@@ -379,14 +368,6 @@ export class TaskInstanceService {
         const stakeholders = labels?.stakeholders || []
         const stakeholderCount = await this.resolveStakeholderCount(stakeholders, organizationId)
 
-        // Determine data status
-        let dataStatus: "none" | "schema_only" | "has_data" = "none"
-        const lineageData = instance.lineage as any
-        if (lineageData?.datasetTemplateId && lineageData?.datasetTemplate) {
-          const snapshotCount = lineageData.datasetTemplate._count?.snapshots || 0
-          dataStatus = snapshotCount > 0 ? "has_data" : "schema_only"
-        }
-
         return {
           ...instance,
           labels,
@@ -395,8 +376,7 @@ export class TaskInstanceService {
           respondedCount,
           completedCount,
           stakeholderCount,
-          collectedItemCount: instance._count.collectedItems,
-          dataStatus
+          collectedItemCount: instance._count.collectedItems
         }
       })
     )

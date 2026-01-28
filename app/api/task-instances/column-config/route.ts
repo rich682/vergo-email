@@ -12,12 +12,11 @@ const DEFAULT_COLUMNS = [
   { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 4, field: "responses", isSystem: true },
   { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 5, field: "notes", isSystem: false },
   { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 6, field: "collectedItemCount", isSystem: false },
-  { id: "data", type: "dataStatus", label: "Data", width: 80, visible: true, order: 7, field: "dataStatus", isSystem: true },
 ]
 
 // Filter out deprecated columns from saved configs
 function filterDeprecatedColumns(columns: any[]): any[] {
-  const deprecatedIds = new Set(["type"]) // Type column is deprecated
+  const deprecatedIds = new Set(["type", "data"]) // Type and Data columns are deprecated
   return columns.filter(c => !deprecatedIds.has(c.id))
 }
 
