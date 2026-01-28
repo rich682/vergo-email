@@ -2,13 +2,14 @@
  * Database Import Preview API
  * 
  * POST /api/databases/[id]/import/preview - Validate import data without persisting
+ * Returns info about which rows are new vs duplicates
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { DatabaseSchema, validateRows, MAX_ROWS } from "@/lib/services/database.service"
+import { DatabaseService, DatabaseSchema, validateRows, validateRowsAgainstExisting, MAX_ROWS } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
 
 interface RouteParams {
@@ -40,8 +41,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       select: {
         name: true,
         schema: true,
-        identifierKey: true,
+        identifierKeys: true,
         rowCount: true,
+        rows: true,
       },
     })
 
@@ -50,6 +52,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const schema = database.schema as DatabaseSchema
+    const identifierKeys = database.identifierKeys as string[]
+    const existingRows = database.rows as Record<string, any>[]
 
     // Parse the uploaded file
     const formData = await request.formData()
@@ -64,22 +68,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
       const rows = parseExcelWithSchema(Buffer.from(buffer), schema)
 
-      // Check row limit
-      if (rows.length > MAX_ROWS) {
-        return NextResponse.json({
-          valid: false,
-          errors: [`File contains ${rows.length.toLocaleString()} rows, which exceeds the limit of ${MAX_ROWS.toLocaleString()}`],
-          rowCount: rows.length,
-          existingRowCount: database.rowCount,
-        })
-      }
-
-      // Validate rows
-      const validation = validateRows(rows, schema, database.identifierKey)
-
       // Check for missing columns (warnings)
       const warnings: string[] = []
-      const schemaColumns = new Set(schema.columns.map(c => c.key))
       const rowKeys = rows.length > 0 ? new Set(Object.keys(rows[0])) : new Set()
       
       for (const col of schema.columns) {
@@ -88,20 +78,66 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
       }
 
+      // Validate rows within import batch
+      const validation = validateRows(rows, schema, identifierKeys)
+
+      // Check against existing data
+      const { newRows, duplicateRows, duplicateKeys } = validateRowsAgainstExisting(
+        rows,
+        existingRows,
+        identifierKeys
+      )
+
+      // Check row limit
+      const totalAfterImport = existingRows.length + newRows.length
+      const wouldExceedLimit = totalAfterImport > MAX_ROWS
+
+      // Collect all errors
+      const errors = [...validation.errors]
+      
+      if (wouldExceedLimit) {
+        errors.push(
+          `Adding ${newRows.length} rows would exceed the ${MAX_ROWS.toLocaleString()} row limit ` +
+          `(current: ${existingRows.length})`
+        )
+      }
+
+      // Add duplicate info to warnings
+      if (duplicateRows.length > 0) {
+        const maxToShow = 5
+        warnings.push(`${duplicateRows.length} duplicate row(s) will be rejected:`)
+        for (let i = 0; i < Math.min(duplicateKeys.length, maxToShow); i++) {
+          warnings.push(`  • ${duplicateKeys[i]}`)
+        }
+        if (duplicateKeys.length > maxToShow) {
+          warnings.push(`  • ...and ${duplicateKeys.length - maxToShow} more`)
+        }
+      }
+
+      // Determine validity: valid if no validation errors, no row limit issues, and no duplicates
+      const valid = validation.valid && !wouldExceedLimit && duplicateRows.length === 0
+
       return NextResponse.json({
-        valid: validation.valid && warnings.length === 0,
-        errors: validation.errors.slice(0, 50), // Limit error messages
+        valid,
+        errors: errors.slice(0, 50), // Limit error messages
         warnings,
         rowCount: rows.length,
+        newRowCount: newRows.length,
+        duplicateCount: duplicateRows.length,
         existingRowCount: database.rowCount,
-        sampleRows: rows.slice(0, 5), // Return sample for preview
+        totalAfterImport: valid ? existingRows.length + newRows.length : existingRows.length,
+        sampleRows: newRows.slice(0, 5), // Return sample of new rows for preview
       })
     } catch (parseError: any) {
       return NextResponse.json({
         valid: false,
         errors: [parseError.message || "Failed to parse Excel file"],
+        warnings: [],
         rowCount: 0,
+        newRowCount: 0,
+        duplicateCount: 0,
         existingRowCount: database.rowCount,
+        totalAfterImport: database.rowCount,
       })
     }
   } catch (error) {

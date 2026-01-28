@@ -15,6 +15,7 @@ import {
   Table,
   Check,
   AlertCircle,
+  Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -128,14 +129,14 @@ export default function NewDatabasePage() {
   const [columns, setColumns] = useState<SchemaColumn[]>([
     { key: "id", label: "ID", dataType: "text", required: true, order: 0 },
   ])
-  const [identifierKey, setIdentifierKey] = useState("id")
+  const [identifierKeys, setIdentifierKeys] = useState<Set<string>>(new Set(["id"]))
   
   // Upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [parsedHeaders, setParsedHeaders] = useState<string[]>([])
   const [sampleRows, setSampleRows] = useState<Record<string, any>[]>([])
   const [inferredColumns, setInferredColumns] = useState<SchemaColumn[]>([])
-  const [uploadIdentifierKey, setUploadIdentifierKey] = useState<string>("")
+  const [uploadIdentifierKeys, setUploadIdentifierKeys] = useState<Set<string>>(new Set())
   const [importSampleData, setImportSampleData] = useState(true)
   const [parseError, setParseError] = useState<string | null>(null)
   
@@ -159,6 +160,7 @@ export default function NewDatabasePage() {
   const updateColumn = (index: number, updates: Partial<SchemaColumn>) => {
     setColumns(prev => {
       const updated = [...prev]
+      const oldKey = prev[index].key
       updated[index] = { ...updated[index], ...updates }
       
       if (updates.label !== undefined) {
@@ -171,8 +173,14 @@ export default function NewDatabasePage() {
         }
         updated[index].key = uniqueKey || `column_${index + 1}`
         
-        if (prev[index].key === identifierKey) {
-          setIdentifierKey(updated[index].key)
+        // Update identifier keys if this column was an identifier
+        if (identifierKeys.has(oldKey)) {
+          setIdentifierKeys(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(oldKey)
+            newSet.add(updated[index].key)
+            return newSet
+          })
         }
       }
       
@@ -189,12 +197,40 @@ export default function NewDatabasePage() {
       return updated.map((col, i) => ({ ...col, order: i }))
     })
     
-    if (removedKey === identifierKey) {
-      const remaining = columns.filter((_, i) => i !== index)
-      if (remaining.length > 0) {
-        setIdentifierKey(remaining[0].key)
-      }
+    // Remove from identifier keys if present
+    if (identifierKeys.has(removedKey)) {
+      setIdentifierKeys(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(removedKey)
+        // If no identifiers left, set first remaining column
+        if (newSet.size === 0) {
+          const remaining = columns.filter((_, i) => i !== index)
+          if (remaining.length > 0) {
+            newSet.add(remaining[0].key)
+          }
+        }
+        return newSet
+      })
     }
+  }
+
+  const toggleIdentifierKey = (key: string, columnIndex: number) => {
+    setIdentifierKeys(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(key)) {
+        // Don't allow removing last identifier
+        if (newSet.size > 1) {
+          newSet.delete(key)
+        }
+      } else {
+        newSet.add(key)
+        // Mark column as required when it becomes an identifier
+        if (!columns[columnIndex].required) {
+          updateColumn(columnIndex, { required: true })
+        }
+      }
+      return newSet
+    })
   }
 
   // ----------------------------------------
@@ -277,7 +313,8 @@ export default function NewDatabasePage() {
       })
       
       setInferredColumns(inferred)
-      setUploadIdentifierKey(inferred[0]?.key || "")
+      // Set first column as identifier by default
+      setUploadIdentifierKeys(new Set([inferred[0]?.key || ""]))
       
     } catch (err: any) {
       setParseError(err.message || "Failed to parse Excel file")
@@ -310,13 +347,32 @@ export default function NewDatabasePage() {
     })
   }
 
+  const toggleUploadIdentifierKey = (key: string, columnIndex: number) => {
+    setUploadIdentifierKeys(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(key)) {
+        // Don't allow removing last identifier
+        if (newSet.size > 1) {
+          newSet.delete(key)
+        }
+      } else {
+        newSet.add(key)
+        // Mark column as required when it becomes an identifier
+        if (!inferredColumns[columnIndex].required) {
+          updateInferredColumn(columnIndex, { required: true })
+        }
+      }
+      return newSet
+    })
+  }
+
   // ----------------------------------------
   // Create Handler
   // ----------------------------------------
 
   const handleCreate = async () => {
     const schemaColumns = method === "upload" ? inferredColumns : columns
-    const idKey = method === "upload" ? uploadIdentifierKey : identifierKey
+    const idKeys = method === "upload" ? Array.from(uploadIdentifierKeys) : Array.from(identifierKeys)
     
     // Validation
     if (!name.trim()) {
@@ -335,15 +391,22 @@ export default function NewDatabasePage() {
       return
     }
     
-    const idCol = schemaColumns.find(c => c.key === idKey)
-    if (!idCol) {
-      setError("Please select an identifier column")
+    if (idKeys.length === 0) {
+      setError("Please select at least one identifier column")
       return
     }
     
-    if (!idCol.required) {
-      setError("The identifier column must be marked as required")
-      return
+    // Check all identifier columns are required
+    for (const idKey of idKeys) {
+      const idCol = schemaColumns.find(c => c.key === idKey)
+      if (!idCol) {
+        setError(`Identifier column "${idKey}" not found`)
+        return
+      }
+      if (!idCol.required) {
+        setError(`Identifier column "${idCol.label}" must be marked as required`)
+        return
+      }
     }
     
     setCreating(true)
@@ -374,7 +437,7 @@ export default function NewDatabasePage() {
             columns: schemaColumns,
             version: 1,
           },
-          identifierKey: idKey,
+          identifierKeys: idKeys,
           initialRows,
         }),
       })
@@ -517,7 +580,10 @@ export default function NewDatabasePage() {
                   <div>Label</div>
                   <div>Type</div>
                   <div>Required</div>
-                  <div>Identifier</div>
+                  <div className="flex items-center gap-1">
+                    <Key className="w-3 h-3" />
+                    Identifier
+                  </div>
                   <div />
                 </div>
 
@@ -559,22 +625,17 @@ export default function NewDatabasePage() {
                         type="checkbox"
                         checked={column.required}
                         onChange={(e) => updateColumn(index, { required: e.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        disabled={identifierKeys.has(column.key)} // Can't unmark required if it's an identifier
+                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 disabled:opacity-50"
                       />
                     </div>
                     
                     <div className="flex justify-center">
                       <input
-                        type="radio"
-                        name="identifier"
-                        checked={column.key === identifierKey}
-                        onChange={() => {
-                          setIdentifierKey(column.key)
-                          if (!column.required) {
-                            updateColumn(index, { required: true })
-                          }
-                        }}
-                        className="h-4 w-4 border-gray-300 text-orange-600 focus:ring-orange-500"
+                        type="checkbox"
+                        checked={identifierKeys.has(column.key)}
+                        onChange={() => toggleIdentifierKey(column.key, index)}
+                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                       />
                     </div>
                     
@@ -591,9 +652,13 @@ export default function NewDatabasePage() {
                 ))}
               </div>
 
-              <p className="mt-3 text-xs text-gray-500">
-                The identifier column uniquely identifies each row and must be required.
-              </p>
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  <strong>Composite Identifier:</strong> Select one or more columns that together uniquely identify each row. 
+                  For example, "Project ID" + "Period" can form a composite key. 
+                  All identifier columns must be required. Duplicate combinations will be rejected during import.
+                </p>
+              </div>
             </div>
           ) : (
             /* Upload-based Schema */
@@ -701,7 +766,10 @@ export default function NewDatabasePage() {
                         <div>Label</div>
                         <div>Type</div>
                         <div>Required</div>
-                        <div>Identifier</div>
+                        <div className="flex items-center gap-1">
+                          <Key className="w-3 h-3" />
+                          Identifier
+                        </div>
                       </div>
 
                       {/* Column rows */}
@@ -737,26 +805,28 @@ export default function NewDatabasePage() {
                               type="checkbox"
                               checked={column.required}
                               onChange={(e) => updateInferredColumn(index, { required: e.target.checked })}
-                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              disabled={uploadIdentifierKeys.has(column.key)}
+                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 disabled:opacity-50"
                             />
                           </div>
                           
                           <div className="flex justify-center">
                             <input
-                              type="radio"
-                              name="upload-identifier"
-                              checked={column.key === uploadIdentifierKey}
-                              onChange={() => {
-                                setUploadIdentifierKey(column.key)
-                                if (!column.required) {
-                                  updateInferredColumn(index, { required: true })
-                                }
-                              }}
-                              className="h-4 w-4 border-gray-300 text-orange-600 focus:ring-orange-500"
+                              type="checkbox"
+                              checked={uploadIdentifierKeys.has(column.key)}
+                              onChange={() => toggleUploadIdentifierKey(column.key, index)}
+                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                             />
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>Composite Identifier:</strong> Select one or more columns that together uniquely identify each row. 
+                        All identifier columns must be required. Duplicate combinations will be rejected during import.
+                      </p>
                     </div>
                   </div>
 
@@ -783,6 +853,9 @@ export default function NewDatabasePage() {
                                 {inferredColumns.map(col => (
                                   <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
                                     {col.label}
+                                    {uploadIdentifierKeys.has(col.key) && (
+                                      <Key className="w-3 h-3 inline-block ml-1 text-orange-500" />
+                                    )}
                                   </th>
                                 ))}
                               </tr>

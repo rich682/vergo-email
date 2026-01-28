@@ -1151,7 +1151,7 @@ model Database {
   // Schema definition (JSON) - DatabaseSchema type
   // { columns: DatabaseSchemaColumn[], version: number }
   schema          Json
-  identifierKey   String   // Which column key is the row identifier
+  identifierKeys  Json     // String[] - Column keys that together form the unique row identifier (composite key)
   
   // Current data (JSON array of rows) - DatabaseRow[]
   rows            Json     @default("[]")

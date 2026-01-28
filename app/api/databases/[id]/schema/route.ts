@@ -9,10 +9,11 @@
  * - Change column order
  * - Change data types (with warnings)
  * - Mark columns as required/optional (with warnings)
+ * - Add identifier columns (if not yet has data)
  * 
  * Blocked operations:
- * - Remove identifier column
- * - Change identifier key after data exists
+ * - Remove identifier columns
+ * - Change identifier keys after data exists
  * - Remove columns if data exists (v1 restriction)
  */
 
@@ -28,7 +29,7 @@ interface RouteParams {
 
 interface SchemaUpdateRequest {
   columns?: DatabaseSchemaColumn[]
-  identifierKey?: string
+  identifierKeys?: string[]
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
@@ -56,7 +57,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       select: {
         id: true,
         schema: true,
-        identifierKey: true,
+        identifierKeys: true,
         rowCount: true,
       },
     })
@@ -66,6 +67,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const currentSchema = database.schema as DatabaseSchema
+    const currentIdentifierKeys = database.identifierKeys as string[]
     const hasData = database.rowCount > 0
 
     const body: SchemaUpdateRequest = await request.json()
@@ -74,12 +76,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Guardrails
     // ============================================
 
-    // 1. Cannot change identifier key after data exists
-    if (body.identifierKey && body.identifierKey !== database.identifierKey && hasData) {
-      return NextResponse.json({
-        error: "Cannot change identifier column after data has been imported. Delete all data first.",
-        code: "IDENTIFIER_LOCKED",
-      }, { status: 400 })
+    // 1. Cannot change identifier keys after data exists
+    if (body.identifierKeys && hasData) {
+      const currentKeySet = new Set(currentIdentifierKeys)
+      const newKeySet = new Set(body.identifierKeys)
+      
+      const keysMatch = 
+        currentKeySet.size === newKeySet.size &&
+        [...currentKeySet].every(k => newKeySet.has(k))
+      
+      if (!keysMatch) {
+        return NextResponse.json({
+          error: "Cannot change identifier columns after data has been imported. Delete all data first.",
+          code: "IDENTIFIER_LOCKED",
+        }, { status: 400 })
+      }
     }
 
     // 2. Cannot remove columns if data exists (v1 restriction)
@@ -100,13 +111,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // 3. Cannot remove identifier column ever
-    const newIdentifierKey = body.identifierKey || database.identifierKey
+    // 3. Cannot remove identifier columns ever
+    const newIdentifierKeys = body.identifierKeys || currentIdentifierKeys
     if (body.columns) {
-      const hasIdentifier = body.columns.some(c => c.key === newIdentifierKey)
-      if (!hasIdentifier) {
+      const newColumnKeys = new Set(body.columns.map(c => c.key))
+      const missingIdentifiers = newIdentifierKeys.filter(k => !newColumnKeys.has(k))
+      
+      if (missingIdentifiers.length > 0) {
         return NextResponse.json({
-          error: "Cannot remove the identifier column from schema",
+          error: `Cannot remove identifier columns from schema: ${missingIdentifiers.join(", ")}`,
           code: "IDENTIFIER_REQUIRED",
         }, { status: 400 })
       }
@@ -122,7 +135,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate the new schema
-    const validationError = validateSchema(newSchema, newIdentifierKey)
+    const validationError = validateSchema(newSchema, newIdentifierKeys)
     if (validationError) {
       return NextResponse.json({
         error: validationError,
@@ -159,12 +172,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       where: { id: params.id },
       data: {
         schema: newSchema as any,
-        identifierKey: newIdentifierKey,
+        identifierKeys: newIdentifierKeys,
       },
       select: {
         id: true,
         schema: true,
-        identifierKey: true,
+        identifierKeys: true,
       },
     })
 

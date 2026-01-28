@@ -1,7 +1,8 @@
 /**
  * Database Import API
  * 
- * POST /api/databases/[id]/import - Confirm and execute import (replaces all rows)
+ * POST /api/databases/[id]/import - Confirm and execute import (append-only)
+ * Adds new rows only, rejects duplicates based on composite identifier keys
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -62,23 +63,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
       const rows = parseExcelWithSchema(Buffer.from(buffer), schema)
 
-      // Import the rows (this validates and replaces all)
-      const updated = await DatabaseService.importRows(
+      // Import the rows (append-only: adds new rows, rejects duplicates)
+      const result = await DatabaseService.importRows(
         params.id,
         user.organizationId,
         user.id,
         rows
       )
 
+      if (result.errors.length > 0) {
+        return NextResponse.json({
+          success: false,
+          added: result.added,
+          duplicates: result.duplicates,
+          errors: result.errors,
+          message: result.errors[0],
+        }, { status: 400 })
+      }
+
       return NextResponse.json({
         success: true,
-        rowCount: updated.rowCount,
-        message: `Successfully imported ${updated.rowCount.toLocaleString()} rows`,
+        added: result.added,
+        duplicates: result.duplicates,
+        errors: [],
+        message: `Successfully added ${result.added.toLocaleString()} new row(s)`,
       })
     } catch (importError: any) {
       return NextResponse.json({
         success: false,
-        error: importError.message || "Failed to import data",
+        added: 0,
+        duplicates: 0,
+        errors: [importError.message || "Failed to import data"],
+        message: importError.message || "Failed to import data",
       }, { status: 400 })
     }
   } catch (error) {

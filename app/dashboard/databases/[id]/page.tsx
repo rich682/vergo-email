@@ -15,6 +15,8 @@ import {
   AlertCircle,
   AlertTriangle,
   FileUp,
+  Key,
+  Plus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,7 +62,7 @@ interface DatabaseDetail {
   name: string
   description: string | null
   schema: DatabaseSchema
-  identifierKey: string
+  identifierKeys: string[]
   rows: DatabaseRow[]
   rowCount: number
   createdAt: string
@@ -86,7 +88,10 @@ interface ImportPreviewResult {
   errors: string[]
   warnings?: string[]
   rowCount: number
+  newRowCount: number
+  duplicateCount: number
   existingRowCount: number
+  totalAfterImport: number
   sampleRows?: DatabaseRow[]
 }
 
@@ -163,6 +168,11 @@ export default function DatabaseDetailPage() {
   const sortedColumns = useMemo(() => {
     if (!database) return []
     return [...database.schema.columns].sort((a, b) => a.order - b.order)
+  }, [database])
+
+  const identifierKeySet = useMemo(() => {
+    if (!database) return new Set<string>()
+    return new Set(database.identifierKeys)
   }, [database])
 
   const getUniqueValues = useCallback(
@@ -285,7 +295,10 @@ export default function DatabaseDetailPage() {
         valid: false,
         errors: ["Failed to preview file"],
         rowCount: 0,
+        newRowCount: 0,
+        duplicateCount: 0,
         existingRowCount: database?.rowCount || 0,
+        totalAfterImport: database?.rowCount || 0,
       })
     } finally {
       setPreviewing(false)
@@ -318,9 +331,12 @@ export default function DatabaseDetailPage() {
       } else {
         setImportPreview({
           valid: false,
-          errors: [result.error || "Import failed"],
+          errors: result.errors || [result.error || "Import failed"],
           rowCount: importPreview?.rowCount || 0,
+          newRowCount: 0,
+          duplicateCount: result.duplicates || 0,
           existingRowCount: database?.rowCount || 0,
+          totalAfterImport: database?.rowCount || 0,
         })
       }
     } catch (err) {
@@ -329,7 +345,10 @@ export default function DatabaseDetailPage() {
         valid: false,
         errors: ["Failed to import data"],
         rowCount: importPreview?.rowCount || 0,
+        newRowCount: 0,
+        duplicateCount: 0,
         existingRowCount: database?.rowCount || 0,
+        totalAfterImport: database?.rowCount || 0,
       })
     } finally {
       setImporting(false)
@@ -542,6 +561,7 @@ export default function DatabaseDetailPage() {
                         const filter = getColumnFilter(column.key)
                         const hasFilter = filter && filter.selectedValues.size > 0
                         const uniqueValues = getUniqueValues(column.key)
+                        const isIdentifier = identifierKeySet.has(column.key)
 
                         return (
                           <th
@@ -556,10 +576,8 @@ export default function DatabaseDetailPage() {
                                   }`}
                                 >
                                   {column.label}
-                                  {column.key === database.identifierKey && (
-                                    <span className="ml-1 text-[10px] px-1 py-0.5 bg-gray-200 rounded">
-                                      ID
-                                    </span>
+                                  {isIdentifier && (
+                                    <Key className="w-3 h-3 ml-1 text-orange-500" />
                                   )}
                                   <ChevronDown className="w-3 h-3" />
                                 </button>
@@ -713,9 +731,10 @@ export default function DatabaseDetailPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        {column.key === database.identifierKey ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                            Primary
+                        {identifierKeySet.has(column.key) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            <Key className="w-3 h-3" />
+                            Key
                           </span>
                         ) : (
                           <span className="text-gray-400">—</span>
@@ -726,6 +745,29 @@ export default function DatabaseDetailPage() {
                 </tbody>
               </table>
             </div>
+            {/* Composite key info */}
+            {database.identifierKeys.length > 1 && (
+              <div className="px-6 py-4 bg-blue-50 border-t border-blue-200">
+                <div className="flex items-start gap-2">
+                  <Key className="w-4 h-4 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-700">Composite Identifier</p>
+                    <p className="text-sm text-blue-600">
+                      Rows are uniquely identified by the combination of: {" "}
+                      {database.identifierKeys.map((key, i) => {
+                        const col = sortedColumns.find(c => c.key === key)
+                        return (
+                          <span key={key}>
+                            {i > 0 && " + "}
+                            <strong>{col?.label || key}</strong>
+                          </span>
+                        )
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -736,7 +778,7 @@ export default function DatabaseDetailPage() {
           <DialogHeader>
             <DialogTitle>Import Data</DialogTitle>
             <DialogDescription>
-              Upload an Excel file to replace all existing data. This action cannot be undone.
+              Upload an Excel file to add new rows. Duplicate entries (based on identifier columns) will be rejected.
             </DialogDescription>
           </DialogHeader>
 
@@ -791,7 +833,7 @@ export default function DatabaseDetailPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-700 truncate">{importFile.name}</p>
                     <p className="text-sm text-gray-500">
-                      {importPreview.rowCount.toLocaleString()} rows found
+                      {importPreview.rowCount.toLocaleString()} rows in file
                     </p>
                   </div>
                   <Button
@@ -806,12 +848,27 @@ export default function DatabaseDetailPage() {
                   </Button>
                 </div>
 
-                {/* Warning about replacing data */}
-                {database.rowCount > 0 && (
+                {/* Import summary */}
+                {importPreview.newRowCount > 0 && importPreview.valid && (
+                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <Plus className="w-4 h-4 text-green-600 mt-0.5" />
+                    <div className="text-sm text-green-700">
+                      <strong>{importPreview.newRowCount.toLocaleString()}</strong> new row(s) will be added
+                      {database.rowCount > 0 && (
+                        <span className="text-green-600">
+                          {" "}(total: {importPreview.totalAfterImport.toLocaleString()})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Duplicate warning */}
+                {importPreview.duplicateCount > 0 && (
                   <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
                     <p className="text-sm text-amber-700">
-                      This will replace all {database.rowCount.toLocaleString()} existing rows
+                      <strong>{importPreview.duplicateCount.toLocaleString()}</strong> duplicate row(s) will be rejected
                     </p>
                   </div>
                 )}
@@ -822,7 +879,7 @@ export default function DatabaseDetailPage() {
                     <div className="flex items-start gap-2">
                       <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
                       <div>
-                        <p className="font-medium text-red-700">Validation errors</p>
+                        <p className="font-medium text-red-700">Cannot import</p>
                         <ul className="mt-1 text-sm text-red-600 space-y-0.5">
                           {importPreview.errors.slice(0, 10).map((err, i) => (
                             <li key={i}>• {err}</li>
@@ -847,7 +904,7 @@ export default function DatabaseDetailPage() {
                         <p className="font-medium text-amber-700">Warnings</p>
                         <ul className="mt-1 text-sm text-amber-600 space-y-0.5">
                           {importPreview.warnings.map((warn, i) => (
-                            <li key={i}>• {warn}</li>
+                            <li key={i}>{warn}</li>
                           ))}
                         </ul>
                       </div>
@@ -856,11 +913,11 @@ export default function DatabaseDetailPage() {
                 )}
 
                 {/* Valid preview */}
-                {importPreview.valid && (
-                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <Check className="w-4 h-4 text-green-600 mt-0.5" />
-                    <p className="text-sm text-green-700">
-                      File is valid and ready to import {importPreview.rowCount.toLocaleString()} rows
+                {importPreview.valid && importPreview.newRowCount > 0 && (
+                  <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Check className="w-4 h-4 text-blue-600 mt-0.5" />
+                    <p className="text-sm text-blue-700">
+                      File is valid and ready to import
                     </p>
                   </div>
                 )}
@@ -881,7 +938,7 @@ export default function DatabaseDetailPage() {
             </Button>
             <Button
               onClick={handleConfirmImport}
-              disabled={!importPreview?.valid || importing}
+              disabled={!importPreview?.valid || importing || (importPreview?.newRowCount || 0) === 0}
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {importing ? (
@@ -891,8 +948,8 @@ export default function DatabaseDetailPage() {
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Import {importPreview?.rowCount?.toLocaleString() || 0} Rows
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add {importPreview?.newRowCount?.toLocaleString() || 0} Rows
                 </>
               )}
             </Button>

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, schema, identifierKey, initialRows } = body
+    const { name, description, schema, identifierKeys, initialRows } = body
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -75,9 +75,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!identifierKey || typeof identifierKey !== "string") {
+    if (!identifierKeys || !Array.isArray(identifierKeys) || identifierKeys.length === 0) {
       return NextResponse.json(
-        { error: "Identifier key is required" },
+        { error: "At least one identifier column is required" },
         { status: 400 }
       )
     }
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       description: description?.trim(),
       schema: schema as DatabaseSchema,
-      identifierKey,
+      identifierKeys,
       organizationId: user.organizationId,
       createdById: user.id,
       initialRows: initialRows as DatabaseRow[] | undefined,
