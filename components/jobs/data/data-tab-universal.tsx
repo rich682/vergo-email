@@ -1081,22 +1081,33 @@ export function DataTabUniversal({
         return
       }
       
-      // Fall back to current period (even if empty) or latest snapshot
-      const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
-      if (currentPeriodSheet) {
-        console.log("[DataTab] Selecting current period (may be empty):", currentPeriodSheet.id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: currentPeriodSheet.id,
-        })
-      } else if (dataStatus?.datasetTemplate?.latestSnapshot) {
+      // Fall back to latest snapshot (prefer actual data over placeholder)
+      if (dataStatus?.datasetTemplate?.latestSnapshot) {
         console.log("[DataTab] Selecting latest snapshot:", dataStatus.datasetTemplate.latestSnapshot.id)
         setCurrentSheet({
           kind: "snapshot",
           snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
         })
+        return
+      }
+      
+      // Fall back to current period placeholder or first sheet
+      const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
+      if (currentPeriodSheet && currentPeriodSheet.id !== "current-period") {
+        console.log("[DataTab] Selecting current period:", currentPeriodSheet.id)
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: currentPeriodSheet.id,
+        })
+      } else if (sheets.length > 0 && sheets[0].id !== "current-period") {
+        // Select first real snapshot
+        console.log("[DataTab] Selecting first real sheet:", sheets[0].id)
+        setCurrentSheet({
+          kind: "snapshot",
+          snapshotId: sheets[0].id,
+        })
       } else {
-        console.log("[DataTab] No sheet to select!")
+        console.log("[DataTab] No real sheet to select, only placeholder available")
       }
     }
   }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
