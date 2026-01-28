@@ -1,12 +1,16 @@
 "use client"
 
-import { Database, FileSpreadsheet, ClipboardList } from "lucide-react"
+import { Database, FileSpreadsheet, ClipboardList, FileBarChart, FileText } from "lucide-react"
+
+// Task types - GENERIC, RECONCILIATION, TABLE are in the DB schema
+// REPORT and FORMS are frontend-only for now
+export type TaskTypeValue = "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORT" | "FORMS"
 
 interface TaskTypeCellProps {
-  value: "GENERIC" | "RECONCILIATION" | "TABLE" | undefined
+  value: TaskTypeValue | undefined
 }
 
-const TYPE_CONFIG = {
+const TYPE_CONFIG: Record<TaskTypeValue, { label: string; icon: typeof ClipboardList; bgColor: string; textColor: string }> = {
   GENERIC: {
     label: "Standard",
     icon: ClipboardList,
@@ -25,10 +29,29 @@ const TYPE_CONFIG = {
     bgColor: "bg-blue-100",
     textColor: "text-blue-700",
   },
+  REPORT: {
+    label: "Report",
+    icon: FileBarChart,
+    bgColor: "bg-emerald-100",
+    textColor: "text-emerald-700",
+  },
+  FORMS: {
+    label: "Forms",
+    icon: FileText,
+    bgColor: "bg-amber-100",
+    textColor: "text-amber-700",
+  },
 }
 
+// Export for use in create form
+export const TASK_TYPE_OPTIONS = Object.entries(TYPE_CONFIG).map(([value, config]) => ({
+  value: value as TaskTypeValue,
+  label: config.label,
+}))
+
 export function TaskTypeCell({ value }: TaskTypeCellProps) {
-  const config = TYPE_CONFIG[value || "GENERIC"]
+  const typeValue = value || "GENERIC"
+  const config = TYPE_CONFIG[typeValue] || TYPE_CONFIG.GENERIC
   const Icon = config.icon
 
   return (

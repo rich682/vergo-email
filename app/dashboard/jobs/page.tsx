@@ -149,6 +149,7 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
+  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORT" | "FORMS">("GENERIC")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
@@ -620,7 +621,7 @@ export default function JobsPage() {
           ownerId: newJobOwnerId,
           stakeholders: newJobStakeholders,
           boardId: boardId || undefined,
-          type: "GENERIC",
+          type: newJobType,
           createLineage: isRecurring
         })
       })
@@ -646,6 +647,7 @@ export default function JobsPage() {
 
   const resetCreateForm = () => {
     setNewJobName("")
+    setNewJobType("GENERIC")
     setNewJobDescription("")
     setNewJobDueDate("")
     setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
@@ -975,16 +977,33 @@ export default function JobsPage() {
               )}
               
               <div className="space-y-3 pt-2">
-                {/* Task Name */}
-                <div>
-                  <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="taskName"
-                    value={newJobName}
-                    onChange={(e) => setNewJobName(e.target.value)}
-                    placeholder="e.g., Collect W-9 forms"
-                    className="mt-1"
-                  />
+                {/* Task Name & Type - Side by side */}
+                <div className="grid grid-cols-[1fr,140px] gap-3">
+                  <div>
+                    <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="taskName"
+                      value={newJobName}
+                      onChange={(e) => setNewJobName(e.target.value)}
+                      placeholder="e.g., Collect W-9 forms"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="taskType" className="text-sm">Type <span className="text-red-500">*</span></Label>
+                    <select
+                      id="taskType"
+                      value={newJobType}
+                      onChange={(e) => setNewJobType(e.target.value as any)}
+                      className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                    >
+                      <option value="GENERIC">Standard</option>
+                      <option value="TABLE">Variance</option>
+                      <option value="RECONCILIATION">Reconciliation</option>
+                      <option value="REPORT">Report</option>
+                      <option value="FORMS">Forms</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Owner & Due Date - Side by side */}
