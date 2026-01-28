@@ -473,6 +473,12 @@ export class QuestService {
         sentAt: new Date()
       })
 
+      // Auto-transition task instance to IN_PROGRESS if sending request
+      if (taskInstanceId && successful.length > 0) {
+        const { TaskInstanceService } = await import("./task-instance.service")
+        await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+      }
+
       log.info("Quest execution complete", {
         questId: id,
         emailsSent: successful.length,

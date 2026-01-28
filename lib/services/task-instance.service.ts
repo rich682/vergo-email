@@ -495,6 +495,37 @@ export class TaskInstanceService {
   }
 
   /**
+   * Mark a task instance as IN_PROGRESS if currently NOT_STARTED
+   * Used to auto-transition when work begins (sending request, uploading data, etc.)
+   */
+  static async markInProgressIfNotStarted(
+    id: string,
+    organizationId: string
+  ): Promise<boolean> {
+    const instance = await prisma.taskInstance.findFirst({
+      where: { id, organizationId }
+    })
+
+    if (!instance) return false
+    
+    // Only transition from NOT_STARTED to IN_PROGRESS
+    if (instance.status !== JobStatus.NOT_STARTED) return false
+
+    await prisma.taskInstance.update({
+      where: { id },
+      data: { status: JobStatus.IN_PROGRESS }
+    })
+
+    // Also update parent board status if needed
+    if (instance.boardId) {
+      const { BoardService } = await import("./board.service")
+      await BoardService.recomputeBoardStatus(instance.boardId, organizationId)
+    }
+
+    return true
+  }
+
+  /**
    * Associate existing requests with a task instance
    */
   static async associateRequests(

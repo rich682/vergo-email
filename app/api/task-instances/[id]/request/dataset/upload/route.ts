@@ -101,6 +101,9 @@ export async function POST(
       })
     }
 
+    // Auto-transition task instance to IN_PROGRESS when data is uploaded
+    await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+
     return NextResponse.json({
       success: true,
       draftId: emailDraft.id,

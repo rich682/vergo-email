@@ -525,7 +525,50 @@ export class DatasetService {
       (err) => console.error("[DatasetService] Formula expansion failed:", err)
     )
 
+    // Auto-transition task instances to IN_PROGRESS when data is uploaded
+    // Find all task instances linked to this template's lineages
+    this.markLinkedTaskInstancesInProgress(templateId, orgId).catch(
+      (err) => console.error("[DatasetService] Task instance status update failed:", err)
+    )
+
     return snapshot
+  }
+
+  /**
+   * Mark all task instances linked to a template's lineages as IN_PROGRESS
+   */
+  private static async markLinkedTaskInstancesInProgress(
+    templateId: string,
+    orgId: string
+  ): Promise<void> {
+    // Find all NOT_STARTED task instances linked to this template via lineages
+    const taskInstances = await prisma.taskInstance.findMany({
+      where: {
+        organizationId: orgId,
+        status: "NOT_STARTED",
+        lineage: {
+          datasetTemplateId: templateId,
+        },
+      },
+      select: { id: true, boardId: true },
+    })
+
+    if (taskInstances.length === 0) return
+
+    // Update all to IN_PROGRESS
+    await prisma.taskInstance.updateMany({
+      where: {
+        id: { in: taskInstances.map((t) => t.id) },
+      },
+      data: { status: "IN_PROGRESS" },
+    })
+
+    // Update parent boards
+    const { BoardService } = await import("./board.service")
+    const boardIds = [...new Set(taskInstances.filter((t) => t.boardId).map((t) => t.boardId!))]
+    for (const boardId of boardIds) {
+      await BoardService.recomputeBoardStatus(boardId, orgId)
+    }
   }
 
   /**
