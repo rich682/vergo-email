@@ -17,6 +17,7 @@ interface ReportItem {
   id: string
   name: string
   description: string | null
+  cadence: string
   columnCount: number
   createdAt: string
   updatedAt: string
@@ -28,6 +29,13 @@ interface ReportItem {
     name: string | null
     email: string
   }
+}
+
+const CADENCE_LABELS: Record<string, string> = {
+  daily: "Daily",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  annual: "Annual",
 }
 
 export default function ReportsPage() {
@@ -205,6 +213,9 @@ export default function ReportsPage() {
                     </DropdownMenu>
                   </div>
                   <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
+                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                      {CADENCE_LABELS[report.cadence] || report.cadence}
+                    </span>
                     <span className="flex items-center gap-1">
                       <Database className="w-3 h-3" />
                       {report.database.name}

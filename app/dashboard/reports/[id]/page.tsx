@@ -68,6 +68,8 @@ interface ReportDefinition {
   id: string
   name: string
   description: string | null
+  cadence: string
+  dateColumnKey: string
   columns: ReportColumn[]
   formulaRows: ReportFormulaRow[]
   database: {
@@ -76,6 +78,13 @@ interface ReportDefinition {
     schema: DatabaseSchema
     rowCount: number
   }
+}
+
+const CADENCE_LABELS: Record<string, string> = {
+  daily: "Daily",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  annual: "Annual",
 }
 
 interface PreviewData {
@@ -289,7 +298,12 @@ export default function ReportBuilderPage() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">{report.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-semibold text-gray-900">{report.name}</h1>
+                  <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">
+                    {CADENCE_LABELS[report.cadence] || report.cadence}
+                  </span>
+                </div>
                 <p className="text-sm text-gray-500 flex items-center gap-2">
                   <Database className="w-3.5 h-3.5" />
                   {report.database.name}

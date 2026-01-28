@@ -37,10 +37,15 @@ export interface ReportFormulaRow {
   order: number
 }
 
+// Valid cadence values for reports
+export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
+
 export interface CreateReportDefinitionInput {
   name: string
   description?: string
   databaseId: string
+  cadence: ReportCadence
+  dateColumnKey: string
   columns?: ReportColumn[]
   formulaRows?: ReportFormulaRow[]
   organizationId: string
@@ -148,12 +153,27 @@ export class ReportDefinitionService {
       throw new Error("Database not found")
     }
 
+    // Validate dateColumnKey exists in database schema
+    const schema = database.schema as DatabaseSchema
+    const dateColumnExists = schema.columns.some(col => col.key === input.dateColumnKey)
+    if (!dateColumnExists) {
+      throw new Error(`Date column "${input.dateColumnKey}" not found in database schema`)
+    }
+
+    // Validate cadence
+    const validCadences = ["daily", "monthly", "quarterly", "annual"]
+    if (!validCadences.includes(input.cadence)) {
+      throw new Error(`Invalid cadence "${input.cadence}". Must be one of: ${validCadences.join(", ")}`)
+    }
+
     const report = await prisma.reportDefinition.create({
       data: {
         name: input.name,
         description: input.description,
         organizationId: input.organizationId,
         databaseId: input.databaseId,
+        cadence: input.cadence,
+        dateColumnKey: input.dateColumnKey,
         columns: (input.columns || []) as any,
         formulaRows: (input.formulaRows || []) as any,
         createdById: input.createdById,

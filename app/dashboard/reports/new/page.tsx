@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Database, Loader2 } from "lucide-react"
+import { ArrowLeft, Database, Loader2, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,6 +23,28 @@ interface DatabaseOption {
   columnCount: number
 }
 
+interface DatabaseColumn {
+  key: string
+  label: string
+  dataType: string
+}
+
+interface DatabaseDetail {
+  id: string
+  name: string
+  schema: {
+    columns: DatabaseColumn[]
+  }
+  rowCount: number
+}
+
+const CADENCE_OPTIONS = [
+  { value: "daily", label: "Daily" },
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "annual", label: "Annual" },
+]
+
 export default function NewReportPage() {
   const router = useRouter()
   const [databases, setDatabases] = useState<DatabaseOption[]>([])
@@ -33,7 +55,13 @@ export default function NewReportPage() {
   // Form state
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [cadence, setCadence] = useState("")
   const [databaseId, setDatabaseId] = useState("")
+  const [dateColumnKey, setDateColumnKey] = useState("")
+
+  // Database detail state (for getting columns)
+  const [databaseDetail, setDatabaseDetail] = useState<DatabaseDetail | null>(null)
+  const [loadingDatabaseDetail, setLoadingDatabaseDetail] = useState(false)
 
   // Fetch available databases
   const fetchDatabases = useCallback(async () => {
@@ -51,17 +79,56 @@ export default function NewReportPage() {
     }
   }, [])
 
+  // Fetch database detail when database is selected
+  const fetchDatabaseDetail = useCallback(async (id: string) => {
+    if (!id) {
+      setDatabaseDetail(null)
+      return
+    }
+    try {
+      setLoadingDatabaseDetail(true)
+      const response = await fetch(`/api/databases/${id}`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setDatabaseDetail(data.database)
+      }
+    } catch (err) {
+      console.error("Error fetching database detail:", err)
+    } finally {
+      setLoadingDatabaseDetail(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchDatabases()
   }, [fetchDatabases])
+
+  // Fetch database detail when selection changes
+  useEffect(() => {
+    if (databaseId) {
+      fetchDatabaseDetail(databaseId)
+      // Reset date column when database changes
+      setDateColumnKey("")
+    } else {
+      setDatabaseDetail(null)
+    }
+  }, [databaseId, fetchDatabaseDetail])
 
   const handleCreate = async () => {
     if (!name.trim()) {
       setError("Report name is required")
       return
     }
+    if (!cadence) {
+      setError("Please select a cadence")
+      return
+    }
     if (!databaseId) {
       setError("Please select a database")
+      return
+    }
+    if (!dateColumnKey) {
+      setError("Please select a date column")
       return
     }
 
@@ -76,7 +143,9 @@ export default function NewReportPage() {
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || undefined,
+          cadence,
           databaseId,
+          dateColumnKey,
         }),
       })
 
@@ -95,6 +164,10 @@ export default function NewReportPage() {
   }
 
   const selectedDatabase = databases.find(db => db.id === databaseId)
+  const databaseColumns = databaseDetail?.schema?.columns || []
+
+  // Check if form is valid
+  const isFormValid = name.trim() && cadence && databaseId && dateColumnKey
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,7 +202,7 @@ export default function NewReportPage() {
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Monthly Project Profitability"
+                placeholder="e.g., Monthly P&L Report"
               />
             </div>
 
@@ -143,6 +216,29 @@ export default function NewReportPage() {
                 placeholder="Optional description of what this report shows..."
                 rows={3}
               />
+            </div>
+
+            {/* Cadence Selection */}
+            <div className="space-y-2">
+              <Label>Cadence *</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                Determines which period-based tasks can use this report
+              </p>
+              <Select value={cadence} onValueChange={setCadence}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select cadence..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {CADENCE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span>{option.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Database Selection */}
@@ -192,8 +288,44 @@ export default function NewReportPage() {
               )}
             </div>
 
+            {/* Date Column Selection - Only show after database is selected */}
+            {databaseId && (
+              <div className="space-y-2">
+                <Label>Date Column *</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Column containing date/period information (e.g., "January", "Q1 2025", "1/1/2025")
+                </p>
+                {loadingDatabaseDetail ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading columns...
+                  </div>
+                ) : databaseColumns.length === 0 ? (
+                  <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-yellow-700">
+                    No columns found in the selected database.
+                  </div>
+                ) : (
+                  <Select value={dateColumnKey} onValueChange={setDateColumnKey}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select the date column..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {databaseColumns.map((col) => (
+                        <SelectItem key={col.key} value={col.key}>
+                          <div className="flex items-center gap-2">
+                            <span>{col.label}</span>
+                            <span className="text-xs text-gray-400">({col.dataType})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
             {/* Selected Database Info */}
-            {selectedDatabase && (
+            {selectedDatabase && dateColumnKey && (
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center gap-3">
                   <Database className="w-5 h-5 text-blue-600" />
@@ -202,7 +334,9 @@ export default function NewReportPage() {
                       {selectedDatabase.name}
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
-                      {selectedDatabase.rowCount.toLocaleString()} rows • {selectedDatabase.columnCount} columns
+                      {selectedDatabase.rowCount.toLocaleString()} rows • 
+                      {cadence && ` ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label} cadence`} • 
+                      Date column: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}
                     </p>
                   </div>
                 </div>
@@ -223,7 +357,7 @@ export default function NewReportPage() {
               </Link>
               <Button
                 onClick={handleCreate}
-                disabled={creating || !name.trim() || !databaseId}
+                disabled={creating || !isFormValid}
                 className="bg-orange-500 hover:bg-orange-600 text-white"
               >
                 {creating ? (

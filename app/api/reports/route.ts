@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ReportDefinitionService, ReportColumn, ReportFormulaRow } from "@/lib/services/report-definition.service"
+import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportCadence } from "@/lib/services/report-definition.service"
 
 // GET - List report definitions
 export async function GET(request: NextRequest) {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, databaseId, columns, formulaRows } = body
+    const { name, description, databaseId, cadence, dateColumnKey, columns, formulaRows } = body
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -75,11 +75,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate cadence
+    const validCadences = ["daily", "monthly", "quarterly", "annual"]
+    if (!cadence || !validCadences.includes(cadence)) {
+      return NextResponse.json(
+        { error: `Cadence is required and must be one of: ${validCadences.join(", ")}` },
+        { status: 400 }
+      )
+    }
+
+    // Validate dateColumnKey
+    if (!dateColumnKey || typeof dateColumnKey !== "string") {
+      return NextResponse.json(
+        { error: "Date column is required" },
+        { status: 400 }
+      )
+    }
+
     // Create the report definition
     const report = await ReportDefinitionService.createReportDefinition({
       name: name.trim(),
       description: description?.trim(),
       databaseId,
+      cadence: cadence as ReportCadence,
+      dateColumnKey,
       columns: columns as ReportColumn[] | undefined,
       formulaRows: formulaRows as ReportFormulaRow[] | undefined,
       organizationId: user.organizationId,

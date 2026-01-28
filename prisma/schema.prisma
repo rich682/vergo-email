@@ -1185,6 +1185,10 @@ model ReportDefinition {
   organizationId  String
   databaseId      String
   
+  // Period configuration
+  cadence         String   // "daily" | "monthly" | "quarterly" | "annual"
+  dateColumnKey   String   // Database column key containing date data for period filtering
+  
   // Column configuration (selected database columns + formula columns)
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, dataType, order }
   columns         Json     @default("[]")
