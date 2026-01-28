@@ -293,18 +293,26 @@ function evaluateNode(
 
     case "function_call": {
       // For column formulas, functions aggregate values
-      // Special case: SUM({column}) means sum ALL numeric columns in the current row
+      // Special case: SUM({row}) means sum ALL numeric data columns in the current row
       
-      // Check if this is a special {column} placeholder (aggregate across all columns in row)
-      const hasColumnPlaceholder = node.args.length === 1 && 
-        node.args[0].type === "column_ref" && 
-        node.args[0].columnName.toLowerCase() === "column"
+      // Check if this is a special {row} placeholder (aggregate across all data columns in row)
+      // Also support legacy {column} for backward compatibility
+      const argName = node.args.length === 1 && node.args[0].type === "column_ref" 
+        ? node.args[0].columnName.toLowerCase() 
+        : null
+      const hasRowPlaceholder = argName === "row" || argName === "column"
       
-      if (hasColumnPlaceholder) {
-        // Get all numeric values from the current row across all columns
+      if (hasRowPlaceholder) {
+        // Get all numeric values from the current row across all DATA columns
+        // Skip identity column and formula columns
         const values: number[] = []
         
         for (const col of context.columns) {
+          // Skip identity column (non-numeric label)
+          if (col.key === context.identityKey) continue
+          // Skip formula columns (prevent circular refs)
+          if (col.dataType === "formula") continue
+          
           const rawValue = rowContext.row[col.key]
           
           if (rawValue === null || rawValue === undefined || rawValue === "") {

@@ -271,7 +271,9 @@ export function FormulaEditorModal({
 
   // Insert function
   const insertFunction = useCallback((funcName: string) => {
-    const funcText = mode === "row" ? `${funcName}({column})` : `${funcName}()`
+    // For row formulas: SUM({column}) aggregates down each column
+    // For column formulas: SUM({row}) aggregates across each row
+    const funcText = mode === "row" ? `${funcName}({column})` : `${funcName}({row})`
     
     if (expressionRef.current) {
       const start = expressionRef.current.selectionStart
@@ -473,8 +475,8 @@ export function FormulaEditorModal({
               </Label>
               <p className="text-xs text-gray-500 mb-2">
                 {mode === "column"
-                  ? "Applies to every row. Example: {Contract Value} + {Contract Cost} or SUM({column})."
-                  : "Applies to every column. Example: SUM({column}) or {Fixed Costs} + {Variable Costs}."
+                  ? "Applies to every row. Example: {Tulsa, OK} + {Springfield, MO} or SUM({row})."
+                  : "Applies to every column. Example: SUM({column}) or {Earned to Date} + {5000 Direct Labor}."
                 }
               </p>
               <textarea
