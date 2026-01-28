@@ -1,7 +1,7 @@
 # Workflow Audit Document
 
 **Generated**: January 21, 2026  
-**Last Updated**: January 21, 2026  
+**Last Updated**: January 28, 2026  
 **Purpose**: Evidence-bound workflow health assessment for restoration prioritization  
 **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -64,6 +64,27 @@ The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to refl
 
 **WRONG**: "Create new ReconciliationJob type"  
 **RIGHT**: "Enable Reconciliation capability on existing Job"
+
+### CRITICAL: Database Feature Stability Rules
+
+1. **Import is APPEND-ONLY**. Do NOT change to replace-all behavior.
+2. **Composite identifiers are REQUIRED**. Do NOT revert to single identifier.
+3. **Reserved prefix `_`**. Do NOT allow column keys starting with underscore.
+4. **Duplicate rows are REJECTED**. Do NOT silently update or skip duplicates.
+5. **Row limit is 10,000**. Do NOT increase without performance analysis.
+
+### Database Import Contract
+
+```
+INVARIANT: Import NEVER deletes or replaces existing rows.
+
+Behavior:
+- New composite key → ADD row
+- Existing composite key → REJECT (error)
+- Any duplicates in batch → FAIL entire import
+
+This prevents accidental data loss and ensures audit trail integrity.
+```
 
 ---
 
@@ -1541,7 +1562,7 @@ Parent workflow for standalone structured data management with schema definition
 2. Upload .xlsx file
 3. Review auto-detected column types
 4. Modify labels/types as needed
-5. Select identifier column
+5. Select one or more identifier columns (composite key)
 6. Optionally import sample rows
 7. Save
 8. Expect: Schema created from upload
@@ -1552,23 +1573,28 @@ Parent workflow for standalone structured data management with schema definition
 
 **Legacy ID**: -  
 **Status**: GREEN  
-**Goal**: User imports Excel data to replace all existing rows
+**Goal**: User imports Excel data (append-only - new rows added, duplicates rejected)
 
 #### Evidence
 - Frontend: `app/dashboard/databases/[id]/page.tsx` - Import modal
 - API: `POST /api/databases/[id]/import/preview`, `POST /api/databases/[id]/import`
-- Services: `database.service.ts` (importRows, validateRows)
+- Services: `database.service.ts` (importRows, validateRows, validateRowsAgainstExisting)
 - Utilities: `lib/utils/excel-utils.ts` (parseExcelWithSchema)
+
+#### Key Behavior
+- **Append-only**: New rows are added to existing data (no replace)
+- **Duplicate rejection**: Rows matching existing composite key are rejected
+- **Preview first**: Shows new rows vs duplicates before commit
 
 #### Verification Steps
 1. Navigate to `/dashboard/databases/[id]`
 2. Click "Import" button
 3. Upload .xlsx file
 4. Expect: `POST /api/databases/[id]/import/preview` for validation
-5. Review validation results
+5. Review: "X new rows will be added, Y duplicates rejected"
 6. Confirm import
 7. Expect: `POST /api/databases/[id]/import` called
-8. Data replaced with new rows
+8. Only new rows added to existing data
 
 ---
 

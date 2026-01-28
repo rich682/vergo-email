@@ -1,6 +1,6 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-25  
+> **Living Document** - Last updated: 2026-01-28  
 > **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -145,6 +145,154 @@ Draft requests are surfaced in the **Job Detail Header** (not in table cells):
 - WF-05p: Edit Draft Request (new - documented below)
 - WF-05q: Send Draft Request (new - documented below)
 - WF-05r: Delete Draft Request (new - documented below)
+
+---
+
+## Database Data Model & Import Contract
+
+> **Last Updated**: 2026-01-28  
+> **Scope**: Databases feature - structured data storage with composite identifiers
+
+### Overview
+
+Databases are standalone structured data stores with schema definitions and Excel import/export capabilities. They are the foundation for future Report and Form features.
+
+### Data Model
+
+```typescript
+// Prisma Model
+model Database {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  organizationId  String
+  schema          Json     // DatabaseSchema
+  identifierKeys  Json     // String[] - composite key columns
+  rows            Json     // DatabaseRow[]
+  rowCount        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  lastImportedAt  DateTime?
+  lastImportedById String?
+}
+
+// TypeScript Types
+interface DatabaseSchema {
+  columns: DatabaseSchemaColumn[]
+  version: number
+}
+
+interface DatabaseSchemaColumn {
+  key: string       // Internal identifier (no underscore prefix)
+  label: string     // Display name
+  dataType: "text" | "number" | "date" | "boolean" | "currency"
+  required: boolean
+  order: number
+}
+
+interface DatabaseRow {
+  [key: string]: string | number | boolean | null
+}
+```
+
+### Composite Identifiers
+
+Databases support **composite keys** - multiple columns together form the unique identifier.
+
+| Concept | Description |
+|---------|-------------|
+| `identifierKeys` | Array of column keys that together uniquely identify a row |
+| Example | `["project_id", "period"]` - combination must be unique |
+| Requirement | All identifier columns must be marked as `required: true` |
+
+```typescript
+// Example: Project profitability database
+identifierKeys: ["project_id", "period"]
+
+// Valid rows (different composite keys):
+{ project_id: "P1", period: "Jan", revenue: 50000 }
+{ project_id: "P1", period: "Feb", revenue: 55000 }  // Same project, different period = OK
+
+// Invalid (duplicate composite key):
+{ project_id: "P1", period: "Jan", revenue: 60000 }  // Rejected - P1+Jan already exists
+```
+
+### Import Behavior (Append-Only)
+
+**CRITICAL**: Import does NOT replace data. It appends new rows only.
+
+| Scenario | Action |
+|----------|--------|
+| New composite key | Row is **added** |
+| Existing composite key | Row is **rejected** (error) |
+| Mix of new and duplicate | Entire import **fails** |
+
+```typescript
+// POST /api/databases/[id]/import/preview response
+{
+  valid: boolean,
+  errors: string[],
+  warnings: string[],
+  rowCount: number,           // Total rows in file
+  newRowCount: number,        // Rows that will be added
+  duplicateCount: number,     // Rows that would be rejected
+  existingRowCount: number,   // Current rows in database
+  totalAfterImport: number,   // Rows after successful import
+}
+
+// POST /api/databases/[id]/import response
+{
+  success: boolean,
+  added: number,
+  duplicates: number,
+  errors: string[],
+  message: string,
+}
+```
+
+### Reserved Field Conventions
+
+| Prefix | Usage |
+|--------|-------|
+| `_` (underscore) | Reserved for system metadata (future use) |
+
+Column keys starting with `_` are **not allowed** in schema definitions. This reserves space for future row-level metadata like `_submittedBy`, `_submittedAt`, `_rowStatus`.
+
+### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/databases` | GET | List all databases |
+| `/api/databases` | POST | Create database with schema |
+| `/api/databases/[id]` | GET | Get database with rows |
+| `/api/databases/[id]` | PATCH | Update name/description |
+| `/api/databases/[id]` | DELETE | Delete database |
+| `/api/databases/[id]/schema` | PATCH | Update schema (with guardrails) |
+| `/api/databases/[id]/template.xlsx` | GET | Download empty Excel template |
+| `/api/databases/[id]/export.xlsx` | GET | Export all data to Excel |
+| `/api/databases/[id]/import/preview` | POST | Validate import file |
+| `/api/databases/[id]/import` | POST | Execute append-only import |
+
+### Schema Edit Guardrails
+
+| Operation | Allowed | Condition |
+|-----------|---------|-----------|
+| Add columns | ✅ Yes | Always |
+| Rename labels | ✅ Yes | Always |
+| Change column order | ✅ Yes | Always |
+| Change data types | ⚠️ Warning | Existing data not converted |
+| Mark required | ⚠️ Warning | Existing nulls may fail re-import |
+| Remove columns | ❌ No | If data exists |
+| Change identifiers | ❌ No | If data exists |
+| Remove identifier column | ❌ No | Never |
+
+### Limits
+
+| Limit | Value |
+|-------|-------|
+| Max rows per database | 10,000 |
+| Max columns per schema | 100 |
 
 ---
 
