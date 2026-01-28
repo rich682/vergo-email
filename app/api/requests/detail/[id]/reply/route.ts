@@ -4,6 +4,25 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 
+/**
+ * Convert plain text to HTML with proper formatting
+ */
+function textToHtml(text: string): string {
+  // Escape HTML entities
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  
+  // Convert double newlines to paragraph breaks, single newlines to <br>
+  html = html
+    .split(/\n\n+/)
+    .map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`)
+    .join('')
+  
+  return html
+}
+
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
@@ -20,6 +39,18 @@ export async function POST(
   try {
     const body = await request.json()
     const { body: replyBody } = body
+
+    // Get user info for signature
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true, email: true, signature: true }
+    })
+
+    // Get organization for signature fallback
+    const organization = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { name: true }
+    })
 
     const task = await prisma.request.findFirst({
       where: {
@@ -87,6 +118,25 @@ export async function POST(
     const cleanSubject = originalSubject.replace(/^(Re:\s*)+/i, "").trim()
     const replySubject = `Re: ${cleanSubject}`
 
+    // Build signature - use user's custom signature if available, otherwise build from user/org data
+    let signature: string
+    if (user?.signature && user.signature.trim() !== '') {
+      signature = user.signature
+    } else {
+      const signatureParts: string[] = []
+      if (user?.name) signatureParts.push(user.name)
+      if (organization?.name) signatureParts.push(organization.name)
+      signature = signatureParts.join('\n')
+    }
+
+    // Append signature to reply body with proper spacing
+    const bodyWithSignature = signature 
+      ? `${replyBody}\n\nBest regards,\n\n${signature}`
+      : replyBody
+
+    // Convert to HTML with proper formatting
+    const htmlBody = textToHtml(bodyWithSignature)
+
     // Send reply using existing task method with threading headers
     const sent = await EmailSendingService.sendEmailForExistingTask({
       taskId: task.id,
@@ -94,8 +144,8 @@ export async function POST(
       organizationId: session.user.organizationId,
       to: task.entity!.email,
       subject: replySubject,
-      body: replyBody,
-      htmlBody: replyBody, // Treat as HTML
+      body: bodyWithSignature,
+      htmlBody,
       inReplyTo,
       references,
       threadId

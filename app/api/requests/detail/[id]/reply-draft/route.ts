@@ -53,14 +53,17 @@ export async function POST(
 - Be clear and polite.
 - Keep it short (3-6 sentences max).
 - If the recipient is delayed or confused, ask for a firm date.
-- Maintain context of the latest reply and the original request.`
+- Maintain context of the latest reply and the original request.
+- Use proper paragraph formatting with blank lines between paragraphs.
+- Start with a greeting like "Thank you for your response." or similar.
+- Do NOT include a signature or closing like "Best regards" - this will be added automatically.`
 
   const userPrompt = `Original request: ${requestContext}
 Original body (truncated): ${requestBody.substring(0, 400)}
 Latest reply: ${replyPreview || "No reply yet"}
 User prompt (optional): ${prompt || "(none)"}
 
-Draft a reply for the accountant to send.`
+Draft a reply for the accountant to send. Use proper paragraph breaks (blank lines between paragraphs). Do NOT include a signature - it will be added automatically.`
 
   try {
     const completion = await openai.chat.completions.create({
