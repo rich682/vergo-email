@@ -170,6 +170,10 @@ export interface FormulaContext {
   allSheets: Map<string, SheetData>
   /** Map of sheet labels to sheet IDs for resolution */
   sheetLabelToId: Map<string, string>
+  /** Identity key for row-based references (optional) */
+  identityKey?: string
+  /** Map of sheetId -> row label -> row data (optional) */
+  rowLabelToRowBySheet?: Map<string, Map<string, Record<string, unknown>>>
   /** Available column definitions */
   columns: Array<{
     key: string

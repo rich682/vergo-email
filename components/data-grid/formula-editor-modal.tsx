@@ -37,8 +37,8 @@ import {
 } from "@/components/ui/collapsible"
 import { Search, ChevronDown, ChevronRight, AlertCircle, CheckCircle2, Hash, Type, Calendar, DollarSign, FunctionSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { parseFormula, evaluateExpression, buildFormulaContext, SUPPORTED_FUNCTIONS } from "@/lib/formula"
-import type { FormulaResultType, SheetData } from "@/lib/formula"
+import { parseFormula, evaluateExpression, evaluateRowFormula, buildFormulaContext, SUPPORTED_FUNCTIONS } from "@/lib/formula"
+import type { FormulaDefinition, FormulaResultType, SheetData } from "@/lib/formula"
 
 // ============================================
 // Types
@@ -48,6 +48,10 @@ export interface ColumnResource {
   key: string
   label: string
   dataType: string
+}
+
+export interface RowResource {
+  label: string
 }
 
 export interface SheetResource {
@@ -63,12 +67,16 @@ export interface FormulaEditorModalProps {
   mode: "column" | "row"
   /** Columns available in the current sheet */
   columns: ColumnResource[]
+  /** Rows available in the current sheet (identity labels) */
+  rows?: RowResource[]
   /** Other sheets available for cross-sheet references */
   otherSheets?: SheetResource[]
   /** Sample row data for preview (first row of current sheet) */
   sampleRow?: Record<string, unknown>
   /** All rows for aggregate preview (row formulas) */
   allRows?: Record<string, unknown>[]
+  /** Identity key used for row references (optional) */
+  identityKey?: string
   /** Callback when formula is saved */
   onSave: (formula: { expression: string; resultType: FormulaResultType; label: string }) => void
   /** Initial values for editing existing formula */
@@ -105,9 +113,11 @@ export function FormulaEditorModal({
   onOpenChange,
   mode,
   columns,
+  rows = [],
   otherSheets = [],
   sampleRow,
   allRows = [],
+  identityKey,
   onSave,
   initialExpression = "",
   initialResultType = "number",
@@ -157,7 +167,8 @@ export function FormulaEditorModal({
       const context = buildFormulaContext(
         "current",
         sheetData,
-        columns.map(c => ({ key: c.key, label: c.label, dataType: c.dataType }))
+        columns.map(c => ({ key: c.key, label: c.label, dataType: c.dataType })),
+        identityKey
       )
 
       if (mode === "column" && sampleRow) {
@@ -170,13 +181,27 @@ export function FormulaEditorModal({
         return evaluateExpression(expression, context, rowContext)
       }
 
-      // For row formulas, we'd need different evaluation
-      // For now, just validate syntax
-      return { ok: true, value: 0 } as const
+      if (mode === "row" && columns.length > 0 && allRows.length > 0) {
+        const previewColumn = columns.find(c => c.key !== identityKey) || columns[0]
+        if (!previewColumn) return null
+
+        const formula: FormulaDefinition = {
+          expression,
+          references: [],
+          resultType,
+        }
+
+        return evaluateRowFormula(formula, context, {
+          columnKey: previewColumn.key,
+          columnLabel: previewColumn.label,
+        })
+      }
+
+      return null
     } catch {
       return null
     }
-  }, [isValid, parseResult, expression, sampleRow, allRows, columns, mode])
+  }, [isValid, parseResult, expression, sampleRow, allRows, columns, mode, identityKey, resultType])
 
   // Filter columns by search
   const filteredColumns = useMemo(() => {
@@ -185,8 +210,15 @@ export function FormulaEditorModal({
     return columns.filter(c => c.label.toLowerCase().includes(q) || c.key.toLowerCase().includes(q))
   }, [columns, searchQuery])
 
+  const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return rows
+    const q = searchQuery.toLowerCase()
+    return rows.filter(r => r.label.toLowerCase().includes(q))
+  }, [rows, searchQuery])
+
   // Filter other sheets by search
   const filteredOtherSheets = useMemo(() => {
+    if (mode !== "column") return []
     if (!searchQuery.trim()) return otherSheets
     const q = searchQuery.toLowerCase()
     return otherSheets.map(sheet => ({
@@ -197,7 +229,7 @@ export function FormulaEditorModal({
         sheet.label.toLowerCase().includes(q)
       ),
     })).filter(sheet => sheet.columns.length > 0 || sheet.label.toLowerCase().includes(q))
-  }, [otherSheets, searchQuery])
+  }, [otherSheets, searchQuery, mode])
 
   // Toggle sheet expansion
   const toggleSheet = useCallback((sheetId: string) => {
@@ -307,7 +339,7 @@ export function FormulaEditorModal({
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   type="text"
-                  placeholder="Search columns..."
+                  placeholder={mode === "row" ? "Search rows..." : "Search columns..."}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 h-8 text-sm"
@@ -347,25 +379,42 @@ export function FormulaEditorModal({
                   {mode === "column" ? "Current Sheet Columns" : "Current Sheet Rows"}
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-1">
-                  {filteredColumns.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-gray-400">No columns found</p>
+                  {mode === "row" ? (
+                    filteredRows.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-gray-400">No rows found</p>
+                    ) : (
+                      filteredRows.map((row) => (
+                        <button
+                          key={row.label}
+                          onClick={() => insertColumnRef(row.label)}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors"
+                        >
+                          <Type className="w-3.5 h-3.5" />
+                          <span className="truncate">{row.label}</span>
+                        </button>
+                      ))
+                    )
                   ) : (
-                    filteredColumns.map((col) => (
-                      <button
-                        key={col.key}
-                        onClick={() => insertColumnRef(col.label)}
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors"
-                      >
-                        {getDataTypeIcon(col.dataType)}
-                        <span className="truncate">{col.label}</span>
-                      </button>
-                    ))
+                    filteredColumns.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-gray-400">No columns found</p>
+                    ) : (
+                      filteredColumns.map((col) => (
+                        <button
+                          key={col.key}
+                          onClick={() => insertColumnRef(col.label)}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded transition-colors"
+                        >
+                          {getDataTypeIcon(col.dataType)}
+                          <span className="truncate">{col.label}</span>
+                        </button>
+                      ))
+                    )
                   )}
                 </CollapsibleContent>
               </Collapsible>
 
               {/* Other Sheets */}
-              {filteredOtherSheets.map((sheet) => (
+              {mode === "column" && filteredOtherSheets.map((sheet) => (
                 <Collapsible
                   key={sheet.id}
                   open={expandedSheets.has(sheet.id)}
@@ -422,6 +471,12 @@ export function FormulaEditorModal({
               <Label htmlFor="formula-expression" className="text-sm font-medium mb-1">
                 Formula
               </Label>
+              <p className="text-xs text-gray-500 mb-2">
+                {mode === "column"
+                  ? "Applies to every row. Example: {Contract Value} + {Contract Cost} or SUM({column})."
+                  : "Applies to every column. Example: SUM({column}) or {Fixed Costs} + {Variable Costs}."
+                }
+              </p>
               <textarea
                 ref={expressionRef}
                 id="formula-expression"
@@ -429,7 +484,7 @@ export function FormulaEditorModal({
                 onChange={(e) => setExpression(e.target.value)}
                 placeholder={mode === "column" 
                   ? "{Contract Value} - {Contract Cost}" 
-                  : "SUM({column})"
+                  : "{Fixed Costs} + {Variable Costs}"
                 }
                 className={cn(
                   "flex-1 p-3 text-sm font-mono border rounded-md resize-none",
@@ -471,9 +526,11 @@ export function FormulaEditorModal({
             </div>
 
             {/* Preview */}
-            {previewResult && mode === "column" && sampleRow && (
+            {previewResult && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
-                <p className="text-xs font-medium text-gray-500 mb-1">Preview (first row)</p>
+                <p className="text-xs font-medium text-gray-500 mb-1">
+                  {mode === "column" ? "Preview (first row)" : "Preview (first column)"}
+                </p>
                 {previewResult.ok ? (
                   <p className="text-lg font-semibold text-gray-900">
                     {formatPreviewValue(previewResult.value)}

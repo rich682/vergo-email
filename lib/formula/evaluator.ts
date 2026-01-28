@@ -25,6 +25,34 @@ import { parseFormula } from "./parser"
 // Column Value Resolution
 // ============================================
 
+function normalizeIdentityLabel(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function coerceNumberValue(
+  rawValue: unknown,
+  contextLabel: string
+): FormulaResult {
+  if (rawValue === null || rawValue === undefined || rawValue === "") {
+    return { ok: true, value: 0 }
+  }
+
+  if (typeof rawValue === "number") {
+    return { ok: true, value: rawValue }
+  }
+
+  if (typeof rawValue === "string") {
+    const cleaned = rawValue.replace(/[$,€£¥]/g, "").trim()
+    const num = parseFloat(cleaned)
+    if (isNaN(num)) {
+      return { ok: false, error: `Cannot convert "${rawValue}" to number in ${contextLabel}` }
+    }
+    return { ok: true, value: num }
+  }
+
+  return { ok: false, error: `Unexpected value type in ${contextLabel}` }
+}
+
 /**
  * Resolve a column reference to a numeric value.
  * Handles cross-sheet references.
@@ -88,26 +116,40 @@ function resolveColumnValue(
   // Get the value
   const rawValue = row[column.key]
 
-  // Convert to number
-  if (rawValue === null || rawValue === undefined || rawValue === "") {
-    return { ok: true, value: 0 }
-  }
+  return coerceNumberValue(rawValue, `column "${columnName}"`)
+}
 
-  if (typeof rawValue === "number") {
-    return { ok: true, value: rawValue }
-  }
-
-  if (typeof rawValue === "string") {
-    // Remove currency symbols and commas
-    const cleaned = rawValue.replace(/[$,€£¥]/g, "").trim()
-    const num = parseFloat(cleaned)
-    if (isNaN(num)) {
-      return { ok: false, error: `Cannot convert "${rawValue}" to number in column "${columnName}"` }
+/**
+ * Resolve a row reference (by identity label) to a numeric value for the current column.
+ */
+function resolveRowLabelValue(
+  rowLabel: string,
+  sheetLabel: string | null,
+  context: FormulaContext,
+  columnContext: ColumnContext
+): FormulaResult {
+  let sheetId = context.currentSheetId
+  if (sheetLabel) {
+    const resolvedId = context.sheetLabelToId.get(sheetLabel)
+    if (!resolvedId) {
+      return { ok: false, error: `Sheet "${sheetLabel}" not found` }
     }
-    return { ok: true, value: num }
+    sheetId = resolvedId
   }
 
-  return { ok: false, error: `Unexpected value type in column "${columnName}"` }
+  const rowLookup = context.rowLabelToRowBySheet?.get(sheetId)
+  if (!rowLookup || !context.identityKey) {
+    return { ok: false, error: "Row references require an identity key" }
+  }
+
+  const normalizedLabel = normalizeIdentityLabel(rowLabel)
+  const row = rowLookup.get(normalizedLabel)
+  if (!row) {
+    return { ok: false, error: `Row "${rowLabel}" not found` }
+  }
+
+  const rawValue = row[columnContext.columnKey]
+  return coerceNumberValue(rawValue, `row "${rowLabel}"`)
 }
 
 // ============================================
@@ -330,7 +372,17 @@ function evaluateRowFormulaNode(
         return { ok: true, value: values.reduce((a, b) => a + b, 0) }
       }
 
-      // Otherwise, resolve normally (aggregate over the referenced column)
+      // If identity is configured, treat {Row Label} as a row reference
+      if (context.identityKey && context.rowLabelToRowBySheet) {
+        return resolveRowLabelValue(
+          node.columnName,
+          node.sheetLabel,
+          context,
+          columnContext
+        )
+      }
+
+      // Otherwise, resolve as a column aggregate (legacy behavior)
       const column = context.columns.find(
         (c) => c.label.toLowerCase() === node.columnName.toLowerCase() || c.key === node.columnName
       )
@@ -399,10 +451,22 @@ function evaluateRowFormulaNode(
         return executeAggregate(node.name, values)
       }
 
-      // Otherwise, evaluate each argument as a column reference
+      // Otherwise, evaluate each argument as a row reference or column aggregate
       const values: number[] = []
       for (const a of node.args) {
         if (a.type === "column_ref") {
+          if (context.identityKey && context.rowLabelToRowBySheet) {
+            const rowResult = resolveRowLabelValue(
+              a.columnName,
+              a.sheetLabel,
+              context,
+              columnContext
+            )
+            if (!rowResult.ok) return rowResult
+            values.push(rowResult.value)
+            continue
+          }
+
           const column = context.columns.find(
             (c) => c.label.toLowerCase() === a.columnName.toLowerCase() || c.key === a.columnName
           )
@@ -508,6 +572,8 @@ export function createEmptyFormulaContext(): FormulaContext {
     allSheets: new Map(),
     sheetLabelToId: new Map(),
     columns: [],
+    identityKey: undefined,
+    rowLabelToRowBySheet: undefined,
   }
 }
 
@@ -522,15 +588,31 @@ export function createEmptyFormulaContext(): FormulaContext {
 export function buildFormulaContext(
   currentSheetId: string,
   sheets: Array<{ id: string; label: string; rows: Record<string, unknown>[] }>,
-  columns: Array<{ key: string; label: string; dataType: string }>
+  columns: Array<{ key: string; label: string; dataType: string }>,
+  identityKey?: string
 ): FormulaContext {
   const allSheets = new Map<string, { id: string; label: string; rows: Record<string, unknown>[] }>()
   const sheetLabelToId = new Map<string, string>()
+  const rowLabelToRowBySheet = identityKey ? new Map<string, Map<string, Record<string, unknown>>>() : undefined
 
   for (const sheet of sheets) {
     allSheets.set(sheet.id, sheet)
     if (sheet.label) {
       sheetLabelToId.set(sheet.label, sheet.id)
+    }
+    if (identityKey && rowLabelToRowBySheet) {
+      const rowLookup = new Map<string, Record<string, unknown>>()
+      for (const row of sheet.rows) {
+        const rawLabel = row[identityKey]
+        if (rawLabel === null || rawLabel === undefined || rawLabel === "") {
+          continue
+        }
+        const label = normalizeIdentityLabel(String(rawLabel))
+        if (!rowLookup.has(label)) {
+          rowLookup.set(label, row)
+        }
+      }
+      rowLabelToRowBySheet.set(sheet.id, rowLookup)
     }
   }
 
@@ -539,5 +621,7 @@ export function buildFormulaContext(
     allSheets,
     sheetLabelToId,
     columns,
+    identityKey,
+    rowLabelToRowBySheet,
   }
 }

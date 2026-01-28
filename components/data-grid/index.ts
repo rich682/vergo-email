@@ -20,7 +20,7 @@ export type { AppRowType } from "./add-row-button"
 export { SheetTabBar } from "./sheet-tab-bar"
 export type { SheetTabBarProps } from "./sheet-tab-bar"
 export { FormulaEditorModal } from "./formula-editor-modal"
-export type { FormulaEditorModalProps, ColumnResource, SheetResource } from "./formula-editor-modal"
+export type { FormulaEditorModalProps, ColumnResource, RowResource, SheetResource } from "./formula-editor-modal"
 
 // Cell editors
 export {

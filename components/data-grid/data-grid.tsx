@@ -390,6 +390,8 @@ export function DataGrid({
                   totalDataRows={processedRows.length}
                   visibleColumns={visibleColumns}
                   showAddColumn={showAddColumn}
+                  identityKey={identityKey}
+                  formulaColumns={formulaColumns}
                   onRowCellValueChange={onRowCellValueChange}
                   onDeleteRow={onDeleteRow}
                   onRenameRow={onRenameRow}
@@ -464,6 +466,8 @@ interface AppRowComponentProps {
   totalDataRows: number
   visibleColumns: ColumnDefinition[]
   showAddColumn: boolean
+  identityKey?: string
+  formulaColumns?: Map<string, { expression: string; resultType: string; label: string }>
   onRowCellValueChange?: (rowId: string, columnKey: string, value: string | null) => Promise<void>
   onDeleteRow?: (rowId: string) => Promise<void>
   onRenameRow?: (rowId: string, newLabel: string) => Promise<void>
@@ -487,6 +491,8 @@ function AppRowComponent({
   totalDataRows,
   visibleColumns,
   showAddColumn,
+  identityKey,
+  formulaColumns,
   onRowCellValueChange,
   onDeleteRow,
   onRenameRow,
@@ -520,9 +526,10 @@ function AppRowComponent({
     return buildFormulaContext(
       "current",
       [{ id: "current", label: "Current", rows: allRows }],
-      schemaColumns
+      schemaColumns,
+      identityKey
     )
-  }, [appRow.rowType, appRow.formula, allRows, allColumns])
+  }, [appRow.rowType, appRow.formula, allRows, allColumns, identityKey])
 
   // Evaluate formula for a specific column
   const evaluateFormulaForColumn = useCallback((column: ColumnDefinition): string => {
@@ -543,9 +550,17 @@ function AppRowComponent({
       const result = evaluateRowFormula(formula, formulaContext, columnContext)
       
       if (result.ok) {
-        // Format based on result type
+        const format = (appRow.formula as { format?: string } | null)?.format
         const resultType = appRow.formula.resultType as string
-        if (resultType === "currency") {
+        const formulaColumn = formulaColumns?.get(column.id)
+        const columnFormat = column.dataType === "currency"
+          ? "currency"
+          : column.dataType === "formula" && formulaColumn?.resultType === "currency"
+            ? "currency"
+            : "number"
+        const formatType = format === "inheritColumn" ? columnFormat : resultType
+
+        if (formatType === "currency") {
           return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "USD",
@@ -558,7 +573,7 @@ function AppRowComponent({
       console.error("[AppRowComponent] Formula evaluation error:", err)
       return "Error"
     }
-  }, [formulaContext, appRow.formula])
+  }, [formulaContext, appRow.formula, formulaColumns])
 
   const handleDelete = useCallback(async () => {
     if (!onDeleteRow || isDeleting) return

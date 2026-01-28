@@ -36,7 +36,7 @@ import {
   FormulaEditorModal,
   type CellFormulaData,
 } from "@/components/data-grid"
-import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue, ColumnResource } from "@/components/data-grid"
+import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue, ColumnResource, RowResource } from "@/components/data-grid"
 import { evaluateExpression, buildFormulaContext } from "@/lib/formula"
 import type { FormulaResultType } from "@/lib/formula"
 import type {
@@ -561,7 +561,10 @@ export function DataTabUniversal({
     // Clear editing state and refresh
     setEditingFormulaColumnId(null)
     fetchAppColumns()
-  }, [currentLineageId, fetchAppColumns, editingFormulaColumnId])
+    if (!editingFormulaColumnId) {
+      fetchAppRows()
+    }
+  }, [currentLineageId, fetchAppColumns, fetchAppRows, editingFormulaColumnId])
 
   // Handle saving a formula row (create or update)
   const handleSaveFormulaRow = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
@@ -617,7 +620,10 @@ export function DataTabUniversal({
     // Clear editing state and refresh
     setEditingFormulaRowId(null)
     fetchAppRows()
-  }, [currentLineageId, fetchAppRows, editingFormulaRowId])
+    if (!editingFormulaRowId) {
+      fetchAppColumns()
+    }
+  }, [currentLineageId, fetchAppRows, fetchAppColumns, editingFormulaRowId])
 
   // Handle updating a cell value
   const handleCellValueUpdate = useCallback(async (
@@ -885,7 +891,8 @@ export function DataTabUniversal({
               const context = buildFormulaContext(
                 "current",
                 [{ id: "current", label: "Current", rows: snapshotRows }],
-                schemaColumns.map(col => ({ key: col.key, label: col.label, dataType: col.type }))
+                schemaColumns.map(col => ({ key: col.key, label: col.label, dataType: col.type })),
+                identityKey
               )
               const rowContext = {
                 rowIndex: 0,
@@ -1068,6 +1075,18 @@ export function DataTabUniversal({
       dataType: col.type,
     }))
   }, [dataStatus?.datasetTemplate?.schema])
+
+  const formulaRowResources: RowResource[] = useMemo(() => {
+    const identity = dataStatus?.datasetTemplate?.identityKey
+    if (!identity) return []
+
+    const labels = snapshotRows
+      .map(row => String(row[identity] || "").trim())
+      .filter(Boolean)
+
+    const uniqueLabels = Array.from(new Set(labels))
+    return uniqueLabels.map(label => ({ label }))
+  }, [snapshotRows, dataStatus?.datasetTemplate?.identityKey])
 
   // Build otherSheets for cross-sheet formula references
   const otherSheets = useMemo(() => {
@@ -1648,9 +1667,11 @@ export function DataTabUniversal({
         }}
         mode={formulaEditorMode}
         columns={formulaColumnResources}
+        rows={formulaRowResources}
         otherSheets={otherSheets}
         sampleRow={sampleRow}
         allRows={snapshotRows}
+        identityKey={dataStatus?.datasetTemplate?.identityKey}
         onSave={formulaEditorMode === "column" ? handleSaveFormulaColumn : handleSaveFormulaRow}
         initialExpression={
           formulaEditorMode === "column" 
