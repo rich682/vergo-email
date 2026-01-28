@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { 
   Database, FileSpreadsheet, Upload, Loader2, Settings, 
@@ -24,7 +24,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { format } from "date-fns"
 
 // DataGrid imports
 import {
@@ -34,121 +33,33 @@ import {
   createV1CellResolver,
   createEmptyFilterState,
   FormulaEditorModal,
-  type CellFormulaData,
 } from "@/components/data-grid"
-import type { AppColumnType, AppRowType, StatusOption, TeamMember, AppRowDefinition, AppRowValue, ColumnResource, RowResource } from "@/components/data-grid"
+import type { ColumnResource, RowResource } from "@/components/data-grid"
 import { evaluateExpression, buildFormulaContext } from "@/lib/formula"
 import type { FormulaResultType } from "@/lib/formula"
+
+// Import types and hooks from new modular structure
 import type {
+  DataTabUniversalProps,
   SheetContext,
-  SheetMetadata,
   GridFilterState,
   ColumnDefinition,
-  CellValue,
   CellResolver,
-} from "@/lib/data-grid/types"
-
-interface SchemaColumn {
-  key: string
-  label: string
-  type: "text" | "number" | "date" | "boolean" | "currency"
-  required: boolean
-}
-
-interface StakeholderMapping {
-  columnKey: string
-  matchedField: string
-  visibility?: "own_rows" | "all_rows"
-}
-
-interface SnapshotInfo {
-  id: string
-  rowCount: number
-  createdAt: string
-  periodLabel?: string | null
-}
-
-interface SnapshotMetadataAPI {
-  id: string
-  periodLabel: string | null
-  periodStart: string | null
-  rowCount: number
-  createdAt: string
-  isLatest: boolean
-}
-
-interface DatasetTemplate {
-  id: string
-  name: string
-  schema: SchemaColumn[]
-  identityKey: string
-  stakeholderMapping: StakeholderMapping | null
-  snapshotCount: number
-  latestSnapshot?: SnapshotInfo | null
-  snapshots?: SnapshotMetadataAPI[]
-}
-
-interface DataStatus {
-  enabled: boolean
-  schemaConfigured: boolean
-  datasetTemplate: DatasetTemplate | null
-}
-
-// App column types
-interface AppColumnDef {
-  id: string
-  key: string
-  label: string
-  dataType: "text" | "status" | "attachment" | "user" | "formula"
-  config?: {
-    options?: StatusOption[]
-    // Formula config
-    expression?: string
-    resultType?: "number" | "currency" | "text"
-    references?: string[]
-  } | null
-  position: number
-}
-
-interface AppColumnValueData {
-  [rowIdentity: string]: {
-    value: unknown
-    updatedAt: string
-  }
-}
-
-// App row types (mirrors Prisma model)
-interface AppRowDef {
-  id: string
-  rowType: "text" | "formula"
-  label: string
-  position: number
-  formula?: Record<string, unknown> | null
-  values: AppRowValueDef[]
-}
-
-interface AppRowValueDef {
-  id: string
-  rowId: string
-  columnKey: string
-  value: string | null
-}
-
-interface DataTabUniversalProps {
-  taskInstanceId: string
-  taskName: string
-  lineageId: string | null
-  isSnapshot?: boolean
-  isAdHoc?: boolean
-  onConvertToRecurring?: () => void
-  // Board period info for period-aware uploads
-  boardPeriodStart?: string | null
-  boardPeriodEnd?: string | null
-  boardName?: string | null
-}
+} from "./types"
+import {
+  useDataStatus,
+  usePeriodContext,
+  useAppColumns,
+  useAppRows,
+  useSheetData,
+  useCellFormulas,
+} from "./hooks"
 
 /**
- * Universal Data Tab Component
+ * Universal Data Tab Component (Refactored)
+ * 
+ * Now uses modular hooks for better separation of concerns
+ * and to avoid circular dependency issues.
  * 
  * Shows different states based on Data enablement:
  * 1. Not enabled: Show "Enable Data" CTA
@@ -159,139 +70,68 @@ export function DataTabUniversal({
   taskInstanceId,
   taskName,
   lineageId,
+  isSnapshot,
+  isAdHoc,
+  onConvertToRecurring,
   boardPeriodStart,
   boardPeriodEnd,
   boardName,
 }: DataTabUniversalProps) {
-  const [dataStatus, setDataStatus] = useState<DataStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Core data status hook
+  const { dataStatus, loading, error, fetchDataStatus } = useDataStatus(taskInstanceId)
   
-  // Modal state
-  const [isEnableModalOpen, setIsEnableModalOpen] = useState(false)
-  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
-  const [isDeleteDataConfirmOpen, setIsDeleteDataConfirmOpen] = useState(false)
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isFormulaEditorOpen, setIsFormulaEditorOpen] = useState(false)
-  const [formulaEditorMode, setFormulaEditorMode] = useState<"column" | "row">("column")
-  // Editing state for formula columns/rows (null = creating new, string = editing existing)
-  const [editingFormulaColumnId, setEditingFormulaColumnId] = useState<string | null>(null)
-  const [editingFormulaRowId, setEditingFormulaRowId] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [deletingData, setDeletingData] = useState(false)
-  const [updatingVisibility, setUpdatingVisibility] = useState(false)
-
+  // Period label ref - used by other hooks to avoid circular deps
+  const periodLabelRef = useRef<string | null>(null)
+  
   // Current lineage ID (may be updated after enable)
   const [currentLineageId, setCurrentLineageId] = useState<string | null>(lineageId)
-
-  // DataGrid state
+  
+  // Sheet/grid state
   const [currentSheet, setCurrentSheet] = useState<SheetContext | null>(null)
-  const [snapshotRows, setSnapshotRows] = useState<Record<string, unknown>[]>([])
-  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
-  const [snapshotError, setSnapshotError] = useState<string | null>(null)
   const [filterState, setFilterState] = useState<GridFilterState>(createEmptyFilterState())
   const [columns, setColumns] = useState<ColumnDefinition[]>([])
+
+  // Period context hook
+  const periodContext = usePeriodContext({
+    boardPeriodStart,
+    boardPeriodEnd,
+    boardName,
+    snapshots: dataStatus?.datasetTemplate?.snapshots,
+    currentSheet,
+  })
   
-  // App columns state
-  const [appColumns, setAppColumns] = useState<AppColumnDef[]>([])
-  const [appColumnValues, setAppColumnValues] = useState<Map<string, AppColumnValueData>>(new Map())
-  const [loadingAppColumns, setLoadingAppColumns] = useState(false)
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-
-  // App rows state
-  const [appRows, setAppRows] = useState<AppRowDef[]>([])
-  const [loadingAppRows, setLoadingAppRows] = useState(false)
-
-  // Cell formulas state (Excel-style)
-  const [cellFormulas, setCellFormulas] = useState<Map<string, CellFormulaData>>(new Map())
-  const [loadingCellFormulas, setLoadingCellFormulas] = useState(false)
-
-  const fetchDataStatus = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch(
-        `/api/task-instances/${taskInstanceId}/data`,
-        { credentials: "include" }
-      )
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to load data status")
-      }
-
-      const data: DataStatus = await response.json()
-      setDataStatus(data)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load data status"
-      setError(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [taskInstanceId])
-
+  // Keep the ref in sync
   useEffect(() => {
-    fetchDataStatus()
-  }, [fetchDataStatus])
-
-  // Fetch app columns when lineageId is available
-  const fetchAppColumns = useCallback(async () => {
-    if (!currentLineageId) return
-
-    setLoadingAppColumns(true)
-    try {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-columns`,
-        { credentials: "include" }
-      )
-
-      if (!response.ok) {
-        console.error("Failed to fetch app columns")
-        return
-      }
-
-      const data = await response.json()
-      setAppColumns(data.columns || [])
-    } catch (err) {
-      console.error("Error fetching app columns:", err)
-    } finally {
-      setLoadingAppColumns(false)
-    }
-  }, [currentLineageId])
-
-  // Fetch app column values for all columns
-  const fetchAppColumnValues = useCallback(async (rowIdentities: string[]) => {
-    if (!currentLineageId || appColumns.length === 0 || rowIdentities.length === 0) return
-
-    try {
-      const identitiesParam = rowIdentities.join(",")
-      const valueMap = new Map<string, AppColumnValueData>()
-
-      // Fetch values for each column
-      await Promise.all(
-        appColumns.map(async (col) => {
-          const response = await fetch(
-            `/api/task-lineages/${currentLineageId}/app-columns/${col.id}/values?identities=${encodeURIComponent(identitiesParam)}`,
-            { credentials: "include" }
-          )
-
-          if (response.ok) {
-            const data = await response.json()
-            valueMap.set(col.id, data.values || {})
-          }
-        })
-      )
-
-      setAppColumnValues(valueMap)
-    } catch (err) {
-      console.error("Error fetching app column values:", err)
-    }
-  }, [currentLineageId, appColumns])
-
-  // Fetch team members for owner column
+    periodLabelRef.current = periodContext.currentPeriodLabel
+  }, [periodContext.currentPeriodLabel])
+  
+  // App columns hook
+  const appColumnsHook = useAppColumns({
+    lineageId: currentLineageId,
+    periodLabelRef,
+  })
+  
+  // App rows hook
+  const appRowsHook = useAppRows({
+    lineageId: currentLineageId,
+    periodLabelRef,
+  })
+  
+  // Sheet data hook
+  const sheetDataHook = useSheetData({
+    datasetTemplateId: dataStatus?.datasetTemplate?.id,
+    currentSheet,
+  })
+  
+  // Cell formulas hook
+  const cellFormulasHook = useCellFormulas({
+    lineageId: currentLineageId,
+  })
+  
+  // Team members state (shared for user columns)
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string | null; email: string }>>([])
+  
+  // Fetch team members
   const fetchTeamMembers = useCallback(async () => {
     try {
       const response = await fetch("/api/team", { credentials: "include" })
@@ -304,474 +144,34 @@ export function DataTabUniversal({
     }
   }, [])
 
-  // Fetch app rows
-  const fetchAppRows = useCallback(async () => {
-    if (!currentLineageId) return
-
-    setLoadingAppRows(true)
-    try {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-rows`,
-        { credentials: "include" }
-      )
-
-      if (!response.ok) {
-        console.error("Failed to fetch app rows")
-        return
-      }
-
-      const data = await response.json()
-      setAppRows(data.rows || [])
-    } catch (err) {
-      console.error("Error fetching app rows:", err)
-    } finally {
-      setLoadingAppRows(false)
-    }
-  }, [currentLineageId])
-
-  // Fetch cell formulas (Excel-style)
-  const fetchCellFormulas = useCallback(async () => {
-    if (!currentLineageId) return
-
-    setLoadingCellFormulas(true)
-    try {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/cell-formulas`,
-        { credentials: "include" }
-      )
-
-      if (!response.ok) {
-        return
-      }
-
-      const data = await response.json()
-      const formulasMap = new Map<string, CellFormulaData>()
-      for (const f of data.formulas || []) {
-        formulasMap.set(f.cellRef, {
-          cellRef: f.cellRef,
-          formula: f.formula,
-        })
-      }
-      setCellFormulas(formulasMap)
-    } catch (err) {
-      console.error("Error fetching cell formulas:", err)
-    } finally {
-      setLoadingCellFormulas(false)
-    }
-  }, [currentLineageId])
-
-  // Handle cell formula change (save or delete)
-  const handleCellFormulaChange = useCallback(async (cellRef: string, formula: string | null) => {
-    if (!currentLineageId) return
-
-    try {
-      if (formula) {
-        // Save formula
-        const response = await fetch(
-          `/api/task-lineages/${currentLineageId}/cell-formulas`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ cellRef, formula }),
-          }
-        )
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || "Failed to save formula")
-        }
-      } else {
-        // Delete formula
-        const response = await fetch(
-          `/api/task-lineages/${currentLineageId}/cell-formulas?cellRef=${encodeURIComponent(cellRef)}`,
-          {
-            method: "DELETE",
-            credentials: "include",
-          }
-        )
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || "Failed to delete formula")
-        }
-      }
-
-      // Refresh cell formulas
-      await fetchCellFormulas()
-    } catch (err) {
-      console.error("Error saving cell formula:", err)
-      throw err
-    }
-  }, [currentLineageId, fetchCellFormulas])
-
-  // Handle adding a new app column
-  const handleAddColumn = useCallback(async (type: string, label: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-columns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label, dataType: type }),
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to add column")
-    }
-
-    // Refresh app columns
-    fetchAppColumns()
-  }, [currentLineageId, fetchAppColumns])
-
-  // Handle opening formula editor for column formulas (new)
-  const handleOpenFormulaEditor = useCallback(() => {
-    setFormulaEditorMode("column")
-    setEditingFormulaColumnId(null) // Creating new
-    setIsFormulaEditorOpen(true)
-  }, [])
-
-  // Handle opening formula editor for row formulas (new)
-  const handleOpenRowFormulaEditor = useCallback(() => {
-    setFormulaEditorMode("row")
-    setEditingFormulaRowId(null) // Creating new
-    setIsFormulaEditorOpen(true)
-  }, [])
-
-  // Handle editing an existing formula column
-  const handleEditFormulaColumn = useCallback((columnId: string) => {
-    // Extract actual column ID (remove "app_" prefix if present)
-    const actualColumnId = columnId.replace("app_", "")
-    setFormulaEditorMode("column")
-    setEditingFormulaColumnId(actualColumnId)
-    setIsFormulaEditorOpen(true)
-  }, [])
-
-  // Handle editing an existing formula row
-  const handleEditFormulaRow = useCallback((rowId: string) => {
-    setFormulaEditorMode("row")
-    setEditingFormulaRowId(rowId)
-    setIsFormulaEditorOpen(true)
-  }, [])
-
-  // Handle renaming an app column
-  const handleRenameColumn = useCallback(async (columnId: string, newLabel: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-    
-    // Extract actual column ID (remove "app_" prefix if present)
-    const actualColumnId = columnId.replace("app_", "")
-    
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-columns/${actualColumnId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label: newLabel }),
-      }
-    )
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to rename column")
-    }
-    
-    // Refresh app columns
-    fetchAppColumns()
-  }, [currentLineageId, fetchAppColumns])
-
-  // Handle renaming an app row
-  const handleRenameRow = useCallback(async (rowId: string, newLabel: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-    
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label: newLabel }),
-      }
-    )
-    
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to rename row")
-    }
-    
-    // Refresh app rows
-    fetchAppRows()
-  }, [currentLineageId, fetchAppRows])
-
-  // Handle saving a formula column (create or update)
-  const handleSaveFormulaColumn = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    // If editing, use PATCH to update
-    if (editingFormulaColumnId) {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-columns/${editingFormulaColumnId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            label: formula.label,
-            config: {
-              expression: formula.expression,
-              resultType: formula.resultType,
-            },
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to update formula column")
-      }
-    } else {
-      // Creating new
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-columns`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            label: formula.label,
-            dataType: "formula",
-            config: {
-              expression: formula.expression,
-              resultType: formula.resultType,
-            },
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to add formula column")
-      }
-    }
-
-    // Clear editing state and refresh
-    setEditingFormulaColumnId(null)
-    fetchAppColumns()
-    if (!editingFormulaColumnId) {
-      fetchAppRows()
-    }
-  }, [currentLineageId, fetchAppColumns, fetchAppRows, editingFormulaColumnId])
-
-  // Handle saving a formula row (create or update)
-  const handleSaveFormulaRow = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    // If editing, use PATCH to update
-    if (editingFormulaRowId) {
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-rows/${editingFormulaRowId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            label: formula.label,
-            formula: {
-              expression: formula.expression,
-              resultType: formula.resultType,
-            },
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to update formula row")
-      }
-    } else {
-      // Creating new
-      const response = await fetch(
-        `/api/task-lineages/${currentLineageId}/app-rows`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            label: formula.label,
-            rowType: "formula",
-            formula: {
-              expression: formula.expression,
-              resultType: formula.resultType,
-            },
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to add formula row")
-      }
-    }
-
-    // Clear editing state and refresh
-    setEditingFormulaRowId(null)
-    fetchAppRows()
-    if (!editingFormulaRowId) {
-      fetchAppColumns()
-    }
-  }, [currentLineageId, fetchAppRows, fetchAppColumns, editingFormulaRowId])
-
-  // Handle updating a cell value
-  const handleCellValueUpdate = useCallback(async (
-    columnId: string,
-    rowIdentity: string,
-    value: unknown
-  ) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-columns/${columnId}/values/${encodeURIComponent(rowIdentity)}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ value }),
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to update value")
-    }
-
-    // Update local state
-    setAppColumnValues(prev => {
-      const newMap = new Map(prev)
-      const columnValues = newMap.get(columnId) || {}
-      newMap.set(columnId, {
-        ...columnValues,
-        [rowIdentity]: {
-          value,
-          updatedAt: new Date().toISOString(),
-        },
-      })
-      return newMap
-    })
-  }, [currentLineageId])
-
-  // Handle deleting an app column
-  const handleDeleteAppColumn = useCallback(async (columnId: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-    
-    // Extract actual column ID (remove "app_" prefix)
-    const actualColumnId = columnId.replace("app_", "")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-columns/${actualColumnId}`,
-      {
-        method: "DELETE",
-        credentials: "include",
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to delete column")
-    }
-
-    // Refresh app columns
-    fetchAppColumns()
-  }, [currentLineageId, fetchAppColumns])
-
-  // Handle adding a new app row
-  const handleAddRow = useCallback(async (type: string, label: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-rows`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label, rowType: type }),
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to add row")
-    }
-
-    // Refresh app rows
-    fetchAppRows()
-  }, [currentLineageId, fetchAppRows])
-
-  // Handle updating an app row cell value
-  const handleRowCellValueUpdate = useCallback(async (
-    rowId: string,
-    columnKey: string,
-    value: string | null
-  ) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}/values`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ values: [{ columnKey, value }] }),
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to update row value")
-    }
-
-    // Refresh app rows to get updated values
-    fetchAppRows()
-  }, [currentLineageId, fetchAppRows])
-
-  // Handle deleting an app row
-  const handleDeleteAppRow = useCallback(async (rowId: string) => {
-    if (!currentLineageId) throw new Error("No lineage ID")
-
-    const response = await fetch(
-      `/api/task-lineages/${currentLineageId}/app-rows/${rowId}`,
-      {
-        method: "DELETE",
-        credentials: "include",
-      }
-    )
-
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || "Failed to delete row")
-    }
-
-    // Refresh app rows
-    fetchAppRows()
-  }, [currentLineageId, fetchAppRows])
+  useEffect(() => {
+    fetchTeamMembers()
+  }, [fetchTeamMembers])
+  
+  // Modal state
+  const [isEnableModalOpen, setIsEnableModalOpen] = useState(false)
+  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [isDeleteDataConfirmOpen, setIsDeleteDataConfirmOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isFormulaEditorOpen, setIsFormulaEditorOpen] = useState(false)
+  const [formulaEditorMode, setFormulaEditorMode] = useState<"column" | "row">("column")
+  
+  // Editing state for formula columns/rows
+  const [editingFormulaColumnId, setEditingFormulaColumnId] = useState<string | null>(null)
+  const [editingFormulaRowId, setEditingFormulaRowId] = useState<string | null>(null)
+  
+  // Operation states
+  const [deleting, setDeleting] = useState(false)
+  const [deletingData, setDeletingData] = useState(false)
+  const [updatingVisibility, setUpdatingVisibility] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
 
   // Update lineageId when it changes
   useEffect(() => {
     setCurrentLineageId(lineageId)
   }, [lineageId])
-
-  // Fetch app columns, rows, and cell formulas when lineageId becomes available
-  useEffect(() => {
-    if (currentLineageId) {
-      fetchAppColumns()
-      fetchAppRows()
-      fetchTeamMembers()
-      fetchCellFormulas()
-    }
-  }, [currentLineageId, fetchAppColumns, fetchAppRows, fetchTeamMembers, fetchCellFormulas])
 
   // Initialize columns from schema and app columns
   useEffect(() => {
@@ -779,7 +179,7 @@ export function DataTabUniversal({
       const sourceCols = schemaToColumns(dataStatus.datasetTemplate.schema)
       
       // Convert app columns to ColumnDefinition format
-      const appCols: ColumnDefinition[] = appColumns.map(col => ({
+      const appCols: ColumnDefinition[] = appColumnsHook.appColumns.map(col => ({
         id: `app_${col.id}`,
         key: col.key,
         label: col.label,
@@ -792,77 +192,21 @@ export function DataTabUniversal({
       
       setColumns([...sourceCols, ...appCols])
     }
-  }, [dataStatus?.datasetTemplate?.schema, appColumns])
-
-  // Fetch snapshot rows when sheet changes
-  const fetchSnapshotRows = useCallback(async (snapshotId: string) => {
-    console.log("[DataTab] fetchSnapshotRows called", { snapshotId, templateId: dataStatus?.datasetTemplate?.id })
-    
-    if (!dataStatus?.datasetTemplate?.id) {
-      console.log("[DataTab] No template ID, aborting fetch")
-      return
-    }
-
-    // Handle empty current period placeholder
-    if (snapshotId === "current-period") {
-      console.log("[DataTab] Current period placeholder, clearing rows")
-      setSnapshotRows([])
-      setSnapshotError(null)
-      setLoadingSnapshot(false)
-      return
-    }
-
-    setLoadingSnapshot(true)
-    setSnapshotError(null)
-
-    try {
-      const url = `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${snapshotId}`
-      console.log("[DataTab] Fetching from:", url)
-      
-      const response = await fetch(url, { credentials: "include" })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to load snapshot data")
-      }
-
-      const data = await response.json()
-      console.log("[DataTab] API response:", { snapshot: data.snapshot, rowCount: data.snapshot?.rows?.length })
-      const rows = data.snapshot?.rows || []
-      setSnapshotRows(Array.isArray(rows) ? rows : [])
-      console.log("[DataTab] Rows set:", rows.length)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load snapshot data"
-      console.error("[DataTab] Error fetching rows:", message)
-      setSnapshotError(message)
-      setSnapshotRows([])
-    } finally {
-      setLoadingSnapshot(false)
-    }
-  }, [dataStatus?.datasetTemplate?.id])
-
-  // Fetch rows when sheet changes
-  useEffect(() => {
-    console.log("[DataTab] Sheet change effect", { currentSheet })
-    if (currentSheet?.kind === "snapshot" && currentSheet.snapshotId) {
-      console.log("[DataTab] Fetching rows for snapshot:", currentSheet.snapshotId)
-      fetchSnapshotRows(currentSheet.snapshotId)
-    }
-  }, [currentSheet, fetchSnapshotRows])
+  }, [dataStatus?.datasetTemplate?.schema, appColumnsHook.appColumns])
 
   // Fetch app column values when snapshot rows are loaded
   useEffect(() => {
-    if (snapshotRows.length > 0 && appColumns.length > 0 && dataStatus?.datasetTemplate?.identityKey) {
+    if (sheetDataHook.snapshotRows.length > 0 && appColumnsHook.appColumns.length > 0 && dataStatus?.datasetTemplate?.identityKey) {
       const identityKey = dataStatus.datasetTemplate.identityKey
-      const identities = snapshotRows
+      const identities = sheetDataHook.snapshotRows
         .map(row => String(row[identityKey] || ""))
         .filter(Boolean)
       
       if (identities.length > 0) {
-        fetchAppColumnValues(identities)
+        appColumnsHook.fetchAppColumnValues(identities)
       }
     }
-  }, [snapshotRows, appColumns, dataStatus?.datasetTemplate?.identityKey, fetchAppColumnValues])
+  }, [sheetDataHook.snapshotRows, appColumnsHook.appColumns, dataStatus?.datasetTemplate?.identityKey, appColumnsHook.fetchAppColumnValues])
 
   // Create cell resolver that handles both source and app columns
   const cellResolver = useMemo<CellResolver | null>(() => {
@@ -871,11 +215,10 @@ export function DataTabUniversal({
     const identityKey = dataStatus.datasetTemplate.identityKey
     const baseResolver = createV1CellResolver(identityKey)
     
-    // Return an extended resolver that handles app columns
     return {
       getRowId: baseResolver.getRowId,
       getCellValue: (args) => {
-        const { row, column, sheet } = args
+        const { row, column } = args
         
         // For source columns, use the base resolver
         if (column.kind === "source") {
@@ -888,11 +231,10 @@ export function DataTabUniversal({
           const rowIdentity = String(row[identityKey] || "")
           
           // Find the app column definition
-          const appCol = appColumns.find(c => c.id === columnId)
+          const appCol = appColumnsHook.appColumns.find(c => c.id === columnId)
           
           // Handle formula columns - evaluate the expression
           if (appCol?.dataType === "formula" && appCol.config?.expression) {
-            // Defensive check: ensure we have the necessary data to evaluate
             const schemaColumns = dataStatus?.datasetTemplate?.schema
             if (!schemaColumns || schemaColumns.length === 0) {
               return { type: "empty" }
@@ -901,7 +243,7 @@ export function DataTabUniversal({
             try {
               const context = buildFormulaContext(
                 "current",
-                [{ id: "current", label: "Current", rows: snapshotRows }],
+                [{ id: "current", label: "Current", rows: sheetDataHook.snapshotRows }],
                 schemaColumns.map(col => ({ key: col.key, label: col.label, dataType: col.type })),
                 identityKey
               )
@@ -927,7 +269,7 @@ export function DataTabUniversal({
             }
           }
           
-          const columnValues = appColumnValues.get(columnId)
+          const columnValues = appColumnsHook.appColumnValues.get(columnId)
           const cellData = columnValues?.[rowIdentity]
           
           if (!cellData || cellData.value === null || cellData.value === undefined) {
@@ -962,157 +304,43 @@ export function DataTabUniversal({
         return { type: "empty" }
       },
     }
-  }, [dataStatus?.datasetTemplate?.identityKey, dataStatus?.datasetTemplate?.schema, appColumnValues, appColumns, teamMembers, snapshotRows])
-
-  // Compute current board period label
-  const currentPeriodLabel = useMemo(() => {
-    if (!boardPeriodStart) return null
-    try {
-      // Parse the date string and format nicely
-      const date = new Date(boardPeriodStart)
-      return format(date, "MMM d, yyyy")
-    } catch {
-      return boardName || null
-    }
-  }, [boardPeriodStart, boardName])
-
-  // Check if a snapshot exists for the current period
-  const currentPeriodSnapshot = useMemo(() => {
-    if (!boardPeriodStart || !dataStatus?.datasetTemplate?.snapshots) return null
-    const boardStart = new Date(boardPeriodStart).toISOString().split("T")[0]
-    return dataStatus.datasetTemplate.snapshots.find(s => {
-      if (!s.periodStart) return false
-      const snapshotStart = new Date(s.periodStart).toISOString().split("T")[0]
-      return snapshotStart === boardStart
-    }) || null
-  }, [boardPeriodStart, dataStatus?.datasetTemplate?.snapshots])
-
-  // Convert API snapshots to SheetMetadata with period awareness
-  const sheets: SheetMetadata[] = useMemo(() => {
-    const result: SheetMetadata[] = []
-    
-    // Add current period tab first (may be empty)
-    if (currentPeriodLabel && boardPeriodStart) {
-      if (currentPeriodSnapshot) {
-        // Current period has data
-        result.push({
-          id: currentPeriodSnapshot.id,
-          periodLabel: currentPeriodLabel,
-          createdAt: currentPeriodSnapshot.createdAt,
-          rowCount: currentPeriodSnapshot.rowCount,
-          isLatest: true,
-          isCurrentPeriod: true,
-        })
-      } else {
-        // Current period is empty - create placeholder
-        result.push({
-          id: "current-period",
-          periodLabel: currentPeriodLabel,
-          createdAt: new Date().toISOString(),
-          rowCount: 0,
-          isLatest: false,
-          isCurrentPeriod: true,
-        })
-      }
-    }
-    
-    // Add previous period snapshots (exclude current period if it exists)
-    if (dataStatus?.datasetTemplate?.snapshots) {
-      const previousSnapshots = dataStatus.datasetTemplate.snapshots.filter(s => {
-        if (currentPeriodSnapshot && s.id === currentPeriodSnapshot.id) return false
-        return true
-      })
-      
-      for (const s of previousSnapshots) {
-        result.push({
-          id: s.id,
-          periodLabel: s.periodLabel,
-          createdAt: s.createdAt,
-          rowCount: s.rowCount,
-          isLatest: s.isLatest && !currentPeriodSnapshot,
-          isCurrentPeriod: false,
-        })
-      }
-    }
-    
-    return result
-  }, [dataStatus?.datasetTemplate?.snapshots, currentPeriodLabel, boardPeriodStart, currentPeriodSnapshot])
-
-  // Check if currently viewing the current period (for upload button visibility)
-  const isViewingCurrentPeriod = useMemo(() => {
-    if (!currentSheet) return true // Default to current period
-    if (currentSheet.kind === "snapshot") {
-      // Check if this snapshot is the current period
-      const sheet = sheets.find(s => s.id === currentSheet.snapshotId)
-      return sheet?.isCurrentPeriod ?? false
-    }
-    return false
-  }, [currentSheet, sheets])
+  }, [dataStatus?.datasetTemplate?.identityKey, dataStatus?.datasetTemplate?.schema, appColumnsHook.appColumnValues, appColumnsHook.appColumns, teamMembers, sheetDataHook.snapshotRows])
 
   // Initialize current sheet - prefer sheet with data (better UX)
   useEffect(() => {
-    console.log("[DataTab] Sheet init effect", { 
-      currentSheet, 
-      sheetsLength: sheets.length, 
-      sheets: sheets.map(s => ({ id: s.id, rowCount: s.rowCount, isCurrentPeriod: s.isCurrentPeriod })),
-      latestSnapshot: dataStatus?.datasetTemplate?.latestSnapshot 
-    })
+    const { sheets } = periodContext
     
     if (!currentSheet && sheets.length > 0) {
-      // First, try to find a sheet with data (any sheet - prefer current period if it has data)
+      // First, try to find a sheet with data
       const currentPeriodWithData = sheets.find(s => s.isCurrentPeriod && s.rowCount > 0)
       if (currentPeriodWithData) {
-        console.log("[DataTab] Selecting current period with data:", currentPeriodWithData.id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: currentPeriodWithData.id,
-        })
+        setCurrentSheet({ kind: "snapshot", snapshotId: currentPeriodWithData.id })
         return
       }
       
-      // Fall back to any sheet with data
       const anySheetWithData = sheets.find(s => s.rowCount > 0)
       if (anySheetWithData) {
-        console.log("[DataTab] Selecting any sheet with data:", anySheetWithData.id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: anySheetWithData.id,
-        })
+        setCurrentSheet({ kind: "snapshot", snapshotId: anySheetWithData.id })
         return
       }
       
-      // Fall back to latest snapshot (prefer actual data over placeholder)
+      // Fall back to latest snapshot
       if (dataStatus?.datasetTemplate?.latestSnapshot) {
-        console.log("[DataTab] Selecting latest snapshot:", dataStatus.datasetTemplate.latestSnapshot.id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: dataStatus.datasetTemplate.latestSnapshot.id,
-        })
+        setCurrentSheet({ kind: "snapshot", snapshotId: dataStatus.datasetTemplate.latestSnapshot.id })
         return
       }
       
-      // Fall back to current period placeholder or first sheet
+      // Fall back to current period or first sheet
       const currentPeriodSheet = sheets.find(s => s.isCurrentPeriod)
       if (currentPeriodSheet && currentPeriodSheet.id !== "current-period") {
-        console.log("[DataTab] Selecting current period:", currentPeriodSheet.id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: currentPeriodSheet.id,
-        })
+        setCurrentSheet({ kind: "snapshot", snapshotId: currentPeriodSheet.id })
       } else if (sheets.length > 0 && sheets[0].id !== "current-period") {
-        // Select first real snapshot
-        console.log("[DataTab] Selecting first real sheet:", sheets[0].id)
-        setCurrentSheet({
-          kind: "snapshot",
-          snapshotId: sheets[0].id,
-        })
-      } else {
-        console.log("[DataTab] No real sheet to select, only placeholder available")
+        setCurrentSheet({ kind: "snapshot", snapshotId: sheets[0].id })
       }
     }
-  }, [sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
+  }, [periodContext.sheets, dataStatus?.datasetTemplate?.latestSnapshot, currentSheet])
 
-  // Convert schema columns to ColumnResource for formula editor
+  // Build formula column resources for formula editor
   const formulaColumnResources: ColumnResource[] = useMemo(() => {
     if (!dataStatus?.datasetTemplate?.schema) return []
     return dataStatus.datasetTemplate.schema.map(col => ({
@@ -1122,42 +350,28 @@ export function DataTabUniversal({
     }))
   }, [dataStatus?.datasetTemplate?.schema])
 
-  const formulaRowResources: RowResource[] = useMemo(() => {
-    const identity = dataStatus?.datasetTemplate?.identityKey
-    if (!identity) return []
-
-    const labels = snapshotRows
-      .map(row => String(row[identity] || "").trim())
-      .filter(Boolean)
-
-    const uniqueLabels = Array.from(new Set(labels))
-    return uniqueLabels.map(label => ({ label }))
-  }, [snapshotRows, dataStatus?.datasetTemplate?.identityKey])
-
-  // Build otherSheets for cross-sheet formula references
+  // Build other sheets for cross-sheet formula references
   const otherSheets = useMemo(() => {
-    if (!currentSheet || sheets.length <= 1) return []
-    
+    if (!currentSheet) return []
     const currentSheetId = currentSheet.kind === "snapshot" ? currentSheet.snapshotId : null
-    
-    return sheets
+    return periodContext.sheets
       .filter(s => s.id !== currentSheetId && s.id !== "current-period")
       .map(s => ({
         id: s.id,
         label: s.periodLabel || s.id,
         columns: formulaColumnResources,
       }))
-  }, [sheets, currentSheet, formulaColumnResources])
+  }, [periodContext.sheets, currentSheet, formulaColumnResources])
 
-  // Get sample row for formula preview
+  // Sample row for formula preview
   const sampleRow = useMemo(() => {
-    return snapshotRows.length > 0 ? snapshotRows[0] : undefined
-  }, [snapshotRows])
+    return sheetDataHook.snapshotRows.length > 0 ? sheetDataHook.snapshotRows[0] : undefined
+  }, [sheetDataHook.snapshotRows])
 
-  // Build formula columns map for DataGrid (tracks which columns are formula columns)
+  // Build formula columns map for DataGrid
   const formulaColumnsMap = useMemo(() => {
     const map = new Map<string, { expression: string; resultType: string; label: string }>()
-    for (const col of appColumns) {
+    for (const col of appColumnsHook.appColumns) {
       if (col.dataType === "formula" && col.config?.expression) {
         map.set(`app_${col.id}`, {
           expression: col.config.expression as string,
@@ -1167,49 +381,168 @@ export function DataTabUniversal({
       }
     }
     return map
-  }, [appColumns])
+  }, [appColumnsHook.appColumns])
 
-  // Get initial values for formula editor when editing
+  // Get editing formula data
   const editingFormulaColumnData = useMemo(() => {
     if (!editingFormulaColumnId) return null
-    const col = appColumns.find(c => c.id === editingFormulaColumnId)
+    const col = appColumnsHook.appColumns.find(c => c.id === editingFormulaColumnId)
     if (!col || col.dataType !== "formula") return null
     return {
       expression: (col.config?.expression as string) || "",
       resultType: (col.config?.resultType as FormulaResultType) || "number",
       label: col.label,
     }
-  }, [editingFormulaColumnId, appColumns])
+  }, [editingFormulaColumnId, appColumnsHook.appColumns])
 
   const editingFormulaRowData = useMemo(() => {
     if (!editingFormulaRowId) return null
-    const row = appRows.find(r => r.id === editingFormulaRowId)
+    const row = appRowsHook.appRows.find(r => r.id === editingFormulaRowId)
     if (!row || row.rowType !== "formula" || !row.formula) return null
     return {
       expression: (row.formula.expression as string) || "",
       resultType: (row.formula.resultType as FormulaResultType) || "number",
       label: row.label,
     }
-  }, [editingFormulaRowId, appRows])
+  }, [editingFormulaRowId, appRowsHook.appRows])
 
-  // Handle sheet change
+  // Handlers
   const handleSheetChange = useCallback((sheet: SheetContext) => {
     setCurrentSheet(sheet)
-    // Reset filter state on sheet change
     setFilterState(createEmptyFilterState())
   }, [])
 
-  // Handle column visibility change
   const handleColumnVisibilityChange = useCallback((columnId: string, isVisible: boolean) => {
     setColumns(prev => prev.map(col => 
       col.id === columnId ? { ...col, isVisible } : col
     ))
   }, [])
 
+  const handleOpenFormulaEditor = useCallback(() => {
+    setFormulaEditorMode("column")
+    setEditingFormulaColumnId(null)
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  const handleOpenRowFormulaEditor = useCallback(() => {
+    setFormulaEditorMode("row")
+    setEditingFormulaRowId(null)
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  const handleEditFormulaColumn = useCallback((columnId: string) => {
+    setFormulaEditorMode("column")
+    setEditingFormulaColumnId(columnId.replace("app_", ""))
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  const handleEditFormulaRow = useCallback((rowId: string) => {
+    setFormulaEditorMode("row")
+    setEditingFormulaRowId(rowId)
+    setIsFormulaEditorOpen(true)
+  }, [])
+
+  const handleSaveFormulaColumn = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    if (editingFormulaColumnId) {
+      // Update existing
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-columns/${editingFormulaColumnId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            config: { expression: formula.expression, resultType: formula.resultType },
+          }),
+        }
+      )
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to update formula column")
+      }
+    } else {
+      // Create new
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-columns`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            dataType: "formula",
+            config: { expression: formula.expression, resultType: formula.resultType },
+          }),
+        }
+      )
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to add formula column")
+      }
+    }
+
+    setEditingFormulaColumnId(null)
+    appColumnsHook.fetchAppColumns()
+    if (!editingFormulaColumnId) {
+      appRowsHook.fetchAppRows()
+    }
+  }, [currentLineageId, editingFormulaColumnId, appColumnsHook, appRowsHook])
+
+  const handleSaveFormulaRow = useCallback(async (formula: { expression: string; resultType: string; label: string }) => {
+    if (!currentLineageId) throw new Error("No lineage ID")
+
+    if (editingFormulaRowId) {
+      // Update existing
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows/${editingFormulaRowId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            formula: { expression: formula.expression, resultType: formula.resultType },
+          }),
+        }
+      )
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to update formula row")
+      }
+    } else {
+      // Create new
+      const response = await fetch(
+        `/api/task-lineages/${currentLineageId}/app-rows`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            label: formula.label,
+            rowType: "formula",
+            formula: { expression: formula.expression, resultType: formula.resultType },
+          }),
+        }
+      )
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to add formula row")
+      }
+    }
+
+    setEditingFormulaRowId(null)
+    appRowsHook.fetchAppRows()
+    if (!editingFormulaRowId) {
+      appColumnsHook.fetchAppColumns()
+    }
+  }, [currentLineageId, editingFormulaRowId, appRowsHook, appColumnsHook])
+
   const handleEnableComplete = (result: { lineage: { id: string } }) => {
     setCurrentLineageId(result.lineage.id)
     fetchDataStatus()
-    // Open schema editor immediately after enabling
     setIsSchemaModalOpen(true)
   }
 
@@ -1219,24 +552,19 @@ export function DataTabUniversal({
   }
 
   const handleUploadComplete = () => {
-    console.log("[DataTab] Upload complete, resetting sheet and fetching data status")
     setIsUploadModalOpen(false)
-    // Reset current sheet to force re-initialization with new data
     setCurrentSheet(null)
-    setSnapshotRows([]) // Also clear existing rows
+    sheetDataHook.setSnapshotRows([])
     fetchDataStatus()
   }
 
   const handleDownloadTemplate = () => {
     if (!dataStatus?.datasetTemplate) return
     
-    const { schema, identityKey } = dataStatus.datasetTemplate
-    
-    // Create CSV with header row
+    const { schema } = dataStatus.datasetTemplate
     const headers = schema.map(col => col.label)
     const csvContent = headers.join(",") + "\n"
     
-    // Create and download file
     const blob = new Blob([csvContent], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -1255,22 +583,16 @@ export function DataTabUniversal({
     try {
       const response = await fetch(
         `/api/datasets/${dataStatus.datasetTemplate.id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
+        { method: "DELETE", credentials: "include" }
       )
-
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || "Failed to delete schema")
       }
-
       setIsDeleteConfirmOpen(false)
       fetchDataStatus()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to delete"
-      setError(message)
+      setLocalError(err instanceof Error ? err.message : "Failed to delete")
     } finally {
       setDeleting(false)
     }
@@ -1288,16 +610,13 @@ export function DataTabUniversal({
           body: JSON.stringify({ stakeholderVisibility: visibility }),
         }
       )
-
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || "Failed to update visibility")
       }
-
       fetchDataStatus()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to update"
-      setError(message)
+      setLocalError(err instanceof Error ? err.message : "Failed to update")
     } finally {
       setUpdatingVisibility(false)
     }
@@ -1310,27 +629,23 @@ export function DataTabUniversal({
     try {
       const response = await fetch(
         `/api/datasets/${dataStatus.datasetTemplate.id}/snapshots/${dataStatus.datasetTemplate.latestSnapshot.id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
+        { method: "DELETE", credentials: "include" }
       )
-
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || "Failed to delete data")
       }
-
       setIsDeleteDataConfirmOpen(false)
+      setCurrentSheet(null)
       fetchDataStatus()
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to delete data"
-      setError(message)
+      setLocalError(err instanceof Error ? err.message : "Failed to delete data")
     } finally {
       setDeletingData(false)
     }
   }
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1339,13 +654,14 @@ export function DataTabUniversal({
     )
   }
 
-  if (error) {
+  // Error state
+  if (error || localError) {
     return (
       <div className="text-center py-16 bg-red-50 rounded-lg border border-red-200">
-        <p className="text-red-700">{error}</p>
+        <p className="text-red-700">{error || localError}</p>
         <Button 
           variant="outline" 
-          onClick={fetchDataStatus}
+          onClick={() => { setLocalError(null); fetchDataStatus(); }}
           className="mt-4"
         >
           Try Again
@@ -1417,11 +733,12 @@ export function DataTabUniversal({
   const hasSnapshots = template.snapshotCount > 0
   const canDeleteSchema = !hasSnapshots
   const hasStakeholderSettings = !!template.stakeholderMapping?.columnKey
+  const { currentPeriodLabel, currentPeriodSnapshot, sheets, isViewingCurrentPeriod } = periodContext
 
   return (
     <>
       <div className="flex flex-col h-full space-y-4">
-        {/* Task Name Header for Context */}
+        {/* Task Name Header */}
         <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">{taskName}</h2>
         </div>
@@ -1431,10 +748,10 @@ export function DataTabUniversal({
           <div className="flex items-center gap-2">
             <Table2 className="w-5 h-5 text-gray-500" />
             <span className="text-sm text-gray-600">
-              {template.schema.length + appColumns.length} columns
-              {appColumns.length > 0 && (
+              {template.schema.length + appColumnsHook.appColumns.length} columns
+              {appColumnsHook.appColumns.length > 0 && (
                 <span className="text-gray-400 ml-1">
-                  ({appColumns.length} custom)
+                  ({appColumnsHook.appColumns.length} custom)
                 </span>
               )}
             </span>
@@ -1442,23 +759,13 @@ export function DataTabUniversal({
           
           <div className="flex items-center gap-2">
             {hasStakeholderSettings && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsSettingsOpen(true)}
-                title="Data Settings"
-              >
+              <Button variant="outline" size="sm" onClick={() => setIsSettingsOpen(true)} title="Data Settings">
                 <Settings className="w-4 h-4" />
               </Button>
             )}
             
-            {/* Only show Download Template when no data uploaded yet */}
             {!hasSnapshots && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadTemplate}
-              >
+              <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
                 <Download className="w-4 h-4 mr-2" />
                 Download Template
               </Button>
@@ -1476,18 +783,13 @@ export function DataTabUniversal({
               </Button>
             )}
             
-            {/* Show Upload button when: no snapshots OR viewing current period */}
             {(!hasSnapshots || isViewingCurrentPeriod) && (
-              <Button
-                size="sm"
-                onClick={() => setIsUploadModalOpen(true)}
-              >
+              <Button size="sm" onClick={() => setIsUploadModalOpen(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Upload Data
               </Button>
             )}
 
-            {/* Show Delete Upload only when there's data for current period */}
             {hasSnapshots && isViewingCurrentPeriod && currentPeriodSnapshot && (
               <Button
                 variant="outline"
@@ -1505,7 +807,6 @@ export function DataTabUniversal({
         {/* Data Grid or Empty State */}
         {hasSnapshots && currentSheet && cellResolver ? (
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Toolbar */}
             <DataGridToolbar
               filterState={filterState}
               onFilterChange={setFilterState}
@@ -1516,30 +817,29 @@ export function DataTabUniversal({
               onSheetChange={handleSheetChange}
             />
             
-            {/* Grid */}
             <div className="flex-1 min-h-0">
               <DataGrid
                 columns={columns}
-                rows={snapshotRows}
+                rows={sheetDataHook.snapshotRows}
                 resolver={cellResolver}
                 sheet={currentSheet}
                 initialFilterState={filterState}
                 onFilterChange={setFilterState}
                 onColumnVisibilityChange={handleColumnVisibilityChange}
-                isLoading={loadingSnapshot}
-                error={snapshotError}
-                onAddColumn={handleAddColumn}
-                onHideColumn={handleColumnVisibilityChange ? (id) => handleColumnVisibilityChange(id, false) : undefined}
-                onDeleteColumn={handleDeleteAppColumn}
-                onRenameColumn={handleRenameColumn}
-                onCellValueChange={handleCellValueUpdate}
+                isLoading={sheetDataHook.loadingSnapshot}
+                error={sheetDataHook.snapshotError}
+                onAddColumn={appColumnsHook.handleAddColumn}
+                onHideColumn={(id) => handleColumnVisibilityChange(id, false)}
+                onDeleteColumn={appColumnsHook.handleDeleteAppColumn}
+                onRenameColumn={appColumnsHook.handleRenameColumn}
+                onCellValueChange={appColumnsHook.handleCellValueUpdate}
                 identityKey={dataStatus?.datasetTemplate?.identityKey}
                 showAddColumn={!!currentLineageId}
-                appRows={appRows}
-                onAddRow={handleAddRow}
-                onDeleteRow={handleDeleteAppRow}
-                onRenameRow={handleRenameRow}
-                onRowCellValueChange={handleRowCellValueUpdate}
+                appRows={appRowsHook.appRows}
+                onAddRow={appRowsHook.handleAddRow}
+                onDeleteRow={appRowsHook.handleDeleteAppRow}
+                onRenameRow={appRowsHook.handleRenameRow}
+                onRowCellValueChange={appRowsHook.handleRowCellValueUpdate}
                 showAddRow={!!currentLineageId}
                 sheets={sheets}
                 onSheetChange={handleSheetChange}
@@ -1548,8 +848,8 @@ export function DataTabUniversal({
                 onEditFormulaColumn={handleEditFormulaColumn}
                 onEditFormulaRow={handleEditFormulaRow}
                 formulaColumns={formulaColumnsMap}
-                cellFormulas={cellFormulas}
-                onCellFormulaChange={handleCellFormulaChange}
+                cellFormulas={cellFormulasHook.cellFormulas}
+                onCellFormulaChange={cellFormulasHook.handleCellFormulaChange}
               />
             </div>
           </div>
@@ -1646,7 +946,7 @@ export function DataTabUniversal({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Schema Confirmation Modal */}
+      {/* Delete Schema Confirmation */}
       <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1659,25 +959,17 @@ export function DataTabUniversal({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteConfirmOpen(false)}
-              disabled={deleting}
-            >
+            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)} disabled={deleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteSchema}
-              disabled={deleting}
-            >
+            <Button variant="destructive" onClick={handleDeleteSchema} disabled={deleting}>
               {deleting ? "Deleting..." : "Delete Schema"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Upload Confirmation Modal */}
+      {/* Delete Upload Confirmation */}
       <Dialog open={isDeleteDataConfirmOpen} onOpenChange={setIsDeleteDataConfirmOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1688,21 +980,18 @@ export function DataTabUniversal({
             <DialogDescription>
               Are you sure you want to delete this upload ({template.latestSnapshot?.rowCount.toLocaleString()} rows)? 
               This action cannot be undone. You will need to upload data again.
+              {(appColumnsHook.appColumns.length > 0 || appRowsHook.appRows.length > 0) && (
+                <span className="block mt-2 text-gray-500">
+                  Note: Custom formula columns and rows will be preserved.
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteDataConfirmOpen(false)}
-              disabled={deletingData}
-            >
+            <Button variant="outline" onClick={() => setIsDeleteDataConfirmOpen(false)} disabled={deletingData}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteData}
-              disabled={deletingData}
-            >
+            <Button variant="destructive" onClick={handleDeleteData} disabled={deletingData}>
               {deletingData ? "Deleting..." : "Delete Upload"}
             </Button>
           </DialogFooter>
@@ -1714,7 +1003,6 @@ export function DataTabUniversal({
         open={isFormulaEditorOpen}
         onOpenChange={(open) => {
           setIsFormulaEditorOpen(open)
-          // Clear editing state when modal closes
           if (!open) {
             setEditingFormulaColumnId(null)
             setEditingFormulaRowId(null)
@@ -1722,27 +1010,19 @@ export function DataTabUniversal({
         }}
         mode={formulaEditorMode}
         columns={formulaColumnResources}
-        rows={formulaRowResources}
+        rows={sheetDataHook.snapshotRows.length > 0 
+          ? sheetDataHook.snapshotRows.map((row, i) => ({
+              index: i,
+              label: String(row[dataStatus.datasetTemplate?.identityKey || ""] || `Row ${i + 1}`),
+            }))
+          : []
+        }
         otherSheets={otherSheets}
         sampleRow={sampleRow}
-        allRows={snapshotRows}
-        identityKey={dataStatus?.datasetTemplate?.identityKey}
+        identityKey={dataStatus.datasetTemplate?.identityKey}
         onSave={formulaEditorMode === "column" ? handleSaveFormulaColumn : handleSaveFormulaRow}
-        initialExpression={
-          formulaEditorMode === "column" 
-            ? editingFormulaColumnData?.expression || "" 
-            : editingFormulaRowData?.expression || ""
-        }
-        initialResultType={
-          formulaEditorMode === "column" 
-            ? editingFormulaColumnData?.resultType || "number" 
-            : editingFormulaRowData?.resultType || "number"
-        }
-        initialLabel={
-          formulaEditorMode === "column" 
-            ? editingFormulaColumnData?.label || "" 
-            : editingFormulaRowData?.label || ""
-        }
+        initialValues={formulaEditorMode === "column" ? editingFormulaColumnData : editingFormulaRowData}
+        isEditing={formulaEditorMode === "column" ? !!editingFormulaColumnId : !!editingFormulaRowId}
       />
     </>
   )
