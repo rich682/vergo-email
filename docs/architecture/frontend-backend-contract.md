@@ -166,6 +166,9 @@ Draft requests are surfaced in the **Job Detail Header** (not in table cells):
 | Settings | `/dashboard/settings` | - | - | `/api/org/settings`, `/api/user/signature` |
 | Settings/Team | `/dashboard/settings/team` | PWF-08: Email Account Management | WF-08a, WF-08b, WF-08c | `/api/org/users/*`, `/api/email-accounts/*` |
 | Settings/Accounting | `/dashboard/settings/accounting` | - | - | `/api/org/accounting-calendar` |
+| Databases List | `/dashboard/databases` | PWF-11: Databases | WF-11a, WF-11f | `/api/databases` |
+| Database Detail | `/dashboard/databases/[id]` | PWF-11: Databases | WF-11d, WF-11e, WF-11f | `/api/databases/[id]`, `/api/databases/[id]/import/*`, `/api/databases/[id]/*.xlsx` |
+| New Database | `/dashboard/databases/new` | PWF-11: Databases | WF-11a, WF-11b, WF-11c | `/api/databases` |
 
 ### Auth Pages
 
@@ -297,6 +300,13 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
 | `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
 | `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
+| `/api/databases` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/page.tsx:42,98` |
+| `/api/databases/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:67`, `app/dashboard/databases/page.tsx:60` |
+| `/api/databases/[id]/schema` | PATCH | FRONTEND | DIRECT_FETCH | Schema edit guardrails (not wired to UI yet) |
+| `/api/databases/[id]/template.xlsx` | GET | FRONTEND | URL_GENERATION | `app/dashboard/databases/[id]/page.tsx` (window.open) |
+| `/api/databases/[id]/export.xlsx` | GET | FRONTEND | URL_GENERATION | `app/dashboard/databases/[id]/page.tsx` (window.open) |
+| `/api/databases/[id]/import/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:195` |
+| `/api/databases/[id]/import` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:218` |
 
 ### ADMIN Routes (18 routes)
 
@@ -587,8 +597,8 @@ awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
 
 | Metric | Count | Source |
 |--------|-------|--------|
-| Total API Routes | 130 | `find app/api -name "route.ts" \| wc -l` |
-| FRONTEND | 83 | This document |
+| Total API Routes | 138 | `find app/api -name "route.ts" \| wc -l` |
+| FRONTEND | 91 | This document |
 | ADMIN | 18 | Routes in `/api/admin/*` |
 | EXTERNAL | 8 | OAuth, webhooks, tracking |
 | TEST_ONLY | 3 | Only test file callers |

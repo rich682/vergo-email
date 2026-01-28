@@ -73,10 +73,10 @@ The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to refl
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| GREEN | 42 | 66% |
-| YELLOW | 13 | 20% |
-| RED | 9 | 14% |
-| **Total** | **64** | 100% |
+| GREEN | 48 | 69% |
+| YELLOW | 13 | 19% |
+| RED | 9 | 13% |
+| **Total** | **70** | 100% |
 
 ### By Parent Workflow
 
@@ -91,6 +91,7 @@ The internal `TaskType.DATABASE` is displayed to users as **"Variance"** to refl
 | PWF-07 | Contact Management | 6 | 6 | 0 | 0 |
 | PWF-08 | Email Account Management | 3 | 3 | 0 | 0 |
 | PWF-09 | System Automation | 6 | 4 | 1 | 1 |
+| PWF-11 | Databases | 6 | 6 | 0 | 0 |
 
 ---
 
@@ -1463,6 +1464,151 @@ AI should be the **first reviewer** of all inbound content:
 6. Queue for human review with AI pre-analysis
 
 Without this, every request requires full manual review, defeating the purpose of AI assistance.
+
+---
+
+## PWF-11: Databases
+
+Parent workflow for standalone structured data management with schema definitions and Excel import/export.
+
+| Sub-ID | Name | Legacy ID | Status |
+|--------|------|-----------|--------|
+| WF-11a | Create Database | - | GREEN |
+| WF-11b | Define Schema Manually | - | GREEN |
+| WF-11c | Define Schema from Upload | - | GREEN |
+| WF-11d | Import Data | - | GREEN |
+| WF-11e | Export Data / Download Template | - | GREEN |
+| WF-11f | View / Filter Database | - | GREEN |
+
+---
+
+### WF-11a: Create Database
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User creates a new database with name and description
+
+#### Evidence
+- Frontend: `app/dashboard/databases/new/page.tsx` - Create form
+- API: `POST /api/databases`
+- Services: `database.service.ts`
+
+#### Verification Steps
+1. Navigate to `/dashboard/databases`
+2. Click "New Database" button
+3. Enter name, description
+4. Select schema method (manual or upload)
+5. Complete schema definition
+6. Submit
+7. Expect: `POST /api/databases` called
+
+---
+
+### WF-11b: Define Schema Manually
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User defines database columns, types, and identifier manually
+
+#### Evidence
+- Frontend: `app/dashboard/databases/new/page.tsx` - Schema builder UI
+- API: `POST /api/databases` with schema payload
+- Services: `database.service.ts` (validateSchema)
+
+#### Verification Steps
+1. Select "Create manually" on new database page
+2. Add columns with labels and types
+3. Mark required columns
+4. Select identifier column
+5. Save
+6. Expect: Schema validated and database created
+
+---
+
+### WF-11c: Define Schema from Upload
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User uploads Excel file to auto-detect schema from headers
+
+#### Evidence
+- Frontend: `app/dashboard/databases/new/page.tsx` - Upload flow
+- Utilities: `lib/utils/excel-utils.ts` (parseExcelFile, inferDataType)
+- API: `POST /api/databases` with inferred schema
+
+#### Verification Steps
+1. Select "Upload spreadsheet" on new database page
+2. Upload .xlsx file
+3. Review auto-detected column types
+4. Modify labels/types as needed
+5. Select identifier column
+6. Optionally import sample rows
+7. Save
+8. Expect: Schema created from upload
+
+---
+
+### WF-11d: Import Data
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User imports Excel data to replace all existing rows
+
+#### Evidence
+- Frontend: `app/dashboard/databases/[id]/page.tsx` - Import modal
+- API: `POST /api/databases/[id]/import/preview`, `POST /api/databases/[id]/import`
+- Services: `database.service.ts` (importRows, validateRows)
+- Utilities: `lib/utils/excel-utils.ts` (parseExcelWithSchema)
+
+#### Verification Steps
+1. Navigate to `/dashboard/databases/[id]`
+2. Click "Import" button
+3. Upload .xlsx file
+4. Expect: `POST /api/databases/[id]/import/preview` for validation
+5. Review validation results
+6. Confirm import
+7. Expect: `POST /api/databases/[id]/import` called
+8. Data replaced with new rows
+
+---
+
+### WF-11e: Export Data / Download Template
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User exports current data or downloads empty template
+
+#### Evidence
+- Frontend: `app/dashboard/databases/[id]/page.tsx` - Export/Template buttons
+- API: `GET /api/databases/[id]/export.xlsx`, `GET /api/databases/[id]/template.xlsx`
+- Utilities: `lib/utils/excel-utils.ts` (exportToExcel, generateSchemaTemplate)
+
+#### Verification Steps
+1. Navigate to `/dashboard/databases/[id]`
+2. Click "Template" button
+3. Expect: Excel file downloads with headers + instructions
+4. Click "Export" button
+5. Expect: Excel file downloads with all current data
+
+---
+
+### WF-11f: View / Filter Database
+
+**Legacy ID**: -  
+**Status**: GREEN  
+**Goal**: User views data in table with search and column filters
+
+#### Evidence
+- Frontend: `app/dashboard/databases/[id]/page.tsx` - Data table
+- API: `GET /api/databases/[id]`
+- Services: `database.service.ts` (getDatabase)
+
+#### Verification Steps
+1. Navigate to `/dashboard/databases/[id]`
+2. View data in table format
+3. Use search box to filter across all columns
+4. Click column header to filter by specific values
+5. View schema tab for column definitions
 
 ---
 

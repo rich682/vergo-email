@@ -153,6 +153,7 @@ model Organization {
   emailQueue              EmailQueue[]
   reconciliations         Reconciliation[]
   reconciliationTemplates ReconciliationTemplate[]
+  databases               Database[]
 
   @@index([slug])
 }
@@ -225,6 +226,8 @@ model User {
   reviewAuditLogs            ReviewAuditLog[]           @relation("ReviewAuditAuthor")
   reconciliations            Reconciliation[]           @relation("ReconciliationCreator")
   connectedEmailAccounts     ConnectedEmailAccount[]
+  createdDatabases           Database[]                 @relation("DatabaseCreator")
+  importedDatabases          Database[]                 @relation("DatabaseImporter")
 
   @@index([organizationId])
   @@index([email])
@@ -1135,5 +1138,37 @@ model ReconciliationTemplate {
 
   @@unique([organizationId, name])
   @@index([organizationId])
+}
+
+// Database represents a structured data store with schema and rows
+// This is the core model for the Databases feature - standalone structured data management
+model Database {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  organizationId  String
+  
+  // Schema definition (JSON) - DatabaseSchema type
+  // { columns: DatabaseSchemaColumn[], version: number }
+  schema          Json
+  identifierKey   String   // Which column key is the row identifier
+  
+  // Current data (JSON array of rows) - DatabaseRow[]
+  rows            Json     @default("[]")
+  rowCount        Int      @default(0)
+  
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  lastImportedAt  DateTime?
+  lastImportedById String?
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation("DatabaseCreator", fields: [createdById], references: [id])
+  lastImportedBy  User?        @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
+  
+  @@index([organizationId])
+  @@index([organizationId, name])
 }
 

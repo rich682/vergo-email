@@ -1,0 +1,904 @@
+"use client"
+
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useRouter, useParams } from "next/navigation"
+import Link from "next/link"
+import {
+  ArrowLeft,
+  Download,
+  Upload,
+  FileSpreadsheet,
+  Search,
+  X,
+  ChevronDown,
+  Check,
+  AlertCircle,
+  AlertTriangle,
+  FileUp,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+
+// ============================================
+// Types
+// ============================================
+
+interface SchemaColumn {
+  key: string
+  label: string
+  dataType: "text" | "number" | "date" | "boolean" | "currency"
+  required: boolean
+  order: number
+}
+
+interface DatabaseSchema {
+  columns: SchemaColumn[]
+  version: number
+}
+
+interface DatabaseRow {
+  [key: string]: string | number | boolean | null
+}
+
+interface DatabaseDetail {
+  id: string
+  name: string
+  description: string | null
+  schema: DatabaseSchema
+  identifierKey: string
+  rows: DatabaseRow[]
+  rowCount: number
+  createdAt: string
+  updatedAt: string
+  lastImportedAt: string | null
+  createdBy: {
+    name: string | null
+    email: string
+  }
+  lastImportedBy: {
+    name: string | null
+    email: string
+  } | null
+}
+
+interface ColumnFilter {
+  columnKey: string
+  selectedValues: Set<string>
+}
+
+interface ImportPreviewResult {
+  valid: boolean
+  errors: string[]
+  warnings?: string[]
+  rowCount: number
+  existingRowCount: number
+  sampleRows?: DatabaseRow[]
+}
+
+// ============================================
+// Component
+// ============================================
+
+export default function DatabaseDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const databaseId = params.id as string
+
+  const [database, setDatabase] = useState<DatabaseDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState("")
+  const [columnFilters, setColumnFilters] = useState<ColumnFilter[]>([])
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"data" | "schema">("data")
+
+  // Import modal state
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<ImportPreviewResult | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ----------------------------------------
+  // Data Fetching
+  // ----------------------------------------
+
+  const fetchDatabase = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/databases/${databaseId}`, {
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError("Database not found")
+        } else if (response.status === 401) {
+          window.location.href = "/auth/signin?callbackUrl=/dashboard/databases"
+          return
+        } else {
+          const data = await response.json()
+          setError(data.error || "Failed to load database")
+        }
+        return
+      }
+
+      const data = await response.json()
+      setDatabase(data.database)
+    } catch (err) {
+      console.error("Error fetching database:", err)
+      setError("Failed to load database")
+    } finally {
+      setLoading(false)
+    }
+  }, [databaseId])
+
+  useEffect(() => {
+    fetchDatabase()
+  }, [fetchDatabase])
+
+  // ----------------------------------------
+  // Computed Values
+  // ----------------------------------------
+
+  const sortedColumns = useMemo(() => {
+    if (!database) return []
+    return [...database.schema.columns].sort((a, b) => a.order - b.order)
+  }, [database])
+
+  const getUniqueValues = useCallback(
+    (columnKey: string): string[] => {
+      if (!database) return []
+      const values = new Set<string>()
+      database.rows.forEach((row) => {
+        const value = row[columnKey]
+        if (value !== null && value !== undefined) {
+          values.add(String(value))
+        }
+      })
+      return Array.from(values).sort()
+    },
+    [database]
+  )
+
+  const getColumnFilter = (columnKey: string): ColumnFilter | undefined => {
+    return columnFilters.find((f) => f.columnKey === columnKey)
+  }
+
+  const toggleFilterValue = (columnKey: string, value: string) => {
+    setColumnFilters((prev) => {
+      const existing = prev.find((f) => f.columnKey === columnKey)
+      if (existing) {
+        const newSelected = new Set(existing.selectedValues)
+        if (newSelected.has(value)) {
+          newSelected.delete(value)
+        } else {
+          newSelected.add(value)
+        }
+        if (newSelected.size === 0) {
+          return prev.filter((f) => f.columnKey !== columnKey)
+        }
+        return prev.map((f) =>
+          f.columnKey === columnKey ? { ...f, selectedValues: newSelected } : f
+        )
+      } else {
+        return [...prev, { columnKey, selectedValues: new Set([value]) }]
+      }
+    })
+  }
+
+  const clearColumnFilter = (columnKey: string) => {
+    setColumnFilters((prev) => prev.filter((f) => f.columnKey !== columnKey))
+  }
+
+  const filteredRows = useMemo(() => {
+    if (!database) return []
+
+    let rows = database.rows
+
+    // Apply search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      rows = rows.filter((row) =>
+        Object.values(row).some((value) => {
+          if (value === null || value === undefined) return false
+          return String(value).toLowerCase().includes(query)
+        })
+      )
+    }
+
+    // Apply column filters
+    columnFilters.forEach((filter) => {
+      if (filter.selectedValues.size > 0) {
+        rows = rows.filter((row) => {
+          const value = row[filter.columnKey]
+          if (value === null || value === undefined) return false
+          return filter.selectedValues.has(String(value))
+        })
+      }
+    })
+
+    return rows
+  }, [database, searchQuery, columnFilters])
+
+  // ----------------------------------------
+  // Export & Template Handlers
+  // ----------------------------------------
+
+  const handleExport = async () => {
+    window.open(`/api/databases/${databaseId}/export.xlsx`, "_blank")
+  }
+
+  const handleDownloadTemplate = async () => {
+    window.open(`/api/databases/${databaseId}/template.xlsx`, "_blank")
+  }
+
+  // ----------------------------------------
+  // Import Handlers
+  // ----------------------------------------
+
+  const handleImportClick = () => {
+    setImportModalOpen(true)
+    setImportFile(null)
+    setImportPreview(null)
+  }
+
+  const handleFileSelect = async (file: File) => {
+    setImportFile(file)
+    setImportPreview(null)
+    setPreviewing(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch(`/api/databases/${databaseId}/import/preview`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      })
+
+      const result = await response.json()
+      setImportPreview(result)
+    } catch (err) {
+      console.error("Error previewing import:", err)
+      setImportPreview({
+        valid: false,
+        errors: ["Failed to preview file"],
+        rowCount: 0,
+        existingRowCount: database?.rowCount || 0,
+      })
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    if (!importFile) return
+
+    setImporting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", importFile)
+
+      const response = await fetch(`/api/databases/${databaseId}/import`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setImportModalOpen(false)
+        setImportFile(null)
+        setImportPreview(null)
+        // Refresh the database data
+        fetchDatabase()
+      } else {
+        setImportPreview({
+          valid: false,
+          errors: [result.error || "Import failed"],
+          rowCount: importPreview?.rowCount || 0,
+          existingRowCount: database?.rowCount || 0,
+        })
+      }
+    } catch (err) {
+      console.error("Error importing:", err)
+      setImportPreview({
+        valid: false,
+        errors: ["Failed to import data"],
+        rowCount: importPreview?.rowCount || 0,
+        existingRowCount: database?.rowCount || 0,
+      })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // ----------------------------------------
+  // Format Helpers
+  // ----------------------------------------
+
+  const formatCellValue = (
+    value: string | number | boolean | null,
+    dataType: string
+  ): string => {
+    if (value === null || value === undefined) return "—"
+
+    switch (dataType) {
+      case "boolean":
+        return value ? "Yes" : "No"
+      case "currency":
+        if (typeof value === "number") {
+          return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(value)
+        }
+        return String(value)
+      case "date":
+        if (value) {
+          try {
+            return new Date(String(value)).toLocaleDateString()
+          } catch {
+            return String(value)
+          }
+        }
+        return "—"
+      default:
+        return String(value)
+    }
+  }
+
+  // ----------------------------------------
+  // Render
+  // ----------------------------------------
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+      </div>
+    )
+  }
+
+  if (error || !database) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <div className="text-center">
+            <h1 className="text-xl font-medium text-gray-900">
+              {error || "Database not found"}
+            </h1>
+            <Link href="/dashboard/databases" className="mt-4 inline-block">
+              <Button variant="outline">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Databases
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard/databases">
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+              </Link>
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  {database.name}
+                </h1>
+                {database.description && (
+                  <p className="text-sm text-gray-500">{database.description}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+                <Download className="w-4 h-4 mr-1.5" />
+                Template
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                Export
+              </Button>
+              <Button
+                size="sm"
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+                onClick={handleImportClick}
+              >
+                <Upload className="w-4 h-4 mr-1.5" />
+                Import
+              </Button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-6 mt-4 border-b border-gray-200 -mb-px">
+            <button
+              onClick={() => setActiveTab("data")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+                activeTab === "data"
+                  ? "border-orange-500 text-orange-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Data ({database.rowCount.toLocaleString()} rows)
+            </button>
+            <button
+              onClick={() => setActiveTab("schema")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+                activeTab === "schema"
+                  ? "border-orange-500 text-orange-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Schema ({sortedColumns.length} columns)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        {activeTab === "data" ? (
+          <>
+            {/* Search and filter bar */}
+            <div className="mb-4 flex items-center gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search all columns..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                  </button>
+                )}
+              </div>
+              {columnFilters.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setColumnFilters([])}
+                >
+                  Clear all filters
+                </Button>
+              )}
+            </div>
+
+            {/* Active filters display */}
+            {columnFilters.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {columnFilters.map((filter) => {
+                  const column = sortedColumns.find(
+                    (c) => c.key === filter.columnKey
+                  )
+                  return (
+                    <div
+                      key={filter.columnKey}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-700 rounded text-sm"
+                    >
+                      <span className="font-medium">{column?.label}:</span>
+                      <span>{Array.from(filter.selectedValues).join(", ")}</span>
+                      <button
+                        onClick={() => clearColumnFilter(filter.columnKey)}
+                        className="ml-1 hover:text-orange-900"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Data table */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {sortedColumns.map((column) => {
+                        const filter = getColumnFilter(column.key)
+                        const hasFilter = filter && filter.selectedValues.size > 0
+                        const uniqueValues = getUniqueValues(column.key)
+
+                        return (
+                          <th
+                            key={column.key}
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  className={`inline-flex items-center gap-1 hover:text-gray-700 ${
+                                    hasFilter ? "text-orange-600" : ""
+                                  }`}
+                                >
+                                  {column.label}
+                                  {column.key === database.identifierKey && (
+                                    <span className="ml-1 text-[10px] px-1 py-0.5 bg-gray-200 rounded">
+                                      ID
+                                    </span>
+                                  )}
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="start"
+                                className="w-56 max-h-64 overflow-y-auto"
+                              >
+                                {hasFilter && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => clearColumnFilter(column.key)}
+                                    >
+                                      Clear filter
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                  </>
+                                )}
+                                {uniqueValues.length === 0 ? (
+                                  <div className="px-2 py-1.5 text-sm text-gray-500">
+                                    No values
+                                  </div>
+                                ) : (
+                                  uniqueValues.slice(0, 50).map((value) => (
+                                    <DropdownMenuItem
+                                      key={value}
+                                      onClick={() =>
+                                        toggleFilterValue(column.key, value)
+                                      }
+                                    >
+                                      <div className="flex items-center gap-2 w-full">
+                                        <div
+                                          className={`w-4 h-4 border rounded flex items-center justify-center ${
+                                            filter?.selectedValues.has(value)
+                                              ? "bg-orange-500 border-orange-500"
+                                              : "border-gray-300"
+                                          }`}
+                                        >
+                                          {filter?.selectedValues.has(value) && (
+                                            <Check className="w-3 h-3 text-white" />
+                                          )}
+                                        </div>
+                                        <span className="truncate">{value}</span>
+                                      </div>
+                                    </DropdownMenuItem>
+                                  ))
+                                )}
+                                {uniqueValues.length > 50 && (
+                                  <div className="px-2 py-1.5 text-xs text-gray-400">
+                                    +{uniqueValues.length - 50} more values
+                                  </div>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={sortedColumns.length}
+                          className="px-4 py-8 text-center text-gray-500"
+                        >
+                          {database.rowCount === 0
+                            ? "No data yet. Import data to get started."
+                            : "No rows match your filters."}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRows.slice(0, 100).map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-gray-50">
+                          {sortedColumns.map((column) => (
+                            <td
+                              key={column.key}
+                              className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap"
+                            >
+                              {formatCellValue(row[column.key], column.dataType)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {filteredRows.length > 100 && (
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
+                  Showing first 100 of {filteredRows.length.toLocaleString()} rows
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Schema tab */
+          <div className="bg-white rounded-lg border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-medium text-gray-900">Schema Definition</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                View the structure of this database
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Order
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Label
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Key
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Required
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Identifier
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {sortedColumns.map((column) => (
+                    <tr key={column.key}>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {column.order + 1}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        {column.label}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 font-mono">
+                        {column.key}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">
+                        {column.dataType}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {column.required ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">No</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {column.key === database.identifierKey ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            Primary
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Import Modal */}
+      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Data</DialogTitle>
+            <DialogDescription>
+              Upload an Excel file to replace all existing data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {!importFile ? (
+              /* File drop zone */
+              <div
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const file = e.dataTransfer.files[0]
+                  if (file && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
+                    handleFileSelect(file)
+                  }
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-orange-400 hover:bg-orange-50 transition-colors cursor-pointer"
+              >
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleFileSelect(file)
+                  }}
+                  className="hidden"
+                  ref={fileInputRef}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full"
+                >
+                  <FileUp className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-600">
+                    Drop an Excel file here or{" "}
+                    <span className="text-orange-600 font-medium">browse</span>
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">.xlsx or .xls files</p>
+                </button>
+              </div>
+            ) : previewing ? (
+              /* Loading state */
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-3" />
+                <p className="text-gray-600">Validating file...</p>
+              </div>
+            ) : importPreview ? (
+              /* Preview result */
+              <div className="space-y-4">
+                {/* File info */}
+                <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <FileSpreadsheet className="w-5 h-5 text-gray-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-700 truncate">{importFile.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {importPreview.rowCount.toLocaleString()} rows found
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setImportFile(null)
+                      setImportPreview(null)
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Warning about replacing data */}
+                {database.rowCount > 0 && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                    <p className="text-sm text-amber-700">
+                      This will replace all {database.rowCount.toLocaleString()} existing rows
+                    </p>
+                  </div>
+                )}
+
+                {/* Validation errors */}
+                {importPreview.errors.length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-red-700">Validation errors</p>
+                        <ul className="mt-1 text-sm text-red-600 space-y-0.5">
+                          {importPreview.errors.slice(0, 10).map((err, i) => (
+                            <li key={i}>• {err}</li>
+                          ))}
+                          {importPreview.errors.length > 10 && (
+                            <li className="text-red-500">
+                              ... and {importPreview.errors.length - 10} more errors
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {importPreview.warnings && importPreview.warnings.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-700">Warnings</p>
+                        <ul className="mt-1 text-sm text-amber-600 space-y-0.5">
+                          {importPreview.warnings.map((warn, i) => (
+                            <li key={i}>• {warn}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Valid preview */}
+                {importPreview.valid && (
+                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <Check className="w-4 h-4 text-green-600 mt-0.5" />
+                    <p className="text-sm text-green-700">
+                      File is valid and ready to import {importPreview.rowCount.toLocaleString()} rows
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImportModalOpen(false)
+                setImportFile(null)
+                setImportPreview(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmImport}
+              disabled={!importPreview?.valid || importing}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {importing ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import {importPreview?.rowCount?.toLocaleString() || 0} Rows
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
