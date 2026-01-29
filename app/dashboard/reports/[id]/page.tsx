@@ -409,7 +409,7 @@ export default function ReportBuilderPage() {
       {/* Main content - split pane */}
       <div className="flex-1 flex min-h-0">
         {/* Left panel - Configuration */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <div className="w-[600px] bg-white border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Data Source Info */}
             <div className="p-3 bg-gray-50 rounded-lg">
@@ -448,11 +448,11 @@ export default function ReportBuilderPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-[140px]">Label</th>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-[100px]">Type</th>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">Configuration</th>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 w-[90px]">Format</th>
-                        <th className="px-2 py-2 w-[40px]"></th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[180px]">Label</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[100px]">Type</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 min-w-[200px]">Configuration</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[100px]">Format</th>
+                        <th className="px-3 py-2 w-[50px]"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -466,7 +466,7 @@ export default function ReportBuilderPage() {
                         [...metricRows].sort((a, b) => a.order - b.order).map((metric, index) => (
                           <tr key={metric.key} className="hover:bg-gray-50">
                             {/* Label */}
-                            <td className="px-2 py-1.5">
+                            <td className="px-3 py-2">
                               <Input
                                 value={metric.label}
                                 onChange={(e) => {
@@ -475,12 +475,12 @@ export default function ReportBuilderPage() {
                                   ))
                                   setHasUnsavedChanges(true)
                                 }}
-                                className="h-7 text-sm"
+                                className="h-8 text-sm"
                                 placeholder="Row label"
                               />
                             </td>
                             {/* Type */}
-                            <td className="px-2 py-1.5">
+                            <td className="px-3 py-2">
                               <select
                                 value={metric.type}
                                 onChange={(e) => {
@@ -499,7 +499,7 @@ export default function ReportBuilderPage() {
                                   ))
                                   setHasUnsavedChanges(true)
                                 }}
-                                className="h-7 px-2 border border-gray-300 rounded text-xs w-full bg-white"
+                                className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
                               >
                                 <option value="source">Source</option>
                                 <option value="formula">Formula</option>
@@ -507,7 +507,7 @@ export default function ReportBuilderPage() {
                               </select>
                             </td>
                             {/* Configuration - varies by type */}
-                            <td className="px-2 py-1.5">
+                            <td className="px-3 py-2">
                               {metric.type === "source" && (
                                 <select
                                   value={metric.sourceColumnKey || ""}
@@ -517,7 +517,7 @@ export default function ReportBuilderPage() {
                                     ))
                                     setHasUnsavedChanges(true)
                                   }}
-                                  className="h-7 px-2 border border-gray-300 rounded text-xs w-full bg-white"
+                                  className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
                                 >
                                   <option value="">Select column...</option>
                                   {databaseColumns.map(col => (
@@ -534,12 +534,12 @@ export default function ReportBuilderPage() {
                                     ))
                                     setHasUnsavedChanges(true)
                                   }}
-                                  className="h-7 text-xs font-mono"
+                                  className="h-8 text-sm font-mono"
                                   placeholder="e.g., revenue - costs"
                                 />
                               )}
                               {metric.type === "comparison" && (
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-2">
                                   <select
                                     value={metric.compareRowKey || ""}
                                     onChange={(e) => {
@@ -548,9 +548,9 @@ export default function ReportBuilderPage() {
                                       ))
                                       setHasUnsavedChanges(true)
                                     }}
-                                    className="h-7 px-1.5 border border-gray-300 rounded text-xs flex-1 bg-white"
+                                    className="h-8 px-2 border border-gray-300 rounded text-sm flex-1 bg-white"
                                   >
-                                    <option value="">Row...</option>
+                                    <option value="">Select row...</option>
                                     {metricRows.filter(m => m.key !== metric.key && m.type !== "comparison").map(m => (
                                       <option key={m.key} value={m.key}>{m.label || m.key}</option>
                                     ))}
@@ -563,7 +563,7 @@ export default function ReportBuilderPage() {
                                       ))
                                       setHasUnsavedChanges(true)
                                     }}
-                                    className="h-7 px-1.5 border border-gray-300 rounded text-xs w-[70px] bg-white"
+                                    className="h-8 px-2 border border-gray-300 rounded text-sm w-[80px] bg-white"
                                   >
                                     <option value="mom">MoM</option>
                                     <option value="qoq">QoQ</option>
@@ -577,7 +577,7 @@ export default function ReportBuilderPage() {
                                       ))
                                       setHasUnsavedChanges(true)
                                     }}
-                                    className="h-7 px-1.5 border border-gray-300 rounded text-xs w-[70px] bg-white"
+                                    className="h-8 px-2 border border-gray-300 rounded text-sm w-[80px] bg-white"
                                   >
                                     <option value="value">Value</option>
                                     <option value="delta">Delta</option>
@@ -587,7 +587,7 @@ export default function ReportBuilderPage() {
                               )}
                             </td>
                             {/* Format */}
-                            <td className="px-2 py-1.5">
+                            <td className="px-3 py-2">
                               <select
                                 value={metric.format}
                                 onChange={(e) => {
@@ -596,7 +596,7 @@ export default function ReportBuilderPage() {
                                   ))
                                   setHasUnsavedChanges(true)
                                 }}
-                                className="h-7 px-2 border border-gray-300 rounded text-xs w-full bg-white"
+                                className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
                               >
                                 <option value="number">Number</option>
                                 <option value="currency">Currency</option>
@@ -605,7 +605,7 @@ export default function ReportBuilderPage() {
                               </select>
                             </td>
                             {/* Delete */}
-                            <td className="px-2 py-1.5 text-center">
+                            <td className="px-3 py-2 text-center">
                               <button
                                 onClick={() => {
                                   setMetricRows(prev => prev.filter(m => m.key !== metric.key))
@@ -813,7 +813,7 @@ export default function ReportBuilderPage() {
         </div>
 
         {/* Right panel - Preview */}
-        <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
+        <div className="flex-1 flex flex-col min-w-0 bg-gray-50 max-w-md">
           {/* Preview header with period controls */}
           <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
