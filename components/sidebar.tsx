@@ -119,14 +119,14 @@ const coreNavItems: NavItem[] = [
     icon: RequestsIcon
   },
   {
-    href: "/dashboard/databases",
-    label: "Databases",
-    icon: DatabasesIcon
-  },
-  {
     href: "/dashboard/reports",
     label: "Reports",
     icon: ReportsIcon
+  },
+  {
+    href: "/dashboard/databases",
+    label: "Databases",
+    icon: DatabasesIcon
   },
 ]
 
@@ -150,7 +150,7 @@ const settingsNavItems: NavItem[] = [
 ]
 
 export function Sidebar({ className = "", userRole }: SidebarProps) {
-  const [collectionExpanded, setCollectionExpanded] = useState(true)
+  const [collectionExpanded, setCollectionExpanded] = useState(false)
   
   // Check if user is admin
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
