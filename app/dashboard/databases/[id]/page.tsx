@@ -495,19 +495,30 @@ export default function DatabaseDetailPage() {
     value: string | number | boolean | null,
     dataType: string
   ): string => {
-    if (value === null || value === undefined) return "—"
+    if (value === null || value === undefined || value === "") return "—"
 
     switch (dataType) {
       case "boolean":
         return value ? "Yes" : "No"
-      case "currency":
-        if (typeof value === "number") {
+      case "currency": {
+        // Parse string values to numbers for formatting
+        const numValue = typeof value === "number" ? value : parseFloat(String(value).replace(/[$,]/g, ""))
+        if (!isNaN(numValue)) {
           return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "USD",
-          }).format(value)
+          }).format(numValue)
         }
         return String(value)
+      }
+      case "number": {
+        // Parse string values to numbers for formatting
+        const numValue = typeof value === "number" ? value : parseFloat(String(value).replace(/,/g, ""))
+        if (!isNaN(numValue)) {
+          return new Intl.NumberFormat("en-US").format(numValue)
+        }
+        return String(value)
+      }
       case "date":
         if (value) {
           try {
