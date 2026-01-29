@@ -17,6 +17,10 @@ import {
   FileUp,
   Key,
   Plus,
+  Pencil,
+  GripVertical,
+  Trash2,
+  Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -122,6 +126,14 @@ export default function DatabaseDetailPage() {
   const [importing, setImporting] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Schema editing state
+  const [schemaEditMode, setSchemaEditMode] = useState(false)
+  const [editingColumns, setEditingColumns] = useState<SchemaColumn[]>([])
+  const [editingIdentifierKeys, setEditingIdentifierKeys] = useState<string[]>([])
+  const [savingSchema, setSavingSchema] = useState(false)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
+  const [schemaWarnings, setSchemaWarnings] = useState<string[]>([])
 
   // ----------------------------------------
   // Data Fetching
@@ -352,6 +364,125 @@ export default function DatabaseDetailPage() {
       })
     } finally {
       setImporting(false)
+    }
+  }
+
+  // ----------------------------------------
+  // Schema Edit Handlers
+  // ----------------------------------------
+
+  const startSchemaEdit = () => {
+    if (!database) return
+    setEditingColumns([...database.schema.columns].sort((a, b) => a.order - b.order))
+    setEditingIdentifierKeys([...database.identifierKeys])
+    setSchemaError(null)
+    setSchemaWarnings([])
+    setSchemaEditMode(true)
+  }
+
+  const cancelSchemaEdit = () => {
+    setSchemaEditMode(false)
+    setEditingColumns([])
+    setEditingIdentifierKeys([])
+    setSchemaError(null)
+    setSchemaWarnings([])
+  }
+
+  const updateColumnField = (key: string, field: keyof SchemaColumn, value: any) => {
+    setEditingColumns(prev => 
+      prev.map(col => col.key === key ? { ...col, [field]: value } : col)
+    )
+  }
+
+  const moveColumn = (index: number, direction: "up" | "down") => {
+    const newIndex = direction === "up" ? index - 1 : index + 1
+    if (newIndex < 0 || newIndex >= editingColumns.length) return
+    
+    const newColumns = [...editingColumns]
+    const [removed] = newColumns.splice(index, 1)
+    newColumns.splice(newIndex, 0, removed)
+    
+    // Update order values
+    setEditingColumns(newColumns.map((col, i) => ({ ...col, order: i })))
+  }
+
+  const toggleIdentifier = (key: string) => {
+    if (!database || database.rowCount > 0) return // Can't change identifiers if data exists
+    
+    setEditingIdentifierKeys(prev => {
+      if (prev.includes(key)) {
+        return prev.filter(k => k !== key)
+      } else {
+        return [...prev, key]
+      }
+    })
+  }
+
+  const addColumn = () => {
+    const newKey = `column_${Date.now()}`
+    const newColumn: SchemaColumn = {
+      key: newKey,
+      label: "New Column",
+      dataType: "text",
+      required: false,
+      order: editingColumns.length,
+    }
+    setEditingColumns(prev => [...prev, newColumn])
+  }
+
+  const removeColumn = (key: string) => {
+    if (!database) return
+    // Can't remove if data exists
+    if (database.rowCount > 0) {
+      setSchemaError("Cannot remove columns when data exists")
+      return
+    }
+    // Can't remove identifier columns
+    if (editingIdentifierKeys.includes(key)) {
+      setSchemaError("Cannot remove identifier columns. Remove as identifier first.")
+      return
+    }
+    setEditingColumns(prev => prev.filter(c => c.key !== key).map((col, i) => ({ ...col, order: i })))
+    setSchemaError(null)
+  }
+
+  const saveSchema = async () => {
+    if (!database) return
+    
+    setSavingSchema(true)
+    setSchemaError(null)
+    setSchemaWarnings([])
+    
+    try {
+      const response = await fetch(`/api/databases/${databaseId}/schema`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          columns: editingColumns,
+          identifierKeys: editingIdentifierKeys,
+        }),
+      })
+      
+      const result = await response.json()
+      
+      if (!response.ok) {
+        setSchemaError(result.error || "Failed to update schema")
+        return
+      }
+      
+      if (result.warnings?.length > 0) {
+        setSchemaWarnings(result.warnings)
+      }
+      
+      // Success - refresh and exit edit mode
+      await fetchDatabase()
+      setSchemaEditMode(false)
+    } catch (err) {
+      console.error("Error saving schema:", err)
+      setSchemaError("Failed to save schema")
+    } finally {
+      setSavingSchema(false)
     }
   }
 
@@ -676,16 +807,77 @@ export default function DatabaseDetailPage() {
         ) : (
           /* Schema tab */
           <div className="bg-white rounded-lg border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-medium text-gray-900">Schema Definition</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                View the structure of this database
-              </p>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-medium text-gray-900">Schema Definition</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {schemaEditMode ? "Edit the structure of this database" : "View the structure of this database"}
+                </p>
+              </div>
+              {!schemaEditMode ? (
+                <Button variant="outline" size="sm" onClick={startSchemaEdit}>
+                  <Pencil className="w-4 h-4 mr-1.5" />
+                  Edit Schema
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={cancelSchemaEdit} disabled={savingSchema}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                    onClick={saveSchema}
+                    disabled={savingSchema || editingIdentifierKeys.length === 0}
+                  >
+                    {savingSchema ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-1.5" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
+
+            {/* Error/Warning messages */}
+            {schemaError && (
+              <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-red-700">{schemaError}</p>
+              </div>
+            )}
+            {schemaWarnings.length > 0 && (
+              <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-700">Warnings</p>
+                    <ul className="mt-1 text-sm text-amber-600 space-y-0.5">
+                      {schemaWarnings.map((warn, i) => (
+                        <li key={i}>• {warn}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
+                    {schemaEditMode && (
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                        
+                      </th>
+                    )}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Order
                     </th>
@@ -704,25 +896,83 @@ export default function DatabaseDetailPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Identifier
                     </th>
+                    {schemaEditMode && (
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
+                        
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {sortedColumns.map((column) => (
-                    <tr key={column.key}>
+                  {(schemaEditMode ? editingColumns : sortedColumns).map((column, index) => (
+                    <tr key={column.key} className={schemaEditMode ? "hover:bg-gray-50" : ""}>
+                      {schemaEditMode && (
+                        <td className="px-3 py-4">
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              onClick={() => moveColumn(index, "up")}
+                              disabled={index === 0}
+                              className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                            >
+                              <ChevronDown className="w-4 h-4 rotate-180" />
+                            </button>
+                            <button
+                              onClick={() => moveColumn(index, "down")}
+                              disabled={index === editingColumns.length - 1}
+                              className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {column.order + 1}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        {column.label}
+                        {schemaEditMode ? (
+                          <Input
+                            value={column.label}
+                            onChange={(e) => updateColumnField(column.key, "label", e.target.value)}
+                            className="h-8 w-40"
+                          />
+                        ) : (
+                          column.label
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 font-mono">
                         {column.key}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize">
-                        {column.dataType}
+                        {schemaEditMode ? (
+                          <select
+                            value={column.dataType}
+                            onChange={(e) => updateColumnField(column.key, "dataType", e.target.value)}
+                            className="h-8 px-2 border border-gray-300 rounded-md text-sm"
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="currency">Currency</option>
+                            <option value="date">Date</option>
+                            <option value="boolean">Boolean</option>
+                          </select>
+                        ) : (
+                          column.dataType
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        {column.required ? (
+                        {schemaEditMode ? (
+                          <button
+                            onClick={() => updateColumnField(column.key, "required", !column.required)}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              column.required
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {column.required ? "Yes" : "No"}
+                          </button>
+                        ) : column.required ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                             Yes
                           </span>
@@ -731,7 +981,21 @@ export default function DatabaseDetailPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        {identifierKeySet.has(column.key) ? (
+                        {schemaEditMode ? (
+                          <button
+                            onClick={() => toggleIdentifier(column.key)}
+                            disabled={database.rowCount > 0}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                              editingIdentifierKeys.includes(column.key)
+                                ? "bg-orange-100 text-orange-800"
+                                : "bg-gray-100 text-gray-500"
+                            } ${database.rowCount > 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                            title={database.rowCount > 0 ? "Cannot change identifiers when data exists" : ""}
+                          >
+                            <Key className="w-3 h-3" />
+                            {editingIdentifierKeys.includes(column.key) ? "Key" : "—"}
+                          </button>
+                        ) : identifierKeySet.has(column.key) ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                             <Key className="w-3 h-3" />
                             Key
@@ -740,13 +1004,55 @@ export default function DatabaseDetailPage() {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
+                      {schemaEditMode && (
+                        <td className="px-3 py-4">
+                          <button
+                            onClick={() => removeColumn(column.key)}
+                            disabled={database.rowCount > 0 || editingIdentifierKeys.includes(column.key)}
+                            className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={
+                              database.rowCount > 0 
+                                ? "Cannot remove columns when data exists" 
+                                : editingIdentifierKeys.includes(column.key)
+                                ? "Cannot remove identifier columns"
+                                : "Remove column"
+                            }
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            {/* Add column button (edit mode only, when no data) */}
+            {schemaEditMode && database.rowCount === 0 && (
+              <div className="px-6 py-4 border-t border-gray-200">
+                <Button variant="outline" size="sm" onClick={addColumn}>
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Add Column
+                </Button>
+              </div>
+            )}
+
+            {/* Edit mode restrictions notice */}
+            {schemaEditMode && database.rowCount > 0 && (
+              <div className="px-6 py-4 bg-amber-50 border-t border-amber-200">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                  <div className="text-sm text-amber-700">
+                    <p className="font-medium">Limited editing</p>
+                    <p>This database has {database.rowCount.toLocaleString()} rows. You can edit labels and data types, but cannot add/remove columns or change identifier keys.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Composite key info */}
-            {database.identifierKeys.length > 1 && (
+            {!schemaEditMode && database.identifierKeys.length > 1 && (
               <div className="px-6 py-4 bg-blue-50 border-t border-blue-200">
                 <div className="flex items-start gap-2">
                   <Key className="w-4 h-4 text-blue-600 mt-0.5" />
@@ -765,6 +1071,18 @@ export default function DatabaseDetailPage() {
                       })}
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Identifier requirement notice in edit mode */}
+            {schemaEditMode && editingIdentifierKeys.length === 0 && (
+              <div className="px-6 py-4 bg-red-50 border-t border-red-200">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+                  <p className="text-sm text-red-700">
+                    <strong>At least one identifier column is required.</strong> Click on a column's Key badge to toggle it as an identifier.
+                  </p>
                 </div>
               </div>
             )}
