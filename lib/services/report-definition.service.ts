@@ -41,12 +41,20 @@ export interface ReportFormulaRow {
 export interface MetricRow {
   key: string                    // Unique key for this metric row
   label: string                  // Display label (e.g., "Construction Income", "GP%")
-  type: "source" | "formula"     // Source = from DB field, Formula = calculated from other rows
+  type: "source" | "formula" | "comparison"  // Source = from DB, Formula = calculated, Comparison = period compare
   sourceColumnKey?: string       // If type="source", which DB column to pull from
   expression?: string            // If type="formula", expression using other row keys
+  // Comparison fields (type="comparison")
+  compareRowKey?: string         // Which row to compare (references another metric row's key)
+  comparePeriod?: "mom" | "qoq" | "yoy"  // Month-over-month, Quarter-over-quarter, Year-over-year
+  compareOutput?: "value" | "delta" | "percent"  // Output: raw value, difference, or percentage change
   format: "text" | "number" | "currency" | "percent"
   order: number
 }
+
+// Comparison period types for metric rows
+export type ComparePeriodType = "mom" | "qoq" | "yoy"
+export type CompareOutputType = "value" | "delta" | "percent"
 
 // Valid cadence values for reports
 export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"

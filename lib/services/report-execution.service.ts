@@ -351,14 +351,28 @@ export class ReportExecutionService {
     // Sort metrics by order
     const sortedMetrics = [...metricRows].sort((a, b) => a.order - b.order)
 
-    // First pass: compute source values
+    // Build metric values for current period
     const metricValuesByPivot: Record<string, Record<string, number | null>> = {}
+    // Build metric values for compare period (for comparison rows)
+    const compareMetricValuesByPivot: Record<string, Record<string, number | null>> = {}
+
+    // Initialize
     for (const pv of pivotValues) {
       metricValuesByPivot[pv] = {}
+      compareMetricValuesByPivot[pv] = {}
+    }
+
+    // First pass: compute source values (current period)
+    for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "source" && metric.sourceColumnKey) {
           const num = parseNumericValue(currentDataByPivot[pv]?.[metric.sourceColumnKey])
           metricValuesByPivot[pv][metric.key] = num
+          // Also compute compare period source values
+          if (compareRows) {
+            const compareNum = parseNumericValue(compareDataByPivot[pv]?.[metric.sourceColumnKey])
+            compareMetricValuesByPivot[pv][metric.key] = compareNum
+          }
         }
       }
     }
@@ -375,6 +389,54 @@ export class ReportExecutionService {
             }
           }
           metricValuesByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, context)
+
+          // Also compute compare period formula values
+          if (compareRows) {
+            const compareContext: Record<string, number> = {}
+            for (const [key, val] of Object.entries(compareMetricValuesByPivot[pv])) {
+              if (val !== null) {
+                compareContext[key] = val
+              }
+            }
+            compareMetricValuesByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, compareContext)
+          }
+        }
+      }
+    }
+
+    // Third pass: compute comparison rows
+    for (const pv of pivotValues) {
+      for (const metric of sortedMetrics) {
+        if (metric.type === "comparison" && metric.compareRowKey) {
+          const currentValue = metricValuesByPivot[pv][metric.compareRowKey]
+          const compareValue = compareMetricValuesByPivot[pv][metric.compareRowKey]
+
+          if (currentValue === null || compareValue === null) {
+            metricValuesByPivot[pv][metric.key] = null
+            continue
+          }
+
+          // Calculate based on output type
+          switch (metric.compareOutput) {
+            case "value":
+              // Just show the compare period value
+              metricValuesByPivot[pv][metric.key] = compareValue
+              break
+            case "delta":
+              // Current - Compare (positive = growth)
+              metricValuesByPivot[pv][metric.key] = Math.round((currentValue - compareValue) * 100) / 100
+              break
+            case "percent":
+              // Percentage change: (current - compare) / compare * 100
+              if (compareValue === 0) {
+                metricValuesByPivot[pv][metric.key] = null
+              } else {
+                metricValuesByPivot[pv][metric.key] = Math.round(((currentValue - compareValue) / compareValue) * 10000) / 100
+              }
+              break
+            default:
+              metricValuesByPivot[pv][metric.key] = compareValue
+          }
         }
       }
     }
