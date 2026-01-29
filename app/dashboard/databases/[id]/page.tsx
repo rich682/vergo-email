@@ -886,9 +886,6 @@ export default function DatabaseDetailPage() {
                       Label
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Key
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -940,9 +937,6 @@ export default function DatabaseDetailPage() {
                         ) : (
                           column.label
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 font-mono">
-                        {column.key}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize">
                         {schemaEditMode ? (
