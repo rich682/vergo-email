@@ -1029,8 +1029,8 @@ export default function DatabaseDetailPage() {
               </table>
             </div>
 
-            {/* Add column button (edit mode only, when no data) */}
-            {schemaEditMode && database.rowCount === 0 && (
+            {/* Add column button (edit mode only - always allowed) */}
+            {schemaEditMode && (
               <div className="px-6 py-4 border-t border-gray-200">
                 <Button variant="outline" size="sm" onClick={addColumn}>
                   <Plus className="w-4 h-4 mr-1.5" />
