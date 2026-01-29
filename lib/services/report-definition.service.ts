@@ -126,6 +126,7 @@ export class ReportDefinitionService {
             name: true,
             schema: true,
             rowCount: true,
+            rows: true, // Include rows for live preview
           },
         },
         createdBy: {

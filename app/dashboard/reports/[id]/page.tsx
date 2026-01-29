@@ -9,10 +9,8 @@ import {
   Loader2,
   Database,
   Plus,
-  GripVertical,
   Trash2,
   FunctionSquare,
-  RefreshCw,
   ChevronDown,
   ChevronRight,
   Settings2,
@@ -77,6 +75,7 @@ interface ReportDefinition {
     name: string
     schema: DatabaseSchema
     rowCount: number
+    rows: Array<Record<string, unknown>>
   }
 }
 
@@ -117,10 +116,7 @@ export default function ReportBuilderPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Preview state
-  const [preview, setPreview] = useState<PreviewData | null>(null)
-  const [loadingPreview, setLoadingPreview] = useState(false)
-  const [previewError, setPreviewError] = useState<string | null>(null)
+  // Preview is now computed locally from reportColumns and database rows
 
   // UI state
   const [columnsExpanded, setColumnsExpanded] = useState(true)
@@ -164,36 +160,61 @@ export default function ReportBuilderPage() {
     }
   }, [id, router])
 
-  // Fetch preview
-  const fetchPreview = useCallback(async () => {
-    if (!id) return
-    try {
-      setLoadingPreview(true)
-      setPreviewError(null)
-      const response = await fetch(`/api/reports/${id}/preview?limit=50`, {
-        credentials: "include",
-      })
-      if (!response.ok) {
-        throw new Error("Failed to load preview")
-      }
-      const data = await response.json()
-      setPreview(data)
-    } catch (err: any) {
-      setPreviewError(err.message)
-    } finally {
-      setLoadingPreview(false)
-    }
-  }, [id])
-
   useEffect(() => {
     fetchReport()
   }, [fetchReport])
 
-  useEffect(() => {
-    if (report) {
-      fetchPreview()
+  // Compute preview locally from current column selections and database rows
+  const preview = useMemo((): PreviewData | null => {
+    if (!report || reportColumns.length === 0) return null
+
+    const databaseRows = (report.database.rows || []) as Array<Record<string, unknown>>
+    const limitedRows = databaseRows.slice(0, 50) // Limit for preview
+
+    // Build output columns metadata
+    const outputColumns = reportColumns
+      .sort((a, b) => a.order - b.order)
+      .map(col => ({
+        key: col.key,
+        label: col.label,
+        dataType: col.dataType,
+        type: col.type,
+      }))
+
+    // Compute data rows with formula columns
+    const dataRows = limitedRows.map(sourceRow => {
+      const outputRow: Record<string, unknown> = {}
+
+      for (const col of reportColumns) {
+        if (col.type === "source" && col.sourceColumnKey) {
+          outputRow[col.key] = sourceRow[col.sourceColumnKey]
+        } else if (col.type === "formula" && col.expression) {
+          outputRow[col.key] = evaluateRowFormula(col.expression, sourceRow)
+        }
+      }
+
+      return outputRow
+    })
+
+    // Compute formula rows (aggregations)
+    const formulaRowsOutput = reportFormulaRows
+      .sort((a, b) => a.order - b.order)
+      .map(fr => ({
+        key: fr.key,
+        label: fr.label,
+        values: computeFormulaRowValues(fr.columnFormulas, dataRows),
+      }))
+
+    return {
+      columns: outputColumns,
+      dataRows,
+      formulaRows: formulaRowsOutput,
+      metadata: {
+        rowCount: limitedRows.length,
+        databaseName: report.database.name,
+      },
     }
-  }, [report, fetchPreview])
+  }, [report, reportColumns, reportFormulaRows])
 
   // Save changes
   const handleSave = async () => {
@@ -219,8 +240,6 @@ export default function ReportBuilderPage() {
       }
 
       setHasUnsavedChanges(false)
-      // Refresh preview
-      fetchPreview()
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -528,33 +547,14 @@ export default function ReportBuilderPage() {
                 </span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchPreview}
-              disabled={loadingPreview}
-            >
-              <RefreshCw className={`w-4 h-4 mr-1.5 ${loadingPreview ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
+            <span className="text-xs text-gray-400">
+              Live preview - updates as you select columns
+            </span>
           </div>
 
           {/* Preview content */}
           <div className="flex-1 overflow-auto p-4">
-            {loadingPreview ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              </div>
-            ) : previewError ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <p className="text-red-500">{previewError}</p>
-                  <Button variant="outline" size="sm" onClick={fetchPreview} className="mt-2">
-                    Retry
-                  </Button>
-                </div>
-              </div>
-            ) : !preview || preview.columns.length === 0 ? (
+            {!preview || preview.columns.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-500">
                   <p className="font-medium">No columns selected</p>
@@ -923,4 +923,99 @@ function FormulaRowModal({
       </DialogContent>
     </Dialog>
   )
+}
+
+// ============================================
+// Formula Evaluation Helpers
+// ============================================
+
+/**
+ * Evaluate a formula expression for a single row
+ */
+function evaluateRowFormula(
+  expression: string,
+  row: Record<string, unknown>
+): unknown {
+  try {
+    let expr = expression
+    const columnRefs = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || []
+    
+    for (const ref of columnRefs) {
+      if (ref in row) {
+        const value = row[ref]
+        if (typeof value === "number") {
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(value))
+        } else if (typeof value === "string" && !isNaN(Number(value))) {
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), value)
+        } else {
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
+        }
+      }
+    }
+
+    if (!/^[\d\s+\-*/().]+$/.test(expr)) {
+      return null
+    }
+
+    const result = Function(`"use strict"; return (${expr})`)()
+
+    if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
+      return Math.round(result * 100) / 100
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Compute formula row values (aggregations like SUM, AVG, COUNT)
+ */
+function computeFormulaRowValues(
+  columnFormulas: Record<string, string>,
+  dataRows: Array<Record<string, unknown>>
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {}
+
+  for (const [columnKey, formula] of Object.entries(columnFormulas)) {
+    const upperFormula = formula.toUpperCase().trim()
+    
+    const numericValues: number[] = dataRows
+      .map(row => {
+        const val = row[columnKey]
+        if (typeof val === "number") return val
+        if (typeof val === "string" && !isNaN(Number(val))) return Number(val)
+        return null
+      })
+      .filter((v): v is number => v !== null)
+
+    if (numericValues.length === 0) {
+      values[columnKey] = null
+      continue
+    }
+
+    switch (upperFormula) {
+      case "SUM":
+        values[columnKey] = Math.round(numericValues.reduce((a, b) => a + b, 0) * 100) / 100
+        break
+      case "AVG":
+      case "AVERAGE":
+        values[columnKey] = Math.round((numericValues.reduce((a, b) => a + b, 0) / numericValues.length) * 100) / 100
+        break
+      case "COUNT":
+        values[columnKey] = numericValues.length
+        break
+      case "MIN":
+        values[columnKey] = Math.min(...numericValues)
+        break
+      case "MAX":
+        values[columnKey] = Math.max(...numericValues)
+        break
+      default:
+        values[columnKey] = null
+    }
+  }
+
+  return values
 }
