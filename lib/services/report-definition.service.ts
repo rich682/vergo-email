@@ -54,6 +54,9 @@ export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
 // Layout modes
 export type ReportLayout = "standard" | "pivot"
 
+// Compare modes for variance analysis
+export type CompareMode = "none" | "mom" | "yoy"
+
 export interface CreateReportDefinitionInput {
   name: string
   description?: string
@@ -61,6 +64,7 @@ export interface CreateReportDefinitionInput {
   cadence: ReportCadence
   dateColumnKey: string
   layout?: ReportLayout
+  compareMode?: CompareMode
   // Standard layout fields
   columns?: ReportColumn[]
   formulaRows?: ReportFormulaRow[]
@@ -75,6 +79,7 @@ export interface UpdateReportDefinitionInput {
   name?: string
   description?: string
   layout?: ReportLayout
+  compareMode?: CompareMode
   // Standard layout fields
   columns?: ReportColumn[]
   formulaRows?: ReportFormulaRow[]
@@ -220,6 +225,7 @@ export class ReportDefinitionService {
         cadence: input.cadence,
         dateColumnKey: input.dateColumnKey,
         layout,
+        compareMode: input.compareMode || "none",
         columns: (input.columns || []) as any,
         formulaRows: (input.formulaRows || []) as any,
         pivotColumnKey: input.pivotColumnKey,
@@ -267,6 +273,7 @@ export class ReportDefinitionService {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.layout !== undefined && { layout: input.layout }),
+        ...(input.compareMode !== undefined && { compareMode: input.compareMode }),
         // Standard layout fields
         ...(input.columns !== undefined && { columns: input.columns as any }),
         ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows as any }),

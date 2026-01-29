@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -16,6 +16,9 @@ import {
   Settings2,
   LayoutGrid,
   Table2,
+  Calendar,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -82,6 +85,7 @@ interface ReportDefinition {
   cadence: string
   dateColumnKey: string
   layout: "standard" | "pivot"
+  compareMode: "none" | "mom" | "yoy"
   // Standard layout fields
   columns: ReportColumn[]
   formulaRows: ReportFormulaRow[]
@@ -97,30 +101,28 @@ interface ReportDefinition {
   }
 }
 
+// Preview result from server
+interface PreviewResult {
+  current: { periodKey: string; label: string; rowCount: number } | null
+  compare: { periodKey: string; label: string; rowCount: number } | null
+  availablePeriods: Array<{ key: string; label: string }>
+  table: {
+    columns: Array<{ key: string; label: string; dataType: string; type: string }>
+    rows: Array<Record<string, unknown>>
+    formulaRows: Array<{ key: string; label: string; values: Record<string, unknown> }>
+  }
+  diagnostics: {
+    totalDatabaseRows: number
+    parseFailures: number
+    warnings: string[]
+  }
+}
+
 const CADENCE_LABELS: Record<string, string> = {
   daily: "Daily",
   monthly: "Monthly",
   quarterly: "Quarterly",
   annual: "Annual",
-}
-
-interface PreviewData {
-  columns: Array<{
-    key: string
-    label: string
-    dataType: string
-    type: "source" | "formula"
-  }>
-  dataRows: Array<Record<string, unknown>>
-  formulaRows: Array<{
-    key: string
-    label: string
-    values: Record<string, unknown>
-  }>
-  metadata: {
-    rowCount: number
-    databaseName: string
-  }
 }
 
 export default function ReportBuilderPage() {
@@ -134,7 +136,11 @@ export default function ReportBuilderPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Preview is now computed locally from reportColumns and database rows
+  // Preview state (server-side computed)
+  const [previewData, setPreviewData] = useState<PreviewResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [currentPeriodKey, setCurrentPeriodKey] = useState<string>("")
+  const [compareMode, setCompareMode] = useState<"none" | "mom" | "yoy">("none")
 
   // UI state
   const [columnsExpanded, setColumnsExpanded] = useState(true)
@@ -183,6 +189,8 @@ export default function ReportBuilderPage() {
       // Pivot layout state
       setPivotColumnKey(data.report.pivotColumnKey || null)
       setMetricRows(data.report.metricRows || [])
+      // Variance state
+      setCompareMode(data.report.compareMode || "none")
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -194,137 +202,44 @@ export default function ReportBuilderPage() {
     fetchReport()
   }, [fetchReport])
 
-  // Compute preview locally from current selections and database rows
-  const preview = useMemo((): PreviewData | null => {
-    if (!report) return null
+  // Fetch preview from server
+  const fetchPreview = useCallback(async () => {
+    if (!report) return
     
-    const databaseRows = (report.database.rows || []) as Array<Record<string, unknown>>
-    
-    // === PIVOT LAYOUT ===
-    if (report.layout === "pivot") {
-      if (!pivotColumnKey || metricRows.length === 0) return null
-      
-      // Get unique pivot values (these become column headers)
-      const pivotValues = [...new Set(
-        databaseRows.map(r => String(r[pivotColumnKey] || ""))
-      )].filter(v => v !== "").sort()
-      
-      if (pivotValues.length === 0) return null
-      
-      // Build data map: { pivotValue: rowData }
-      const dataByPivot: Record<string, Record<string, unknown>> = {}
-      for (const row of databaseRows) {
-        const pivotVal = String(row[pivotColumnKey] || "")
-        if (pivotVal) {
-          dataByPivot[pivotVal] = row
-        }
-      }
-      
-      // Build columns: first is label column, rest are pivot values
-      const outputColumns = [
-        { key: "_label", label: "", dataType: "text", type: "source" as const },
-        ...pivotValues.map(pv => ({
-          key: pv,
-          label: pv,
-          dataType: "text",
-          type: "source" as const,
-        }))
-      ]
-      
-      // Build rows: each metric row becomes a data row
-      const sortedMetrics = [...metricRows].sort((a, b) => a.order - b.order)
-      
-      // First pass: compute source values
-      const metricValuesByPivot: Record<string, Record<string, unknown>> = {}
-      for (const pv of pivotValues) {
-        metricValuesByPivot[pv] = {}
-        for (const metric of sortedMetrics) {
-          if (metric.type === "source" && metric.sourceColumnKey) {
-            metricValuesByPivot[pv][metric.key] = dataByPivot[pv]?.[metric.sourceColumnKey]
-          }
-        }
-      }
-      
-      // Second pass: compute formula values (can reference other metrics)
-      for (const pv of pivotValues) {
-        for (const metric of sortedMetrics) {
-          if (metric.type === "formula" && metric.expression) {
-            // Build context with other metric values for this pivot
-            const context = metricValuesByPivot[pv]
-            metricValuesByPivot[pv][metric.key] = evaluatePivotFormula(metric.expression, context)
-          }
-        }
-      }
-      
-      // Build output rows
-      const dataRows = sortedMetrics.map(metric => {
-        const row: Record<string, unknown> = { _label: metric.label }
-        for (const pv of pivotValues) {
-          row[pv] = metricValuesByPivot[pv][metric.key]
-        }
-        return row
+    setPreviewLoading(true)
+    try {
+      const response = await fetch(`/api/reports/${id}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPeriodKey: currentPeriodKey || undefined,
+          compareMode,
+        }),
       })
       
-      return {
-        columns: outputColumns,
-        dataRows,
-        formulaRows: [],
-        metadata: {
-          rowCount: dataRows.length,
-          databaseName: report.database.name,
-        },
-      }
-    }
-    
-    // === STANDARD LAYOUT ===
-    if (reportColumns.length === 0) return null
-
-    const limitedRows = databaseRows.slice(0, 50) // Limit for preview
-
-    // Build output columns metadata
-    const outputColumns = reportColumns
-      .sort((a, b) => a.order - b.order)
-      .map(col => ({
-        key: col.key,
-        label: col.label,
-        dataType: col.dataType,
-        type: col.type,
-      }))
-
-    // Compute data rows with formula columns
-    const dataRows = limitedRows.map(sourceRow => {
-      const outputRow: Record<string, unknown> = {}
-
-      for (const col of reportColumns) {
-        if (col.type === "source" && col.sourceColumnKey) {
-          outputRow[col.key] = sourceRow[col.sourceColumnKey]
-        } else if (col.type === "formula" && col.expression) {
-          outputRow[col.key] = evaluateRowFormula(col.expression, sourceRow)
+      if (response.ok) {
+        const data = await response.json()
+        setPreviewData(data)
+        
+        // Auto-select first period if none selected
+        if (!currentPeriodKey && data.availablePeriods?.length > 0) {
+          setCurrentPeriodKey(data.availablePeriods[0].key)
         }
       }
-
-      return outputRow
-    })
-
-    // Compute formula rows (aggregations)
-    const formulaRowsOutput = reportFormulaRows
-      .sort((a, b) => a.order - b.order)
-      .map(fr => ({
-        key: fr.key,
-        label: fr.label,
-        values: computeFormulaRowValues(fr.columnFormulas, dataRows),
-      }))
-
-    return {
-      columns: outputColumns,
-      dataRows,
-      formulaRows: formulaRowsOutput,
-      metadata: {
-        rowCount: limitedRows.length,
-        databaseName: report.database.name,
-      },
+    } catch (err) {
+      console.error("Error fetching preview:", err)
+    } finally {
+      setPreviewLoading(false)
     }
-  }, [report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows])
+  }, [id, report, currentPeriodKey, compareMode])
+
+  // Fetch preview when report loads or period/mode changes
+  useEffect(() => {
+    if (report) {
+      fetchPreview()
+    }
+  }, [report, currentPeriodKey, compareMode, fetchPreview])
 
   // Save changes
   const handleSave = async () => {
@@ -345,6 +260,8 @@ export default function ReportBuilderPage() {
           // Pivot layout fields
           pivotColumnKey,
           metricRows,
+          // Variance settings
+          compareMode,
         }),
       })
 
@@ -736,24 +653,105 @@ export default function ReportBuilderPage() {
 
         {/* Right panel - Preview */}
         <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
-          {/* Preview header */}
-          <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
-            <div className="text-sm text-gray-600">
-              Preview
-              {preview && (
-                <span className="text-gray-400 ml-2">
-                  ({preview.metadata.rowCount} rows)
-                </span>
-              )}
+          {/* Preview header with period controls */}
+          <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Preview</span>
+                {previewLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchPreview}
+                disabled={previewLoading}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${previewLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
             </div>
-            <span className="text-xs text-gray-400">
-              Live preview - updates as you select columns
-            </span>
+            
+            {/* Period and Compare Mode Controls */}
+            <div className="flex items-center gap-4">
+              {/* Period Picker */}
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <Select
+                  value={currentPeriodKey}
+                  onValueChange={(v) => {
+                    setCurrentPeriodKey(v)
+                    setHasUnsavedChanges(true)
+                  }}
+                >
+                  <SelectTrigger className="w-[180px] h-8 text-sm">
+                    <SelectValue placeholder="Select period..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {previewData?.availablePeriods?.map((period) => (
+                      <SelectItem key={period.key} value={period.key}>
+                        {period.label}
+                      </SelectItem>
+                    ))}
+                    {(!previewData?.availablePeriods || previewData.availablePeriods.length === 0) && (
+                      <SelectItem value="" disabled>No periods available</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Compare Mode Selector */}
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-gray-400" />
+                <Select
+                  value={compareMode}
+                  onValueChange={(v: "none" | "mom" | "yoy") => {
+                    setCompareMode(v)
+                    setHasUnsavedChanges(true)
+                  }}
+                >
+                  <SelectTrigger className="w-[140px] h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Comparison</SelectItem>
+                    <SelectItem value="mom">vs Previous (MoM)</SelectItem>
+                    <SelectItem value="yoy">vs Last Year (YoY)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Period Info Display */}
+            {previewData && (previewData.current || previewData.compare) && (
+              <div className="mt-3 flex items-center gap-4 text-xs">
+                {previewData.current && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded text-blue-700">
+                    <span className="font-medium">Current:</span>
+                    <span>{previewData.current.label}</span>
+                    <span className="text-blue-500">({previewData.current.rowCount} rows)</span>
+                  </div>
+                )}
+                {previewData.compare && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 rounded text-amber-700">
+                    <span className="font-medium">Compare:</span>
+                    <span>{previewData.compare.label}</span>
+                    <span className="text-amber-500">({previewData.compare.rowCount} rows)</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Preview content */}
           <div className="flex-1 overflow-auto p-4">
-            {!preview || preview.columns.length === 0 ? (
+            {previewLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-gray-500">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">Loading preview...</p>
+                </div>
+              </div>
+            ) : !previewData || previewData.table.columns.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-500">
                   <p className="font-medium">No columns selected</p>
@@ -766,7 +764,7 @@ export default function ReportBuilderPage() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        {preview.columns.map((col) => (
+                        {previewData.table.columns.map((col) => (
                           <th
                             key={col.key}
                             className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -782,9 +780,9 @@ export default function ReportBuilderPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {preview.dataRows.map((row, rowIndex) => (
+                      {previewData.table.rows.map((row, rowIndex) => (
                         <tr key={rowIndex} className="hover:bg-gray-50">
-                          {preview.columns.map((col) => (
+                          {previewData.table.columns.map((col) => (
                             <td key={col.key} className="px-4 py-2.5 text-sm text-gray-700 whitespace-nowrap">
                               {formatCellValue(row[col.key], col.dataType)}
                             </td>
@@ -792,9 +790,9 @@ export default function ReportBuilderPage() {
                         </tr>
                       ))}
                       {/* Formula rows */}
-                      {preview.formulaRows.map((fr) => (
+                      {previewData.table.formulaRows.map((fr) => (
                         <tr key={fr.key} className="bg-gray-50 font-medium">
-                          {preview.columns.map((col, colIndex) => (
+                          {previewData.table.columns.map((col, colIndex) => (
                             <td key={col.key} className="px-4 py-2.5 text-sm text-gray-900 whitespace-nowrap">
                               {colIndex === 0 ? (
                                 <span className="flex items-center gap-1.5">
@@ -1550,152 +1548,5 @@ function MetricRowPanel({
   )
 }
 
-// ============================================
-// Formula Evaluation Helpers
-// ============================================
-
-/**
- * Evaluate a formula expression for a single row
- */
-/**
- * Parse a value that might be a currency string, number, or plain string
- * Handles: $1,000,000 | 1,000,000 | 1000000 | "1000000"
- */
-function parseNumericValue(value: unknown): number | null {
-  if (typeof value === "number") {
-    return value
-  }
-  if (typeof value === "string") {
-    // Remove currency symbols, commas, and whitespace
-    const cleaned = value.replace(/[$£€,\s]/g, "")
-    const num = Number(cleaned)
-    if (!isNaN(num)) {
-      return num
-    }
-  }
-  return null
-}
-
-function evaluateRowFormula(
-  expression: string,
-  row: Record<string, unknown>
-): unknown {
-  try {
-    let expr = expression
-    const columnRefs = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || []
-    
-    for (const ref of columnRefs) {
-      if (ref in row) {
-        const numValue = parseNumericValue(row[ref])
-        if (numValue !== null) {
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(numValue))
-        } else {
-          // Non-numeric value, replace with 0
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
-        }
-      }
-    }
-
-    // Validate expression only contains safe characters
-    if (!/^[\d\s+\-*/().]+$/.test(expr)) {
-      return null
-    }
-
-    const result = Function(`"use strict"; return (${expr})`)()
-
-    if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
-      return Math.round(result * 100) / 100
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Evaluate a pivot formula - uses other metric row values as context
- * E.g., "gross_profit / construction_income * 100" where gross_profit and construction_income
- * are other metric row keys
- */
-function evaluatePivotFormula(
-  expression: string,
-  context: Record<string, unknown>
-): unknown {
-  try {
-    let expr = expression
-    const metricRefs = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || []
-    
-    for (const ref of metricRefs) {
-      if (ref in context) {
-        const numValue = parseNumericValue(context[ref])
-        if (numValue !== null) {
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(numValue))
-        } else {
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
-        }
-      }
-    }
-
-    // Validate expression only contains safe characters
-    if (!/^[\d\s+\-*/().]+$/.test(expr)) {
-      return null
-    }
-
-    const result = Function(`"use strict"; return (${expr})`)()
-
-    if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
-      return Math.round(result * 100) / 100
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Compute formula row values (aggregations like SUM, AVG, COUNT)
- */
-function computeFormulaRowValues(
-  columnFormulas: Record<string, string>,
-  dataRows: Array<Record<string, unknown>>
-): Record<string, unknown> {
-  const values: Record<string, unknown> = {}
-
-  for (const [columnKey, formula] of Object.entries(columnFormulas)) {
-    const upperFormula = formula.toUpperCase().trim()
-    
-    const numericValues: number[] = dataRows
-      .map(row => parseNumericValue(row[columnKey]))
-      .filter((v): v is number => v !== null)
-
-    if (numericValues.length === 0) {
-      values[columnKey] = null
-      continue
-    }
-
-    switch (upperFormula) {
-      case "SUM":
-        values[columnKey] = Math.round(numericValues.reduce((a, b) => a + b, 0) * 100) / 100
-        break
-      case "AVG":
-      case "AVERAGE":
-        values[columnKey] = Math.round((numericValues.reduce((a, b) => a + b, 0) / numericValues.length) * 100) / 100
-        break
-      case "COUNT":
-        values[columnKey] = numericValues.length
-        break
-      case "MIN":
-        values[columnKey] = Math.min(...numericValues)
-        break
-      case "MAX":
-        values[columnKey] = Math.max(...numericValues)
-        break
-      default:
-        values[columnKey] = null
-    }
-  }
-
-  return values
-}
+// Note: Formula evaluation has been moved to server-side (lib/services/report-execution.service.ts)
+// using a safe expression evaluator that doesn't use Function() or eval()

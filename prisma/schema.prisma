@@ -1209,6 +1209,9 @@ model ReportDefinition {
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, format, order }
   metricRows      Json     @default("[]")
   
+  // Variance analysis configuration
+  compareMode     String   @default("none")  // "none" | "mom" | "yoy"
+  
   // Metadata
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
