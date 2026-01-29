@@ -1,6 +1,6 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-28  
+> **Living Document** - Last updated: 2026-01-29  
 > **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -296,6 +296,162 @@ Column keys starting with `_` are **not allowed** in schema definitions. This re
 
 ---
 
+## Report Slices Data Model & API Contract
+
+> **Last Updated**: 2026-01-29  
+> **Scope**: Report Slices - saved filter views for reports
+
+### Overview
+
+Report Slices are saved, reusable "views" of a ReportDefinition. They store filter bindings (e.g., `{ pm: "Caleb", brand: "Chipotle" }`) without hardcoding period, enabling quick report viewing by audience.
+
+**Future**: Tasks will reference slices by ID to render reports with slice filters + board period.
+
+### Data Model
+
+```typescript
+// Prisma Model
+model ReportSlice {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  reportDefinitionId String
+  name               String
+  filterBindings     Json     @default("{}")  // { "pm": "Caleb", "brand": "Chipotle" }
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdById        String
+  
+  @@unique([reportDefinitionId, name])
+  @@index([organizationId, reportDefinitionId])
+}
+
+// TypeScript Types
+interface FilterBindings {
+  [key: string]: unknown  // Column key → filter value
+}
+
+interface ReportSlice {
+  id: string
+  organizationId: string
+  reportDefinitionId: string
+  name: string
+  filterBindings: FilterBindings
+  createdAt: Date
+  updatedAt: Date
+  createdById: string
+}
+```
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Slices do NOT store period | Period comes from UI selection now, board context later |
+| Slices are per-report | Each slice belongs to exactly one ReportDefinition |
+| Unique name per report | `@@unique([reportDefinitionId, name])` prevents duplicates |
+| Filters applied after period | Order: period filtering → slice filters → layout evaluation |
+
+### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/reports/[id]/slices` | GET | List all slices for a report |
+| `/api/reports/[id]/slices` | POST | Create a new slice |
+| `/api/reports/[id]/slices/[sliceId]` | GET | Get a single slice |
+| `/api/reports/[id]/slices/[sliceId]` | PATCH | Update slice name/filters |
+| `/api/reports/[id]/slices/[sliceId]` | DELETE | Delete a slice |
+
+### Request/Response Shapes
+
+```typescript
+// POST /api/reports/[id]/slices
+// Request
+{
+  name: string,                         // Required, unique per report
+  filterBindings: Record<string, unknown>  // Optional, defaults to {}
+}
+
+// Response (201)
+{
+  slice: ReportSlice
+}
+
+// Error (409 - duplicate name)
+{
+  error: "A slice with this name already exists for this report"
+}
+
+// PATCH /api/reports/[id]/slices/[sliceId]
+// Request
+{
+  name?: string,                        // Optional
+  filterBindings?: Record<string, unknown>  // Optional
+}
+
+// GET /api/reports/[id]/slices
+// Response
+{
+  slices: ReportSlice[]
+}
+```
+
+### Filter Behavior in Preview Pipeline
+
+When a slice is active, its `filterBindings` are passed to the preview API:
+
+```typescript
+// POST /api/reports/[id]/preview
+{
+  currentPeriodKey?: string,
+  compareMode?: "none" | "mom" | "yoy",
+  liveConfig?: { ... },
+  filters?: Record<string, unknown>  // From slice.filterBindings
+}
+```
+
+**Filtering Rules (V1)**:
+
+| Rule | Behavior |
+|------|----------|
+| Equality | `{ pm: "Caleb" }` → rows where `pm === "Caleb"` |
+| IN (array) | `{ pm: ["Caleb", "Doug"] }` → rows where `pm` is in array |
+| Null/undefined value | Filter key ignored |
+| Missing key on row | Row excluded |
+| Order | Filters applied after period filtering, before layout/formula evaluation |
+
+### UI Integration
+
+The report builder page (`/dashboard/reports/[id]`) includes:
+
+| Component | Behavior |
+|-----------|----------|
+| Slice selector dropdown | Lists "All Data" + saved slices |
+| Active slice info | Shows filter bindings with edit/delete buttons |
+| "Save as Slice" button | Opens modal to name slice and configure filters |
+| Filter builder | Column dropdown + value dropdown per filter row |
+
+### Future Task Integration
+
+Tasks will reference slices for automatic report rendering:
+
+```typescript
+// Future: Task referencing a slice
+{
+  reportDefinitionId: string,  // Which report template
+  sliceId: string,             // Which slice (provides filterBindings)
+  // periodKey derived from board's accounting period
+}
+
+// Execution: Same preview pipeline
+ReportExecutionService.executePreview({
+  reportDefinitionId,
+  currentPeriodKey: boardPeriodKey,
+  filters: slice.filterBindings,
+})
+```
+
+---
+
 ## Section A: Page-to-Workflow Mapping
 
 ### Dashboard Pages
@@ -317,6 +473,8 @@ Column keys starting with `_` are **not allowed** in schema definitions. This re
 | Databases List | `/dashboard/databases` | PWF-11: Databases | WF-11a, WF-11f | `/api/databases` |
 | Database Detail | `/dashboard/databases/[id]` | PWF-11: Databases | WF-11d, WF-11e, WF-11f | `/api/databases/[id]`, `/api/databases/[id]/import/*`, `/api/databases/[id]/*.xlsx` |
 | New Database | `/dashboard/databases/new` | PWF-11: Databases | WF-11a, WF-11b, WF-11c | `/api/databases` |
+| Reports List | `/dashboard/reports` | PWF-12: Reports | WF-12a, WF-12f | `/api/reports` |
+| Report Builder | `/dashboard/reports/[id]` | PWF-12: Reports | WF-12b, WF-12c, WF-12d, WF-12e | `/api/reports/[id]`, `/api/reports/[id]/preview`, `/api/reports/[id]/slices/*` |
 
 ### Auth Pages
 
@@ -455,6 +613,11 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/databases/[id]/export.xlsx` | GET | FRONTEND | URL_GENERATION | `app/dashboard/databases/[id]/page.tsx` (window.open) |
 | `/api/databases/[id]/import/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:195` |
 | `/api/databases/[id]/import` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:218` |
+| `/api/reports` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx`, `app/dashboard/reports/new/page.tsx` |
+| `/api/reports/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` |
+| `/api/reports/[id]/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (preview with period, compareMode, liveConfig, filters) |
+| `/api/reports/[id]/slices` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (list/create slices) |
+| `/api/reports/[id]/slices/[sliceId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (update/delete slice) |
 
 ### ADMIN Routes (18 routes)
 

@@ -1,7 +1,7 @@
 # Workflow Taxonomy
 
-**Version**: 1.3  
-**Last Updated**: January 22, 2026  
+**Version**: 1.4  
+**Last Updated**: January 29, 2026  
 **Purpose**: Hierarchical workflow structure enabling safe, ring-fenced refactoring
 
 ---
@@ -238,6 +238,42 @@
 
 ---
 
+### PWF-11: Databases
+
+**Description**: Standalone structured data stores with schema definitions, composite identifiers, and Excel import/export capabilities. Foundation for Reports feature.
+
+**Sub-Workflows**:
+| Sub-ID | Name | User Goal | Status |
+|--------|------|-----------|--------|
+| WF-11a | Create Database | User creates a new database with schema definition | GREEN |
+| WF-11b | Edit Database Schema | User modifies database columns, types, or identifiers | GREEN |
+| WF-11c | Import Database Rows | User uploads CSV/Excel data to append to database | GREEN |
+| WF-11d | Export Database Data | User exports all database rows to Excel | GREEN |
+| WF-11e | Download Database Template | User downloads empty Excel template with headers | GREEN |
+| WF-11f | Delete Database | User permanently removes a database | GREEN |
+
+---
+
+### PWF-12: Reports
+
+**Description**: Report definitions with column configuration, formula rows, pivot layouts, variance analysis, and saved filter views (slices). Reports link to Databases for data sourcing.
+
+**Sub-Workflows**:
+| Sub-ID | Name | User Goal | Status |
+|--------|------|-----------|--------|
+| WF-12a | Create Report | User creates a new report definition linked to a database | GREEN |
+| WF-12b | Configure Report Columns | User selects data columns and adds formula columns | GREEN |
+| WF-12c | Configure Report Layout | User chooses standard or pivot layout, sets pivot column | GREEN |
+| WF-12d | Configure Metric Rows | User adds source, formula, or comparison metric rows | GREEN |
+| WF-12e | Preview Report | User previews report with period selection and compare mode | GREEN |
+| WF-12f | Delete Report | User permanently removes a report definition | GREEN |
+| WF-12g | Create Report Slice | User saves a named filter view (e.g., "Caleb P&L") | GREEN |
+| WF-12h | Select Report Slice | User applies a saved slice to filter preview data | GREEN |
+| WF-12i | Edit Report Slice | User modifies slice name or filter bindings | GREEN |
+| WF-12j | Delete Report Slice | User removes a saved slice | GREEN |
+
+---
+
 ## Sub-Workflow Reference
 
 ### Complete Sub-Workflow Index
@@ -316,6 +352,22 @@
 | WF-10n | PWF-10 | Navigate Period Sheets | - | `/dashboard/jobs/[id]` | Client-side tab navigation |
 | WF-10o | PWF-10 | Create Formula Column | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-columns` (formula) |
 | WF-10p | PWF-10 | Create Formula Row | - | `/dashboard/jobs/[id]` | `POST /api/task-lineages/[id]/app-rows` (formula) |
+| WF-11a | PWF-11 | Create Database | - | `/dashboard/databases/new` | `POST /api/databases` |
+| WF-11b | PWF-11 | Edit Database Schema | - | `/dashboard/databases/[id]` | `PATCH /api/databases/[id]/schema` |
+| WF-11c | PWF-11 | Import Database Rows | - | `/dashboard/databases/[id]` | `POST /api/databases/[id]/import` |
+| WF-11d | PWF-11 | Export Database Data | - | `/dashboard/databases/[id]` | `GET /api/databases/[id]/export.xlsx` |
+| WF-11e | PWF-11 | Download Database Template | - | `/dashboard/databases/[id]` | `GET /api/databases/[id]/template.xlsx` |
+| WF-11f | PWF-11 | Delete Database | - | `/dashboard/databases` | `DELETE /api/databases/[id]` |
+| WF-12a | PWF-12 | Create Report | - | `/dashboard/reports/new` | `POST /api/reports` |
+| WF-12b | PWF-12 | Configure Report Columns | - | `/dashboard/reports/[id]` | `PATCH /api/reports/[id]` |
+| WF-12c | PWF-12 | Configure Report Layout | - | `/dashboard/reports/[id]` | `PATCH /api/reports/[id]` |
+| WF-12d | PWF-12 | Configure Metric Rows | - | `/dashboard/reports/[id]` | `PATCH /api/reports/[id]` |
+| WF-12e | PWF-12 | Preview Report | - | `/dashboard/reports/[id]` | `POST /api/reports/[id]/preview` |
+| WF-12f | PWF-12 | Delete Report | - | `/dashboard/reports` | `DELETE /api/reports/[id]` |
+| WF-12g | PWF-12 | Create Report Slice | - | `/dashboard/reports/[id]` | `POST /api/reports/[id]/slices` |
+| WF-12h | PWF-12 | Select Report Slice | - | `/dashboard/reports/[id]` | `GET /api/reports/[id]/slices` |
+| WF-12i | PWF-12 | Edit Report Slice | - | `/dashboard/reports/[id]` | `PATCH /api/reports/[id]/slices/[sliceId]` |
+| WF-12j | PWF-12 | Delete Report Slice | - | `/dashboard/reports/[id]` | `DELETE /api/reports/[id]/slices/[sliceId]` |
 
 ---
 
@@ -323,10 +375,10 @@
 
 | Metric | Count |
 |--------|-------|
-| Parent Workflows | 10 |
-| Sub-Workflows | 67 |
-| GREEN Status | 59 |
+| Parent Workflows | 12 |
+| Sub-Workflows | 83 |
+| GREEN Status | 75 |
 | YELLOW Status | 8 |
 | RED Status | 0 |
 | System Automation | 4 |
-| User-Initiated | 63 |
+| User-Initiated | 79 |
