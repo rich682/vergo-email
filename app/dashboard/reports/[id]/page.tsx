@@ -1324,12 +1324,56 @@ function FormulaColumnPanel({
   const [expression, setExpression] = useState("")
   const [dataType, setDataType] = useState<"number" | "currency" | "text">("number")
 
+  // Build key-to-label and label-to-key mappings for database columns
+  const keyToLabelMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    databaseColumns.forEach(col => {
+      map[col.key] = col.label
+    })
+    return map
+  }, [databaseColumns])
+
+  const labelToKeyMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    databaseColumns.forEach(col => {
+      map[col.label] = col.key
+    })
+    return map
+  }, [databaseColumns])
+
+  // Convert internal expression (keys) to display expression (labels)
+  const keysToLabels = useCallback((expr: string): string => {
+    if (!expr) return ""
+    let result = expr
+    // Sort by key length descending to avoid partial replacements
+    const sortedKeys = Object.keys(keyToLabelMap).sort((a, b) => b.length - a.length)
+    sortedKeys.forEach(key => {
+      const label = keyToLabelMap[key]
+      if (label) {
+        result = result.replace(new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), `[${label}]`)
+      }
+    })
+    return result
+  }, [keyToLabelMap])
+
+  // Convert display expression (labels) to internal expression (keys)
+  const labelsToKeys = useCallback((expr: string): string => {
+    if (!expr) return ""
+    let result = expr
+    // Replace [Label Name] with the corresponding key
+    Object.entries(labelToKeyMap).forEach(([label, key]) => {
+      result = result.replace(new RegExp(`\\[${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g'), key)
+    })
+    return result
+  }, [labelToKeyMap])
+
   // Reset form when panel opens
   useEffect(() => {
     if (open) {
       if (editingColumn) {
         setLabel(editingColumn.label)
-        setExpression(editingColumn.expression || "")
+        // Convert stored keys to display labels
+        setExpression(keysToLabels(editingColumn.expression || ""))
         setDataType(editingColumn.dataType as any)
       } else {
         setLabel("")
@@ -1337,37 +1381,41 @@ function FormulaColumnPanel({
         setDataType("number")
       }
     }
-  }, [open, editingColumn])
+  }, [open, editingColumn, keysToLabels])
 
   const handleSave = () => {
     if (!label.trim() || !expression.trim()) return
 
     const key = editingKey || `formula_${Date.now()}`
+    // Convert display expression (with labels) to internal expression (with keys)
+    const internalExpression = labelsToKeys(expression.trim())
+    
     onSave({
       key,
       label: label.trim(),
       type: "formula",
-      expression: expression.trim(),
+      expression: internalExpression,
       dataType,
       order: editingColumn?.order || 0,
     })
   }
 
-  // Insert column key at cursor position
-  const insertColumn = (columnKey: string) => {
+  // Insert column label at cursor position (in bracket format)
+  const insertColumn = (colLabel: string) => {
+    const insertText = `[${colLabel}]`
     const input = inputRef.current
     if (input) {
       const start = input.selectionStart || expression.length
       const end = input.selectionEnd || expression.length
-      const newExpression = expression.slice(0, start) + columnKey + expression.slice(end)
+      const newExpression = expression.slice(0, start) + insertText + expression.slice(end)
       setExpression(newExpression)
       // Focus and move cursor after inserted text
       setTimeout(() => {
         input.focus()
-        input.setSelectionRange(start + columnKey.length, start + columnKey.length)
+        input.setSelectionRange(start + insertText.length, start + insertText.length)
       }, 0)
     } else {
-      setExpression(expression + columnKey)
+      setExpression(expression + insertText)
     }
   }
 
@@ -1436,11 +1484,11 @@ function FormulaColumnPanel({
                 <button
                   key={col.key}
                   type="button"
-                  onClick={() => insertColumn(col.key)}
+                  onClick={() => insertColumn(col.label)}
                   className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors cursor-pointer ${getTypeColor(col.dataType)}`}
-                  title={`${col.label} (${col.dataType})`}
+                  title={col.dataType}
                 >
-                  {col.key}
+                  {col.label}
                 </button>
               ))}
             </div>
@@ -1475,14 +1523,12 @@ function FormulaColumnPanel({
               ref={inputRef}
               value={expression}
               onChange={(e) => setExpression(e.target.value)}
-              placeholder="e.g., (contract_amount - costs) / contract_amount * 100"
-              className="font-mono text-sm"
+              placeholder="e.g., ([Revenue] - [Costs]) / [Revenue] * 100"
+              className="text-sm"
             />
-            {expression && (
-              <div className="p-2 bg-gray-50 rounded text-xs font-mono text-gray-600 break-all">
-                {expression}
-              </div>
-            )}
+            <p className="text-xs text-gray-400">
+              Click columns above or type [Column Name] to reference columns
+            </p>
           </div>
 
           {/* Result Type */}
@@ -1685,13 +1731,61 @@ function MetricRowModal({
     ? metricRows.find(m => m.key === editingKey)
     : null
 
+  // Helper to build key-to-label mapping for other metrics
+  const keyToLabelMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    metricRows.forEach(m => {
+      if (m.key !== editingKey && m.label) {
+        map[m.key] = m.label
+      }
+    })
+    return map
+  }, [metricRows, editingKey])
+
+  const labelToKeyMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    metricRows.forEach(m => {
+      if (m.key !== editingKey && m.label) {
+        map[m.label] = m.key
+      }
+    })
+    return map
+  }, [metricRows, editingKey])
+
+  // Convert internal expression (keys) to display expression (labels)
+  const keysToLabels = useCallback((expr: string): string => {
+    if (!expr) return ""
+    let result = expr
+    // Sort by key length descending to avoid partial replacements
+    const sortedKeys = Object.keys(keyToLabelMap).sort((a, b) => b.length - a.length)
+    sortedKeys.forEach(key => {
+      const label = keyToLabelMap[key]
+      if (label) {
+        result = result.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `[${label}]`)
+      }
+    })
+    return result
+  }, [keyToLabelMap])
+
+  // Convert display expression (labels) to internal expression (keys)
+  const labelsToKeys = useCallback((expr: string): string => {
+    if (!expr) return ""
+    let result = expr
+    // Replace [Label Name] with the corresponding key
+    Object.entries(labelToKeyMap).forEach(([label, key]) => {
+      result = result.replace(new RegExp(`\\[${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g'), key)
+    })
+    return result
+  }, [labelToKeyMap])
+
   // Initialize form when editing
   useEffect(() => {
     if (open && editingMetric) {
       setLabel(editingMetric.label)
       setType(editingMetric.type)
       setSourceColumnKey(editingMetric.sourceColumnKey || "")
-      setExpression(editingMetric.expression || "")
+      // Convert stored keys to display labels
+      setExpression(keysToLabels(editingMetric.expression || ""))
       setCompareRowKey(editingMetric.compareRowKey || "")
       setComparePeriod(editingMetric.comparePeriod || "yoy")
       setCompareOutput(editingMetric.compareOutput || "value")
@@ -1707,7 +1801,7 @@ function MetricRowModal({
       setCompareOutput("value")
       setFormat("currency")
     }
-  }, [open, editingKey, editingMetric])
+  }, [open, editingKey, editingMetric, keysToLabels])
 
   const handleSave = () => {
     if (!label.trim()) return
@@ -1716,12 +1810,15 @@ function MetricRowModal({
     if (type === "comparison" && !compareRowKey) return
 
     const key = editingKey || `metric_${Date.now()}`
+    // Convert display expression (with labels) to internal expression (with keys)
+    const internalExpression = type === "formula" ? labelsToKeys(expression.trim()) : undefined
+    
     onSave({
       key,
       label: label.trim(),
       type,
       sourceColumnKey: type === "source" ? sourceColumnKey : undefined,
-      expression: type === "formula" ? expression.trim() : undefined,
+      expression: internalExpression,
       compareRowKey: type === "comparison" ? compareRowKey : undefined,
       comparePeriod: type === "comparison" ? comparePeriod : undefined,
       compareOutput: type === "comparison" ? compareOutput : undefined,
@@ -1864,11 +1961,10 @@ function MetricRowModal({
                 <Input
                   value={expression}
                   onChange={(e) => setExpression(e.target.value)}
-                  placeholder="e.g., gross_revenue - total_costs"
-                  className="font-mono"
+                  placeholder="e.g., [Revenue] - [Costs]"
                 />
                 <p className="text-xs text-gray-500">
-                  Use other row keys to build calculations
+                  Click row names below or type [Row Name] to reference other rows
                 </p>
               </div>
 
@@ -1882,9 +1978,8 @@ function MetricRowModal({
                       <button
                         key={m.key}
                         type="button"
-                        onClick={() => setExpression(prev => prev + (prev ? " " : "") + m.key)}
+                        onClick={() => setExpression(prev => prev + (prev ? " " : "") + `[${m.label || m.key}]`)}
                         className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs"
-                        title={`Inserts: ${m.key}`}
                       >
                         {m.label || m.key}
                       </button>
