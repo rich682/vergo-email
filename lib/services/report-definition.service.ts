@@ -37,8 +37,22 @@ export interface ReportFormulaRow {
   order: number
 }
 
+// Metric row for pivot layout
+export interface MetricRow {
+  key: string                    // Unique key for this metric row
+  label: string                  // Display label (e.g., "Construction Income", "GP%")
+  type: "source" | "formula"     // Source = from DB field, Formula = calculated from other rows
+  sourceColumnKey?: string       // If type="source", which DB column to pull from
+  expression?: string            // If type="formula", expression using other row keys
+  format: "text" | "number" | "currency" | "percent"
+  order: number
+}
+
 // Valid cadence values for reports
 export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
+
+// Layout modes
+export type ReportLayout = "standard" | "pivot"
 
 export interface CreateReportDefinitionInput {
   name: string
@@ -46,8 +60,13 @@ export interface CreateReportDefinitionInput {
   databaseId: string
   cadence: ReportCadence
   dateColumnKey: string
+  layout?: ReportLayout
+  // Standard layout fields
   columns?: ReportColumn[]
   formulaRows?: ReportFormulaRow[]
+  // Pivot layout fields
+  pivotColumnKey?: string
+  metricRows?: MetricRow[]
   organizationId: string
   createdById: string
 }
@@ -55,8 +74,13 @@ export interface CreateReportDefinitionInput {
 export interface UpdateReportDefinitionInput {
   name?: string
   description?: string
+  layout?: ReportLayout
+  // Standard layout fields
   columns?: ReportColumn[]
   formulaRows?: ReportFormulaRow[]
+  // Pivot layout fields
+  pivotColumnKey?: string
+  metricRows?: MetricRow[]
 }
 
 export interface ReportPreviewResult {
@@ -167,6 +191,26 @@ export class ReportDefinitionService {
       throw new Error(`Invalid cadence "${input.cadence}". Must be one of: ${validCadences.join(", ")}`)
     }
 
+    // Validate layout
+    const layout = input.layout || "standard"
+    const validLayouts = ["standard", "pivot"]
+    if (!validLayouts.includes(layout)) {
+      throw new Error(`Invalid layout "${layout}". Must be one of: ${validLayouts.join(", ")}`)
+    }
+
+    // Validate pivot layout requirements
+    if (layout === "pivot" && !input.pivotColumnKey) {
+      throw new Error("Pivot layout requires a pivot column")
+    }
+
+    // Validate pivotColumnKey exists in database schema if provided
+    if (input.pivotColumnKey) {
+      const pivotColumnExists = schema.columns.some(col => col.key === input.pivotColumnKey)
+      if (!pivotColumnExists) {
+        throw new Error(`Pivot column "${input.pivotColumnKey}" not found in database schema`)
+      }
+    }
+
     const report = await prisma.reportDefinition.create({
       data: {
         name: input.name,
@@ -175,8 +219,11 @@ export class ReportDefinitionService {
         databaseId: input.databaseId,
         cadence: input.cadence,
         dateColumnKey: input.dateColumnKey,
+        layout,
         columns: (input.columns || []) as any,
         formulaRows: (input.formulaRows || []) as any,
+        pivotColumnKey: input.pivotColumnKey,
+        metricRows: (input.metricRows || []) as any,
         createdById: input.createdById,
       },
       include: {
@@ -219,8 +266,13 @@ export class ReportDefinitionService {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
+        ...(input.layout !== undefined && { layout: input.layout }),
+        // Standard layout fields
         ...(input.columns !== undefined && { columns: input.columns as any }),
         ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows as any }),
+        // Pivot layout fields
+        ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
+        ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
       },
       include: {
         database: {

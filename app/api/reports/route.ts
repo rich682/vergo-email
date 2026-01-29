@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportCadence } from "@/lib/services/report-definition.service"
+import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportCadence, ReportLayout, MetricRow } from "@/lib/services/report-definition.service"
 
 // GET - List report definitions
 export async function GET(request: NextRequest) {
@@ -58,7 +58,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, databaseId, cadence, dateColumnKey, columns, formulaRows } = body
+    const { 
+      name, description, databaseId, cadence, dateColumnKey, 
+      layout, columns, formulaRows, pivotColumnKey, metricRows 
+    } = body
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -92,6 +95,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate layout if provided
+    const validLayouts = ["standard", "pivot"]
+    if (layout && !validLayouts.includes(layout)) {
+      return NextResponse.json(
+        { error: `Layout must be one of: ${validLayouts.join(", ")}` },
+        { status: 400 }
+      )
+    }
+
+    // Validate pivot layout requirements
+    if (layout === "pivot" && !pivotColumnKey) {
+      return NextResponse.json(
+        { error: "Pivot layout requires a pivot column" },
+        { status: 400 }
+      )
+    }
+
     // Create the report definition
     const report = await ReportDefinitionService.createReportDefinition({
       name: name.trim(),
@@ -99,8 +119,11 @@ export async function POST(request: NextRequest) {
       databaseId,
       cadence: cadence as ReportCadence,
       dateColumnKey,
+      layout: (layout as ReportLayout) || "standard",
       columns: columns as ReportColumn[] | undefined,
       formulaRows: formulaRows as ReportFormulaRow[] | undefined,
+      pivotColumnKey,
+      metricRows: metricRows as MetricRow[] | undefined,
       organizationId: user.organizationId,
       createdById: user.id,
     })

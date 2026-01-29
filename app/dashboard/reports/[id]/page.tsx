@@ -14,6 +14,8 @@ import {
   ChevronDown,
   ChevronRight,
   Settings2,
+  LayoutGrid,
+  Table2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +55,17 @@ interface ReportFormulaRow {
   order: number
 }
 
+// Metric row for pivot layout
+interface MetricRow {
+  key: string
+  label: string
+  type: "source" | "formula"
+  sourceColumnKey?: string
+  expression?: string
+  format: "text" | "number" | "currency" | "percent"
+  order: number
+}
+
 interface DatabaseSchema {
   columns: Array<{
     key: string
@@ -68,8 +81,13 @@ interface ReportDefinition {
   description: string | null
   cadence: string
   dateColumnKey: string
+  layout: "standard" | "pivot"
+  // Standard layout fields
   columns: ReportColumn[]
   formulaRows: ReportFormulaRow[]
+  // Pivot layout fields
+  pivotColumnKey: string | null
+  metricRows: MetricRow[]
   database: {
     id: string
     name: string
@@ -132,10 +150,18 @@ export default function ReportBuilderPage() {
     open: boolean
     editingKey: string | null
   }>({ open: false, editingKey: null })
+  const [metricRowPanel, setMetricRowPanel] = useState<{
+    open: boolean
+    editingKey: string | null
+  }>({ open: false, editingKey: null })
 
-  // Editing state
+  // Editing state - Standard layout
   const [reportColumns, setReportColumns] = useState<ReportColumn[]>([])
   const [reportFormulaRows, setReportFormulaRows] = useState<ReportFormulaRow[]>([])
+  
+  // Editing state - Pivot layout
+  const [pivotColumnKey, setPivotColumnKey] = useState<string | null>(null)
+  const [metricRows, setMetricRows] = useState<MetricRow[]>([])
 
   // Fetch report definition
   const fetchReport = useCallback(async () => {
@@ -151,8 +177,12 @@ export default function ReportBuilderPage() {
       }
       const data = await response.json()
       setReport(data.report)
+      // Standard layout state
       setReportColumns(data.report.columns || [])
       setReportFormulaRows(data.report.formulaRows || [])
+      // Pivot layout state
+      setPivotColumnKey(data.report.pivotColumnKey || null)
+      setMetricRows(data.report.metricRows || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -164,11 +194,91 @@ export default function ReportBuilderPage() {
     fetchReport()
   }, [fetchReport])
 
-  // Compute preview locally from current column selections and database rows
+  // Compute preview locally from current selections and database rows
   const preview = useMemo((): PreviewData | null => {
-    if (!report || reportColumns.length === 0) return null
-
+    if (!report) return null
+    
     const databaseRows = (report.database.rows || []) as Array<Record<string, unknown>>
+    
+    // === PIVOT LAYOUT ===
+    if (report.layout === "pivot") {
+      if (!pivotColumnKey || metricRows.length === 0) return null
+      
+      // Get unique pivot values (these become column headers)
+      const pivotValues = [...new Set(
+        databaseRows.map(r => String(r[pivotColumnKey] || ""))
+      )].filter(v => v !== "").sort()
+      
+      if (pivotValues.length === 0) return null
+      
+      // Build data map: { pivotValue: rowData }
+      const dataByPivot: Record<string, Record<string, unknown>> = {}
+      for (const row of databaseRows) {
+        const pivotVal = String(row[pivotColumnKey] || "")
+        if (pivotVal) {
+          dataByPivot[pivotVal] = row
+        }
+      }
+      
+      // Build columns: first is label column, rest are pivot values
+      const outputColumns = [
+        { key: "_label", label: "", dataType: "text", type: "source" as const },
+        ...pivotValues.map(pv => ({
+          key: pv,
+          label: pv,
+          dataType: "text",
+          type: "source" as const,
+        }))
+      ]
+      
+      // Build rows: each metric row becomes a data row
+      const sortedMetrics = [...metricRows].sort((a, b) => a.order - b.order)
+      
+      // First pass: compute source values
+      const metricValuesByPivot: Record<string, Record<string, unknown>> = {}
+      for (const pv of pivotValues) {
+        metricValuesByPivot[pv] = {}
+        for (const metric of sortedMetrics) {
+          if (metric.type === "source" && metric.sourceColumnKey) {
+            metricValuesByPivot[pv][metric.key] = dataByPivot[pv]?.[metric.sourceColumnKey]
+          }
+        }
+      }
+      
+      // Second pass: compute formula values (can reference other metrics)
+      for (const pv of pivotValues) {
+        for (const metric of sortedMetrics) {
+          if (metric.type === "formula" && metric.expression) {
+            // Build context with other metric values for this pivot
+            const context = metricValuesByPivot[pv]
+            metricValuesByPivot[pv][metric.key] = evaluatePivotFormula(metric.expression, context)
+          }
+        }
+      }
+      
+      // Build output rows
+      const dataRows = sortedMetrics.map(metric => {
+        const row: Record<string, unknown> = { _label: metric.label }
+        for (const pv of pivotValues) {
+          row[pv] = metricValuesByPivot[pv][metric.key]
+        }
+        return row
+      })
+      
+      return {
+        columns: outputColumns,
+        dataRows,
+        formulaRows: [],
+        metadata: {
+          rowCount: dataRows.length,
+          databaseName: report.database.name,
+        },
+      }
+    }
+    
+    // === STANDARD LAYOUT ===
+    if (reportColumns.length === 0) return null
+
     const limitedRows = databaseRows.slice(0, 50) // Limit for preview
 
     // Build output columns metadata
@@ -214,7 +324,7 @@ export default function ReportBuilderPage() {
         databaseName: report.database.name,
       },
     }
-  }, [report, reportColumns, reportFormulaRows])
+  }, [report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows])
 
   // Save changes
   const handleSave = async () => {
@@ -229,8 +339,12 @@ export default function ReportBuilderPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          // Standard layout fields
           columns: reportColumns,
           formulaRows: reportFormulaRows,
+          // Pivot layout fields
+          pivotColumnKey,
+          metricRows,
         }),
       })
 
@@ -367,14 +481,97 @@ export default function ReportBuilderPage() {
             {/* Data Source Info */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm">
-                <Database className="w-4 h-4 text-gray-500" />
+                {report.layout === "pivot" ? (
+                  <LayoutGrid className="w-4 h-4 text-blue-500" />
+                ) : (
+                  <Database className="w-4 h-4 text-gray-500" />
+                )}
                 <span className="font-medium text-gray-700">{report.database.name}</span>
+                <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                  {report.layout === "pivot" ? "Pivot" : "Standard"}
+                </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {report.database.rowCount.toLocaleString()} rows available
+                {report.layout === "pivot" && report.pivotColumnKey && (
+                  <> • Pivot: {databaseColumns.find(c => c.key === report.pivotColumnKey)?.label || report.pivotColumnKey}</>
+                )}
               </p>
             </div>
 
+            {/* === PIVOT LAYOUT UI === */}
+            {report.layout === "pivot" && (
+              <>
+                {/* Metric Rows Section */}
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2.5 bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm text-gray-700">Metric Rows</span>
+                      <span className="text-xs text-gray-500">{metricRows.length} rows</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Define what data appears in each row</p>
+                  </div>
+
+                  <div className="p-3 space-y-2">
+                    {metricRows.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic text-center py-2">
+                        No metric rows defined yet
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {[...metricRows].sort((a, b) => a.order - b.order).map((metric) => (
+                          <div
+                            key={metric.key}
+                            className={`flex items-center gap-2 p-2 rounded ${
+                              metric.type === "formula" ? "bg-purple-50" : "bg-blue-50"
+                            }`}
+                          >
+                            {metric.type === "formula" ? (
+                              <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                            ) : (
+                              <Database className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                            )}
+                            <span className="text-sm text-gray-700 flex-1 truncate">{metric.label}</span>
+                            <span className="text-xs text-gray-400">{metric.format}</span>
+                            <button
+                              onClick={() => setMetricRowPanel({ open: true, editingKey: metric.key })}
+                              className="p-1 hover:bg-white/50 rounded"
+                            >
+                              <Settings2 className="w-3.5 h-3.5 text-gray-500" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMetricRows(prev => prev.filter(m => m.key !== metric.key))
+                                setHasUnsavedChanges(true)
+                              }}
+                              className="p-1 hover:bg-red-100 rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setMetricRowPanel({ open: true, editingKey: null })}
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                        Add Row
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* === STANDARD LAYOUT UI === */}
+            {report.layout !== "pivot" && (
+              <>
             {/* Columns Section */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <button
@@ -532,6 +729,8 @@ export default function ReportBuilderPage() {
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -659,6 +858,28 @@ export default function ReportBuilderPage() {
           }
           setHasUnsavedChanges(true)
           setFormulaRowModal({ open: false, editingKey: null })
+        }}
+      />
+
+      {/* Metric Row Panel for Pivot Layout */}
+      <MetricRowPanel
+        open={metricRowPanel.open}
+        editingKey={metricRowPanel.editingKey}
+        metricRows={metricRows}
+        databaseColumns={databaseColumns}
+        onClose={() => setMetricRowPanel({ open: false, editingKey: null })}
+        onSave={(metric) => {
+          if (metricRowPanel.editingKey) {
+            // Update existing
+            setMetricRows(prev =>
+              prev.map(m => m.key === metricRowPanel.editingKey ? metric : m)
+            )
+          } else {
+            // Add new
+            setMetricRows(prev => [...prev, { ...metric, order: prev.length }])
+          }
+          setHasUnsavedChanges(true)
+          setMetricRowPanel({ open: false, editingKey: null })
         }}
       />
     </div>
@@ -1029,6 +1250,307 @@ function FormulaRowModal({
 }
 
 // ============================================
+// Metric Row Panel Component (for Pivot Layout)
+// ============================================
+interface MetricRowPanelProps {
+  open: boolean
+  editingKey: string | null
+  metricRows: MetricRow[]
+  databaseColumns: Array<{ key: string; label: string; dataType: string }>
+  onClose: () => void
+  onSave: (metric: MetricRow) => void
+}
+
+function MetricRowPanel({
+  open,
+  editingKey,
+  metricRows,
+  databaseColumns,
+  onClose,
+  onSave,
+}: MetricRowPanelProps) {
+  const [label, setLabel] = useState("")
+  const [type, setType] = useState<"source" | "formula">("source")
+  const [sourceColumnKey, setSourceColumnKey] = useState("")
+  const [expression, setExpression] = useState("")
+  const [format, setFormat] = useState<"text" | "number" | "currency" | "percent">("number")
+  
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const editingMetric = editingKey
+    ? metricRows.find(m => m.key === editingKey)
+    : null
+
+  // Initialize form when editing
+  useEffect(() => {
+    if (open && editingMetric) {
+      setLabel(editingMetric.label)
+      setType(editingMetric.type)
+      setSourceColumnKey(editingMetric.sourceColumnKey || "")
+      setExpression(editingMetric.expression || "")
+      setFormat(editingMetric.format)
+    } else if (open && !editingKey) {
+      setLabel("")
+      setType("source")
+      setSourceColumnKey("")
+      setExpression("")
+      setFormat("number")
+    }
+  }, [open, editingKey, editingMetric])
+
+  // Focus input when panel opens
+  useEffect(() => {
+    if (open && type === "formula") {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [open, type])
+
+  const handleSave = () => {
+    if (!label.trim()) return
+    if (type === "source" && !sourceColumnKey) return
+    if (type === "formula" && !expression.trim()) return
+
+    const key = editingKey || `metric_${Date.now()}`
+    onSave({
+      key,
+      label: label.trim(),
+      type,
+      sourceColumnKey: type === "source" ? sourceColumnKey : undefined,
+      expression: type === "formula" ? expression.trim() : undefined,
+      format,
+      order: editingMetric?.order || 0,
+    })
+  }
+
+  // Insert metric key at cursor position
+  const insertMetric = (metricKey: string) => {
+    const input = inputRef.current
+    if (input) {
+      const start = input.selectionStart || expression.length
+      const end = input.selectionEnd || expression.length
+      const newExpression = expression.slice(0, start) + metricKey + expression.slice(end)
+      setExpression(newExpression)
+      setTimeout(() => {
+        input.focus()
+        input.setSelectionRange(start + metricKey.length, start + metricKey.length)
+      }, 0)
+    } else {
+      setExpression(prev => prev + metricKey)
+    }
+  }
+
+  // Insert operator
+  const insertOperator = (op: string) => {
+    const input = inputRef.current
+    if (input) {
+      const start = input.selectionStart || expression.length
+      const end = input.selectionEnd || expression.length
+      const newExpression = expression.slice(0, start) + ` ${op} ` + expression.slice(end)
+      setExpression(newExpression)
+      setTimeout(() => {
+        input.focus()
+        input.setSelectionRange(start + op.length + 2, start + op.length + 2)
+      }, 0)
+    } else {
+      setExpression(prev => prev + ` ${op} `)
+    }
+  }
+
+  // Get other metrics for formula references
+  const otherMetrics = metricRows.filter(m => m.key !== editingKey && m.type === "source")
+
+  if (!open) return null
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/20 z-40"
+        onClick={onClose}
+      />
+      {/* Panel */}
+      <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-semibold text-gray-900">
+            {editingKey ? "Edit Metric Row" : "Add Metric Row"}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Row Label */}
+          <div className="space-y-2">
+            <Label>Row Label *</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g., Construction Income, GP%"
+            />
+          </div>
+
+          {/* Type Selection */}
+          <div className="space-y-2">
+            <Label>Type</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setType("source")}
+                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                  type === "source"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Database className={`w-4 h-4 ${type === "source" ? "text-blue-600" : "text-gray-500"}`} />
+                  <span className={`text-sm font-medium ${type === "source" ? "text-blue-900" : "text-gray-700"}`}>
+                    Source Field
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Pull from database</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("formula")}
+                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                  type === "formula"
+                    ? "border-purple-500 bg-purple-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FunctionSquare className={`w-4 h-4 ${type === "formula" ? "text-purple-600" : "text-gray-500"}`} />
+                  <span className={`text-sm font-medium ${type === "formula" ? "text-purple-900" : "text-gray-700"}`}>
+                    Formula
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Calculate from other rows</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Source Column Selection */}
+          {type === "source" && (
+            <div className="space-y-2">
+              <Label>Source Column *</Label>
+              <Select value={sourceColumnKey} onValueChange={setSourceColumnKey}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a column..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {databaseColumns.map((col) => (
+                    <SelectItem key={col.key} value={col.key}>
+                      <div className="flex items-center gap-2">
+                        <span>{col.label}</span>
+                        <span className="text-xs text-gray-400">({col.dataType})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Formula Input */}
+          {type === "formula" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Formula Expression *</Label>
+                <Input
+                  ref={inputRef}
+                  value={expression}
+                  onChange={(e) => setExpression(e.target.value)}
+                  placeholder="e.g., gross_profit / revenue * 100"
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500">
+                  Reference other source row keys to create calculations
+                </p>
+              </div>
+
+              {/* Quick operators */}
+              <div className="flex flex-wrap gap-1">
+                {["+", "-", "*", "/", "(", ")"].map(op => (
+                  <button
+                    key={op}
+                    type="button"
+                    onClick={() => insertOperator(op)}
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-sm font-mono"
+                  >
+                    {op}
+                  </button>
+                ))}
+              </div>
+
+              {/* Available metrics to reference */}
+              {otherMetrics.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Available Fields
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {otherMetrics.map(m => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => insertMetric(m.key)}
+                        className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-mono"
+                      >
+                        {m.key}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Format Selection */}
+          <div className="space-y-2">
+            <Label>Display Format</Label>
+            <Select value={format} onValueChange={(v) => setFormat(v as any)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="currency">Currency ($)</SelectItem>
+                <SelectItem value="percent">Percentage (%)</SelectItem>
+                <SelectItem value="text">Text</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex gap-2">
+          <Button variant="outline" onClick={onClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={
+              !label.trim() ||
+              (type === "source" && !sourceColumnKey) ||
+              (type === "formula" && !expression.trim())
+            }
+            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            {editingKey ? "Update" : "Add"} Row
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ============================================
 // Formula Evaluation Helpers
 // ============================================
 
@@ -1069,6 +1591,47 @@ function evaluateRowFormula(
           expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(numValue))
         } else {
           // Non-numeric value, replace with 0
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
+        }
+      }
+    }
+
+    // Validate expression only contains safe characters
+    if (!/^[\d\s+\-*/().]+$/.test(expr)) {
+      return null
+    }
+
+    const result = Function(`"use strict"; return (${expr})`)()
+
+    if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
+      return Math.round(result * 100) / 100
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Evaluate a pivot formula - uses other metric row values as context
+ * E.g., "gross_profit / construction_income * 100" where gross_profit and construction_income
+ * are other metric row keys
+ */
+function evaluatePivotFormula(
+  expression: string,
+  context: Record<string, unknown>
+): unknown {
+  try {
+    let expr = expression
+    const metricRefs = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || []
+    
+    for (const ref of metricRefs) {
+      if (ref in context) {
+        const numValue = parseNumericValue(context[ref])
+        if (numValue !== null) {
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(numValue))
+        } else {
           expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
         }
       }

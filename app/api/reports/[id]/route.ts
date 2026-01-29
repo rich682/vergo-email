@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { ReportDefinitionService, ReportColumn, ReportFormulaRow } from "@/lib/services/report-definition.service"
+import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportLayout, MetricRow } from "@/lib/services/report-definition.service"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { name, description, columns, formulaRows } = body
+    const { name, description, layout, columns, formulaRows, pivotColumnKey, metricRows } = body
 
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
@@ -80,8 +80,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       {
         name: name?.trim(),
         description: description?.trim(),
+        layout: layout as ReportLayout | undefined,
         columns: columns as ReportColumn[] | undefined,
         formulaRows: formulaRows as ReportFormulaRow[] | undefined,
+        pivotColumnKey,
+        metricRows: metricRows as MetricRow[] | undefined,
       }
     )
 

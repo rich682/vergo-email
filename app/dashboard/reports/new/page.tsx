@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Database, Loader2, Calendar } from "lucide-react"
+import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,6 +45,21 @@ const CADENCE_OPTIONS = [
   { value: "annual", label: "Annual" },
 ]
 
+const LAYOUT_OPTIONS = [
+  { 
+    value: "standard", 
+    label: "Standard", 
+    description: "Database rows become report rows, select columns to display",
+    icon: Table2
+  },
+  { 
+    value: "pivot", 
+    label: "Pivot / Matrix", 
+    description: "One column's values become headers, define metric rows",
+    icon: LayoutGrid
+  },
+]
+
 export default function NewReportPage() {
   const router = useRouter()
   const [databases, setDatabases] = useState<DatabaseOption[]>([])
@@ -56,8 +71,10 @@ export default function NewReportPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [cadence, setCadence] = useState("")
+  const [layout, setLayout] = useState("standard")
   const [databaseId, setDatabaseId] = useState("")
   const [dateColumnKey, setDateColumnKey] = useState("")
+  const [pivotColumnKey, setPivotColumnKey] = useState("")
 
   // Database detail state (for getting columns)
   const [databaseDetail, setDatabaseDetail] = useState<DatabaseDetail | null>(null)
@@ -107,8 +124,9 @@ export default function NewReportPage() {
   useEffect(() => {
     if (databaseId) {
       fetchDatabaseDetail(databaseId)
-      // Reset date column when database changes
+      // Reset columns when database changes
       setDateColumnKey("")
+      setPivotColumnKey("")
     } else {
       setDatabaseDetail(null)
     }
@@ -131,6 +149,10 @@ export default function NewReportPage() {
       setError("Please select a date column")
       return
     }
+    if (layout === "pivot" && !pivotColumnKey) {
+      setError("Please select a pivot column for the matrix layout")
+      return
+    }
 
     setCreating(true)
     setError(null)
@@ -144,8 +166,10 @@ export default function NewReportPage() {
           name: name.trim(),
           description: description.trim() || undefined,
           cadence,
+          layout,
           databaseId,
           dateColumnKey,
+          pivotColumnKey: layout === "pivot" ? pivotColumnKey : undefined,
         }),
       })
 
@@ -167,7 +191,8 @@ export default function NewReportPage() {
   const databaseColumns = databaseDetail?.schema?.columns || []
 
   // Check if form is valid
-  const isFormValid = name.trim() && cadence && databaseId && dateColumnKey
+  const isFormValid = name.trim() && cadence && databaseId && dateColumnKey && 
+    (layout === "standard" || (layout === "pivot" && pivotColumnKey))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -241,6 +266,39 @@ export default function NewReportPage() {
               </Select>
             </div>
 
+            {/* Layout Selection */}
+            <div className="space-y-2">
+              <Label>Report Layout *</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {LAYOUT_OPTIONS.map((option) => {
+                  const Icon = option.icon
+                  const isSelected = layout === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setLayout(option.value)}
+                      className={`p-4 rounded-lg border-2 text-left transition-all ${
+                        isSelected
+                          ? "border-orange-500 bg-orange-50"
+                          : "border-gray-200 hover:border-gray-300 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className={`w-5 h-5 ${isSelected ? "text-orange-600" : "text-gray-500"}`} />
+                        <span className={`font-medium ${isSelected ? "text-orange-900" : "text-gray-900"}`}>
+                          {option.label}
+                        </span>
+                      </div>
+                      <p className={`text-xs ${isSelected ? "text-orange-700" : "text-gray-500"}`}>
+                        {option.description}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* Database Selection */}
             <div className="space-y-2">
               <Label>Data Source *</Label>
@@ -291,7 +349,7 @@ export default function NewReportPage() {
             {/* Date Column Selection - Only show after database is selected */}
             {databaseId && (
               <div className="space-y-2">
-                <Label>Date Column *</Label>
+                <Label>Date/Period Column *</Label>
                 <p className="text-xs text-gray-500 mb-2">
                   Column containing date/period information (e.g., "January", "Q1 2025", "1/1/2025")
                 </p>
@@ -324,19 +382,54 @@ export default function NewReportPage() {
               </div>
             )}
 
+            {/* Pivot Column Selection - Only show for pivot layout after database is selected */}
+            {databaseId && layout === "pivot" && !loadingDatabaseDetail && databaseColumns.length > 0 && (
+              <div className="space-y-2">
+                <Label>Pivot Column *</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Column whose unique values become column headers (e.g., Project Name, Product)
+                </p>
+                <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select the pivot column..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {databaseColumns
+                      .filter(col => col.key !== dateColumnKey) // Don't allow same as date column
+                      .map((col) => (
+                        <SelectItem key={col.key} value={col.key}>
+                          <div className="flex items-center gap-2">
+                            <LayoutGrid className="w-4 h-4 text-gray-400" />
+                            <span>{col.label}</span>
+                            <span className="text-xs text-gray-400">({col.dataType})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Selected Database Info */}
-            {selectedDatabase && dateColumnKey && (
+            {selectedDatabase && dateColumnKey && (layout === "standard" || (layout === "pivot" && pivotColumnKey)) && (
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center gap-3">
-                  <Database className="w-5 h-5 text-blue-600" />
+                  {layout === "pivot" ? (
+                    <LayoutGrid className="w-5 h-5 text-blue-600" />
+                  ) : (
+                    <Database className="w-5 h-5 text-blue-600" />
+                  )}
                   <div>
                     <p className="text-sm font-medium text-blue-900">
-                      {selectedDatabase.name}
+                      {selectedDatabase.name} - {layout === "pivot" ? "Pivot/Matrix" : "Standard"} Layout
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
                       {selectedDatabase.rowCount.toLocaleString()} rows • 
-                      {cadence && ` ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label} cadence`} • 
-                      Date column: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}
+                      {cadence && ` ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label}`} • 
+                      Period: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}
+                      {layout === "pivot" && pivotColumnKey && (
+                        <> • Pivot: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}</>
+                      )}
                     </p>
                   </div>
                 </div>

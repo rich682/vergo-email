@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -18,6 +18,7 @@ interface ReportItem {
   name: string
   description: string | null
   cadence: string
+  layout: "standard" | "pivot"
   columnCount: number
   createdAt: string
   updatedAt: string
@@ -215,6 +216,17 @@ export default function ReportsPage() {
                   <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
                     <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
                       {CADENCE_LABELS[report.cadence] || report.cadence}
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded font-medium flex items-center gap-1 ${
+                      report.layout === "pivot" 
+                        ? "bg-purple-100 text-purple-700" 
+                        : "bg-gray-100 text-gray-600"
+                    }`}>
+                      {report.layout === "pivot" ? (
+                        <><LayoutGrid className="w-3 h-3" /> Pivot</>
+                      ) : (
+                        <><Table2 className="w-3 h-3" /> Standard</>
+                      )}
                     </span>
                     <span className="flex items-center gap-1">
                       <Database className="w-3 h-3" />

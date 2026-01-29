@@ -1189,6 +1189,10 @@ model ReportDefinition {
   cadence         String   // "daily" | "monthly" | "quarterly" | "annual"
   dateColumnKey   String   // Database column key containing date data for period filtering
   
+  // Layout mode: "standard" (rows=db rows, cols=selected) or "pivot" (cols=pivot values, rows=metrics)
+  layout          String   @default("standard")
+  
+  // === Standard layout fields ===
   // Column configuration (selected database columns + formula columns)
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, dataType, order }
   columns         Json     @default("[]")
@@ -1196,6 +1200,14 @@ model ReportDefinition {
   // Formula rows (aggregation rows at bottom, like Excel SUM rows)
   // Array of: { key, label, columnFormulas: { [colKey]: "SUM"|"AVG"|expression }, order }
   formulaRows     Json     @default("[]")
+  
+  // === Pivot layout fields ===
+  // Database column whose unique values become column headers (e.g., project_name)
+  pivotColumnKey  String?
+  
+  // Metric rows for pivot layout
+  // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, format, order }
+  metricRows      Json     @default("[]")
   
   // Metadata
   createdAt       DateTime @default(now())
