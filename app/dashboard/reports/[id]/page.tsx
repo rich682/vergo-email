@@ -990,15 +990,17 @@ export default function ReportBuilderPage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-100 border-b-2 border-gray-200">
                       <tr>
-                        {previewData.table.columns.map((col) => (
+                        {previewData.table.columns.map((col, colIndex) => (
                           <th
                             key={col.key}
-                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                            className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                              colIndex > 0 ? "border-l border-gray-200" : ""
+                            }`}
                           >
                             <div className="flex items-center gap-1.5">
                               {col.type === "formula" && (
@@ -1010,11 +1012,16 @@ export default function ReportBuilderPage() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-white">
                       {previewData.table.rows.map((row, rowIndex) => (
-                        <tr key={rowIndex} className="hover:bg-gray-50">
-                          {previewData.table.columns.map((col) => (
-                            <td key={col.key} className="px-4 py-2.5 text-sm text-gray-700 whitespace-nowrap">
+                        <tr key={rowIndex} className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : ""}`}>
+                          {previewData.table.columns.map((col, colIndex) => (
+                            <td 
+                              key={col.key} 
+                              className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-100 ${
+                                colIndex > 0 ? "border-l border-gray-100" : ""
+                              }`}
+                            >
                               {formatCellValue(row[col.key], col.dataType)}
                             </td>
                           ))}
@@ -1022,9 +1029,14 @@ export default function ReportBuilderPage() {
                       ))}
                       {/* Formula rows */}
                       {previewData.table.formulaRows.map((fr) => (
-                        <tr key={fr.key} className="bg-gray-50 font-medium">
+                        <tr key={fr.key} className="bg-blue-50 font-medium border-t-2 border-blue-200">
                           {previewData.table.columns.map((col, colIndex) => (
-                            <td key={col.key} className="px-4 py-2.5 text-sm text-gray-900 whitespace-nowrap">
+                            <td 
+                              key={col.key} 
+                              className={`px-4 py-3 text-sm text-gray-900 ${
+                                colIndex > 0 ? "border-l border-blue-100" : ""
+                              }`}
+                            >
                               {colIndex === 0 ? (
                                 <span className="flex items-center gap-1.5">
                                   <FunctionSquare className="w-3.5 h-3.5 text-green-600" />

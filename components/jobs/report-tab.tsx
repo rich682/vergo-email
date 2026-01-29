@@ -383,25 +383,35 @@ export function ReportTab({
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      {previewData.table.columns.map((col) => (
+                  <thead className="bg-gray-100">
+                    <tr className="border-b-2 border-gray-200">
+                      {previewData.table.columns.map((col, colIndex) => (
                         <th
                           key={col.key}
-                          className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                            colIndex > 0 ? "border-l border-gray-200" : ""
+                          }`}
                         >
                           {col.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {previewData.table.rows.slice(0, 20).map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        {previewData.table.columns.map((col) => (
-                          <td key={col.key} className="px-3 py-2 text-gray-700">
+                  <tbody>
+                    {previewData.table.rows.slice(0, 20).map((row, rowIndex) => (
+                      <tr 
+                        key={rowIndex} 
+                        className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
+                      >
+                        {previewData.table.columns.map((col, colIndex) => (
+                          <td 
+                            key={col.key} 
+                            className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
+                              colIndex > 0 ? "border-l border-gray-100" : ""
+                            }`}
+                          >
                             {formatCellValue(row[col.key])}
                           </td>
                         ))}
@@ -409,15 +419,17 @@ export function ReportTab({
                     ))}
                   </tbody>
                   {previewData.table.formulaRows && previewData.table.formulaRows.length > 0 && (
-                    <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
                       {previewData.table.formulaRows.map((fRow) => (
                         <tr key={fRow.key}>
-                          {previewData.table.columns.map((col, i) => (
+                          {previewData.table.columns.map((col, colIndex) => (
                             <td
                               key={col.key}
-                              className="px-3 py-2 font-medium text-gray-700"
+                              className={`px-4 py-3 font-medium text-gray-900 ${
+                                colIndex > 0 ? "border-l border-blue-100" : ""
+                              }`}
                             >
-                              {i === 0 ? fRow.label : formatCellValue(fRow.values[col.key])}
+                              {colIndex === 0 ? fRow.label : formatCellValue(fRow.values[col.key])}
                             </td>
                           ))}
                         </tr>
@@ -426,7 +438,7 @@ export function ReportTab({
                   )}
                 </table>
                 {previewData.table.rows.length > 20 && (
-                  <p className="text-xs text-gray-400 text-center py-2">
+                  <p className="text-xs text-gray-400 text-center py-2 bg-gray-50 border-t border-gray-100">
                     Showing 20 of {previewData.table.rows.length} rows
                   </p>
                 )}
