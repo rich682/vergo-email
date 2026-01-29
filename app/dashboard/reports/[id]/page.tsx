@@ -162,7 +162,9 @@ export default function ReportBuilderPage() {
   // UI state
   const [columnsExpanded, setColumnsExpanded] = useState(true)
   const [formulaRowsExpanded, setFormulaRowsExpanded] = useState(true)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const initialLoadRef = useRef(true)
 
   // Modal state
   const [formulaColumnPanel, setFormulaColumnPanel] = useState<{
@@ -312,10 +314,11 @@ export default function ReportBuilderPage() {
   }, [report, currentPeriodKey, effectiveCompareMode, fetchPreview])
 
   // Save changes
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!report) return
     
     setSaving(true)
+    setSaveStatus("saving")
     setError(null)
 
     try {
@@ -340,13 +343,45 @@ export default function ReportBuilderPage() {
         throw new Error(data.error || "Failed to save")
       }
 
-      setHasUnsavedChanges(false)
+      setSaveStatus("saved")
+      // Reset to idle after showing "Saved" briefly
+      setTimeout(() => setSaveStatus("idle"), 1500)
     } catch (err: any) {
       setError(err.message)
+      setSaveStatus("idle")
     } finally {
       setSaving(false)
     }
-  }
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, compareMode])
+
+  // Auto-save effect: debounce 1 second after changes
+  useEffect(() => {
+    // Skip auto-save on initial load
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false
+      return
+    }
+    
+    // Don't auto-save if report not loaded yet
+    if (!report) return
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    // Set new debounced save
+    saveTimeoutRef.current = setTimeout(() => {
+      handleSave()
+    }, 1000)
+
+    // Cleanup
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, compareMode, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -369,7 +404,7 @@ export default function ReportBuilderPage() {
       }
       setReportColumns(prev => [...prev, newColumn])
     }
-    setHasUnsavedChanges(true)
+    
   }
 
   // Check if source column is selected
@@ -431,23 +466,18 @@ export default function ReportBuilderPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {hasUnsavedChanges && (
-                <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                  Unsaved changes
+              {saveStatus === "saving" && (
+                <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Saving...
                 </span>
               )}
-              <Button
-                onClick={handleSave}
-                disabled={saving || !hasUnsavedChanges}
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                Save
-              </Button>
+              {saveStatus === "saved" && (
+                <span className="text-xs text-green-600 flex items-center gap-1.5">
+                  <Save className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -635,7 +665,7 @@ export default function ReportBuilderPage() {
                           onClick={(e) => {
                             e.stopPropagation()
                             setMetricRows(prev => prev.filter(m => m.key !== metric.key))
-                            setHasUnsavedChanges(true)
+                            
                           }}
                           className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity"
                         >
@@ -732,7 +762,7 @@ export default function ReportBuilderPage() {
                             <button
                               onClick={() => {
                                 setReportColumns(prev => prev.filter(c => c.key !== col.key))
-                                setHasUnsavedChanges(true)
+                                
                               }}
                               className="p-1 hover:bg-red-100 rounded"
                             >
@@ -799,7 +829,7 @@ export default function ReportBuilderPage() {
                           <button
                             onClick={() => {
                               setReportFormulaRows(prev => prev.filter(r => r.key !== row.key))
-                              setHasUnsavedChanges(true)
+                              
                             }}
                             className="p-1 hover:bg-red-100 rounded"
                           >
@@ -855,7 +885,7 @@ export default function ReportBuilderPage() {
                   value={currentPeriodKey}
                   onValueChange={(v) => {
                     setCurrentPeriodKey(v)
-                    setHasUnsavedChanges(true)
+                    
                   }}
                 >
                   <SelectTrigger className="w-[180px] h-8 text-sm">
@@ -883,7 +913,7 @@ export default function ReportBuilderPage() {
                     value={compareMode}
                     onValueChange={(v: "none" | "mom" | "yoy") => {
                       setCompareMode(v)
-                      setHasUnsavedChanges(true)
+                      
                     }}
                   >
                     <SelectTrigger className="w-[140px] h-8 text-sm">
@@ -1033,7 +1063,7 @@ export default function ReportBuilderPage() {
             // Add new
             setReportColumns(prev => [...prev, { ...column, order: prev.length }])
           }
-          setHasUnsavedChanges(true)
+          
           setFormulaColumnPanel({ open: false, editingKey: null })
         }}
       />
@@ -1055,7 +1085,7 @@ export default function ReportBuilderPage() {
             // Add new
             setReportFormulaRows(prev => [...prev, { ...row, order: prev.length }])
           }
-          setHasUnsavedChanges(true)
+          
           setFormulaRowModal({ open: false, editingKey: null })
         }}
       />
@@ -1077,12 +1107,12 @@ export default function ReportBuilderPage() {
             // Add new
             setMetricRows(prev => [...prev, { ...metric, order: prev.length }])
           }
-          setHasUnsavedChanges(true)
+          
           setMetricRowModal({ open: false, editingKey: null })
         }}
         onDelete={(key) => {
           setMetricRows(prev => prev.filter(m => m.key !== key))
-          setHasUnsavedChanges(true)
+          
           setMetricRowModal({ open: false, editingKey: null })
         }}
       />
