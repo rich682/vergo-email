@@ -32,6 +32,12 @@ export interface ExecutePreviewInput {
   organizationId: string
   currentPeriodKey?: string  // Optional - if not provided, uses all rows
   compareMode?: CompareMode  // Default: "none"
+  liveConfig?: {             // Optional - override saved config for live preview
+    columns?: any[]
+    formulaRows?: any[]
+    pivotColumnKey?: string | null
+    metricRows?: any[]
+  }
 }
 
 export interface PeriodInfo {
@@ -106,7 +112,7 @@ export class ReportExecutionService {
    * Execute a report preview with optional period filtering and comparison
    */
   static async executePreview(input: ExecutePreviewInput): Promise<ExecutePreviewResult> {
-    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none" } = input
+    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none", liveConfig } = input
 
     // Load report definition with database
     const report = await prisma.reportDefinition.findFirst({
@@ -127,6 +133,15 @@ export class ReportExecutionService {
     if (!report) {
       throw new Error("Report not found")
     }
+
+    // Apply liveConfig overrides if provided (for preview without saving)
+    const effectiveReport = liveConfig ? {
+      ...report,
+      columns: liveConfig.columns ?? report.columns,
+      formulaRows: liveConfig.formulaRows ?? report.formulaRows,
+      pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : report.pivotColumnKey,
+      metricRows: liveConfig.metricRows ?? report.metricRows,
+    } : report
 
     const cadence = report.cadence as ReportCadence
     const dateColumnKey = report.dateColumnKey
@@ -185,9 +200,9 @@ export class ReportExecutionService {
     let table: ExecutePreviewResult["table"]
 
     if (layout === "pivot") {
-      table = this.evaluatePivotLayout(report, currentRows, compareRows)
+      table = this.evaluatePivotLayout(effectiveReport, currentRows, compareRows)
     } else {
-      table = this.evaluateStandardLayout(report, currentRows, compareRows)
+      table = this.evaluateStandardLayout(effectiveReport, currentRows, compareRows)
     }
 
     return {

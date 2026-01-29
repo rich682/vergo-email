@@ -236,6 +236,13 @@ export default function ReportBuilderPage() {
         body: JSON.stringify({
           currentPeriodKey: currentPeriodKey || undefined,
           compareMode: effectiveCompareMode,
+          // Send current local state so preview works without saving
+          liveConfig: {
+            columns: reportColumns,
+            formulaRows: reportFormulaRows,
+            pivotColumnKey,
+            metricRows,
+          },
         }),
       })
       
@@ -253,7 +260,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -790,8 +797,23 @@ export default function ReportBuilderPage() {
             ) : !previewData || previewData.table.columns.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-500">
-                  <p className="font-medium">No columns selected</p>
-                  <p className="text-sm mt-1">Select columns from the left panel to preview your report</p>
+                  {report.layout === "pivot" ? (
+                    <>
+                      <p className="font-medium">No preview available</p>
+                      <p className="text-sm mt-1">
+                        {metricRows.length === 0 
+                          ? "Add metric rows to preview your report" 
+                          : !currentPeriodKey 
+                            ? "Select a period to preview data"
+                            : "No data found for the selected period"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">No columns selected</p>
+                      <p className="text-sm mt-1">Select columns from the left panel to preview your report</p>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (

@@ -37,9 +37,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Parse request body
     const body = await request.json()
-    const { currentPeriodKey, compareMode } = body as {
+    const { currentPeriodKey, compareMode, liveConfig } = body as {
       currentPeriodKey?: string
       compareMode?: CompareMode
+      liveConfig?: {
+        columns?: any[]
+        formulaRows?: any[]
+        pivotColumnKey?: string | null
+        metricRows?: any[]
+      }
     }
 
     // Validate compareMode if provided
@@ -56,6 +62,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       organizationId: user.organizationId,
       currentPeriodKey,
       compareMode: compareMode || "none",
+      liveConfig, // Pass live config for preview without saving
     })
 
     return NextResponse.json(result)
