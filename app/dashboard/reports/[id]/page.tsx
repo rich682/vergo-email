@@ -1390,16 +1390,6 @@ function MetricRowModal({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Row Label */}
-          <div className="space-y-2">
-            <Label>Label *</Label>
-            <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g., Gross Revenue, Net Profit"
-            />
-          </div>
-
           {/* Row Type */}
           <div className="space-y-2">
             <Label>Type</Label>
@@ -1452,11 +1442,30 @@ function MetricRowModal({
             </div>
           </div>
 
-          {/* Source Column Selection */}
+          {/* Source Column Selection - auto-fills label and format */}
           {type === "source" && (
             <div className="space-y-2">
               <Label>Database Column *</Label>
-              <Select value={sourceColumnKey} onValueChange={setSourceColumnKey}>
+              <Select 
+                value={sourceColumnKey} 
+                onValueChange={(colKey) => {
+                  setSourceColumnKey(colKey)
+                  // Auto-fill label and format from column
+                  const col = databaseColumns.find(c => c.key === colKey)
+                  if (col) {
+                    setLabel(col.label)
+                    // Map dataType to format
+                    const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
+                      text: "text",
+                      number: "number",
+                      currency: "currency",
+                      date: "text",
+                      boolean: "text",
+                    }
+                    setFormat(formatMap[col.dataType] || "text")
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a column..." />
                 </SelectTrigger>
@@ -1471,6 +1480,18 @@ function MetricRowModal({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {/* Label - only for Formula and Comparison types */}
+          {(type === "formula" || type === "comparison") && (
+            <div className="space-y-2">
+              <Label>Label *</Label>
+              <Input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={type === "formula" ? "e.g., Gross Profit, Net Margin" : "e.g., YoY Revenue Change"}
+              />
             </div>
           )}
 
@@ -1566,21 +1587,23 @@ function MetricRowModal({
             </div>
           )}
 
-          {/* Display Format */}
-          <div className="space-y-2">
-            <Label>Display Format</Label>
-            <Select value={format} onValueChange={(v) => setFormat(v as any)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="currency">Currency ($)</SelectItem>
-                <SelectItem value="number">Number</SelectItem>
-                <SelectItem value="percent">Percentage (%)</SelectItem>
-                <SelectItem value="text">Text</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Display Format - only for Formula and Comparison (Source uses schema) */}
+          {(type === "formula" || type === "comparison") && (
+            <div className="space-y-2">
+              <Label>Display Format</Label>
+              <Select value={format} onValueChange={(v) => setFormat(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="currency">Currency ($)</SelectItem>
+                  <SelectItem value="number">Number</SelectItem>
+                  <SelectItem value="percent">Percentage (%)</SelectItem>
+                  <SelectItem value="text">Text</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="flex justify-between">
