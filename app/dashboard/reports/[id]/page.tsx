@@ -1035,6 +1035,25 @@ function FormulaRowModal({
 /**
  * Evaluate a formula expression for a single row
  */
+/**
+ * Parse a value that might be a currency string, number, or plain string
+ * Handles: $1,000,000 | 1,000,000 | 1000000 | "1000000"
+ */
+function parseNumericValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    return value
+  }
+  if (typeof value === "string") {
+    // Remove currency symbols, commas, and whitespace
+    const cleaned = value.replace(/[$£€,\s]/g, "")
+    const num = Number(cleaned)
+    if (!isNaN(num)) {
+      return num
+    }
+  }
+  return null
+}
+
 function evaluateRowFormula(
   expression: string,
   row: Record<string, unknown>
@@ -1045,17 +1064,17 @@ function evaluateRowFormula(
     
     for (const ref of columnRefs) {
       if (ref in row) {
-        const value = row[ref]
-        if (typeof value === "number") {
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(value))
-        } else if (typeof value === "string" && !isNaN(Number(value))) {
-          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), value)
+        const numValue = parseNumericValue(row[ref])
+        if (numValue !== null) {
+          expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), String(numValue))
         } else {
+          // Non-numeric value, replace with 0
           expr = expr.replace(new RegExp(`\\b${ref}\\b`, "g"), "0")
         }
       }
     }
 
+    // Validate expression only contains safe characters
     if (!/^[\d\s+\-*/().]+$/.test(expr)) {
       return null
     }
@@ -1085,12 +1104,7 @@ function computeFormulaRowValues(
     const upperFormula = formula.toUpperCase().trim()
     
     const numericValues: number[] = dataRows
-      .map(row => {
-        const val = row[columnKey]
-        if (typeof val === "number") return val
-        if (typeof val === "string" && !isNaN(Number(val))) return Number(val)
-        return null
-      })
+      .map(row => parseNumericValue(row[columnKey]))
       .filter((v): v is number => v !== null)
 
     if (numericValues.length === 0) {
