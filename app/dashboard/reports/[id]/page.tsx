@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -124,7 +124,7 @@ export default function ReportBuilderPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   // Modal state
-  const [formulaColumnModal, setFormulaColumnModal] = useState<{
+  const [formulaColumnPanel, setFormulaColumnPanel] = useState<{
     open: boolean
     editingKey: string | null  // null = new, string = editing existing
   }>({ open: false, editingKey: null })
@@ -435,7 +435,7 @@ export default function ReportBuilderPage() {
                             <FunctionSquare className="w-4 h-4 text-purple-500" />
                             <span className="text-sm text-gray-700 flex-1">{col.label}</span>
                             <button
-                              onClick={() => setFormulaColumnModal({ open: true, editingKey: col.key })}
+                              onClick={() => setFormulaColumnPanel({ open: true, editingKey: col.key })}
                               className="p-1 hover:bg-purple-100 rounded"
                             >
                               <Settings2 className="w-3.5 h-3.5 text-purple-600" />
@@ -457,7 +457,7 @@ export default function ReportBuilderPage() {
                       variant="outline"
                       size="sm"
                       className="w-full mt-2"
-                      onClick={() => setFormulaColumnModal({ open: true, editingKey: null })}
+                      onClick={() => setFormulaColumnPanel({ open: true, editingKey: null })}
                     >
                       <Plus className="w-3.5 h-3.5 mr-1.5" />
                       Add Formula Column
@@ -618,25 +618,25 @@ export default function ReportBuilderPage() {
         </div>
       </div>
 
-      {/* Formula Column Modal */}
-      <FormulaColumnModal
-        open={formulaColumnModal.open}
-        editingKey={formulaColumnModal.editingKey}
+      {/* Formula Column Slide-out Panel */}
+      <FormulaColumnPanel
+        open={formulaColumnPanel.open}
+        editingKey={formulaColumnPanel.editingKey}
         columns={reportColumns}
         databaseColumns={databaseColumns}
-        onClose={() => setFormulaColumnModal({ open: false, editingKey: null })}
+        onClose={() => setFormulaColumnPanel({ open: false, editingKey: null })}
         onSave={(column) => {
-          if (formulaColumnModal.editingKey) {
+          if (formulaColumnPanel.editingKey) {
             // Update existing
             setReportColumns(prev =>
-              prev.map(c => c.key === formulaColumnModal.editingKey ? column : c)
+              prev.map(c => c.key === formulaColumnPanel.editingKey ? column : c)
             )
           } else {
             // Add new
             setReportColumns(prev => [...prev, { ...column, order: prev.length }])
           }
           setHasUnsavedChanges(true)
-          setFormulaColumnModal({ open: false, editingKey: null })
+          setFormulaColumnPanel({ open: false, editingKey: null })
         }}
       />
 
@@ -677,8 +677,8 @@ function formatCellValue(value: unknown, dataType: string): string {
   return String(value)
 }
 
-// Formula Column Modal Component
-interface FormulaColumnModalProps {
+// Formula Column Slide-out Panel Component
+interface FormulaColumnPanelProps {
   open: boolean
   editingKey: string | null
   columns: ReportColumn[]
@@ -687,21 +687,22 @@ interface FormulaColumnModalProps {
   onSave: (column: ReportColumn) => void
 }
 
-function FormulaColumnModal({
+function FormulaColumnPanel({
   open,
   editingKey,
   columns,
   databaseColumns,
   onClose,
   onSave,
-}: FormulaColumnModalProps) {
+}: FormulaColumnPanelProps) {
   const editingColumn = editingKey ? columns.find(c => c.key === editingKey) : null
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const [label, setLabel] = useState("")
   const [expression, setExpression] = useState("")
   const [dataType, setDataType] = useState<"number" | "currency" | "text">("number")
 
-  // Reset form when modal opens
+  // Reset form when panel opens
   useEffect(() => {
     if (open) {
       if (editingColumn) {
@@ -730,16 +731,69 @@ function FormulaColumnModal({
     })
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {editingKey ? "Edit Formula Column" : "Add Formula Column"}
-          </DialogTitle>
-        </DialogHeader>
+  // Insert column key at cursor position
+  const insertColumn = (columnKey: string) => {
+    const input = inputRef.current
+    if (input) {
+      const start = input.selectionStart || expression.length
+      const end = input.selectionEnd || expression.length
+      const newExpression = expression.slice(0, start) + columnKey + expression.slice(end)
+      setExpression(newExpression)
+      // Focus and move cursor after inserted text
+      setTimeout(() => {
+        input.focus()
+        input.setSelectionRange(start + columnKey.length, start + columnKey.length)
+      }, 0)
+    } else {
+      setExpression(expression + columnKey)
+    }
+  }
 
-        <div className="space-y-4 py-4">
+  // Get data type color
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case "number":
+      case "currency":
+        return "bg-blue-100 text-blue-700 hover:bg-blue-200"
+      case "text":
+        return "bg-green-100 text-green-700 hover:bg-green-200"
+      case "date":
+        return "bg-purple-100 text-purple-700 hover:bg-purple-200"
+      default:
+        return "bg-gray-100 text-gray-700 hover:bg-gray-200"
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/20 z-40"
+        onClick={onClose}
+      />
+      
+      {/* Slide-out panel */}
+      <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {editingKey ? "Edit Formula Column" : "Add Formula Column"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Column Label */}
           <div className="space-y-2">
             <Label>Column Label</Label>
             <Input
@@ -749,19 +803,67 @@ function FormulaColumnModal({
             />
           </div>
 
+          {/* Available Columns - Pills */}
           <div className="space-y-2">
-            <Label>Formula Expression</Label>
-            <Input
-              value={expression}
-              onChange={(e) => setExpression(e.target.value)}
-              placeholder="e.g., (revenue - cost) / revenue * 100"
-              className="font-mono"
-            />
-            <p className="text-xs text-gray-500">
-              Use column keys from your database: {databaseColumns.map(c => c.key).join(", ")}
+            <Label className="flex items-center gap-2">
+              Available Columns
+              <span className="text-xs font-normal text-gray-400">Click to insert</span>
+            </Label>
+            <div className="flex flex-wrap gap-1.5">
+              {databaseColumns.map((col) => (
+                <button
+                  key={col.key}
+                  type="button"
+                  onClick={() => insertColumn(col.key)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors cursor-pointer ${getTypeColor(col.dataType)}`}
+                  title={`${col.label} (${col.dataType})`}
+                >
+                  {col.key}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Click a column to add it to your formula
             </p>
           </div>
 
+          {/* Operators - Quick insert */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              Operators
+            </Label>
+            <div className="flex flex-wrap gap-1.5">
+              {["+", "-", "*", "/", "(", ")", "100"].map((op) => (
+                <button
+                  key={op}
+                  type="button"
+                  onClick={() => insertColumn(op === "100" ? " * 100" : ` ${op} `)}
+                  className="px-3 py-1 text-xs font-mono font-medium rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  {op}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Formula Expression */}
+          <div className="space-y-2">
+            <Label>Formula Expression</Label>
+            <Input
+              ref={inputRef}
+              value={expression}
+              onChange={(e) => setExpression(e.target.value)}
+              placeholder="e.g., (contract_amount - costs) / contract_amount * 100"
+              className="font-mono text-sm"
+            />
+            {expression && (
+              <div className="p-2 bg-gray-50 rounded text-xs font-mono text-gray-600 break-all">
+                {expression}
+              </div>
+            )}
+          </div>
+
+          {/* Result Type */}
           <div className="space-y-2">
             <Label>Result Type</Label>
             <Select value={dataType} onValueChange={(v) => setDataType(v as any)}>
@@ -777,7 +879,8 @@ function FormulaColumnModal({
           </div>
         </div>
 
-        <DialogFooter>
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -788,9 +891,9 @@ function FormulaColumnModal({
           >
             {editingKey ? "Update" : "Add"} Column
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </>
   )
 }
 
