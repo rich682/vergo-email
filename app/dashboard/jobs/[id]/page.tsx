@@ -73,6 +73,9 @@ import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 // Table components for TABLE type tasks
 import { CompareView } from "@/components/jobs/table"
 
+// Report tab for REPORTS type tasks
+import { ReportTab } from "@/components/jobs/report-tab"
+
 
 // ============================================
 // Types
@@ -114,7 +117,7 @@ interface Job {
   description: string | null
   ownerId: string
   status: string
-  type: "GENERIC" | "RECONCILIATION" | "TABLE"
+  type: "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS"
   lineageId: string | null
   dueDate: string | null
   labels: any | null
@@ -132,6 +135,9 @@ interface Job {
   completedCount: number
   collectedItemCount?: number
   isSnapshot?: boolean
+  // Report configuration (for REPORTS type)
+  reportDefinitionId?: string | null
+  reportSliceId?: string | null
 }
 
 interface Permissions {
@@ -273,7 +279,7 @@ export default function JobDetailPage() {
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare" | "report">("overview")
   const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
   
   // Inline editing states
@@ -1057,6 +1063,15 @@ export default function JobDetailPage() {
             Evidence ({job.collectedItemCount || 0})
           </button>
 
+          {job.type === "REPORTS" && (
+            <button
+              onClick={() => setActiveTab("report")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Report
+            </button>
+          )}
+
           {false && job?.type === "RECONCILIATION" && (
             <button
               onClick={() => setActiveTab("reconciliation")}
@@ -1576,6 +1591,27 @@ export default function JobDetailPage() {
               <div className="space-y-4">
                 <SectionHeader title="Evidence Collection" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
                 <CollectionTab jobId={jobId} />
+              </div>
+            )}
+
+            {activeTab === "report" && job.type === "REPORTS" && (
+              <div className="space-y-4">
+                <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
+                <ReportTab
+                  jobId={jobId}
+                  reportDefinitionId={job.reportDefinitionId || null}
+                  reportSliceId={job.reportSliceId || null}
+                  boardPeriodStart={job.board?.periodStart}
+                  boardCadence={job.board?.cadence}
+                  onConfigChange={(config) => {
+                    // Update local state when config changes
+                    setJob(prev => prev ? {
+                      ...prev,
+                      reportDefinitionId: config.reportDefinitionId,
+                      reportSliceId: config.reportSliceId,
+                    } : null)
+                  }}
+                />
               </div>
             )}
 

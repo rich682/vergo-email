@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { format } from "date-fns"
 
 interface ReportItem {
   id: string
@@ -39,6 +40,35 @@ interface ReportItem {
   }
 }
 
+interface GeneratedReportItem {
+  id: string
+  periodKey: string
+  generatedAt: string
+  generatedBy: string
+  data: {
+    reportName: string
+    sliceName?: string
+    layout: string
+  }
+  reportDefinition?: {
+    id: string
+    name: string
+    cadence: string
+  }
+  reportSlice?: {
+    id: string
+    name: string
+  } | null
+  taskInstance?: {
+    id: string
+    name: string
+  }
+  board?: {
+    id: string
+    name: string
+  }
+}
+
 const CADENCE_LABELS: Record<string, string> = {
   daily: "Daily",
   monthly: "Monthly",
@@ -48,10 +78,20 @@ const CADENCE_LABELS: Record<string, string> = {
 
 export default function ReportsPage() {
   const router = useRouter()
+  
+  // Report templates state
   const [reports, setReports] = useState<ReportItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
+  // Generated reports state
+  const [generatedReports, setGeneratedReports] = useState<GeneratedReportItem[]>([])
+  const [availablePeriods, setAvailablePeriods] = useState<string[]>([])
+  const [generatedLoading, setGeneratedLoading] = useState(true)
+  const [periodFilter, setPeriodFilter] = useState<string>("all")
+  const [templateFilter, setTemplateFilter] = useState<string>("all")
+
+  // Fetch report templates
   const fetchReports = useCallback(async () => {
     try {
       setLoading(true)
@@ -69,9 +109,35 @@ export default function ReportsPage() {
     }
   }, [])
 
+  // Fetch generated reports
+  const fetchGeneratedReports = useCallback(async () => {
+    try {
+      setGeneratedLoading(true)
+      const params = new URLSearchParams()
+      if (periodFilter && periodFilter !== "all") {
+        params.append("periodKey", periodFilter)
+      }
+      if (templateFilter && templateFilter !== "all") {
+        params.append("reportDefinitionId", templateFilter)
+      }
+      
+      const response = await fetch(`/api/generated-reports?${params.toString()}`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setGeneratedReports(data.reports || [])
+        setAvailablePeriods(data.periods || [])
+      }
+    } catch (error) {
+      console.error("Error fetching generated reports:", error)
+    } finally {
+      setGeneratedLoading(false)
+    }
+  }, [periodFilter, templateFilter])
+
   useEffect(() => {
     fetchReports()
-  }, [fetchReports])
+    fetchGeneratedReports()
+  }, [fetchReports, fetchGeneratedReports])
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -264,22 +330,32 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Reports automatically produced during accounting periods</p>
             </div>
             <div className="flex items-center gap-2">
-              <Select defaultValue="all">
+              <Select value={periodFilter} onValueChange={setPeriodFilter}>
                 <SelectTrigger className="w-[160px] h-9">
                   <Calendar className="w-4 h-4 mr-2 text-gray-400" />
                   <SelectValue placeholder="Period" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Periods</SelectItem>
+                  {availablePeriods.map((period) => (
+                    <SelectItem key={period} value={period}>
+                      {period}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              <Select defaultValue="all">
+              <Select value={templateFilter} onValueChange={setTemplateFilter}>
                 <SelectTrigger className="w-[160px] h-9">
                   <Filter className="w-4 h-4 mr-2 text-gray-400" />
                   <SelectValue placeholder="Template" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Templates</SelectItem>
+                  {reports.map((report) => (
+                    <SelectItem key={report.id} value={report.id}>
+                      {report.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -311,16 +387,69 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {/* Empty state row */}
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
-                    <Clock className="mx-auto h-8 w-8 text-gray-300" />
-                    <p className="mt-2 text-sm text-gray-500">No generated reports yet</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Reports will appear here when tasks with report slices complete during accounting periods
-                    </p>
-                  </td>
-                </tr>
+                {generatedLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500 mx-auto" />
+                    </td>
+                  </tr>
+                ) : generatedReports.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center">
+                      <Clock className="mx-auto h-8 w-8 text-gray-300" />
+                      <p className="mt-2 text-sm text-gray-500">No generated reports yet</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Reports will appear here when tasks with report slices complete during accounting periods
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  generatedReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-blue-500" />
+                          <span className="font-medium text-gray-900">
+                            {report.data.reportName}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {report.data.sliceName || report.reportSlice?.name || (
+                          <span className="text-gray-400">All Data</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                          {report.periodKey}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {format(new Date(report.generatedAt), "MMM d, yyyy h:mm a")}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {report.taskInstance ? (
+                          <Link
+                            href={`/dashboard/jobs/${report.taskInstance.id}`}
+                            className="flex items-center gap-1 text-blue-600 hover:underline"
+                          >
+                            {report.taskInstance.name}
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        ) : (
+                          <span className="text-gray-400">{report.generatedBy}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link href={`/api/generated-reports/${report.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

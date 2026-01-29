@@ -4,6 +4,7 @@ import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, a
 import { formatInTimeZone } from "date-fns-tz"
 import { TaskInstanceService } from "./task-instance.service"
 import { RequestDraftCopyService } from "./request-draft-copy.service"
+import { ReportGenerationService } from "./report-generation.service"
 import {
   calculateNextPeriodStart,
   getEndOfPeriod,
@@ -13,6 +14,7 @@ import {
   getMonthInTimezone,
   getYearInTimezone,
 } from "@/lib/utils/timezone"
+import { periodKeyFromDate } from "@/lib/utils/period"
 
 /**
  * Derive periodEnd from periodStart based on cadence type.
@@ -555,12 +557,18 @@ export class BoardService {
   /**
    * Spawn task instances for the next period based on lineages active in the previous period.
    * Also copies requests as drafts for recurring request workflows.
+   * For REPORTS tasks, generates report output for the completed period and copies config to next period.
    */
   private static async spawnTaskInstancesForNextPeriod(
     previousBoardId: string,
     nextBoardId: string,
     organizationId: string
   ): Promise<void> {
+    // Get the previous board for period info
+    const previousBoard = await prisma.board.findUnique({
+      where: { id: previousBoardId },
+    })
+
     const previousInstances = await prisma.taskInstance.findMany({
       where: { boardId: previousBoardId, organizationId },
       include: {
@@ -581,24 +589,31 @@ export class BoardService {
     })
 
     for (const prev of previousInstances) {
-      // Create new instance
-      const newInstance = await prisma.taskInstance.create({
-        data: {
-          organizationId,
-          boardId: nextBoardId,
-          lineageId: prev.lineageId,
-          type: prev.type,
-          name: prev.name,
-          description: prev.description,
-          ownerId: prev.ownerId,
-          clientId: prev.clientId,
-          status: "NOT_STARTED",
-          // Carry forward structured data for TABLE tasks as beginning balance
-          structuredData: prev.type === TaskType.TABLE ? prev.structuredData as any : undefined,
-          customFields: prev.customFields as any,
-          labels: prev.labels as any
-        }
-      })
+      // Create new instance - use type assertion for report fields until Prisma types are regenerated
+      const createData: any = {
+        organizationId,
+        boardId: nextBoardId,
+        lineageId: prev.lineageId,
+        type: prev.type,
+        name: prev.name,
+        description: prev.description,
+        ownerId: prev.ownerId,
+        clientId: prev.clientId,
+        status: "NOT_STARTED",
+        // Carry forward structured data for TABLE tasks as beginning balance
+        structuredData: prev.type === TaskType.TABLE ? prev.structuredData : undefined,
+        customFields: prev.customFields,
+        labels: prev.labels,
+      }
+      
+      // Carry forward report configuration for REPORTS tasks
+      // Note: TaskType.REPORTS is added via migration, using string comparison until types regenerate
+      if ((prev.type as string) === "REPORTS") {
+        createData.reportDefinitionId = (prev as any).reportDefinitionId
+        createData.reportSliceId = (prev as any).reportSliceId
+      }
+      
+      const newInstance = await prisma.taskInstance.create({ data: createData })
 
       // Copy collaborators
       if (prev.collaborators.length > 0) {
@@ -628,6 +643,33 @@ export class BoardService {
         } catch (error) {
           // Log but don't fail the entire operation if draft copying fails
           console.error(`[BoardService] Failed to copy requests as drafts for task instance ${newInstance.id}:`, error)
+        }
+      }
+
+      // Generate report for REPORTS tasks (snapshot the completed period)
+      // Use type assertion for report fields until Prisma types are regenerated after migration
+      // Note: TaskType.REPORTS is added via migration, using string comparison until types regenerate
+      const prevAny = prev as any
+      if ((prev.type as string) === "REPORTS" && prevAny.reportDefinitionId && previousBoard?.periodStart) {
+        try {
+          // Derive period key from board's period start date
+          const periodKey = periodKeyFromDate(previousBoard.periodStart, previousBoard.cadence as any || "monthly")
+          
+          if (periodKey) {
+            await ReportGenerationService.generateForPeriod({
+              organizationId,
+              reportDefinitionId: prevAny.reportDefinitionId,
+              reportSliceId: prevAny.reportSliceId || undefined,
+              taskInstanceId: prev.id,
+              boardId: previousBoardId,
+              periodKey,
+              generatedBy: "system",
+            })
+            console.log(`[BoardService] Generated report for task ${prev.id}, period ${periodKey}`)
+          }
+        } catch (error) {
+          // Log but don't fail the entire operation if report generation fails
+          console.error(`[BoardService] Failed to generate report for task ${prev.id}:`, error)
         }
       }
     }

@@ -80,7 +80,7 @@ interface Job {
   id: string
   name: string
   description: string | null
-  type?: "GENERIC" | "RECONCILIATION" | "TABLE"
+  type?: "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS"
   ownerId: string
   status: string
   dueDate: string | null
@@ -149,7 +149,7 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
-  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORT" | "FORMS">("GENERIC")
+  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS" | "FORMS">("GENERIC")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
@@ -1000,7 +1000,7 @@ export default function JobsPage() {
                       <option value="GENERIC">Standard</option>
                       <option value="TABLE">Variance</option>
                       <option value="RECONCILIATION">Reconciliation</option>
-                      <option value="REPORT">Report</option>
+                      <option value="REPORTS">Report</option>
                       <option value="FORMS">Forms</option>
                     </select>
                   </div>

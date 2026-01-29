@@ -60,6 +60,9 @@ export interface UpdateTaskInstanceInput {
   isSnapshot?: boolean
   type?: TaskType  // For promoting to recurring
   lineageId?: string | null  // For linking to lineage
+  // Report configuration (for REPORTS type tasks)
+  reportDefinitionId?: string | null
+  reportSliceId?: string | null
 }
 
 export interface TaskInstanceOwner {
@@ -94,6 +97,9 @@ export interface TaskInstanceWithStats {
   board?: {
     id: string
     name: string
+    cadence?: string | null
+    periodStart?: Date | null
+    periodEnd?: Date | null
   } | null
   status: JobStatus
   dueDate: Date | null
@@ -102,6 +108,9 @@ export interface TaskInstanceWithStats {
   customFields?: Record<string, any> | null
   structuredData?: any
   isSnapshot: boolean
+  // Report configuration (for REPORTS type)
+  reportDefinitionId?: string | null
+  reportSliceId?: string | null
   createdAt: Date
   updatedAt: Date
   owner: TaskInstanceOwner
@@ -413,7 +422,9 @@ export class TaskInstanceService {
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.customFields !== undefined && { customFields: input.customFields }),
         ...(input.structuredData !== undefined && { structuredData: input.structuredData }),
-        ...(input.isSnapshot !== undefined && { isSnapshot: input.isSnapshot })
+        ...(input.isSnapshot !== undefined && { isSnapshot: input.isSnapshot }),
+        ...(input.reportDefinitionId !== undefined && { reportDefinitionId: input.reportDefinitionId }),
+        ...(input.reportSliceId !== undefined && { reportSliceId: input.reportSliceId }),
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },

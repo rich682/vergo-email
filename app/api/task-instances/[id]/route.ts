@@ -156,7 +156,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, type, createLineage } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, type, createLineage, reportDefinitionId, reportSliceId } = body
 
     // 1. Handle TaskLineage promotion if requested
     let lineageId = existingInstance.lineageId
@@ -229,7 +229,10 @@ export async function PATCH(
       notes: notes !== undefined ? notes : undefined,
       customFields: customFields !== undefined ? customFields : undefined,
       type: type || undefined,
-      lineageId: lineageId || undefined
+      lineageId: lineageId || undefined,
+      // Report configuration (for REPORTS type tasks)
+      reportDefinitionId: reportDefinitionId !== undefined ? reportDefinitionId : undefined,
+      reportSliceId: reportSliceId !== undefined ? reportSliceId : undefined,
     })
 
     if (!taskInstance) {

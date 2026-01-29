@@ -23,6 +23,7 @@ enum TaskType {
   GENERIC
   RECONCILIATION
   TABLE
+  REPORTS
 }
 
 enum TaskStatus {
@@ -156,6 +157,7 @@ model Organization {
   databases               Database[]
   reportDefinitions       ReportDefinition[]
   reportSlices            ReportSlice[]
+  generatedReports        GeneratedReport[]
 
   @@index([slug])
 }
@@ -340,6 +342,11 @@ model TaskInstance {
   customFields   Json? // Custom column data for configurable table
   structuredData Json? // Row-level data for TABLE tasks or results for RECONCILIATION
   isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
+  
+  // Report configuration (for REPORTS type tasks)
+  reportDefinitionId String?
+  reportSliceId      String?
+  
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -348,6 +355,8 @@ model TaskInstance {
   client          Entity?                    @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
   owner           User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
   board           Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  reportDefinition ReportDefinition?         @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
+  reportSlice      ReportSlice?              @relation(fields: [reportSliceId], references: [id], onDelete: SetNull)
   collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
   requests        Request[] // Child tasks (requests) belonging to this job
   emailDrafts     EmailDraft[] // Request-level association
@@ -356,6 +365,7 @@ model TaskInstance {
   subtasks        Subtask[] // Checklist subitems within this job
   attachments     Attachment[] // Direct file attachments on this job
   reconciliations Reconciliation[] // Document reconciliation workflows
+  generatedReports GeneratedReport[] // Reports generated for this task
 
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
 
@@ -800,11 +810,12 @@ model Board {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner         User?               @relation("BoardOwner", fields: [ownerId], references: [id])
-  createdBy     User                @relation("BoardCreator", fields: [createdById], references: [id])
-  collaborators BoardCollaborator[]
-  taskInstances TaskInstance[]
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner            User?               @relation("BoardOwner", fields: [ownerId], references: [id])
+  createdBy        User                @relation("BoardCreator", fields: [createdById], references: [id])
+  collaborators    BoardCollaborator[]
+  taskInstances    TaskInstance[]
+  generatedReports GeneratedReport[]   // Reports generated for this period
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -1219,10 +1230,12 @@ model ReportDefinition {
   updatedAt       DateTime @updatedAt
   createdById     String
   
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  database        Database     @relation(fields: [databaseId], references: [id], onDelete: Cascade)
-  createdBy       User         @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
-  slices          ReportSlice[]
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  database         Database         @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  createdBy        User             @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
+  slices           ReportSlice[]
+  taskInstances    TaskInstance[]   // Tasks that use this report template
+  generatedReports GeneratedReport[] // Reports generated from this template
   
   @@index([organizationId])
   @@index([databaseId])
@@ -1249,8 +1262,40 @@ model ReportSlice {
   organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
   createdBy          User             @relation("ReportSliceCreator", fields: [createdById], references: [id])
+  taskInstances      TaskInstance[]   // Tasks that use this slice
+  generatedReports   GeneratedReport[] // Reports generated with this slice
   
   @@unique([reportDefinitionId, name])
   @@index([organizationId, reportDefinitionId])
+}
+
+// GeneratedReport stores the output of a report for a specific period
+// Created automatically when a board with REPORTS tasks completes
+model GeneratedReport {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  reportDefinitionId String
+  reportSliceId      String?
+  taskInstanceId     String   // Source task that triggered generation
+  boardId            String   // Board period that was completed
+  periodKey          String   // e.g., "2026-01" for monthly, "2026-Q1" for quarterly
+  
+  // Snapshot of report output at generation time
+  data               Json     // { columns, rows, formulaRows, metrics, etc. }
+  
+  // Metadata
+  generatedAt        DateTime @default(now())
+  generatedBy        String   // "system" or userId
+  
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
+  reportSlice        ReportSlice?     @relation(fields: [reportSliceId], references: [id], onDelete: SetNull)
+  taskInstance       TaskInstance     @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  board              Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  
+  @@index([organizationId, periodKey])
+  @@index([reportDefinitionId])
+  @@index([boardId])
+  @@index([taskInstanceId])
 }
 
