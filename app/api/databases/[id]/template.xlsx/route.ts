@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       select: {
         name: true,
         schema: true,
-        identifierKey: true,
+        identifierKeys: true,
       },
     })
 
@@ -49,9 +49,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const schema = database.schema as DatabaseSchema
+    const identifierKeys = (database.identifierKeys as string[]) || []
 
-    // Generate the template
-    const buffer = generateSchemaTemplate(schema, database.identifierKey, database.name)
+    // Generate the template - pass the first identifier key for backward compatibility
+    const buffer = generateSchemaTemplate(schema, identifierKeys[0] || null, database.name)
 
     // Generate filename
     const safeName = database.name.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50)
