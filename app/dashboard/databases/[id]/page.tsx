@@ -80,6 +80,7 @@ interface DatabaseDetail {
     name: string | null
     email: string
   } | null
+  hasGeneratedReports?: boolean
 }
 
 interface ColumnFilter {
@@ -407,7 +408,7 @@ export default function DatabaseDetailPage() {
   }
 
   const toggleIdentifier = (key: string) => {
-    if (!database || database.rowCount > 0) return // Can't change identifiers if data exists
+    if (!database || database.hasGeneratedReports) return // Can't change identifiers if reports have been generated
     
     setEditingIdentifierKeys(prev => {
       if (prev.includes(key)) {
@@ -432,9 +433,9 @@ export default function DatabaseDetailPage() {
 
   const removeColumn = (key: string) => {
     if (!database) return
-    // Can't remove if data exists
-    if (database.rowCount > 0) {
-      setSchemaError("Cannot remove columns when data exists")
+    // Can't remove if reports have been generated
+    if (database.hasGeneratedReports) {
+      setSchemaError("Cannot remove columns when reports have been generated using this database")
       return
     }
     // Can't remove identifier columns
@@ -984,13 +985,13 @@ export default function DatabaseDetailPage() {
                         {schemaEditMode ? (
                           <button
                             onClick={() => toggleIdentifier(column.key)}
-                            disabled={database.rowCount > 0}
+                            disabled={database.hasGeneratedReports}
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                               editingIdentifierKeys.includes(column.key)
                                 ? "bg-orange-100 text-orange-800"
                                 : "bg-gray-100 text-gray-500"
-                            } ${database.rowCount > 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-                            title={database.rowCount > 0 ? "Cannot change identifiers when data exists" : ""}
+                            } ${database.hasGeneratedReports ? "opacity-50 cursor-not-allowed" : ""}`}
+                            title={database.hasGeneratedReports ? "Cannot change identifiers when reports have been generated" : ""}
                           >
                             <Key className="w-3 h-3" />
                             {editingIdentifierKeys.includes(column.key) ? "Key" : "—"}
@@ -1008,11 +1009,11 @@ export default function DatabaseDetailPage() {
                         <td className="px-3 py-4">
                           <button
                             onClick={() => removeColumn(column.key)}
-                            disabled={database.rowCount > 0 || editingIdentifierKeys.includes(column.key)}
+                            disabled={database.hasGeneratedReports || editingIdentifierKeys.includes(column.key)}
                             className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
                             title={
-                              database.rowCount > 0 
-                                ? "Cannot remove columns when data exists" 
+                              database.hasGeneratedReports 
+                                ? "Cannot remove columns when reports have been generated" 
                                 : editingIdentifierKeys.includes(column.key)
                                 ? "Cannot remove identifier columns"
                                 : "Remove column"
@@ -1039,13 +1040,13 @@ export default function DatabaseDetailPage() {
             )}
 
             {/* Edit mode restrictions notice */}
-            {schemaEditMode && database.rowCount > 0 && (
+            {schemaEditMode && database.hasGeneratedReports && (
               <div className="px-6 py-4 bg-amber-50 border-t border-amber-200">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
                   <div className="text-sm text-amber-700">
                     <p className="font-medium">Limited editing</p>
-                    <p>This database has {database.rowCount.toLocaleString()} rows. You can edit labels and data types, but cannot add/remove columns or change identifier keys.</p>
+                    <p>Reports have been generated using this database. You can add new columns and edit labels/data types, but cannot remove columns or change identifier keys.</p>
                   </div>
                 </div>
               </div>

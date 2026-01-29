@@ -267,10 +267,33 @@ export class DatabaseService {
             email: true,
           },
         },
+        // Include report definitions to check for generated reports
+        reportDefinitions: {
+          select: {
+            id: true,
+            _count: {
+              select: {
+                generatedReports: true,
+              },
+            },
+          },
+        },
       },
     })
 
-    return database
+    if (!database) return null
+
+    // Check if any reports using this database have generated reports
+    const hasGeneratedReports = database.reportDefinitions.some(
+      (rd: any) => rd._count.generatedReports > 0
+    )
+
+    // Return database with the hasGeneratedReports flag
+    const { reportDefinitions, ...databaseWithoutReports } = database
+    return {
+      ...databaseWithoutReports,
+      hasGeneratedReports,
+    }
   }
 
   /**
