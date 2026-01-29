@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Parse request body
     const body = await request.json()
-    const { currentPeriodKey, compareMode, liveConfig } = body as {
+    const { currentPeriodKey, compareMode, liveConfig, filters } = body as {
       currentPeriodKey?: string
       compareMode?: CompareMode
       liveConfig?: {
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         pivotColumnKey?: string | null
         metricRows?: any[]
       }
+      filters?: Record<string, unknown>  // Column-value filters from slice
     }
 
     // Validate compareMode if provided
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       currentPeriodKey,
       compareMode: compareMode || "none",
       liveConfig, // Pass live config for preview without saving
+      filters,    // Pass column-value filters from slice
     })
 
     return NextResponse.json(result)

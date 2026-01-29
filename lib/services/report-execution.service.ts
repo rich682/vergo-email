@@ -38,6 +38,7 @@ export interface ExecutePreviewInput {
     pivotColumnKey?: string | null
     metricRows?: any[]
   }
+  filters?: Record<string, unknown>  // Optional - column-value filters from slice
 }
 
 export interface PeriodInfo {
@@ -112,7 +113,7 @@ export class ReportExecutionService {
    * Execute a report preview with optional period filtering and comparison
    */
   static async executePreview(input: ExecutePreviewInput): Promise<ExecutePreviewResult> {
-    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none", liveConfig } = input
+    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none", liveConfig, filters } = input
 
     // Load report definition with database
     const report = await prisma.reportDefinition.findFirst({
@@ -196,6 +197,24 @@ export class ReportExecutionService {
       currentRows = allRows
     }
 
+    // Apply column-value filters (from slice filterBindings)
+    if (filters && Object.keys(filters).length > 0) {
+      currentRows = this.filterRowsByColumnValues(currentRows, filters)
+      
+      // Update row count in currentInfo if it exists
+      if (currentInfo) {
+        currentInfo.rowCount = currentRows.length
+      }
+      
+      // Also filter compare rows if they exist
+      if (compareRows) {
+        compareRows = this.filterRowsByColumnValues(compareRows, filters)
+        if (compareInfo) {
+          compareInfo.rowCount = compareRows.length
+        }
+      }
+    }
+
     // Evaluate based on layout
     let table: ExecutePreviewResult["table"]
 
@@ -241,6 +260,55 @@ export class ReportExecutionService {
     }
 
     return { rows: filtered, parseFailures }
+  }
+
+  /**
+   * Filter rows by column-value filters (from slice filterBindings)
+   * 
+   * Filtering rules (V1):
+   * - filters is a map of columnKey -> expectedValue
+   * - A row matches if for every filter key:
+   *   - row[key] exists and equals expectedValue (strict equality for primitives)
+   *   - If expectedValue is an array, treat it as "IN" (row[key] in expectedValue array)
+   *   - If filter value is null/undefined: ignore that filter key
+   *   - If a filter key doesn't exist on the row at all: row fails (excluded)
+   */
+  private static filterRowsByColumnValues(
+    rows: Array<Record<string, unknown>>,
+    filters: Record<string, unknown>
+  ): Array<Record<string, unknown>> {
+    // Get active filter entries (non-null/undefined values)
+    const activeFilters = Object.entries(filters).filter(
+      ([_, value]) => value !== null && value !== undefined
+    )
+
+    if (activeFilters.length === 0) {
+      return rows
+    }
+
+    return rows.filter(row => {
+      for (const [key, expectedValue] of activeFilters) {
+        // If row doesn't have the key, exclude it
+        if (!(key in row)) {
+          return false
+        }
+
+        const rowValue = row[key]
+
+        // Handle array filter (IN operator)
+        if (Array.isArray(expectedValue)) {
+          if (!expectedValue.includes(rowValue)) {
+            return false
+          }
+        } else {
+          // Strict equality for primitives
+          if (rowValue !== expectedValue) {
+            return false
+          }
+        }
+      }
+      return true
+    })
   }
 
   /**

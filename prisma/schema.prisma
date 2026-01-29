@@ -155,6 +155,7 @@ model Organization {
   reconciliationTemplates ReconciliationTemplate[]
   databases               Database[]
   reportDefinitions       ReportDefinition[]
+  reportSlices            ReportSlice[]
 
   @@index([slug])
 }
@@ -230,6 +231,7 @@ model User {
   createdDatabases           Database[]                 @relation("DatabaseCreator")
   importedDatabases          Database[]                 @relation("DatabaseImporter")
   createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
+  createdReportSlices        ReportSlice[]              @relation("ReportSliceCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1220,8 +1222,35 @@ model ReportDefinition {
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   database        Database     @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   createdBy       User         @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
+  slices          ReportSlice[]
   
   @@index([organizationId])
   @@index([databaseId])
+}
+
+// ReportSlice represents a saved, reusable "view" of a ReportDefinition
+// It stores filter bindings (e.g., { pm: "Caleb", brand: "Chipotle" }) without hardcoding period
+// Slices enable quick report viewing by audience and will be referenced by tasks in the future
+model ReportSlice {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  reportDefinitionId String
+  name               String
+  
+  // Filter bindings as JSON: { "pm": "Caleb", "brand": "Chipotle" }
+  // Applied after period filtering and before layout/formula evaluation
+  filterBindings     Json     @default("{}")
+  
+  // Metadata
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdById        String
+  
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
+  createdBy          User             @relation("ReportSliceCreator", fields: [createdById], references: [id])
+  
+  @@unique([reportDefinitionId, name])
+  @@index([organizationId, reportDefinitionId])
 }
 
