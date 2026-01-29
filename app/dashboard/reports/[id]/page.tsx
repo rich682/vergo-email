@@ -1536,7 +1536,7 @@ function MetricRowModal({
               {sourceAndFormulaMetrics.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Available Row Keys
+                    Click to add row reference
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {sourceAndFormulaMetrics.map(m => (
@@ -1544,9 +1544,10 @@ function MetricRowModal({
                         key={m.key}
                         type="button"
                         onClick={() => setExpression(prev => prev + (prev ? " " : "") + m.key)}
-                        className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-mono"
+                        className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs"
+                        title={`Inserts: ${m.key}`}
                       >
-                        {m.key}
+                        {m.label || m.key}
                       </button>
                     ))}
                   </div>
