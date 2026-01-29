@@ -160,6 +160,10 @@ export default function ReportBuilderPage() {
     open: boolean
     editingKey: string | null
   }>({ open: false, editingKey: null })
+  const [metricRowModal, setMetricRowModal] = useState<{
+    open: boolean
+    editingKey: string | null  // null = new row, string = editing existing
+  }>({ open: false, editingKey: null })
   // Editing state - Standard layout
   const [reportColumns, setReportColumns] = useState<ReportColumn[]>([])
   const [reportFormulaRows, setReportFormulaRows] = useState<ReportFormulaRow[]>([])
@@ -409,7 +413,7 @@ export default function ReportBuilderPage() {
       {/* Main content - split pane */}
       <div className="flex-1 flex min-h-0">
         {/* Left panel - Configuration */}
-        <div className="w-[600px] bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <div className="w-80 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Data Source Info */}
             <div className="p-3 bg-gray-50 rounded-lg">
@@ -432,195 +436,63 @@ export default function ReportBuilderPage() {
               </p>
             </div>
 
-            {/* === PIVOT LAYOUT UI - Inline Metric Row Table === */}
+            {/* === PIVOT LAYOUT UI - Simple Row List === */}
             {report.layout === "pivot" && (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
                   <div>
                     <span className="font-medium text-sm text-gray-700">Metric Rows</span>
-                    <p className="text-xs text-gray-400 mt-0.5">Define rows for your pivot report</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Click to edit, drag to reorder</p>
                   </div>
                   <span className="text-xs text-gray-500">{metricRows.length} rows</span>
                 </div>
 
-                {/* Inline editable table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[180px]">Label</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[100px]">Type</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 min-w-[200px]">Configuration</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-[100px]">Format</th>
-                        <th className="px-3 py-2 w-[50px]"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {metricRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="px-3 py-6 text-center text-gray-400 text-xs">
-                            No rows yet. Click "Add Row" to start building your report.
-                          </td>
-                        </tr>
-                      ) : (
-                        [...metricRows].sort((a, b) => a.order - b.order).map((metric, index) => (
-                          <tr key={metric.key} className="hover:bg-gray-50">
-                            {/* Label */}
-                            <td className="px-3 py-2">
-                              <Input
-                                value={metric.label}
-                                onChange={(e) => {
-                                  setMetricRows(prev => prev.map(m => 
-                                    m.key === metric.key ? { ...m, label: e.target.value } : m
-                                  ))
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="h-8 text-sm"
-                                placeholder="Row label"
-                              />
-                            </td>
-                            {/* Type */}
-                            <td className="px-3 py-2">
-                              <select
-                                value={metric.type}
-                                onChange={(e) => {
-                                  const newType = e.target.value as "source" | "formula" | "comparison"
-                                  setMetricRows(prev => prev.map(m => 
-                                    m.key === metric.key ? { 
-                                      ...m, 
-                                      type: newType,
-                                      // Clear other fields when type changes
-                                      sourceColumnKey: newType === "source" ? m.sourceColumnKey : undefined,
-                                      expression: newType === "formula" ? m.expression : undefined,
-                                      compareRowKey: newType === "comparison" ? m.compareRowKey : undefined,
-                                      comparePeriod: newType === "comparison" ? (m.comparePeriod || "yoy") : undefined,
-                                      compareOutput: newType === "comparison" ? (m.compareOutput || "value") : undefined,
-                                    } : m
-                                  ))
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
-                              >
-                                <option value="source">Source</option>
-                                <option value="formula">Formula</option>
-                                <option value="comparison">Compare</option>
-                              </select>
-                            </td>
-                            {/* Configuration - varies by type */}
-                            <td className="px-3 py-2">
-                              {metric.type === "source" && (
-                                <select
-                                  value={metric.sourceColumnKey || ""}
-                                  onChange={(e) => {
-                                    setMetricRows(prev => prev.map(m => 
-                                      m.key === metric.key ? { ...m, sourceColumnKey: e.target.value } : m
-                                    ))
-                                    setHasUnsavedChanges(true)
-                                  }}
-                                  className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
-                                >
-                                  <option value="">Select column...</option>
-                                  {databaseColumns.map(col => (
-                                    <option key={col.key} value={col.key}>{col.label}</option>
-                                  ))}
-                                </select>
-                              )}
-                              {metric.type === "formula" && (
-                                <Input
-                                  value={metric.expression || ""}
-                                  onChange={(e) => {
-                                    setMetricRows(prev => prev.map(m => 
-                                      m.key === metric.key ? { ...m, expression: e.target.value } : m
-                                    ))
-                                    setHasUnsavedChanges(true)
-                                  }}
-                                  className="h-8 text-sm font-mono"
-                                  placeholder="e.g., revenue - costs"
-                                />
-                              )}
-                              {metric.type === "comparison" && (
-                                <div className="flex gap-2">
-                                  <select
-                                    value={metric.compareRowKey || ""}
-                                    onChange={(e) => {
-                                      setMetricRows(prev => prev.map(m => 
-                                        m.key === metric.key ? { ...m, compareRowKey: e.target.value } : m
-                                      ))
-                                      setHasUnsavedChanges(true)
-                                    }}
-                                    className="h-8 px-2 border border-gray-300 rounded text-sm flex-1 bg-white"
-                                  >
-                                    <option value="">Select row...</option>
-                                    {metricRows.filter(m => m.key !== metric.key && m.type !== "comparison").map(m => (
-                                      <option key={m.key} value={m.key}>{m.label || m.key}</option>
-                                    ))}
-                                  </select>
-                                  <select
-                                    value={metric.comparePeriod || "yoy"}
-                                    onChange={(e) => {
-                                      setMetricRows(prev => prev.map(m => 
-                                        m.key === metric.key ? { ...m, comparePeriod: e.target.value as "mom" | "qoq" | "yoy" } : m
-                                      ))
-                                      setHasUnsavedChanges(true)
-                                    }}
-                                    className="h-8 px-2 border border-gray-300 rounded text-sm w-[80px] bg-white"
-                                  >
-                                    <option value="mom">MoM</option>
-                                    <option value="qoq">QoQ</option>
-                                    <option value="yoy">YoY</option>
-                                  </select>
-                                  <select
-                                    value={metric.compareOutput || "value"}
-                                    onChange={(e) => {
-                                      setMetricRows(prev => prev.map(m => 
-                                        m.key === metric.key ? { ...m, compareOutput: e.target.value as "value" | "delta" | "percent" } : m
-                                      ))
-                                      setHasUnsavedChanges(true)
-                                    }}
-                                    className="h-8 px-2 border border-gray-300 rounded text-sm w-[80px] bg-white"
-                                  >
-                                    <option value="value">Value</option>
-                                    <option value="delta">Delta</option>
-                                    <option value="percent">%</option>
-                                  </select>
-                                </div>
-                              )}
-                            </td>
-                            {/* Format */}
-                            <td className="px-3 py-2">
-                              <select
-                                value={metric.format}
-                                onChange={(e) => {
-                                  setMetricRows(prev => prev.map(m => 
-                                    m.key === metric.key ? { ...m, format: e.target.value as any } : m
-                                  ))
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="h-8 px-2 border border-gray-300 rounded text-sm w-full bg-white"
-                              >
-                                <option value="number">Number</option>
-                                <option value="currency">Currency</option>
-                                <option value="percent">Percent</option>
-                                <option value="text">Text</option>
-                              </select>
-                            </td>
-                            {/* Delete */}
-                            <td className="px-3 py-2 text-center">
-                              <button
-                                onClick={() => {
-                                  setMetricRows(prev => prev.filter(m => m.key !== metric.key))
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                {/* Simple row list */}
+                <div className="p-2 space-y-1">
+                  {metricRows.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-gray-400 text-xs">
+                      No rows yet. Click "Add Row" to start.
+                    </p>
+                  ) : (
+                    [...metricRows].sort((a, b) => a.order - b.order).map((metric) => (
+                      <button
+                        key={metric.key}
+                        onClick={() => setMetricRowModal({ open: true, editingKey: metric.key })}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left group"
+                      >
+                        {/* Type icon */}
+                        {metric.type === "source" && <Database className="w-4 h-4 text-blue-500 flex-shrink-0" />}
+                        {metric.type === "formula" && <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />}
+                        {metric.type === "comparison" && <TrendingUp className="w-4 h-4 text-amber-500 flex-shrink-0" />}
+                        
+                        {/* Label */}
+                        <span className="flex-1 text-sm text-gray-700 truncate">
+                          {metric.label || <span className="text-gray-400 italic">Untitled</span>}
+                        </span>
+                        
+                        {/* Type badge */}
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          metric.type === "source" ? "bg-blue-100 text-blue-700" :
+                          metric.type === "formula" ? "bg-purple-100 text-purple-700" :
+                          "bg-amber-100 text-amber-700"
+                        }`}>
+                          {metric.type === "source" ? "Source" : metric.type === "formula" ? "Formula" : "Compare"}
+                        </span>
+                        
+                        {/* Delete button (appears on hover) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMetricRows(prev => prev.filter(m => m.key !== metric.key))
+                            setHasUnsavedChanges(true)
+                          }}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </button>
+                    ))
+                  )}
                 </div>
 
                 {/* Add Row Button */}
@@ -628,17 +500,8 @@ export default function ReportBuilderPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      const newKey = `metric_${Date.now()}`
-                      setMetricRows(prev => [...prev, {
-                        key: newKey,
-                        label: "",
-                        type: "source",
-                        format: "currency",
-                        order: prev.length,
-                      }])
-                      setHasUnsavedChanges(true)
-                    }}
+                    className="w-full"
+                    onClick={() => setMetricRowModal({ open: true, editingKey: null })}
                   >
                     <Plus className="w-3.5 h-3.5 mr-1.5" />
                     Add Row
@@ -813,7 +676,7 @@ export default function ReportBuilderPage() {
         </div>
 
         {/* Right panel - Preview */}
-        <div className="flex-1 flex flex-col min-w-0 bg-gray-50 max-w-md">
+        <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
           {/* Preview header with period controls */}
           <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
@@ -1028,6 +891,33 @@ export default function ReportBuilderPage() {
           }
           setHasUnsavedChanges(true)
           setFormulaRowModal({ open: false, editingKey: null })
+        }}
+      />
+
+      {/* Metric Row Modal (for Pivot Layout) */}
+      <MetricRowModal
+        open={metricRowModal.open}
+        editingKey={metricRowModal.editingKey}
+        metricRows={metricRows}
+        databaseColumns={databaseColumns}
+        onClose={() => setMetricRowModal({ open: false, editingKey: null })}
+        onSave={(metric) => {
+          if (metricRowModal.editingKey) {
+            // Update existing
+            setMetricRows(prev =>
+              prev.map(m => m.key === metricRowModal.editingKey ? metric : m)
+            )
+          } else {
+            // Add new
+            setMetricRows(prev => [...prev, { ...metric, order: prev.length }])
+          }
+          setHasUnsavedChanges(true)
+          setMetricRowModal({ open: false, editingKey: null })
+        }}
+        onDelete={(key) => {
+          setMetricRows(prev => prev.filter(m => m.key !== key))
+          setHasUnsavedChanges(true)
+          setMetricRowModal({ open: false, editingKey: null })
         }}
       />
 
@@ -1392,6 +1282,331 @@ function FormulaRowModal({
           >
             {editingKey ? "Update" : "Add"} Row
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================
+// Metric Row Modal Component (for Pivot Layout)
+// ============================================
+interface MetricRowModalProps {
+  open: boolean
+  editingKey: string | null
+  metricRows: MetricRow[]
+  databaseColumns: Array<{ key: string; label: string; dataType: string }>
+  onClose: () => void
+  onSave: (metric: MetricRow) => void
+  onDelete: (key: string) => void
+}
+
+function MetricRowModal({
+  open,
+  editingKey,
+  metricRows,
+  databaseColumns,
+  onClose,
+  onSave,
+  onDelete,
+}: MetricRowModalProps) {
+  const [label, setLabel] = useState("")
+  const [type, setType] = useState<"source" | "formula" | "comparison">("source")
+  const [sourceColumnKey, setSourceColumnKey] = useState("")
+  const [expression, setExpression] = useState("")
+  const [compareRowKey, setCompareRowKey] = useState("")
+  const [comparePeriod, setComparePeriod] = useState<"mom" | "qoq" | "yoy">("yoy")
+  const [compareOutput, setCompareOutput] = useState<"value" | "delta" | "percent">("value")
+  const [format, setFormat] = useState<"text" | "number" | "currency" | "percent">("currency")
+
+  const editingMetric = editingKey
+    ? metricRows.find(m => m.key === editingKey)
+    : null
+
+  // Initialize form when editing
+  useEffect(() => {
+    if (open && editingMetric) {
+      setLabel(editingMetric.label)
+      setType(editingMetric.type)
+      setSourceColumnKey(editingMetric.sourceColumnKey || "")
+      setExpression(editingMetric.expression || "")
+      setCompareRowKey(editingMetric.compareRowKey || "")
+      setComparePeriod(editingMetric.comparePeriod || "yoy")
+      setCompareOutput(editingMetric.compareOutput || "value")
+      setFormat(editingMetric.format)
+    } else if (open && !editingKey) {
+      // Reset for new row
+      setLabel("")
+      setType("source")
+      setSourceColumnKey("")
+      setExpression("")
+      setCompareRowKey("")
+      setComparePeriod("yoy")
+      setCompareOutput("value")
+      setFormat("currency")
+    }
+  }, [open, editingKey, editingMetric])
+
+  const handleSave = () => {
+    if (!label.trim()) return
+    if (type === "source" && !sourceColumnKey) return
+    if (type === "formula" && !expression.trim()) return
+    if (type === "comparison" && !compareRowKey) return
+
+    const key = editingKey || `metric_${Date.now()}`
+    onSave({
+      key,
+      label: label.trim(),
+      type,
+      sourceColumnKey: type === "source" ? sourceColumnKey : undefined,
+      expression: type === "formula" ? expression.trim() : undefined,
+      compareRowKey: type === "comparison" ? compareRowKey : undefined,
+      comparePeriod: type === "comparison" ? comparePeriod : undefined,
+      compareOutput: type === "comparison" ? compareOutput : undefined,
+      format,
+      order: editingMetric?.order || 0,
+    })
+  }
+
+  // Get other metrics for formula/comparison references
+  const otherMetrics = metricRows.filter(m => m.key !== editingKey)
+  const sourceAndFormulaMetrics = otherMetrics.filter(m => m.type !== "comparison")
+
+  const isValid = label.trim() && (
+    (type === "source" && sourceColumnKey) ||
+    (type === "formula" && expression.trim()) ||
+    (type === "comparison" && compareRowKey)
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{editingKey ? "Edit Row" : "Add Row"}</DialogTitle>
+          <DialogDescription>
+            {editingKey ? "Modify the row configuration" : "Configure a new row for your pivot report"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Row Label */}
+          <div className="space-y-2">
+            <Label>Label *</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g., Gross Revenue, Net Profit"
+            />
+          </div>
+
+          {/* Row Type */}
+          <div className="space-y-2">
+            <Label>Type</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setType("source")}
+                className={`p-3 rounded-lg border-2 text-center transition-all ${
+                  type === "source"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <Database className={`w-5 h-5 mx-auto mb-1 ${type === "source" ? "text-blue-600" : "text-gray-400"}`} />
+                <span className={`text-sm font-medium ${type === "source" ? "text-blue-900" : "text-gray-700"}`}>
+                  Source
+                </span>
+                <p className="text-xs text-gray-500 mt-0.5">From database</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("formula")}
+                className={`p-3 rounded-lg border-2 text-center transition-all ${
+                  type === "formula"
+                    ? "border-purple-500 bg-purple-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <FunctionSquare className={`w-5 h-5 mx-auto mb-1 ${type === "formula" ? "text-purple-600" : "text-gray-400"}`} />
+                <span className={`text-sm font-medium ${type === "formula" ? "text-purple-900" : "text-gray-700"}`}>
+                  Formula
+                </span>
+                <p className="text-xs text-gray-500 mt-0.5">Calculate</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("comparison")}
+                className={`p-3 rounded-lg border-2 text-center transition-all ${
+                  type === "comparison"
+                    ? "border-amber-500 bg-amber-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <TrendingUp className={`w-5 h-5 mx-auto mb-1 ${type === "comparison" ? "text-amber-600" : "text-gray-400"}`} />
+                <span className={`text-sm font-medium ${type === "comparison" ? "text-amber-900" : "text-gray-700"}`}>
+                  Compare
+                </span>
+                <p className="text-xs text-gray-500 mt-0.5">vs Period</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Source Column Selection */}
+          {type === "source" && (
+            <div className="space-y-2">
+              <Label>Database Column *</Label>
+              <Select value={sourceColumnKey} onValueChange={setSourceColumnKey}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a column..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {databaseColumns.map((col) => (
+                    <SelectItem key={col.key} value={col.key}>
+                      <div className="flex items-center gap-2">
+                        <span>{col.label}</span>
+                        <span className="text-xs text-gray-400">({col.dataType})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Formula Input */}
+          {type === "formula" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Formula Expression *</Label>
+                <Input
+                  value={expression}
+                  onChange={(e) => setExpression(e.target.value)}
+                  placeholder="e.g., gross_revenue - total_costs"
+                  className="font-mono"
+                />
+                <p className="text-xs text-gray-500">
+                  Use other row keys to build calculations
+                </p>
+              </div>
+
+              {sourceAndFormulaMetrics.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Available Row Keys
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sourceAndFormulaMetrics.map(m => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => setExpression(prev => prev + (prev ? " " : "") + m.key)}
+                        className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-mono"
+                      >
+                        {m.key}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Comparison Configuration */}
+          {type === "comparison" && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Compare Row *</Label>
+                <Select value={compareRowKey} onValueChange={setCompareRowKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a row to compare..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sourceAndFormulaMetrics.map((m) => (
+                      <SelectItem key={m.key} value={m.key}>
+                        {m.label || m.key}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  Select which row to compare against a previous period
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Period</Label>
+                  <Select value={comparePeriod} onValueChange={(v) => setComparePeriod(v as any)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mom">Month over Month</SelectItem>
+                      <SelectItem value="qoq">Quarter over Quarter</SelectItem>
+                      <SelectItem value="yoy">Year over Year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Output</Label>
+                  <Select value={compareOutput} onValueChange={(v) => setCompareOutput(v as any)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="value">Previous Value</SelectItem>
+                      <SelectItem value="delta">Difference (Δ)</SelectItem>
+                      <SelectItem value="percent">% Change</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Display Format */}
+          <div className="space-y-2">
+            <Label>Display Format</Label>
+            <Select value={format} onValueChange={(v) => setFormat(v as any)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="currency">Currency ($)</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="percent">Percentage (%)</SelectItem>
+                <SelectItem value="text">Text</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter className="flex justify-between">
+          <div>
+            {editingKey && (
+              <Button
+                variant="outline"
+                onClick={() => onDelete(editingKey)}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Delete
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!isValid}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {editingKey ? "Update" : "Add"} Row
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
