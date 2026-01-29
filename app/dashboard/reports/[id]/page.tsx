@@ -687,13 +687,14 @@ export default function ReportBuilderPage() {
                     <SelectValue placeholder="Select period..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {previewData?.availablePeriods?.map((period) => (
-                      <SelectItem key={period.key} value={period.key}>
-                        {period.label}
-                      </SelectItem>
-                    ))}
-                    {(!previewData?.availablePeriods || previewData.availablePeriods.length === 0) && (
-                      <SelectItem value="" disabled>No periods available</SelectItem>
+                    {previewData?.availablePeriods && previewData.availablePeriods.length > 0 ? (
+                      previewData.availablePeriods.map((period) => (
+                        <SelectItem key={period.key} value={period.key}>
+                          {period.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-2 py-1.5 text-sm text-gray-500">No periods available</div>
                     )}
                   </SelectContent>
                 </Select>
