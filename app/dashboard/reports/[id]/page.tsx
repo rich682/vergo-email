@@ -404,7 +404,7 @@ export default function ReportBuilderPage() {
       }
       setReportColumns(prev => [...prev, newColumn])
     }
-    
+    setHasUnsavedChanges(true)
   }
 
   // Check if source column is selected
@@ -665,7 +665,7 @@ export default function ReportBuilderPage() {
                           onClick={(e) => {
                             e.stopPropagation()
                             setMetricRows(prev => prev.filter(m => m.key !== metric.key))
-                            
+                            setHasUnsavedChanges(true)
                           }}
                           className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity"
                         >
@@ -762,7 +762,7 @@ export default function ReportBuilderPage() {
                             <button
                               onClick={() => {
                                 setReportColumns(prev => prev.filter(c => c.key !== col.key))
-                                
+                                setHasUnsavedChanges(true)
                               }}
                               className="p-1 hover:bg-red-100 rounded"
                             >
@@ -829,7 +829,7 @@ export default function ReportBuilderPage() {
                           <button
                             onClick={() => {
                               setReportFormulaRows(prev => prev.filter(r => r.key !== row.key))
-                              
+                              setHasUnsavedChanges(true)
                             }}
                             className="p-1 hover:bg-red-100 rounded"
                           >
@@ -885,7 +885,7 @@ export default function ReportBuilderPage() {
                   value={currentPeriodKey}
                   onValueChange={(v) => {
                     setCurrentPeriodKey(v)
-                    
+                    setHasUnsavedChanges(true)
                   }}
                 >
                   <SelectTrigger className="w-[180px] h-8 text-sm">
@@ -913,7 +913,7 @@ export default function ReportBuilderPage() {
                     value={compareMode}
                     onValueChange={(v: "none" | "mom" | "yoy") => {
                       setCompareMode(v)
-                      
+                      setHasUnsavedChanges(true)
                     }}
                   >
                     <SelectTrigger className="w-[140px] h-8 text-sm">
@@ -1063,7 +1063,7 @@ export default function ReportBuilderPage() {
             // Add new
             setReportColumns(prev => [...prev, { ...column, order: prev.length }])
           }
-          
+          setHasUnsavedChanges(true)
           setFormulaColumnPanel({ open: false, editingKey: null })
         }}
       />
@@ -1085,7 +1085,7 @@ export default function ReportBuilderPage() {
             // Add new
             setReportFormulaRows(prev => [...prev, { ...row, order: prev.length }])
           }
-          
+          setHasUnsavedChanges(true)
           setFormulaRowModal({ open: false, editingKey: null })
         }}
       />
@@ -1107,12 +1107,12 @@ export default function ReportBuilderPage() {
             // Add new
             setMetricRows(prev => [...prev, { ...metric, order: prev.length }])
           }
-          
+          setHasUnsavedChanges(true)
           setMetricRowModal({ open: false, editingKey: null })
         }}
         onDelete={(key) => {
           setMetricRows(prev => prev.filter(m => m.key !== key))
-          
+          setHasUnsavedChanges(true)
           setMetricRowModal({ open: false, editingKey: null })
         }}
       />
