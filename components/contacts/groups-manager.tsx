@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Trash2, Edit2, X, Check, Users } from "lucide-react"
+import { Trash2, Edit2, X, Check, Tag } from "lucide-react"
 
 interface Group {
   id: string
@@ -80,7 +80,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
   }
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete the group "${name}"? Contacts in this group will not be deleted.`)) {
+    if (!confirm(`Are you sure you want to delete the tag "${name}"? Contacts with this tag will not be deleted.`)) {
       return
     }
     
@@ -117,12 +117,12 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
 
   return (
     <div className="space-y-6">
-      {/* Create new group */}
+      {/* Create new tag */}
       <div className="space-y-2">
-        <Label>Create New Group</Label>
+        <Label>Create New Tag</Label>
         <div className="flex gap-2">
           <Input
-            placeholder="Enter group name..."
+            placeholder="Enter tag name..."
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             onKeyDown={(e) => {
@@ -144,12 +144,12 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
         </div>
       )}
 
-      {/* Groups list */}
+      {/* Tags list */}
       <div className="space-y-2">
-        <Label>Existing Groups ({groups.length})</Label>
+        <Label>Existing Tags ({groups.length})</Label>
         {groups.length === 0 ? (
           <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 text-center text-gray-500 text-sm">
-            No groups yet. Create one above.
+            No tags yet. Create one above.
           </div>
         ) : (
           <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -184,11 +184,11 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
                 ) : (
                   <>
                     <div className="flex items-center gap-3">
-                      <Users className="w-4 h-4 text-gray-400" />
+                      <Tag className="w-4 h-4 text-gray-400" />
                       <div>
                         <div className="font-medium text-sm">{group.name}</div>
                         <div className="text-xs text-gray-500">
-                          {group._count?.entities || 0} member{(group._count?.entities || 0) !== 1 ? "s" : ""}
+                          {group._count?.entities || 0} contact{(group._count?.entities || 0) !== 1 ? "s" : ""}
                         </div>
                       </div>
                     </div>
@@ -220,7 +220,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
       </div>
 
       <p className="text-xs text-gray-500">
-        Groups help organize contacts. Deleting a group does not delete the contacts in it.
+        Tags help organize contacts for easier stakeholder selection. Deleting a tag does not delete the contacts with it.
       </p>
     </div>
   )

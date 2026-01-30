@@ -32,10 +32,12 @@ interface ContactListProps {
   search: string
   selectedGroupId?: string
   selectedContactType?: string
+  selectedInternalFilter?: boolean
   selectedEntityIds: string[]
   onSearchChange: (value: string) => void
   onGroupFilterChange: (value?: string) => void
   onContactTypeChange: (value?: string) => void
+  onInternalFilterChange: (value?: boolean) => void
   onSelectedEntitiesChange: (ids: string[]) => void
   onEdit: (entity: Entity) => void
   onDelete: () => void
@@ -56,10 +58,12 @@ export function ContactList({
   search,
   selectedGroupId,
   selectedContactType,
+  selectedInternalFilter,
   selectedEntityIds,
   onSearchChange,
   onGroupFilterChange,
   onContactTypeChange,
+  onInternalFilterChange,
   onSelectedEntitiesChange,
   onEdit,
   onDelete
@@ -103,7 +107,7 @@ export function ContactList({
   return (
     <div className="space-y-4">
       {/* Filters Row */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <div className="space-y-2">
           <Label htmlFor="contact-search">Search</Label>
           <Input
@@ -114,7 +118,25 @@ export function ContactList({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="type-filter">Organization</Label>
+          <Label htmlFor="internal-filter">Type</Label>
+          <Select
+            value={selectedInternalFilter === undefined ? "all" : selectedInternalFilter ? "internal" : "external"}
+            onValueChange={(value) =>
+              onInternalFilterChange(value === "all" ? undefined : value === "internal")
+            }
+          >
+            <SelectTrigger id="internal-filter">
+              <SelectValue placeholder="All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="internal">Internal</SelectItem>
+              <SelectItem value="external">External</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="type-filter">Role</Label>
           <Select
             value={selectedContactType ?? "all"}
             onValueChange={(value) =>
@@ -122,10 +144,10 @@ export function ContactList({
             }
           >
             <SelectTrigger id="type-filter">
-              <SelectValue placeholder="All types" />
+              <SelectValue placeholder="All roles" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
               {CONTACT_TYPES.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
                   {t.label}
@@ -135,7 +157,7 @@ export function ContactList({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="group-filter">Group</Label>
+          <Label htmlFor="group-filter">Tag</Label>
           <Select
             value={selectedGroupId ?? "all"}
             onValueChange={(value) =>
@@ -143,10 +165,10 @@ export function ContactList({
             }
           >
             <SelectTrigger id="group-filter">
-              <SelectValue placeholder="All groups" />
+              <SelectValue placeholder="All tags" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All groups</SelectItem>
+              <SelectItem value="all">All tags</SelectItem>
               {groups.map((g) => (
                 <SelectItem key={g.id} value={g.id}>
                   {g.name}
@@ -310,15 +332,16 @@ export function ContactList({
               <th className="px-4 py-3 w-40">Name</th>
               <th className="px-4 py-3 w-48">Email</th>
               <th className="px-4 py-3 w-36">Company</th>
-              <th className="px-4 py-3 w-24">Org</th>
-              <th className="px-4 py-3 w-28">Groups</th>
+              <th className="px-4 py-3 w-24">Type</th>
+              <th className="px-4 py-3 w-24">Role</th>
+              <th className="px-4 py-3 w-28">Tags</th>
               <th className="px-4 py-3 w-32 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {entities.length === 0 && (
               <tr>
-                <td colSpan={showSelectionColumn ? 7 : 6} className="px-4 py-4 text-gray-500">
+                <td colSpan={showSelectionColumn ? 8 : 7} className="px-4 py-4 text-gray-500">
                   No contacts found.
                 </td>
               </tr>
@@ -354,6 +377,15 @@ export function ContactList({
                 <td className="px-4 py-2 text-gray-600">{entity.email}</td>
                 <td className="px-4 py-2 text-gray-600">
                   {entity.companyName || "—"}
+                </td>
+                <td className="px-4 py-2">
+                  <span className={`text-xs inline-flex rounded-full px-2 py-0.5 ${
+                    entity.isInternal 
+                      ? "bg-blue-100 text-blue-700" 
+                      : "bg-gray-100 text-gray-700"
+                  }`}>
+                    {entity.isInternal ? "Internal" : "External"}
+                  </span>
                 </td>
                 <td className="px-4 py-2">
                   <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">

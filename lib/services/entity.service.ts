@@ -13,6 +13,7 @@ export class EntityService {
     groupIds?: string[]
     contactType?: any
     contactTypeCustomLabel?: string
+    isInternal?: boolean
   }): Promise<Entity> {
     const entity = await prisma.entity.create({
       data: {
@@ -23,6 +24,7 @@ export class EntityService {
         companyName: data.companyName,
         contactType: data.contactType,
         contactTypeCustomLabel: data.contactTypeCustomLabel,
+        isInternal: data.isInternal ?? false,
         organizationId: data.organizationId
       }
     })
@@ -101,16 +103,28 @@ export class EntityService {
       groupId?: string
       search?: string
       contactType?: string
+      isInternal?: boolean
+      tagIds?: string[] // Filter by tags (groups)
     }
   ): Promise<Entity[]> {
     const where: any = {
       organizationId
     }
 
+    // Support single groupId for backwards compatibility
     if (options?.groupId) {
       where.groups = {
         some: {
           groupId: options.groupId
+        }
+      }
+    }
+
+    // Filter by multiple tags - entity must have at least one of the specified tags
+    if (options?.tagIds && options.tagIds.length > 0) {
+      where.groups = {
+        some: {
+          groupId: { in: options.tagIds }
         }
       }
     }
@@ -124,6 +138,11 @@ export class EntityService {
 
     if (options?.contactType) {
       where.contactType = options.contactType
+    }
+
+    // Filter by internal/external status
+    if (options?.isInternal !== undefined) {
+      where.isInternal = options.isInternal
     }
 
     return prisma.entity.findMany({
@@ -144,7 +163,7 @@ export class EntityService {
   static async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "companyName" | "contactType" | "contactTypeCustomLabel">>
+    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "companyName" | "contactType" | "contactTypeCustomLabel" | "isInternal">>
   ): Promise<Entity> {
     return prisma.entity.update({
       where: {

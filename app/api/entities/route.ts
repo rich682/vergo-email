@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
-import { DomainDetectionService } from "@/lib/services/domain-detection.service"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -18,16 +17,20 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")
   const groupId = searchParams.get("groupId")
   const contactType = searchParams.get("contactType") || undefined
-  const stateKey = searchParams.get("stateKey") || undefined
-  const stateKeysParam = searchParams.get("stateKeys")
-  const stateKeys = stateKeysParam ? stateKeysParam.split(",").filter(Boolean) : undefined
+  // New filters for stakeholder framework
+  const isInternalParam = searchParams.get("isInternal")
+  const isInternal = isInternalParam === "true" ? true : isInternalParam === "false" ? false : undefined
+  const tagIdsParam = searchParams.get("tagIds")
+  const tagIds = tagIdsParam ? tagIdsParam.split(",").filter(Boolean) : undefined
 
   const entities = await EntityService.findByOrganization(
     session.user.organizationId,
     {
       search: search || undefined,
       groupId: groupId || undefined,
-      contactType
+      contactType,
+      isInternal,
+      tagIds
     }
   )
 
@@ -37,13 +40,8 @@ export async function GET(request: NextRequest) {
     !entity.email?.startsWith("__system_")
   )
 
-  // Format response with groups and internal/external status
-  // findByOrganization already includes groups, but TypeScript doesn't infer it
-  const formatted = await Promise.all(filteredEntities.map(async (entity) => {
-    const isInternal = entity.email 
-      ? await DomainDetectionService.isInternalEmail(entity.email, session.user.organizationId)
-      : false
-
+  // Format response with groups - isInternal now comes from database
+  const formatted = filteredEntities.map((entity) => {
     const entityWithGroups = entity as typeof entity & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
     }
@@ -57,7 +55,7 @@ export async function GET(request: NextRequest) {
       companyName: entity.companyName,
       contactType: entity.contactType,
       contactTypeCustomLabel: entity.contactTypeCustomLabel,
-      isInternal,
+      isInternal: (entity as any).isInternal ?? false,
       groups: entityWithGroups.groups.map(eg => ({
         id: eg.group.id,
         name: eg.group.name,
@@ -66,7 +64,7 @@ export async function GET(request: NextRequest) {
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt
     }
-  }))
+  })
 
   return NextResponse.json(formatted)
 }
@@ -83,7 +81,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel } = body
+    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel, isInternal } = body
 
     if (!firstName || !email) {
       return NextResponse.json(
@@ -100,6 +98,7 @@ export async function POST(request: NextRequest) {
       companyName: companyName?.trim() || undefined,
       contactType,
       contactTypeCustomLabel,
+      isInternal: isInternal ?? false,
       organizationId: session.user.organizationId,
       groupIds: groupIds || []
     })
@@ -117,10 +116,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const isInternal = entityWithGroups.email
-      ? await DomainDetectionService.isInternalEmail(entityWithGroups.email, session.user.organizationId)
-      : false
-
     const entityWithGroupsTyped = entityWithGroups as typeof entityWithGroups & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
     }
@@ -134,7 +129,7 @@ export async function POST(request: NextRequest) {
       companyName: entityWithGroups.companyName,
       contactType: entityWithGroups.contactType,
       contactTypeCustomLabel: entityWithGroups.contactTypeCustomLabel,
-      isInternal,
+      isInternal: (entityWithGroups as any).isInternal ?? false,
       groups: entityWithGroupsTyped.groups.map(eg => ({
         id: eg.group.id,
         name: eg.group.name,

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
-import { DomainDetectionService } from "@/lib/services/domain-detection.service"
 
 export async function GET(
   request: NextRequest,
@@ -29,14 +28,10 @@ export async function GET(
     )
   }
 
-  const isInternal = entity.email
-    ? await DomainDetectionService.isInternalEmail(entity.email, session.user.organizationId)
-    : false
-
   // Type assertion needed because Prisma includes groups but TypeScript doesn't infer it
-    const entityWithGroups = entity as typeof entity & {
-      groups: Array<{ group: { id: string; name: string; color: string | null } }>
-    }
+  const entityWithGroups = entity as typeof entity & {
+    groups: Array<{ group: { id: string; name: string; color: string | null } }>
+  }
 
   return NextResponse.json({
     id: entity.id,
@@ -47,7 +42,7 @@ export async function GET(
     companyName: entity.companyName,
     contactType: entity.contactType,
     contactTypeCustomLabel: entity.contactTypeCustomLabel,
-    isInternal,
+    isInternal: (entity as any).isInternal ?? false,
     groups: entityWithGroups.groups.map(eg => ({
       id: eg.group.id,
       name: eg.group.name,
@@ -73,7 +68,7 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel, tagValues } = body
+    const { firstName, lastName, email, phone, companyName, groupIds, contactType, contactTypeCustomLabel, isInternal, tagValues } = body
 
     // Update entity fields (including lastName which is now a proper Entity field)
     const updateData: any = {}
@@ -84,6 +79,7 @@ export async function PATCH(
     if (companyName !== undefined) updateData.companyName = companyName || null
     if (contactType !== undefined) updateData.contactType = contactType
     if (contactTypeCustomLabel !== undefined) updateData.contactTypeCustomLabel = contactTypeCustomLabel
+    if (isInternal !== undefined) updateData.isInternal = isInternal
 
     if (Object.keys(updateData).length > 0) {
       await EntityService.update(
@@ -133,10 +129,6 @@ export async function PATCH(
       )
     }
 
-    const isInternal = updated.email
-      ? await DomainDetectionService.isInternalEmail(updated.email, session.user.organizationId)
-      : false
-
     const updatedWithGroups = updated as typeof updated & {
       groups: Array<{ group: { id: string; name: string; color: string | null } }>
     }
@@ -150,7 +142,7 @@ export async function PATCH(
       companyName: updated.companyName,
       contactType: updated.contactType,
       contactTypeCustomLabel: updated.contactTypeCustomLabel,
-      isInternal,
+      isInternal: (updated as any).isInternal ?? false,
       groups: updatedWithGroups.groups.map(eg => ({
         id: eg.group.id,
         name: eg.group.name,

@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
       boardId, 
       type, 
       lineageId,
-      createLineage 
+      createLineage,
+      stakeholderScope // "accounting" | "employee" | "external"
     } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -168,7 +169,8 @@ export async function POST(request: NextRequest) {
       labels: Object.keys(finalLabels).length > 0 ? finalLabels : undefined,
       tags: tags || undefined,
       type: type || undefined,
-      lineageId: finalLineageId || undefined
+      lineageId: finalLineageId || undefined,
+      stakeholderScope: stakeholderScope || undefined
     })
 
     return NextResponse.json({

@@ -247,8 +247,9 @@ model Entity {
   email                  String?
   phone                  String?
   companyName            String? // Company name for accounting reference
-  contactType            ContactType @default(UNKNOWN)
-  contactTypeCustomLabel String?
+  contactType            ContactType @default(UNKNOWN) // @deprecated - use isInternal instead
+  contactTypeCustomLabel String? // @deprecated
+  isInternal             Boolean     @default(false) // true = internal (employee), false = external (client/vendor)
   organizationId         String
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
@@ -264,6 +265,7 @@ model Entity {
   @@index([organizationId])
   @@index([email])
   @@index([organizationId, email])
+  @@index([organizationId, isInternal])
 }
 
 model Group {
@@ -346,6 +348,9 @@ model TaskInstance {
   // Report configuration (for REPORTS type tasks)
   reportDefinitionId String?
   reportSliceId      String?
+  
+  // Stakeholder scope for task type categorization
+  stakeholderScope   String?  // "accounting" | "employee" | "external"
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

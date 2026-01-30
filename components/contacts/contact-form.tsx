@@ -21,6 +21,7 @@ interface EntityInput {
   companyName?: string
   contactType?: string
   contactTypeCustomLabel?: string
+  isInternal?: boolean
   groups?: { id: string; name: string }[]
 }
 
@@ -36,6 +37,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
   const [email, setEmail] = useState(entity?.email || "")
   const [phone, setPhone] = useState(entity?.phone || "")
   const [companyName, setCompanyName] = useState(entity?.companyName || "")
+  const [isInternal, setIsInternal] = useState(entity?.isInternal ?? false)
   const [contactType, setContactType] = useState(entity?.contactType || "UNKNOWN")
   const [contactTypeCustomLabel, setContactTypeCustomLabel] = useState(entity?.contactTypeCustomLabel || "")
   const [groupIds, setGroupIds] = useState<string[]>(
@@ -67,6 +69,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
     setEmail(entity?.email || "")
     setPhone(entity?.phone || "")
     setCompanyName(entity?.companyName || "")
+    setIsInternal(entity?.isInternal ?? false)
     setContactType(entity?.contactType || "UNKNOWN")
     setContactTypeCustomLabel(entity?.contactTypeCustomLabel || "")
     setGroupIds(entity?.groups?.map((g) => g.id) || [])
@@ -84,6 +87,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         email,
         phone: phone || undefined,
         companyName: companyName.trim() || undefined,
+        isInternal,
         contactType,
         contactTypeCustomLabel: contactType === "CUSTOM" ? contactTypeCustomLabel || undefined : undefined,
         groupIds,
@@ -165,8 +169,42 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
           placeholder="(555) 123-4567"
         />
       </div>
+      {/* Internal/External Toggle */}
       <div className="space-y-2">
-        <Label htmlFor="contactType">Organization</Label>
+        <Label>Contact Type</Label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setIsInternal(false)}
+            className={`flex-1 px-4 py-2 text-sm font-medium border rounded-md transition-colors ${
+              !isInternal 
+                ? "bg-gray-900 text-white border-gray-900" 
+                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+            }`}
+          >
+            External
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsInternal(true)}
+            className={`flex-1 px-4 py-2 text-sm font-medium border rounded-md transition-colors ${
+              isInternal 
+                ? "bg-blue-600 text-white border-blue-600" 
+                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+            }`}
+          >
+            Internal
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          {isInternal 
+            ? "Internal contacts are employees and team members within your organization." 
+            : "External contacts are clients, vendors, and other outside parties."}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="contactType">Role</Label>
         <select
           id="contactType"
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
@@ -192,7 +230,7 @@ export function ContactForm({ entity, onSuccess, onCancel }: ContactFormProps) {
         )}
       </div>
       <div className="space-y-2">
-        <Label>Groups</Label>
+        <Label>Tags</Label>
         <GroupsInput
           existingGroups={groups}
           selectedGroupIds={groupIds}

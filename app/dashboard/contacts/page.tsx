@@ -6,8 +6,7 @@ import { ContactForm } from "@/components/contacts/contact-form"
 import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
-import { TypesManager } from "@/components/contacts/types-manager"
-import { Users, FolderOpen, Building2, Plus, Upload } from "lucide-react"
+import { Users, Tag, Plus, Upload } from "lucide-react"
 
 interface Group {
   id: string
@@ -27,7 +26,7 @@ interface Entity {
   contactTypeCustomLabel?: string
 }
 
-type TabType = "contacts" | "groups" | "types"
+type TabType = "contacts" | "tags"
 
 export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
@@ -37,6 +36,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("")
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
   const [selectedContactType, setSelectedContactType] = useState<string | undefined>()
+  const [selectedInternalFilter, setSelectedInternalFilter] = useState<boolean | undefined>()
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -46,7 +46,7 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchEntities()
     fetchGroups()
-  }, [search, selectedGroupId, selectedContactType])
+  }, [search, selectedGroupId, selectedContactType, selectedInternalFilter])
 
   const fetchEntities = async () => {
     try {
@@ -55,6 +55,7 @@ export default function ContactsPage() {
       if (search) params.append("search", search)
       if (selectedGroupId) params.append("groupId", selectedGroupId)
       if (selectedContactType) params.append("contactType", selectedContactType)
+      if (selectedInternalFilter !== undefined) params.append("isInternal", String(selectedInternalFilter))
 
       const response = await fetch(`/api/entities?${params.toString()}`)
       if (response.ok) {
@@ -113,8 +114,7 @@ export default function ContactsPage() {
 
   const tabs = [
     { id: "contacts" as TabType, label: "Contacts", icon: Users },
-    { id: "types" as TabType, label: "Organization", icon: Building2 },
-    { id: "groups" as TabType, label: "Groups", icon: FolderOpen },
+    { id: "tags" as TabType, label: "Tags", icon: Tag },
   ]
 
   return (
@@ -244,30 +244,26 @@ export default function ContactsPage() {
                 search={search}
                 selectedGroupId={selectedGroupId}
                 selectedContactType={selectedContactType}
+                selectedInternalFilter={selectedInternalFilter}
                 selectedEntityIds={selectedEntityIds}
                 onSearchChange={setSearch}
                 onGroupFilterChange={setSelectedGroupId}
                 onContactTypeChange={setSelectedContactType}
+                onInternalFilterChange={setSelectedInternalFilter}
                 onSelectedEntitiesChange={setSelectedEntityIds}
                 onEdit={handleEdit as any}
                 onDelete={handleDelete}
               />
             )}
           </div>
-        ) : activeTab === "groups" ? (
+        ) : activeTab === "tags" ? (
           <div className="max-w-2xl">
             <GroupsManager
               groups={groups}
               onGroupsChange={fetchGroups}
             />
           </div>
-        ) : activeTab === "types" ? (
-          <div className="max-w-2xl">
-            <TypesManager
-              onTypesChange={fetchEntities}
-            />
-          </div>
-        ) : null /* Tags tab hidden for now */}
+        ) : null}
       </div>
     </div>
   )

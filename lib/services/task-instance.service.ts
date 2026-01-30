@@ -41,6 +41,7 @@ export interface CreateTaskInstanceInput {
   dueDate?: Date
   labels?: TaskInstanceLabels
   tags?: string[]
+  stakeholderScope?: "accounting" | "employee" | "external" // Task category for stakeholder workflows
 }
 
 export interface UpdateTaskInstanceInput {
@@ -227,7 +228,8 @@ export class TaskInstanceService {
         boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels as any,
-        status: JobStatus.NOT_STARTED
+        status: JobStatus.NOT_STARTED,
+        stakeholderScope: input.stakeholderScope || null
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },
