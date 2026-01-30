@@ -545,11 +545,12 @@ export class ReportExecutionService {
       }
     }
 
-    // Build output rows with format information
+    // Build output rows with format and type information
     const dataRows = sortedMetrics.map(metric => {
       const row: Record<string, unknown> = { 
         _label: metric.label,
         _format: metric.format, // Include format for frontend rendering
+        _type: metric.type, // Include type to show formula/comparison icons
       }
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]

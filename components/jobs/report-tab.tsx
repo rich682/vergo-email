@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X } from "lucide-react"
+import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X, FunctionSquare, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -524,14 +524,24 @@ export function ReportTab({
                           const effectiveFormat = col.key === "_label" 
                             ? "text" 
                             : ((row._format as string) || col.dataType)
+                          const rowType = row._type as string | undefined
+                          const isLabelColumn = col.key === "_label"
                           return (
                             <td 
                               key={col.key} 
                               className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
                                 colIndex > 0 ? "border-l border-gray-100" : ""
-                              }`}
+                              } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
                             >
-                              {formatCellValue(row[col.key], effectiveFormat)}
+                              {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
+                                <span className="flex items-center gap-1.5">
+                                  {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
+                                  {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                  {formatCellValue(row[col.key], effectiveFormat)}
+                                </span>
+                              ) : (
+                                formatCellValue(row[col.key], effectiveFormat)
+                              )}
                             </td>
                           )
                         })}

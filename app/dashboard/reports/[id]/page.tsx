@@ -23,6 +23,7 @@ import {
   Pencil,
   MoreVertical,
   AlertTriangle,
+  GripVertical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -629,37 +630,82 @@ export default function ReportBuilderPage() {
                   <span className="text-xs text-gray-500">{metricRows.length} rows</span>
                 </div>
 
-                {/* Simple row list */}
+                {/* Draggable row list */}
                 <div className="p-2 space-y-1">
                   {metricRows.length === 0 ? (
                     <p className="px-2 py-4 text-center text-gray-400 text-xs">
                       No rows yet. Click "Add Row" to start.
                     </p>
                   ) : (
-                    [...metricRows].sort((a, b) => a.order - b.order).map((metric) => (
-                      <button
+                    [...metricRows].sort((a, b) => a.order - b.order).map((metric, index) => (
+                      <div
                         key={metric.key}
-                        onClick={() => setMetricRowModal({ open: true, editingKey: metric.key })}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left group"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", metric.key)
+                          e.currentTarget.classList.add("opacity-50")
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.classList.remove("opacity-50")
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.add("bg-blue-50", "border-blue-300")
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-300")
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-300")
+                          const draggedKey = e.dataTransfer.getData("text/plain")
+                          if (draggedKey === metric.key) return
+                          
+                          // Reorder: move dragged item to this position
+                          const sorted = [...metricRows].sort((a, b) => a.order - b.order)
+                          const draggedIndex = sorted.findIndex(m => m.key === draggedKey)
+                          const targetIndex = sorted.findIndex(m => m.key === metric.key)
+                          
+                          if (draggedIndex === -1 || targetIndex === -1) return
+                          
+                          // Remove dragged item and insert at target position
+                          const [draggedItem] = sorted.splice(draggedIndex, 1)
+                          sorted.splice(targetIndex, 0, draggedItem)
+                          
+                          // Update order values
+                          const reordered = sorted.map((m, i) => ({ ...m, order: i }))
+                          setMetricRows(reordered)
+                          setHasUnsavedChanges(true)
+                        }}
+                        className="flex items-center gap-1 px-2 py-2 rounded-lg hover:bg-gray-100 transition-colors group border border-transparent cursor-grab active:cursor-grabbing"
                       >
-                        {/* Type icon */}
-                        {metric.type === "source" && <Database className="w-4 h-4 text-blue-500 flex-shrink-0" />}
-                        {metric.type === "formula" && <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />}
-                        {metric.type === "comparison" && <TrendingUp className="w-4 h-4 text-amber-500 flex-shrink-0" />}
+                        {/* Drag handle */}
+                        <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-400 flex-shrink-0" />
                         
-                        {/* Label */}
-                        <span className="flex-1 text-sm text-gray-700 truncate">
-                          {metric.label || <span className="text-gray-400 italic">Untitled</span>}
-                        </span>
-                        
-                        {/* Type badge */}
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          metric.type === "source" ? "bg-blue-100 text-blue-700" :
-                          metric.type === "formula" ? "bg-purple-100 text-purple-700" :
-                          "bg-amber-100 text-amber-700"
-                        }`}>
-                          {metric.type === "source" ? "Source" : metric.type === "formula" ? "Formula" : "Compare"}
-                        </span>
+                        {/* Clickable content */}
+                        <button
+                          onClick={() => setMetricRowModal({ open: true, editingKey: metric.key })}
+                          className="flex-1 flex items-center gap-2 text-left min-w-0"
+                        >
+                          {/* Type icon */}
+                          {metric.type === "source" && <Database className="w-4 h-4 text-blue-500 flex-shrink-0" />}
+                          {metric.type === "formula" && <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />}
+                          {metric.type === "comparison" && <TrendingUp className="w-4 h-4 text-amber-500 flex-shrink-0" />}
+                          
+                          {/* Label */}
+                          <span className="flex-1 text-sm text-gray-700 truncate">
+                            {metric.label || <span className="text-gray-400 italic">Untitled</span>}
+                          </span>
+                          
+                          {/* Type badge */}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            metric.type === "source" ? "bg-blue-100 text-blue-700" :
+                            metric.type === "formula" ? "bg-purple-100 text-purple-700" :
+                            "bg-amber-100 text-amber-700"
+                          }`}>
+                            {metric.type === "source" ? "Source" : metric.type === "formula" ? "Formula" : "Compare"}
+                          </span>
+                        </button>
                         
                         {/* Delete button (appears on hover) */}
                         <button
@@ -668,11 +714,11 @@ export default function ReportBuilderPage() {
                             setMetricRows(prev => prev.filter(m => m.key !== metric.key))
                             setHasUnsavedChanges(true)
                           }}
-                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity"
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      </button>
+                      </div>
                     ))
                   )}
                 </div>
@@ -1032,14 +1078,24 @@ export default function ReportBuilderPage() {
                             const effectiveFormat = col.key === "_label" 
                               ? "text" 
                               : ((row._format as string) || col.dataType)
+                            const rowType = row._type as string | undefined
+                            const isLabelColumn = col.key === "_label"
                             return (
                               <td 
                                 key={col.key} 
                                 className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-100 ${
                                   colIndex > 0 ? "border-l border-gray-100" : ""
-                                }`}
+                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
                               >
-                                {formatCellValue(row[col.key], effectiveFormat)}
+                                {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
+                                  <span className="flex items-center gap-1.5">
+                                    {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
+                                    {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                    {formatCellValue(row[col.key], effectiveFormat)}
+                                  </span>
+                                ) : (
+                                  formatCellValue(row[col.key], effectiveFormat)
+                                )}
                               </td>
                             )
                           })}
