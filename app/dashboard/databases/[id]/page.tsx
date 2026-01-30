@@ -832,7 +832,7 @@ export default function DatabaseDetailPage() {
                     size="sm" 
                     className="bg-orange-500 hover:bg-orange-600 text-white"
                     onClick={saveSchema}
-                    disabled={savingSchema || editingIdentifierKeys.length === 0}
+                    disabled={savingSchema}
                   >
                     {savingSchema ? (
                       <>
