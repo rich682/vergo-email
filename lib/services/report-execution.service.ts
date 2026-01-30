@@ -97,10 +97,14 @@ interface ReportFormulaRow {
 interface MetricRow {
   key: string
   label: string
-  type: "source" | "formula"
+  type: "source" | "formula" | "comparison"
   sourceColumnKey?: string
   expression?: string
-  format: string
+  // Comparison fields
+  compareRowKey?: string
+  comparePeriod?: "mom" | "qoq" | "yoy"
+  compareOutput?: "value" | "delta" | "percent"
+  format: "text" | "number" | "currency" | "percent"
   order: number
 }
 
@@ -421,12 +425,13 @@ export class ReportExecutionService {
     }
 
     // Build columns: first is label column, rest are pivot values
+    // Note: dataType on columns is "text" as a fallback; actual formatting is per-row via _format
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
         label: pv,
-        dataType: "text",
+        dataType: "number" as const, // Default; actual format comes from row
         type: "source" as const,
       }))
     ]
@@ -434,27 +439,40 @@ export class ReportExecutionService {
     // Sort metrics by order
     const sortedMetrics = [...metricRows].sort((a, b) => a.order - b.order)
 
-    // Build metric values for current period
-    const metricValuesByPivot: Record<string, Record<string, number | null>> = {}
-    // Build metric values for compare period (for comparison rows)
-    const compareMetricValuesByPivot: Record<string, Record<string, number | null>> = {}
+    // Build metric values for current period - store as unknown to support text
+    const metricValuesByPivot: Record<string, Record<string, unknown>> = {}
+    // Build numeric values for compare period (for comparison calculations)
+    const numericMetricsByPivot: Record<string, Record<string, number | null>> = {}
+    const compareNumericMetricsByPivot: Record<string, Record<string, number | null>> = {}
 
     // Initialize
     for (const pv of pivotValues) {
       metricValuesByPivot[pv] = {}
-      compareMetricValuesByPivot[pv] = {}
+      numericMetricsByPivot[pv] = {}
+      compareNumericMetricsByPivot[pv] = {}
     }
 
     // First pass: compute source values (current period)
     for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "source" && metric.sourceColumnKey) {
-          const num = parseNumericValue(currentDataByPivot[pv]?.[metric.sourceColumnKey])
-          metricValuesByPivot[pv][metric.key] = num
-          // Also compute compare period source values
-          if (compareRows) {
-            const compareNum = parseNumericValue(compareDataByPivot[pv]?.[metric.sourceColumnKey])
-            compareMetricValuesByPivot[pv][metric.key] = compareNum
+          const rawValue = currentDataByPivot[pv]?.[metric.sourceColumnKey]
+          
+          // For text format, store the raw value directly
+          if (metric.format === "text") {
+            metricValuesByPivot[pv][metric.key] = rawValue ?? null
+          } else {
+            // For numeric formats, parse as number
+            const num = parseNumericValue(rawValue)
+            metricValuesByPivot[pv][metric.key] = num
+            numericMetricsByPivot[pv][metric.key] = num
+          }
+          
+          // Also compute compare period source values (only for numeric)
+          if (compareRows && metric.format !== "text") {
+            const compareRaw = compareDataByPivot[pv]?.[metric.sourceColumnKey]
+            const compareNum = parseNumericValue(compareRaw)
+            compareNumericMetricsByPivot[pv][metric.key] = compareNum
           }
         }
       }
@@ -464,24 +482,26 @@ export class ReportExecutionService {
     for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "formula" && metric.expression) {
-          // Build context with other metric values for this pivot
+          // Build context with numeric metric values for this pivot
           const context: Record<string, number> = {}
-          for (const [key, val] of Object.entries(metricValuesByPivot[pv])) {
+          for (const [key, val] of Object.entries(numericMetricsByPivot[pv])) {
             if (val !== null) {
               context[key] = val
             }
           }
-          metricValuesByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, context)
+          const result = evaluateSafeExpression(metric.expression, context)
+          metricValuesByPivot[pv][metric.key] = result
+          numericMetricsByPivot[pv][metric.key] = result
 
           // Also compute compare period formula values
           if (compareRows) {
             const compareContext: Record<string, number> = {}
-            for (const [key, val] of Object.entries(compareMetricValuesByPivot[pv])) {
+            for (const [key, val] of Object.entries(compareNumericMetricsByPivot[pv])) {
               if (val !== null) {
                 compareContext[key] = val
               }
             }
-            compareMetricValuesByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, compareContext)
+            compareNumericMetricsByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, compareContext)
           }
         }
       }
@@ -491,10 +511,11 @@ export class ReportExecutionService {
     for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "comparison" && metric.compareRowKey) {
-          const currentValue = metricValuesByPivot[pv][metric.compareRowKey]
-          const compareValue = compareMetricValuesByPivot[pv][metric.compareRowKey]
+          const currentValue = numericMetricsByPivot[pv][metric.compareRowKey]
+          const compareValue = compareNumericMetricsByPivot[pv][metric.compareRowKey]
 
-          if (currentValue === null || compareValue === null) {
+          if (currentValue === null || currentValue === undefined || 
+              compareValue === null || compareValue === undefined) {
             metricValuesByPivot[pv][metric.key] = null
             continue
           }
@@ -524,9 +545,12 @@ export class ReportExecutionService {
       }
     }
 
-    // Build output rows
+    // Build output rows with format information
     const dataRows = sortedMetrics.map(metric => {
-      const row: Record<string, unknown> = { _label: metric.label }
+      const row: Record<string, unknown> = { 
+        _label: metric.label,
+        _format: metric.format, // Include format for frontend rendering
+      }
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]
       }

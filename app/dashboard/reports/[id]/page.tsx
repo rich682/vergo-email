@@ -1027,16 +1027,22 @@ export default function ReportBuilderPage() {
                     <tbody className="bg-white">
                       {previewData.table.rows.map((row, rowIndex) => (
                         <tr key={rowIndex} className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : ""}`}>
-                          {previewData.table.columns.map((col, colIndex) => (
-                            <td 
-                              key={col.key} 
-                              className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-100 ${
-                                colIndex > 0 ? "border-l border-gray-100" : ""
-                              }`}
-                            >
-                              {formatCellValue(row[col.key], col.dataType)}
-                            </td>
-                          ))}
+                          {previewData.table.columns.map((col, colIndex) => {
+                            // For pivot layouts, use row's _format if available (except for label column)
+                            const effectiveFormat = col.key === "_label" 
+                              ? "text" 
+                              : ((row._format as string) || col.dataType)
+                            return (
+                              <td 
+                                key={col.key} 
+                                className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-100 ${
+                                  colIndex > 0 ? "border-l border-gray-100" : ""
+                                }`}
+                              >
+                                {formatCellValue(row[col.key], effectiveFormat)}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                       {/* Formula rows */}
@@ -1316,6 +1322,9 @@ function formatCellValue(value: unknown, dataType: string): string {
   if (value === null || value === undefined) return "—"
   if (dataType === "currency" && typeof value === "number") {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+  }
+  if (dataType === "percent" && typeof value === "number") {
+    return `${value.toLocaleString()}%`
   }
   if (dataType === "number" && typeof value === "number") {
     return value.toLocaleString()
