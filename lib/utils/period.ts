@@ -68,7 +68,31 @@ export function periodKeyFromValue(
       return periodKeyFromDate(date, cadence)
     }
 
-    // Cannot parse ambiguous strings like "January" without year
+    // Try cadence-specific flexible parsing for user-friendly formats
+    switch (cadence) {
+      case "monthly": {
+        const result = parseMonthlyPeriod(trimmed)
+        if (result) return result
+        break
+      }
+      case "quarterly": {
+        const result = parseQuarterlyPeriod(trimmed)
+        if (result) return result
+        break
+      }
+      case "annual": {
+        const result = parseAnnualPeriod(trimmed)
+        if (result) return result
+        break
+      }
+      case "daily": {
+        const result = parseDailyPeriod(trimmed)
+        if (result) return result
+        break
+      }
+    }
+
+    // Cannot parse - return null
     return null
   }
 
@@ -218,6 +242,240 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ]
+
+// ============================================
+// Flexible Period Parsing (User-Friendly Formats)
+// ============================================
+
+/**
+ * Map of month name variations to month number (1-12)
+ */
+const MONTH_NAME_MAP: Record<string, number> = {
+  // Full names
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  // Short names
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6,
+  jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+}
+
+/**
+ * Parse monthly period from user-friendly formats
+ * Supports: "Jan-26", "January 2026", "Jan 2026", "January-26"
+ */
+function parseMonthlyPeriod(value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  
+  // MMM-YY format: "Jan-26", "January-26"
+  const dashYY = trimmed.match(/^([a-z]+)-(\d{2})$/i)
+  if (dashYY) {
+    const month = MONTH_NAME_MAP[dashYY[1].toLowerCase()]
+    if (month) {
+      const year = 2000 + parseInt(dashYY[2])
+      return `${year}-${String(month).padStart(2, "0")}`
+    }
+  }
+  
+  // MMM-YYYY format: "Jan-2026", "January-2026"
+  const dashYYYY = trimmed.match(/^([a-z]+)-(\d{4})$/i)
+  if (dashYYYY) {
+    const month = MONTH_NAME_MAP[dashYYYY[1].toLowerCase()]
+    if (month) {
+      const year = parseInt(dashYYYY[2])
+      return `${year}-${String(month).padStart(2, "0")}`
+    }
+  }
+  
+  // MMMM YYYY format: "January 2026", "Jan 2026"
+  const spaceYYYY = trimmed.match(/^([a-z]+)\s+(\d{4})$/i)
+  if (spaceYYYY) {
+    const month = MONTH_NAME_MAP[spaceYYYY[1].toLowerCase()]
+    if (month) {
+      const year = parseInt(spaceYYYY[2])
+      return `${year}-${String(month).padStart(2, "0")}`
+    }
+  }
+  
+  // MMMM YY format: "January 26", "Jan 26" (but not single digit like "Jan 1")
+  const spaceYY = trimmed.match(/^([a-z]+)\s+(\d{2})$/i)
+  if (spaceYY) {
+    const month = MONTH_NAME_MAP[spaceYY[1].toLowerCase()]
+    if (month) {
+      const year = 2000 + parseInt(spaceYY[2])
+      return `${year}-${String(month).padStart(2, "0")}`
+    }
+  }
+  
+  return null
+}
+
+/**
+ * Parse quarterly period from user-friendly formats
+ * Supports: "Q1-26", "Q1 2026", "Q1-2026", "1Q26", "1Q 2026"
+ */
+function parseQuarterlyPeriod(value: string): string | null {
+  const trimmed = value.trim()
+  
+  // QN-YY format: "Q1-26", "Q2-26"
+  const qnDashYY = trimmed.match(/^Q([1-4])-(\d{2})$/i)
+  if (qnDashYY) {
+    const quarter = parseInt(qnDashYY[1])
+    const year = 2000 + parseInt(qnDashYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  // QN-YYYY format: "Q1-2026"
+  const qnDashYYYY = trimmed.match(/^Q([1-4])-(\d{4})$/i)
+  if (qnDashYYYY) {
+    const quarter = parseInt(qnDashYYYY[1])
+    const year = parseInt(qnDashYYYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  // QN YYYY format: "Q1 2026"
+  const qnSpaceYYYY = trimmed.match(/^Q([1-4])\s+(\d{4})$/i)
+  if (qnSpaceYYYY) {
+    const quarter = parseInt(qnSpaceYYYY[1])
+    const year = parseInt(qnSpaceYYYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  // QN YY format: "Q1 26"
+  const qnSpaceYY = trimmed.match(/^Q([1-4])\s+(\d{2})$/i)
+  if (qnSpaceYY) {
+    const quarter = parseInt(qnSpaceYY[1])
+    const year = 2000 + parseInt(qnSpaceYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  // NQ YY format: "1Q26", "1Q 26"
+  const nqYY = trimmed.match(/^([1-4])Q\s*(\d{2})$/i)
+  if (nqYY) {
+    const quarter = parseInt(nqYY[1])
+    const year = 2000 + parseInt(nqYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  // NQ YYYY format: "1Q2026", "1Q 2026"
+  const nqYYYY = trimmed.match(/^([1-4])Q\s*(\d{4})$/i)
+  if (nqYYYY) {
+    const quarter = parseInt(nqYYYY[1])
+    const year = parseInt(nqYYYY[2])
+    return `${year}-Q${quarter}`
+  }
+  
+  return null
+}
+
+/**
+ * Parse annual period from user-friendly formats
+ * Supports: "FY26", "FY2026", "FY 26", "FY 2026"
+ */
+function parseAnnualPeriod(value: string): string | null {
+  const trimmed = value.trim()
+  
+  // FY YY format: "FY26", "FY 26"
+  const fyYY = trimmed.match(/^FY\s*(\d{2})$/i)
+  if (fyYY) {
+    const year = 2000 + parseInt(fyYY[1])
+    return `${year}`
+  }
+  
+  // FY YYYY format: "FY2026", "FY 2026"
+  const fyYYYY = trimmed.match(/^FY\s*(\d{4})$/i)
+  if (fyYYYY) {
+    const year = parseInt(fyYYYY[1])
+    return `${year}`
+  }
+  
+  // Just YY (2 digit year) - careful, only match if it looks like a year
+  const justYY = trimmed.match(/^(\d{2})$/)
+  if (justYY) {
+    const num = parseInt(justYY[1])
+    // Assume 00-99 maps to 2000-2099 for recent years
+    if (num >= 0 && num <= 99) {
+      return `${2000 + num}`
+    }
+  }
+  
+  return null
+}
+
+/**
+ * Parse daily period from user-friendly formats
+ * Supports: "1/15/26", "01/15/2026", "1-15-26", "01-15-2026", "Jan 15, 2026"
+ */
+function parseDailyPeriod(value: string): string | null {
+  const trimmed = value.trim()
+  
+  // MM/DD/YY or M/D/YY format: "1/15/26", "01/15/26"
+  const slashYY = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (slashYY) {
+    const month = parseInt(slashYY[1])
+    const day = parseInt(slashYY[2])
+    const year = 2000 + parseInt(slashYY[3])
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  // MM/DD/YYYY format: "01/15/2026", "1/15/2026"
+  const slashYYYY = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (slashYYYY) {
+    const month = parseInt(slashYYYY[1])
+    const day = parseInt(slashYYYY[2])
+    const year = parseInt(slashYYYY[3])
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  // MM-DD-YY format: "01-15-26", "1-15-26"
+  const dashYY = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/)
+  if (dashYY) {
+    const month = parseInt(dashYY[1])
+    const day = parseInt(dashYY[2])
+    const year = 2000 + parseInt(dashYY[3])
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  // MM-DD-YYYY format: "01-15-2026"
+  const dashYYYY = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (dashYYYY) {
+    const month = parseInt(dashYYYY[1])
+    const day = parseInt(dashYYYY[2])
+    const year = parseInt(dashYYYY[3])
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  // "Jan 15, 2026" or "January 15, 2026" format
+  const monthDayYear = trimmed.match(/^([a-z]+)\s+(\d{1,2}),?\s*(\d{4})$/i)
+  if (monthDayYear) {
+    const month = MONTH_NAME_MAP[monthDayYear[1].toLowerCase()]
+    const day = parseInt(monthDayYear[2])
+    const year = parseInt(monthDayYear[3])
+    if (month && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  // "15 Jan 2026" or "15 January 2026" format
+  const dayMonthYear = trimmed.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/i)
+  if (dayMonthYear) {
+    const day = parseInt(dayMonthYear[1])
+    const month = MONTH_NAME_MAP[dayMonthYear[2].toLowerCase()]
+    const year = parseInt(dayMonthYear[3])
+    if (month && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    }
+  }
+  
+  return null
+}
 
 /**
  * Generate a human-readable label for a period key

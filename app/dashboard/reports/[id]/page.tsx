@@ -22,6 +22,7 @@ import {
   Filter,
   Pencil,
   MoreVertical,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -954,6 +955,17 @@ export default function ReportBuilderPage() {
                     <span className="text-amber-500">({previewData.compare.rowCount} rows)</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Parse Failures Warning */}
+            {previewData && previewData.diagnostics.parseFailures > 0 && (
+              <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-amber-700 text-xs">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>
+                  {previewData.diagnostics.parseFailures} row{previewData.diagnostics.parseFailures !== 1 ? "s" : ""} skipped due to unrecognized period format.
+                  Expected formats: <strong>Jan-26</strong>, <strong>January 2026</strong>, or <strong>2026-01</strong>
+                </span>
               </div>
             )}
           </div>
