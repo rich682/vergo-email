@@ -180,9 +180,13 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error("TaskInstance create error:", error)
-    return NextResponse.json(
-      { error: "Failed to create task instance", message: error.message },
-      { status: 500 }
-    )
+    // Return detailed error for debugging
+    const errorDetails = {
+      error: "Failed to create task instance",
+      message: error.message,
+      code: error.code,
+      meta: error.meta
+    }
+    return NextResponse.json(errorDetails, { status: 500 })
   }
 }

@@ -149,7 +149,7 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
-  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS" | "FORMS">("GENERIC")
+  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS">("GENERIC")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
@@ -1107,7 +1107,6 @@ export default function JobsPage() {
                       <option value="TABLE">Variance</option>
                       <option value="RECONCILIATION">Reconciliation</option>
                       <option value="REPORTS">Report</option>
-                      <option value="FORMS">Forms</option>
                     </select>
                   </div>
                 </div>
