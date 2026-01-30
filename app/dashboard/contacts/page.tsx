@@ -35,7 +35,6 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>()
-  const [selectedContactType, setSelectedContactType] = useState<string | undefined>()
   const [selectedInternalFilter, setSelectedInternalFilter] = useState<boolean | undefined>()
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -46,7 +45,7 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchEntities()
     fetchGroups()
-  }, [search, selectedGroupId, selectedContactType, selectedInternalFilter])
+  }, [search, selectedGroupId, selectedInternalFilter])
 
   const fetchEntities = async () => {
     try {
@@ -54,7 +53,6 @@ export default function ContactsPage() {
       const params = new URLSearchParams()
       if (search) params.append("search", search)
       if (selectedGroupId) params.append("groupId", selectedGroupId)
-      if (selectedContactType) params.append("contactType", selectedContactType)
       if (selectedInternalFilter !== undefined) params.append("isInternal", String(selectedInternalFilter))
 
       const response = await fetch(`/api/entities?${params.toString()}`)
@@ -243,12 +241,10 @@ export default function ContactsPage() {
                 groups={groups}
                 search={search}
                 selectedGroupId={selectedGroupId}
-                selectedContactType={selectedContactType}
                 selectedInternalFilter={selectedInternalFilter}
                 selectedEntityIds={selectedEntityIds}
                 onSearchChange={setSearch}
                 onGroupFilterChange={setSelectedGroupId}
-                onContactTypeChange={setSelectedContactType}
                 onInternalFilterChange={setSelectedInternalFilter}
                 onSelectedEntitiesChange={setSelectedEntityIds}
                 onEdit={handleEdit as any}

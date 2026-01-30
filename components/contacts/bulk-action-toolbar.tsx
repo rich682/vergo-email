@@ -23,44 +23,34 @@ interface BulkActionToolbarProps {
   selectedCount: number
   selectedEntityIds: string[]
   groups: Group[]
-  contactTypes: Array<{ id: string; label: string }>
   onClearSelection: () => void
   onActionComplete: () => void
 }
 
-type ActionType = "add_group" | "remove_group" | "set_type" | "delete" | null
+type ActionType = "add_group" | "remove_group" | "delete" | null
 
 export function BulkActionToolbar({
   selectedCount,
   selectedEntityIds,
   groups,
-  contactTypes,
   onClearSelection,
   onActionComplete
 }: BulkActionToolbarProps) {
   const [activeAction, setActiveAction] = useState<ActionType>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
-  const [selectedType, setSelectedType] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
-  // State for creating new groups/types on the fly
+  // State for creating new groups on the fly
   const [newGroupName, setNewGroupName] = useState("")
   const [creatingGroup, setCreatingGroup] = useState(false)
-  const [newTypeName, setNewTypeName] = useState("")
-  const [creatingType, setCreatingType] = useState(false)
   const [localGroups, setLocalGroups] = useState<Group[]>(groups)
-  const [localContactTypes, setLocalContactTypes] = useState<Array<{ id: string; label: string }>>(contactTypes)
 
   // Sync local state with props when they change
   useEffect(() => {
     setLocalGroups(groups)
   }, [groups])
-
-  useEffect(() => {
-    setLocalContactTypes(contactTypes)
-  }, [contactTypes])
 
   const createNewGroup = async () => {
     if (!newGroupName.trim()) return
@@ -89,41 +79,12 @@ export function BulkActionToolbar({
     }
   }
 
-  const createNewType = async () => {
-    if (!newTypeName.trim()) return
-    
-    setCreatingType(true)
-    try {
-      const res = await fetch("/api/contacts/custom-types", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: newTypeName.trim() })
-      })
-      
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to create type")
-      }
-      
-      const newType = await res.json()
-      setLocalContactTypes(prev => [...prev, { id: newType.id, label: newType.label }])
-      setSelectedType(newType.id)
-      setNewTypeName("")
-    } catch (err: any) {
-      setError(err.message || "Failed to create type")
-    } finally {
-      setCreatingType(false)
-    }
-  }
-
   const resetState = () => {
     setActiveAction(null)
     setSelectedGroupIds([])
-    setSelectedType("")
     setError(null)
     setShowDeleteConfirm(false)
     setNewGroupName("")
-    setNewTypeName("")
   }
 
   const executeAction = async (action: string, payload: any) => {
@@ -173,11 +134,6 @@ export function BulkActionToolbar({
     executeAction("remove_from_groups", { groupIds: selectedGroupIds })
   }
 
-  const handleSetType = () => {
-    if (!selectedType) return
-    executeAction("set_type", { contactType: selectedType })
-  }
-
   const handleDelete = () => {
     executeAction("delete", {})
   }
@@ -209,7 +165,7 @@ export function BulkActionToolbar({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            {/* Add to Group */}
+            {/* Add to Tag */}
             <div className="relative">
               <Button
                 variant="outline"
@@ -218,16 +174,16 @@ export function BulkActionToolbar({
                 className="gap-2"
               >
                 <Users className="w-4 h-4" />
-                Add to Group
+                Add to Tag
                 <ChevronDown className="w-3 h-3" />
               </Button>
               
               {activeAction === "add_group" && (
                 <div className="absolute bottom-full mb-2 left-0 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Select groups:</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">Select tags:</div>
                   <div className="max-h-40 overflow-y-auto space-y-1">
                     {localGroups.length === 0 ? (
-                      <div className="text-sm text-gray-500 py-2">No groups yet</div>
+                      <div className="text-sm text-gray-500 py-2">No tags yet</div>
                     ) : (
                       localGroups.map(group => (
                         <button
@@ -250,12 +206,12 @@ export function BulkActionToolbar({
                     )}
                   </div>
                   
-                  {/* Create new group */}
+                  {/* Create new tag */}
                   <div className="mt-2 pt-2 border-t border-gray-100">
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="New group name..."
+                        placeholder="New tag name..."
                         value={newGroupName}
                         onChange={(e) => setNewGroupName(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && createNewGroup()}
@@ -283,7 +239,7 @@ export function BulkActionToolbar({
                       disabled={selectedGroupIds.length === 0 || loading}
                       className="flex-1"
                     >
-                      {loading ? "Adding..." : `Add to ${selectedGroupIds.length} group(s)`}
+                      {loading ? "Adding..." : `Add to ${selectedGroupIds.length} tag(s)`}
                     </Button>
                   </div>
                 </div>
@@ -299,16 +255,16 @@ export function BulkActionToolbar({
                 className="gap-2"
               >
                 <UserMinus className="w-4 h-4" />
-                Remove from Group
+                Remove from Tag
                 <ChevronDown className="w-3 h-3" />
               </Button>
               
               {activeAction === "remove_group" && (
                 <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Select groups to remove from:</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">Select tags to remove from:</div>
                   <div className="max-h-40 overflow-y-auto space-y-1">
                     {localGroups.length === 0 ? (
-                      <div className="text-sm text-gray-500 py-2">No groups available</div>
+                      <div className="text-sm text-gray-500 py-2">No tags available</div>
                     ) : (
                       localGroups.map(group => (
                         <button
@@ -342,84 +298,6 @@ export function BulkActionToolbar({
                       className="flex-1"
                     >
                       {loading ? "Removing..." : "Remove"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Set Organization */}
-            <div className="relative">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setActiveAction(activeAction === "set_type" ? null : "set_type")}
-                className="gap-2"
-              >
-                Set Org
-                <ChevronDown className="w-3 h-3" />
-              </Button>
-              
-              {activeAction === "set_type" && (
-                <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Select organization type:</div>
-                  <div className="max-h-40 overflow-y-auto space-y-1">
-                    {localContactTypes.map(type => (
-                      <button
-                        key={type.id}
-                        onClick={() => setSelectedType(type.id)}
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded ${
-                          selectedType === type.id ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 border rounded-full flex items-center justify-center ${
-                          selectedType === type.id 
-                            ? "border-blue-600" 
-                            : "border-gray-300"
-                        }`}>
-                          {selectedType === type.id && (
-                            <div className="w-2 h-2 rounded-full bg-blue-600" />
-                          )}
-                        </div>
-                        {type.label}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  {/* Create new type */}
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="New type name..."
-                        value={newTypeName}
-                        onChange={(e) => setNewTypeName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && createNewType()}
-                        className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={createNewType}
-                        disabled={!newTypeName.trim() || creatingType}
-                        className="px-2"
-                      >
-                        {creatingType ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                    <Button size="sm" variant="outline" onClick={resetState} className="flex-1">
-                      Cancel
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      onClick={handleSetType} 
-                      disabled={!selectedType || loading}
-                      className="flex-1"
-                    >
-                      {loading ? "Applying..." : "Apply"}
                     </Button>
                   </div>
                 </div>

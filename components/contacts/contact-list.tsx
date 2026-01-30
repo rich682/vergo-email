@@ -31,38 +31,25 @@ interface ContactListProps {
   groups: Group[]
   search: string
   selectedGroupId?: string
-  selectedContactType?: string
   selectedInternalFilter?: boolean
   selectedEntityIds: string[]
   onSearchChange: (value: string) => void
   onGroupFilterChange: (value?: string) => void
-  onContactTypeChange: (value?: string) => void
   onInternalFilterChange: (value?: boolean) => void
   onSelectedEntitiesChange: (ids: string[]) => void
   onEdit: (entity: Entity) => void
   onDelete: () => void
 }
 
-// Built-in contact types for filtering and bulk actions
-const CONTACT_TYPES = [
-  { id: "CLIENT", label: "Client" },
-  { id: "VENDOR", label: "Vendor" },
-  { id: "EMPLOYEE", label: "Employee" },
-  { id: "CONTRACTOR", label: "Contractor" },
-  { id: "MANAGEMENT", label: "Management" },
-]
-
 export function ContactList({
   entities,
   groups,
   search,
   selectedGroupId,
-  selectedContactType,
   selectedInternalFilter,
   selectedEntityIds,
   onSearchChange,
   onGroupFilterChange,
-  onContactTypeChange,
   onInternalFilterChange,
   onSelectedEntitiesChange,
   onEdit,
@@ -107,7 +94,7 @@ export function ContactList({
   return (
     <div className="space-y-4">
       {/* Filters Row */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-4">
         <div className="space-y-2">
           <Label htmlFor="contact-search">Search</Label>
           <Input
@@ -132,27 +119,6 @@ export function ContactList({
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="internal">Internal</SelectItem>
               <SelectItem value="external">External</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="type-filter">Role</Label>
-          <Select
-            value={selectedContactType ?? "all"}
-            onValueChange={(value) =>
-              onContactTypeChange(value === "all" ? undefined : value)
-            }
-          >
-            <SelectTrigger id="type-filter">
-              <SelectValue placeholder="All roles" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All roles</SelectItem>
-              {CONTACT_TYPES.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.label}
-                </SelectItem>
-              ))}
             </SelectContent>
           </Select>
         </div>
@@ -333,7 +299,6 @@ export function ContactList({
               <th className="px-4 py-3 w-48">Email</th>
               <th className="px-4 py-3 w-36">Company</th>
               <th className="px-4 py-3 w-24">Type</th>
-              <th className="px-4 py-3 w-24">Role</th>
               <th className="px-4 py-3 w-28">Tags</th>
               <th className="px-4 py-3 w-32 text-right">Actions</th>
             </tr>
@@ -341,7 +306,7 @@ export function ContactList({
           <tbody>
             {entities.length === 0 && (
               <tr>
-                <td colSpan={showSelectionColumn ? 8 : 7} className="px-4 py-4 text-gray-500">
+                <td colSpan={showSelectionColumn ? 7 : 6} className="px-4 py-4 text-gray-500">
                   No contacts found.
                 </td>
               </tr>
@@ -388,13 +353,6 @@ export function ContactList({
                   </span>
                 </td>
                 <td className="px-4 py-2">
-                  <span className="text-xs inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
-                    {entity.contactType === "CUSTOM"
-                      ? entity.contactTypeCustomLabel || "Custom"
-                      : entity.contactType || "Unknown"}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
                   {entity.groups.length > 0 ? (
                     <span className="text-gray-600 text-xs">
                       {entity.groups.map(g => g.name).join(", ")}
@@ -438,7 +396,6 @@ export function ContactList({
         selectedCount={selectedEntityIds.length}
         selectedEntityIds={selectedEntityIds}
         groups={groups}
-        contactTypes={CONTACT_TYPES}
         onClearSelection={clearEntitySelection}
         onActionComplete={handleBulkActionComplete}
       />
