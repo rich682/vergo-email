@@ -157,7 +157,6 @@ model Organization {
   reconciliationTemplates ReconciliationTemplate[]
   databases               Database[]
   reportDefinitions       ReportDefinition[]
-  reportSlices            ReportSlice[]
   generatedReports        GeneratedReport[]
 
   @@index([slug])
@@ -234,7 +233,6 @@ model User {
   createdDatabases           Database[]                 @relation("DatabaseCreator")
   importedDatabases          Database[]                 @relation("DatabaseImporter")
   createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
-  createdReportSlices        ReportSlice[]              @relation("ReportSliceCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -348,7 +346,6 @@ model TaskInstance {
   
   // Report configuration (for REPORTS type tasks)
   reportDefinitionId     String?
-  reportSliceId          String?
   reportFilterBindings   Json?    // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
   
   // Stakeholder scope for task type categorization
@@ -363,7 +360,6 @@ model TaskInstance {
   owner           User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
   board           Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
   reportDefinition ReportDefinition?         @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
-  reportSlice      ReportSlice?              @relation(fields: [reportSliceId], references: [id], onDelete: SetNull)
   collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
   requests        Request[] // Child tasks (requests) belonging to this job
   emailDrafts     EmailDraft[] // Request-level association
@@ -1249,40 +1245,11 @@ model ReportDefinition {
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   database         Database         @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   createdBy        User             @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
-  slices           ReportSlice[]
   taskInstances    TaskInstance[]   // Tasks that use this report template
   generatedReports GeneratedReport[] // Reports generated from this template
   
   @@index([organizationId])
   @@index([databaseId])
-}
-
-// ReportSlice represents a saved, reusable "view" of a ReportDefinition
-// It stores filter bindings (e.g., { pm: "Caleb", brand: "Chipotle" }) without hardcoding period
-// Slices enable quick report viewing by audience and will be referenced by tasks in the future
-model ReportSlice {
-  id                 String   @id @default(cuid())
-  organizationId     String
-  reportDefinitionId String
-  name               String
-  
-  // Filter bindings as JSON: { "pm": "Caleb", "brand": "Chipotle" }
-  // Applied after period filtering and before layout/formula evaluation
-  filterBindings     Json     @default("{}")
-  
-  // Metadata
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  createdById        String
-  
-  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
-  createdBy          User             @relation("ReportSliceCreator", fields: [createdById], references: [id])
-  taskInstances      TaskInstance[]   // Tasks that use this slice
-  generatedReports   GeneratedReport[] // Reports generated with this slice
-  
-  @@unique([reportDefinitionId, name])
-  @@index([organizationId, reportDefinitionId])
 }
 
 // GeneratedReport stores the output of a report for a specific period
@@ -1291,7 +1258,6 @@ model GeneratedReport {
   id                 String   @id @default(cuid())
   organizationId     String
   reportDefinitionId String
-  reportSliceId      String?
   taskInstanceId     String?  // Source task that triggered generation (null for manual reports)
   boardId            String?  // Board period that was completed (null for manual reports)
   periodKey          String   // e.g., "2026-01" for monthly, "2026-Q1" for quarterly
@@ -1306,7 +1272,6 @@ model GeneratedReport {
   
   organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
-  reportSlice        ReportSlice?     @relation(fields: [reportSliceId], references: [id], onDelete: SetNull)
   taskInstance       TaskInstance?    @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   board              Board?           @relation(fields: [boardId], references: [id], onDelete: Cascade)
   

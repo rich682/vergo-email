@@ -610,7 +610,6 @@ export class BoardService {
       // Note: TaskType.REPORTS is added via migration, using string comparison until types regenerate
       if ((prev.type as string) === "REPORTS") {
         createData.reportDefinitionId = (prev as any).reportDefinitionId
-        createData.reportSliceId = (prev as any).reportSliceId
       }
       
       const newInstance = await prisma.taskInstance.create({ data: createData })
@@ -659,7 +658,7 @@ export class BoardService {
             await ReportGenerationService.generateForPeriod({
               organizationId,
               reportDefinitionId: prevAny.reportDefinitionId,
-              reportSliceId: prevAny.reportSliceId || undefined,
+              filterBindings: prevAny.reportFilterBindings || undefined,
               taskInstanceId: prev.id,
               boardId: previousBoardId,
               periodKey,

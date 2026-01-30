@@ -81,10 +81,6 @@ interface GeneratedReportItem {
     name: string
     cadence: string
   }
-  reportSlice?: {
-    id: string
-    name: string
-  } | null
   taskInstance?: {
     id: string
     name: string
@@ -709,7 +705,7 @@ export default function ReportsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {report.data.sliceName || report.reportSlice?.name || (
+                        {report.data.sliceName || (
                           <span className="text-gray-400">All Data</span>
                         )}
                       </td>

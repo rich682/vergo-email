@@ -4,10 +4,6 @@
  * Handles generation and storage of period-specific reports.
  * Called when a board with REPORTS tasks completes to snapshot
  * the report output for that accounting period.
- * 
- * Note: Uses type assertions for Prisma models (generatedReport, reportSlice)
- * that are added via migration. These will work correctly after migration runs
- * and `prisma generate` regenerates the types.
  */
 
 import { prisma } from "@/lib/prisma"
@@ -47,7 +43,6 @@ export interface GeneratedReport {
   id: string
   organizationId: string
   reportDefinitionId: string
-  reportSliceId: string | null
   taskInstanceId: string | null  // null for manual reports
   boardId: string | null  // null for manual reports
   periodKey: string
@@ -62,10 +57,6 @@ export interface GeneratedReport {
     cadence: string
     layout: string
   }
-  reportSlice?: {
-    id: string
-    name: string
-  } | null
   taskInstance?: {
     id: string
     name: string
@@ -172,7 +163,6 @@ export class ReportGenerationService {
       data: {
         organizationId,
         reportDefinitionId,
-        reportSliceId: null,
         taskInstanceId,
         boardId,
         periodKey,
@@ -257,7 +247,6 @@ export class ReportGenerationService {
       data: {
         organizationId,
         reportDefinitionId,
-        reportSliceId: null,
         taskInstanceId: null,
         boardId: null,
         periodKey,
@@ -301,9 +290,6 @@ export class ReportGenerationService {
         reportDefinition: {
           select: { id: true, name: true, cadence: true, layout: true },
         },
-        reportSlice: {
-          select: { id: true, name: true },
-        },
         taskInstance: {
           select: { id: true, name: true },
         },
@@ -330,9 +316,6 @@ export class ReportGenerationService {
       include: {
         reportDefinition: {
           select: { id: true, name: true, cadence: true, layout: true },
-        },
-        reportSlice: {
-          select: { id: true, name: true },
         },
         taskInstance: {
           select: { id: true, name: true },
@@ -368,7 +351,6 @@ export class ReportGenerationService {
       id: data.id,
       organizationId: data.organizationId,
       reportDefinitionId: data.reportDefinitionId,
-      reportSliceId: data.reportSliceId,
       taskInstanceId: data.taskInstanceId,
       boardId: data.boardId,
       periodKey: data.periodKey,
@@ -377,7 +359,6 @@ export class ReportGenerationService {
       generatedAt: data.generatedAt,
       generatedBy: data.generatedBy,
       reportDefinition: data.reportDefinition,
-      reportSlice: data.reportSlice,
       taskInstance: data.taskInstance || null,
       board: data.board || null,
     }
