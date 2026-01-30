@@ -76,10 +76,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { reportDefinitionId, periodKey, filterBindings } = body as {
+    const { reportDefinitionId, filterBindings, periodKey } = body as {
       reportDefinitionId?: string
-      periodKey?: string
       filterBindings?: Record<string, string[]>
+      periodKey?: string
     }
 
     // Validate required fields
@@ -101,8 +101,8 @@ export async function POST(request: NextRequest) {
     const report = await ReportGenerationService.createManualReport({
       organizationId: user.organizationId,
       reportDefinitionId,
-      periodKey,
       filterBindings,
+      periodKey,
       createdBy: user.id,
     })
 

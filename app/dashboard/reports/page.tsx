@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -64,6 +64,13 @@ interface GeneratedReportItem {
     reportName: string
     sliceName?: string
     layout: string
+    current?: { periodKey: string; label: string; rowCount: number }
+    compare?: { periodKey: string; label: string; rowCount: number } | null
+    table?: {
+      columns: Array<{ key: string; label: string; dataType: string; type: string }>
+      rows: Array<Record<string, unknown>>
+      formulaRows?: Array<{ key: string; label: string; values: Record<string, unknown> }>
+    }
   }
   reportDefinition?: {
     id: string
@@ -82,6 +89,11 @@ interface GeneratedReportItem {
     id: string
     name: string
   } | null
+}
+
+interface AvailablePeriod {
+  key: string
+  label: string
 }
 
 const CADENCE_LABELS: Record<string, string> = {
@@ -111,47 +123,78 @@ export default function ReportsPage() {
   const [createReportLoading, setCreateReportLoading] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>("")
-  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
-  const [filtersLoading, setFiltersLoading] = useState(false)
+  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
+  const [templatePeriods, setTemplatePeriods] = useState<AvailablePeriod[]>([])
+  const [loadingTemplateData, setLoadingTemplateData] = useState(false)
 
-  // Fetch filter properties when template changes
-  const fetchFilterProperties = useCallback(async (templateId: string) => {
+  // Report Viewer modal state
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewingReport, setViewingReport] = useState<GeneratedReportItem | null>(null)
+  const [viewerFilters, setViewerFilters] = useState<FilterBindings>({})
+  const [viewerPeriod, setViewerPeriod] = useState<string>("")
+  const [viewerPreviewLoading, setViewerPreviewLoading] = useState(false)
+  const [viewerPreviewData, setViewerPreviewData] = useState<GeneratedReportItem["data"]["table"] | null>(null)
+  const [viewerFilterProperties, setViewerFilterProperties] = useState<FilterableProperty[]>([])
+  const [viewerPeriods, setViewerPeriods] = useState<AvailablePeriod[]>([])
+
+  // Fetch filter properties and periods when template changes
+  const fetchTemplateData = useCallback(async (templateId: string) => {
     if (!templateId) {
       setFilterProperties([])
+      setTemplatePeriods([])
       return
     }
     try {
-      setFiltersLoading(true)
-      const response = await fetch(`/api/reports/${templateId}/filter-properties`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
+      setLoadingTemplateData(true)
+      // Fetch filter properties and available periods in parallel
+      const [filterRes, previewRes] = await Promise.all([
+        fetch(`/api/reports/${templateId}/filter-properties`, { credentials: "include" }),
+        fetch(`/api/reports/${templateId}/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ compareMode: "none" }),
+        }),
+      ])
+      
+      if (filterRes.ok) {
+        const data = await filterRes.json()
         setFilterProperties(data.properties || [])
       }
+      
+      if (previewRes.ok) {
+        const data = await previewRes.json()
+        setTemplatePeriods(data.availablePeriods || [])
+        // Auto-select first period if available
+        if (data.availablePeriods?.length > 0 && !selectedPeriodKey) {
+          setSelectedPeriodKey(data.availablePeriods[0].key)
+        }
+      }
     } catch (error) {
-      console.error("Error fetching filter properties:", error)
+      console.error("Error fetching template data:", error)
     } finally {
-      setFiltersLoading(false)
+      setLoadingTemplateData(false)
     }
-  }, [])
+  }, [selectedPeriodKey])
 
   // Handle template selection change
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId)
     setFilterBindings({})
-    fetchFilterProperties(templateId)
+    setSelectedPeriodKey("")
+    fetchTemplateData(templateId)
   }
 
   // Create manual report
   const handleCreateReport = async () => {
     if (!selectedTemplateId || !selectedPeriodKey) return
 
-    // Convert filter bindings to the format expected by the API
-    // Only include filters that have actual selections (not "all")
-    const activeFilters: Record<string, string[]> = {}
+    // Clean up filter bindings (remove empty arrays)
+    const cleanedFilters: FilterBindings = {}
     for (const [key, values] of Object.entries(filterBindings)) {
       if (values.length > 0) {
-        activeFilters[key] = values
+        cleanedFilters[key] = values
       }
     }
 
@@ -163,18 +206,24 @@ export default function ReportsPage() {
         credentials: "include",
         body: JSON.stringify({
           reportDefinitionId: selectedTemplateId,
+          filterBindings: Object.keys(cleanedFilters).length > 0 ? cleanedFilters : undefined,
           periodKey: selectedPeriodKey,
-          filterBindings: Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
         }),
       })
 
       if (response.ok) {
+        const data = await response.json()
         // Close modal and refresh list
         setIsCreateModalOpen(false)
         setSelectedTemplateId("")
-        setSelectedPeriodKey("")
         setFilterBindings({})
+        setSelectedPeriodKey("")
         fetchGeneratedReports()
+        
+        // Open the newly created report in viewer
+        if (data.report) {
+          openReportViewer(data.report)
+        }
       } else {
         const error = await response.json()
         alert(error.error || "Failed to create report")
@@ -185,6 +234,90 @@ export default function ReportsPage() {
     } finally {
       setCreateReportLoading(false)
     }
+  }
+
+  // Open report viewer
+  const openReportViewer = async (report: GeneratedReportItem) => {
+    setViewingReport(report)
+    setViewerOpen(true)
+    setViewerPreviewData(report.data.table || null)
+    
+    // Initialize viewer state from the report
+    setViewerPeriod(report.periodKey)
+    
+    // If the report has filters in the data, try to parse them
+    // For now, start with empty filters (user can modify)
+    setViewerFilters({})
+    
+    // Fetch filter properties and available periods for this report's template
+    if (report.reportDefinition?.id) {
+      try {
+        const [filterRes, previewRes] = await Promise.all([
+          fetch(`/api/reports/${report.reportDefinition.id}/filter-properties`, { credentials: "include" }),
+          fetch(`/api/reports/${report.reportDefinition.id}/preview`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ compareMode: "none" }),
+          }),
+        ])
+        
+        if (filterRes.ok) {
+          const data = await filterRes.json()
+          setViewerFilterProperties(data.properties || [])
+        }
+        
+        if (previewRes.ok) {
+          const data = await previewRes.json()
+          setViewerPeriods(data.availablePeriods || [])
+        }
+      } catch (error) {
+        console.error("Error fetching viewer data:", error)
+      }
+    }
+  }
+
+  // Refresh viewer preview with new filters/period
+  const refreshViewerPreview = async () => {
+    if (!viewingReport?.reportDefinition?.id || !viewerPeriod) return
+
+    setViewerPreviewLoading(true)
+    try {
+      const response = await fetch(`/api/reports/${viewingReport.reportDefinition.id}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPeriodKey: viewerPeriod,
+          compareMode: "none",
+          filters: Object.keys(viewerFilters).length > 0 ? viewerFilters : undefined,
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setViewerPreviewData(data.table || null)
+      }
+    } catch (error) {
+      console.error("Error refreshing preview:", error)
+    } finally {
+      setViewerPreviewLoading(false)
+    }
+  }
+
+  // Format cell value for display
+  const formatCellValue = (value: unknown, format?: string): string => {
+    if (value === null || value === undefined) return "-"
+    if (format === "currency" && typeof value === "number") {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+    }
+    if (format === "percent" && typeof value === "number") {
+      return `${value.toLocaleString()}%`
+    }
+    if (typeof value === "number") {
+      return value.toLocaleString()
+    }
+    return String(value)
   }
 
   // Download report as Excel
@@ -545,11 +678,15 @@ export default function ReportsPage() {
                   </tr>
                 ) : (
                   generatedReports.map((report) => (
-                    <tr key={report.id} className="hover:bg-gray-50">
+                    <tr 
+                      key={report.id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => openReportViewer(report)}
+                    >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-blue-500" />
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-gray-900 hover:text-blue-600">
                             {report.data.reportName}
                           </span>
                         </div>
@@ -573,16 +710,20 @@ export default function ReportsPage() {
                             Manual
                           </span>
                         ) : (
-                          <Link
-                            href={`/dashboard/jobs/${report.taskInstance.id}`}
-                            className="flex items-center gap-1 text-blue-600 hover:underline"
+                          <span
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            {report.taskInstance.name}
-                            <ExternalLink className="w-3 h-3" />
-                          </Link>
+                            <Link
+                              href={`/dashboard/jobs/${report.taskInstance.id}`}
+                              className="flex items-center gap-1 text-blue-600 hover:underline"
+                            >
+                              {report.taskInstance.name}
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <Button 
                             variant="ghost" 
@@ -592,13 +733,6 @@ export default function ReportsPage() {
                           >
                             <Download className="w-4 h-4" />
                           </Button>
-                          {report.taskInstance ? (
-                            <Link href={`/dashboard/jobs/${report.taskInstance.id}?tab=report`}>
-                              <Button variant="ghost" size="sm" title="View in Task">
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </Link>
-                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -612,7 +746,7 @@ export default function ReportsPage() {
 
       {/* Create Report Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent className="sm:max-w-[550px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Create Report</DialogTitle>
             <DialogDescription>
@@ -640,16 +774,29 @@ export default function ReportsPage() {
             {/* Period Selection */}
             <div className="grid gap-2">
               <Label htmlFor="period">Period</Label>
-              <Input
-                id="period"
-                type="text"
-                placeholder="e.g., 2026-01 or 2026-Q1"
-                value={selectedPeriodKey}
-                onChange={(e) => setSelectedPeriodKey(e.target.value)}
-              />
-              <p className="text-xs text-gray-500">
-                Enter a period key like &quot;2026-01&quot; (monthly) or &quot;2026-Q1&quot; (quarterly)
-              </p>
+              <Select 
+                value={selectedPeriodKey} 
+                onValueChange={setSelectedPeriodKey}
+                disabled={!selectedTemplateId || loadingTemplateData}
+              >
+                <SelectTrigger id="period">
+                  {loadingTemplateData ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Loading periods...</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Select a period..." />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {templatePeriods.map((period) => (
+                    <SelectItem key={period.key} value={period.key}>
+                      {period.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Filter Selection */}
@@ -660,8 +807,7 @@ export default function ReportsPage() {
                   properties={filterProperties}
                   value={filterBindings}
                   onChange={setFilterBindings}
-                  loading={filtersLoading}
-                  disabled={createReportLoading}
+                  loading={loadingTemplateData}
                 />
               </div>
             )}
@@ -688,6 +834,176 @@ export default function ReportsPage() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report Viewer Modal */}
+      <Dialog open={viewerOpen} onOpenChange={(open) => !open && setViewerOpen(false)}>
+        <DialogContent className="sm:max-w-[90vw] max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <div className="flex items-center justify-between pr-8">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  {viewingReport?.data.reportName || "Report"}
+                </DialogTitle>
+                <DialogDescription>
+                  {viewingReport?.data.sliceName && (
+                    <span className="text-blue-600">{viewingReport.data.sliceName} • </span>
+                  )}
+                  Generated {viewingReport?.generatedAt && format(new Date(viewingReport.generatedAt), "MMM d, yyyy h:mm a")}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => viewingReport && handleDownload(viewingReport.id)}
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  Export Excel
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Controls Row */}
+          <div className="flex-shrink-0 flex items-center gap-4 py-3 border-b border-gray-200">
+            {/* Period Selector */}
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">Period:</Label>
+              <Select value={viewerPeriod} onValueChange={setViewerPeriod}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue placeholder="Select period" />
+                </SelectTrigger>
+                <SelectContent>
+                  {viewerPeriods.map((period) => (
+                    <SelectItem key={period.key} value={period.key}>
+                      {period.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filter Selector */}
+            <div className="flex-1">
+              <ReportFilterSelector
+                properties={viewerFilterProperties}
+                value={viewerFilters}
+                onChange={setViewerFilters}
+                loading={false}
+              />
+            </div>
+
+            {/* Refresh Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={refreshViewerPreview}
+              disabled={viewerPreviewLoading}
+            >
+              {viewerPreviewLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              <span className="ml-1.5">Update</span>
+            </Button>
+          </div>
+
+          {/* Report Data Table */}
+          <div className="flex-1 overflow-auto mt-4">
+            {viewerPreviewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : !viewerPreviewData || !viewerPreviewData.columns?.length ? (
+              <div className="text-center py-12 text-gray-500">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm">No data available</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr className="border-b-2 border-gray-200">
+                      {viewerPreviewData.columns.map((col, colIndex) => (
+                        <th
+                          key={col.key}
+                          className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                            colIndex > 0 ? "border-l border-gray-200" : ""
+                          }`}
+                        >
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewerPreviewData.rows.slice(0, 50).map((row, rowIndex) => {
+                      const rowType = row._type as string | undefined
+                      return (
+                        <tr 
+                          key={rowIndex} 
+                          className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
+                        >
+                          {viewerPreviewData.columns.map((col, colIndex) => {
+                            const effectiveFormat = col.key === "_label" 
+                              ? "text" 
+                              : ((row._format as string) || col.dataType)
+                            const isLabelColumn = col.key === "_label"
+                            return (
+                              <td 
+                                key={col.key} 
+                                className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
+                                  colIndex > 0 ? "border-l border-gray-100" : ""
+                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
+                              >
+                                {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
+                                  <span className="flex items-center gap-1.5">
+                                    {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
+                                    {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                    {formatCellValue(row[col.key], effectiveFormat)}
+                                  </span>
+                                ) : (
+                                  formatCellValue(row[col.key], effectiveFormat)
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  {viewerPreviewData.formulaRows && viewerPreviewData.formulaRows.length > 0 && (
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                      {viewerPreviewData.formulaRows.map((fRow) => (
+                        <tr key={fRow.key}>
+                          {viewerPreviewData.columns.map((col, colIndex) => (
+                            <td
+                              key={col.key}
+                              className={`px-4 py-3 font-medium text-gray-900 ${
+                                colIndex > 0 ? "border-l border-blue-100" : ""
+                              }`}
+                            >
+                              {colIndex === 0 ? fRow.label : formatCellValue(fRow.values[col.key])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tfoot>
+                  )}
+                </table>
+                {viewerPreviewData.rows.length > 50 && (
+                  <p className="text-xs text-gray-400 text-center py-2 bg-gray-50 border-t border-gray-100">
+                    Showing 50 of {viewerPreviewData.rows.length} rows
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -99,7 +99,7 @@ export interface ListGeneratedReportsInput {
 export interface CreateManualReportInput {
   organizationId: string
   reportDefinitionId: string
-  reportSliceId?: string
+  filterBindings?: Record<string, string[]>
   periodKey: string
   createdBy: string
 }
@@ -203,24 +203,10 @@ export class ReportGenerationService {
     const {
       organizationId,
       reportDefinitionId,
-      reportSliceId,
+      filterBindings,
       periodKey,
       createdBy,
     } = input
-
-    // Get slice filter bindings if slice is specified
-    let filters: Record<string, unknown> | undefined
-    let sliceName: string | undefined
-    
-    if (reportSliceId) {
-      const slice = await prismaAny.reportSlice.findFirst({
-        where: { id: reportSliceId, organizationId },
-      })
-      if (slice) {
-        filters = slice.filterBindings as Record<string, unknown>
-        sliceName = slice.name
-      }
-    }
 
     // Get report definition for metadata
     const reportDef = await prisma.reportDefinition.findFirst({
@@ -231,13 +217,29 @@ export class ReportGenerationService {
       throw new Error("Report definition not found")
     }
 
+    // Build filter name for display
+    let filterName: string | undefined
+    if (filterBindings && Object.keys(filterBindings).length > 0) {
+      const filterParts = Object.entries(filterBindings)
+        .filter(([_, values]) => values.length > 0)
+        .map(([key, values]) => {
+          if (values.length === 1) {
+            return values[0]
+          }
+          return `${values.length} ${key}`
+        })
+      if (filterParts.length > 0) {
+        filterName = filterParts.join(", ")
+      }
+    }
+
     // Execute the report with period and filters
     const result = await ReportExecutionService.executePreview({
       reportDefinitionId,
       organizationId,
       currentPeriodKey: periodKey,
       compareMode: (reportDef.compareMode as "none" | "mom" | "yoy") || "none",
-      filters,
+      filters: filterBindings,
     })
 
     // Build the data snapshot
@@ -246,7 +248,7 @@ export class ReportGenerationService {
       compare: result.compare,
       table: result.table,
       reportName: reportDef.name,
-      sliceName,
+      sliceName: filterName,
       layout: reportDef.layout,
     }
 
@@ -255,7 +257,7 @@ export class ReportGenerationService {
       data: {
         organizationId,
         reportDefinitionId,
-        reportSliceId,
+        reportSliceId: null,
         taskInstanceId: null,
         boardId: null,
         periodKey,
@@ -266,9 +268,6 @@ export class ReportGenerationService {
       include: {
         reportDefinition: {
           select: { id: true, name: true, cadence: true, layout: true },
-        },
-        reportSlice: {
-          select: { id: true, name: true },
         },
       },
     })
