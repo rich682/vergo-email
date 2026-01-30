@@ -700,7 +700,6 @@ export default function DatabaseDetailPage() {
                         const filter = getColumnFilter(column.key)
                         const hasFilter = filter && filter.selectedValues.size > 0
                         const uniqueValues = getUniqueValues(column.key)
-                        const isIdentifier = identifierKeySet.has(column.key)
 
                         return (
                           <th
@@ -715,9 +714,6 @@ export default function DatabaseDetailPage() {
                                   }`}
                                 >
                                   {column.label}
-                                  {isIdentifier && (
-                                    <Key className="w-3 h-3 ml-1 text-orange-500" />
-                                  )}
                                   <ChevronDown className="w-3 h-3" />
                                 </button>
                               </DropdownMenuTrigger>
