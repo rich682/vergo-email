@@ -185,6 +185,7 @@ export default function ReportBuilderPage() {
   const [columnsExpanded, setColumnsExpanded] = useState(true)
   const [formulaRowsExpanded, setFormulaRowsExpanded] = useState(true)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialLoadRef = useRef(true)
   const [insightsPanelOpen, setInsightsPanelOpen] = useState(false)
