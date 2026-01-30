@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, schema, identifierKeys, initialRows } = body
+    const { name, description, schema, initialRows } = body
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -75,19 +75,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!identifierKeys || !Array.isArray(identifierKeys) || identifierKeys.length === 0) {
-      return NextResponse.json(
-        { error: "At least one identifier column is required" },
-        { status: 400 }
-      )
-    }
-
-    // Create the database
+    // Create the database (identifierKeys no longer required)
     const database = await DatabaseService.createDatabase({
       name: name.trim(),
       description: description?.trim(),
       schema: schema as DatabaseSchema,
-      identifierKeys,
       organizationId: user.organizationId,
       createdById: user.id,
       initialRows: initialRows as DatabaseRow[] | undefined,

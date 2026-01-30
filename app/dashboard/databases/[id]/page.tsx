@@ -15,7 +15,6 @@ import {
   AlertCircle,
   AlertTriangle,
   FileUp,
-  Key,
   Plus,
   Pencil,
   GripVertical,
@@ -150,7 +149,6 @@ export default function DatabaseDetailPage() {
   // Schema editing state
   const [schemaEditMode, setSchemaEditMode] = useState(false)
   const [editingColumns, setEditingColumns] = useState<SchemaColumn[]>([])
-  const [editingIdentifierKeys, setEditingIdentifierKeys] = useState<string[]>([])
   const [savingSchema, setSavingSchema] = useState(false)
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([])
@@ -202,10 +200,7 @@ export default function DatabaseDetailPage() {
     return [...database.schema.columns].sort((a, b) => a.order - b.order)
   }, [database])
 
-  const identifierKeySet = useMemo(() => {
-    if (!database) return new Set<string>()
-    return new Set(database.identifierKeys)
-  }, [database])
+  // Identifier keys no longer used - uniqueness determined by all columns
 
   const getUniqueValues = useCallback(
     (columnKey: string): string[] => {
@@ -396,7 +391,6 @@ export default function DatabaseDetailPage() {
   const startSchemaEdit = () => {
     if (!database) return
     setEditingColumns([...database.schema.columns].sort((a, b) => a.order - b.order))
-    setEditingIdentifierKeys([...database.identifierKeys])
     setSchemaError(null)
     setSchemaWarnings([])
     setSchemaEditMode(true)
@@ -405,7 +399,6 @@ export default function DatabaseDetailPage() {
   const cancelSchemaEdit = () => {
     setSchemaEditMode(false)
     setEditingColumns([])
-    setEditingIdentifierKeys([])
     setSchemaError(null)
     setSchemaWarnings([])
   }
@@ -428,18 +421,6 @@ export default function DatabaseDetailPage() {
     setEditingColumns(newColumns.map((col, i) => ({ ...col, order: i })))
   }
 
-  const toggleIdentifier = (key: string) => {
-    if (!database || database.hasGeneratedReports) return // Can't change identifiers if reports have been generated
-    
-    setEditingIdentifierKeys(prev => {
-      if (prev.includes(key)) {
-        return prev.filter(k => k !== key)
-      } else {
-        return [...prev, key]
-      }
-    })
-  }
-
   const addColumn = () => {
     const newKey = `column_${Date.now()}`
     const newColumn: SchemaColumn = {
@@ -457,11 +438,6 @@ export default function DatabaseDetailPage() {
     // Can't remove if reports have been generated
     if (database.hasGeneratedReports) {
       setSchemaError("Cannot remove columns when reports have been generated using this database")
-      return
-    }
-    // Can't remove identifier columns
-    if (editingIdentifierKeys.includes(key)) {
-      setSchemaError("Cannot remove identifier columns. Remove as identifier first.")
       return
     }
     setEditingColumns(prev => prev.filter(c => c.key !== key).map((col, i) => ({ ...col, order: i })))
@@ -482,7 +458,6 @@ export default function DatabaseDetailPage() {
         credentials: "include",
         body: JSON.stringify({
           columns: editingColumns,
-          identifierKeys: editingIdentifierKeys,
         }),
       })
       
@@ -923,9 +898,6 @@ export default function DatabaseDetailPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Required
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Identifier
-                    </th>
                     {schemaEditMode && (
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
                         
@@ -1007,41 +979,15 @@ export default function DatabaseDetailPage() {
                           <span className="text-gray-400">No</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm">
-                        {schemaEditMode ? (
-                          <button
-                            onClick={() => toggleIdentifier(column.key)}
-                            disabled={database.hasGeneratedReports}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                              editingIdentifierKeys.includes(column.key)
-                                ? "bg-orange-100 text-orange-800"
-                                : "bg-gray-100 text-gray-500"
-                            } ${database.hasGeneratedReports ? "opacity-50 cursor-not-allowed" : ""}`}
-                            title={database.hasGeneratedReports ? "Cannot change identifiers when reports have been generated" : ""}
-                          >
-                            <Key className="w-3 h-3" />
-                            {editingIdentifierKeys.includes(column.key) ? "Key" : "—"}
-                          </button>
-                        ) : identifierKeySet.has(column.key) ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                            <Key className="w-3 h-3" />
-                            Key
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
                       {schemaEditMode && (
                         <td className="px-3 py-4">
                           <button
                             onClick={() => removeColumn(column.key)}
-                            disabled={database.hasGeneratedReports || editingIdentifierKeys.includes(column.key)}
+                            disabled={database.hasGeneratedReports}
                             className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
                             title={
                               database.hasGeneratedReports 
                                 ? "Cannot remove columns when reports have been generated" 
-                                : editingIdentifierKeys.includes(column.key)
-                                ? "Cannot remove identifier columns"
                                 : "Remove column"
                             }
                           >
@@ -1072,44 +1018,24 @@ export default function DatabaseDetailPage() {
                   <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
                   <div className="text-sm text-amber-700">
                     <p className="font-medium">Limited editing</p>
-                    <p>Reports have been generated using this database. You can add new columns and edit labels/data types, but cannot remove columns or change identifier keys.</p>
+                    <p>Reports have been generated using this database. You can add new columns and edit labels/data types, but cannot remove columns.</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Composite key info */}
-            {!schemaEditMode && database.identifierKeys.length > 1 && (
+            {/* Uniqueness info */}
+            {!schemaEditMode && (
               <div className="px-6 py-4 bg-blue-50 border-t border-blue-200">
                 <div className="flex items-start gap-2">
-                  <Key className="w-4 h-4 text-blue-600 mt-0.5" />
+                  <Check className="w-4 h-4 text-blue-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Composite Identifier</p>
+                    <p className="text-sm font-medium text-blue-700">Row Uniqueness</p>
                     <p className="text-sm text-blue-600">
-                      Rows are uniquely identified by the combination of: {" "}
-                      {database.identifierKeys.map((key, i) => {
-                        const col = sortedColumns.find(c => c.key === key)
-                        return (
-                          <span key={key}>
-                            {i > 0 && " + "}
-                            <strong>{col?.label || key}</strong>
-                          </span>
-                        )
-                      })}
+                      Each row is uniquely identified by the combination of ALL column values. 
+                      Duplicate rows (where every column matches) are automatically skipped during import.
                     </p>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Identifier requirement notice in edit mode */}
-            {schemaEditMode && editingIdentifierKeys.length === 0 && (
-              <div className="px-6 py-4 bg-red-50 border-t border-red-200">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-700">
-                    <strong>At least one identifier column is required.</strong> Click on a column's Key badge to toggle it as an identifier.
-                  </p>
                 </div>
               </div>
             )}

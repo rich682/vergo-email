@@ -37,7 +37,7 @@ export interface CreateDatabaseInput {
   name: string
   description?: string
   schema: DatabaseSchema
-  identifierKeys: string[]  // Composite key - multiple columns form unique identifier
+  identifierKeys?: string[]  // Deprecated - no longer used, kept for backwards compatibility
   organizationId: string
   createdById: string
   initialRows?: DatabaseRow[]
@@ -153,7 +153,7 @@ function normalizeValue(value: unknown): string {
 // Validation
 // ============================================
 
-export function validateSchema(schema: DatabaseSchema, identifierKeys: string[]): string | null {
+export function validateSchema(schema: DatabaseSchema, _identifierKeys?: string[]): string | null {
   if (!schema.columns || schema.columns.length === 0) {
     return "Schema must have at least one column"
   }
@@ -185,21 +185,7 @@ export function validateSchema(schema: DatabaseSchema, identifierKeys: string[])
     }
   }
 
-  // Validate identifier keys
-  if (!identifierKeys || identifierKeys.length === 0) {
-    return "At least one identifier column must be specified"
-  }
-
-  // Check all identifier columns exist and are required
-  for (const idKey of identifierKeys) {
-    const identifierColumn = schema.columns.find(c => c.key === idKey)
-    if (!identifierColumn) {
-      return `Identifier column "${idKey}" not found in schema`
-    }
-    if (!identifierColumn.required) {
-      return `Identifier column "${identifierColumn.label}" must be marked as required`
-    }
-  }
+  // Note: identifierKeys no longer required - uniqueness determined by all columns
 
   // Validate data types
   const validTypes = ["text", "number", "date", "boolean", "currency"]
@@ -395,8 +381,8 @@ export class DatabaseService {
    * Create a new database
    */
   static async createDatabase(input: CreateDatabaseInput) {
-    // Validate schema
-    const validationError = validateSchema(input.schema, input.identifierKeys)
+    // Validate schema (identifierKeys no longer required)
+    const validationError = validateSchema(input.schema)
     if (validationError) {
       throw new Error(validationError)
     }
@@ -406,7 +392,7 @@ export class DatabaseService {
     let rowCount = 0
 
     if (input.initialRows && input.initialRows.length > 0) {
-      const rowValidation = validateRows(input.initialRows, input.schema, input.identifierKeys)
+      const rowValidation = validateRows(input.initialRows, input.schema, [])
       if (!rowValidation.valid) {
         throw new Error(rowValidation.errors.join("; "))
       }
@@ -420,7 +406,7 @@ export class DatabaseService {
         description: input.description,
         organizationId: input.organizationId,
         schema: input.schema as any,
-        identifierKeys: input.identifierKeys,
+        identifierKeys: input.identifierKeys || [],  // Default to empty array
         rows: rows as any,
         rowCount,
         createdById: input.createdById,

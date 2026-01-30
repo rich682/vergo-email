@@ -9,12 +9,9 @@
  * - Change column order
  * - Change data types (with warnings)
  * - Mark columns as required/optional (with warnings)
- * - Add identifier columns (if not yet has data)
  * 
  * Blocked operations:
- * - Remove identifier columns
- * - Change identifier keys after data exists
- * - Remove columns if data exists (v1 restriction)
+ * - Remove columns if reports have been generated
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -29,7 +26,6 @@ interface RouteParams {
 
 interface SchemaUpdateRequest {
   columns?: DatabaseSchemaColumn[]
-  identifierKeys?: string[]
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
@@ -48,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    // Get the database
+    // Get the database with report generation info
     const database = await prisma.database.findFirst({
       where: {
         id: params.id,
@@ -59,6 +55,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         schema: true,
         identifierKeys: true,
         rowCount: true,
+        reportDefinitions: {
+          select: {
+            _count: {
+              select: {
+                generatedReports: true,
+              },
+            },
+          },
+        },
       },
     })
 
@@ -67,8 +72,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const currentSchema = database.schema as DatabaseSchema
-    const currentIdentifierKeys = database.identifierKeys as string[]
-    const hasData = database.rowCount > 0
+    const hasGeneratedReports = database.reportDefinitions.some(
+      (rd: any) => rd._count.generatedReports > 0
+    )
 
     const body: SchemaUpdateRequest = await request.json()
 
@@ -76,25 +82,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Guardrails
     // ============================================
 
-    // 1. Cannot change identifier keys after data exists
-    if (body.identifierKeys && hasData) {
-      const currentKeySet = new Set(currentIdentifierKeys)
-      const newKeySet = new Set(body.identifierKeys)
-      
-      const keysMatch = 
-        currentKeySet.size === newKeySet.size &&
-        [...currentKeySet].every(k => newKeySet.has(k))
-      
-      if (!keysMatch) {
-        return NextResponse.json({
-          error: "Cannot change identifier columns after data has been imported. Delete all data first.",
-          code: "IDENTIFIER_LOCKED",
-        }, { status: 400 })
-      }
-    }
-
-    // 2. Cannot remove columns if data exists (v1 restriction)
-    if (body.columns && hasData) {
+    // Cannot remove columns if reports have been generated
+    if (body.columns && hasGeneratedReports) {
       const currentKeys = new Set(currentSchema.columns.map(c => c.key))
       const newKeys = new Set(body.columns.map(c => c.key))
       
@@ -105,22 +94,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           .map(c => c.label)
         
         return NextResponse.json({
-          error: `Cannot remove columns when data exists. Columns that would be removed: ${removedLabels.join(", ")}`,
+          error: `Cannot remove columns when reports have been generated. Columns that would be removed: ${removedLabels.join(", ")}`,
           code: "COLUMNS_LOCKED",
-        }, { status: 400 })
-      }
-    }
-
-    // 3. Cannot remove identifier columns ever
-    const newIdentifierKeys = body.identifierKeys || currentIdentifierKeys
-    if (body.columns) {
-      const newColumnKeys = new Set(body.columns.map(c => c.key))
-      const missingIdentifiers = newIdentifierKeys.filter(k => !newColumnKeys.has(k))
-      
-      if (missingIdentifiers.length > 0) {
-        return NextResponse.json({
-          error: `Cannot remove identifier columns from schema: ${missingIdentifiers.join(", ")}`,
-          code: "IDENTIFIER_REQUIRED",
         }, { status: 400 })
       }
     }
@@ -135,7 +110,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate the new schema
-    const validationError = validateSchema(newSchema, newIdentifierKeys)
+    const validationError = validateSchema(newSchema)
     if (validationError) {
       return NextResponse.json({
         error: validationError,
@@ -149,7 +124,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const warnings: string[] = []
 
-    if (body.columns && hasData) {
+    if (body.columns && database.rowCount > 0) {
       // Check for data type changes
       for (const newCol of body.columns) {
         const oldCol = currentSchema.columns.find(c => c.key === newCol.key)
@@ -172,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       where: { id: params.id },
       data: {
         schema: newSchema as any,
-        identifierKeys: newIdentifierKeys,
+        // Keep existing identifierKeys for backwards compatibility
       },
       select: {
         id: true,
