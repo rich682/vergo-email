@@ -11,6 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { 
+  ReportFilterSelector, 
+  type FilterableProperty, 
+  type FilterBindings 
+} from "@/components/reports/report-filter-selector"
 
 // ============================================
 // Types
@@ -28,12 +33,6 @@ interface ReportDefinition {
   }
 }
 
-interface ReportSlice {
-  id: string
-  name: string
-  filterBindings: Record<string, unknown>
-}
-
 interface PreviewResult {
   current: { periodKey: string; label: string; rowCount: number } | null
   compare: { periodKey: string; label: string; rowCount: number } | null
@@ -48,10 +47,10 @@ interface PreviewResult {
 interface ReportTabProps {
   jobId: string
   reportDefinitionId: string | null
-  reportSliceId: string | null
+  reportFilterBindings: FilterBindings | null  // Dynamic filters instead of slice reference
   boardPeriodStart?: string | null
   boardCadence?: string | null
-  onConfigChange?: (config: { reportDefinitionId: string | null; reportSliceId: string | null }) => void
+  onConfigChange?: (config: { reportDefinitionId: string | null; reportFilterBindings: FilterBindings | null }) => void
   isAdmin?: boolean  // Controls whether configuration UI is shown (only admins can configure)
 }
 
@@ -69,7 +68,7 @@ const CADENCE_LABELS: Record<string, string> = {
 export function ReportTab({
   jobId,
   reportDefinitionId,
-  reportSliceId,
+  reportFilterBindings,
   boardPeriodStart,
   boardCadence,
   onConfigChange,
@@ -81,13 +80,13 @@ export function ReportTab({
   // Config editing state
   const [isEditingConfig, setIsEditingConfig] = useState(!isConfigured && isAdmin)
   const [editReportId, setEditReportId] = useState<string | null>(reportDefinitionId)
-  const [editSliceId, setEditSliceId] = useState<string | null>(reportSliceId)
+  const [editFilterBindings, setEditFilterBindings] = useState<FilterBindings>(reportFilterBindings || {})
 
   // Data state
   const [reports, setReports] = useState<ReportDefinition[]>([])
-  const [slices, setSlices] = useState<ReportSlice[]>([])
+  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
   const [loadingReports, setLoadingReports] = useState(true)
-  const [loadingSlices, setLoadingSlices] = useState(false)
+  const [loadingFilters, setLoadingFilters] = useState(false)
   
   // Preview state - uses SAVED config (props), not editing state
   const [previewData, setPreviewData] = useState<PreviewResult | null>(null)
@@ -101,10 +100,16 @@ export function ReportTab({
     return reports.find(r => r.id === reportDefinitionId) || null
   }, [reports, reportDefinitionId])
 
-  // Get saved slice details (for display)
-  const savedSlice = useMemo(() => {
-    return slices.find(s => s.id === reportSliceId) || null
-  }, [slices, reportSliceId])
+  // Get active filter summary for display
+  const savedFilterSummary = useMemo(() => {
+    if (!reportFilterBindings) return null
+    const activeFilters = Object.entries(reportFilterBindings)
+      .filter(([_, values]) => values.length > 0)
+    if (activeFilters.length === 0) return null
+    return activeFilters
+      .map(([key, values]) => values.length === 1 ? values[0] : `${values.length} ${key}`)
+      .join(", ")
+  }, [reportFilterBindings])
 
   // Get editing report details
   const editReport = useMemo(() => {
@@ -127,28 +132,25 @@ export function ReportTab({
     }
   }, [])
 
-  // Fetch slices for a report
-  const fetchSlices = useCallback(async (reportId: string) => {
+  // Fetch filterable properties for a report
+  const fetchFilterProperties = useCallback(async (reportId: string) => {
     try {
-      setLoadingSlices(true)
-      const response = await fetch(`/api/reports/${reportId}/slices`, { credentials: "include" })
+      setLoadingFilters(true)
+      const response = await fetch(`/api/reports/${reportId}/filter-properties`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setSlices(data.slices || [])
+        setFilterProperties(data.properties || [])
       }
     } catch (error) {
-      console.error("Error fetching slices:", error)
+      console.error("Error fetching filter properties:", error)
     } finally {
-      setLoadingSlices(false)
+      setLoadingFilters(false)
     }
   }, [])
 
   // Fetch report preview using SAVED config
   const fetchPreview = useCallback(async () => {
     if (!reportDefinitionId) return
-    
-    // Get the slice for the saved config
-    const sliceForPreview = slices.find(s => s.id === reportSliceId)
     
     setPreviewLoading(true)
     try {
@@ -159,7 +161,7 @@ export function ReportTab({
         body: JSON.stringify({
           currentPeriodKey: currentPeriodKey || undefined,
           compareMode: "none",
-          filters: sliceForPreview?.filterBindings,
+          filters: reportFilterBindings,
         }),
       })
       
@@ -177,7 +179,7 @@ export function ReportTab({
     } finally {
       setPreviewLoading(false)
     }
-  }, [reportDefinitionId, reportSliceId, currentPeriodKey, slices])
+  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey])
 
   // Save configuration
   const saveConfig = useCallback(async () => {
@@ -185,6 +187,15 @@ export function ReportTab({
       alert("Please select a report template")
       return
     }
+
+    // Clean up filter bindings (remove empty arrays)
+    const cleanedFilters: FilterBindings = {}
+    for (const [key, values] of Object.entries(editFilterBindings)) {
+      if (values.length > 0) {
+        cleanedFilters[key] = values
+      }
+    }
+    const filtersToSave = Object.keys(cleanedFilters).length > 0 ? cleanedFilters : null
 
     setSaving(true)
     try {
@@ -194,7 +205,7 @@ export function ReportTab({
         credentials: "include",
         body: JSON.stringify({
           reportDefinitionId: editReportId,
-          reportSliceId: editSliceId,
+          reportFilterBindings: filtersToSave,
         }),
       })
       
@@ -206,7 +217,7 @@ export function ReportTab({
       }
       
       // Update parent state
-      onConfigChange?.({ reportDefinitionId: editReportId, reportSliceId: editSliceId })
+      onConfigChange?.({ reportDefinitionId: editReportId, reportFilterBindings: filtersToSave })
       
       // Close config panel
       setIsEditingConfig(false)
@@ -216,35 +227,34 @@ export function ReportTab({
     } finally {
       setSaving(false)
     }
-  }, [jobId, editReportId, editSliceId, onConfigChange])
+  }, [jobId, editReportId, editFilterBindings, onConfigChange])
 
   // Cancel editing
   const cancelEditing = useCallback(() => {
     // Reset to saved values
     setEditReportId(reportDefinitionId)
-    setEditSliceId(reportSliceId)
+    setEditFilterBindings(reportFilterBindings || {})
     setIsEditingConfig(false)
-  }, [reportDefinitionId, reportSliceId])
+  }, [reportDefinitionId, reportFilterBindings])
 
   // Open config panel for editing
   const openConfigPanel = useCallback(() => {
     setEditReportId(reportDefinitionId)
-    setEditSliceId(reportSliceId)
+    setEditFilterBindings(reportFilterBindings || {})
     setIsEditingConfig(true)
-  }, [reportDefinitionId, reportSliceId])
+  }, [reportDefinitionId, reportFilterBindings])
 
   // Initial fetch
   useEffect(() => {
     fetchReports()
   }, [fetchReports])
 
-  // Fetch slices when report changes (for both saved and editing)
+  // Fetch filter properties when editing report changes
   useEffect(() => {
-    const reportIdToFetch = reportDefinitionId || editReportId
-    if (reportIdToFetch) {
-      fetchSlices(reportIdToFetch)
+    if (editReportId && isEditingConfig) {
+      fetchFilterProperties(editReportId)
     }
-  }, [reportDefinitionId, editReportId, fetchSlices])
+  }, [editReportId, isEditingConfig, fetchFilterProperties])
 
   // Fetch preview when saved config or period changes
   useEffect(() => {
@@ -253,15 +263,15 @@ export function ReportTab({
     } else {
       setPreviewData(null)
     }
-  }, [reportDefinitionId, reportSliceId, currentPeriodKey, fetchPreview])
+  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey, fetchPreview])
 
   // Sync editing state when props change
   useEffect(() => {
     if (!isEditingConfig) {
       setEditReportId(reportDefinitionId)
-      setEditSliceId(reportSliceId)
+      setEditFilterBindings(reportFilterBindings || {})
     }
-  }, [reportDefinitionId, reportSliceId, isEditingConfig])
+  }, [reportDefinitionId, reportFilterBindings, isEditingConfig])
 
   // Auto-open config panel for admin when unconfigured
   useEffect(() => {
@@ -274,18 +284,9 @@ export function ReportTab({
   const handleEditReportChange = (value: string) => {
     const newReportId = value === "_none" ? null : value
     setEditReportId(newReportId)
-    setEditSliceId(null) // Clear slice when report changes
+    setEditFilterBindings({}) // Clear filters when report changes
     
-    // Fetch slices for new report
-    if (newReportId) {
-      fetchSlices(newReportId)
-    }
-  }
-
-  // Handle slice selection in edit mode
-  const handleEditSliceChange = (value: string) => {
-    const newSliceId = value === "_all" ? null : value
-    setEditSliceId(newSliceId)
+    // Filter properties will be fetched by useEffect
   }
 
   // Format cell value for display with proper formatting
@@ -304,7 +305,12 @@ export function ReportTab({
   }
 
   // Check if there are unsaved changes
-  const hasUnsavedChanges = editReportId !== reportDefinitionId || editSliceId !== reportSliceId
+  const hasUnsavedChanges = useMemo(() => {
+    if (editReportId !== reportDefinitionId) return true
+    const savedFilters = reportFilterBindings || {}
+    const editFilters = editFilterBindings || {}
+    return JSON.stringify(savedFilters) !== JSON.stringify(editFilters)
+  }, [editReportId, reportDefinitionId, reportFilterBindings, editFilterBindings])
 
   return (
     <div className="space-y-6">
@@ -362,31 +368,21 @@ export function ReportTab({
               )}
             </div>
 
-            {/* Slice Selector */}
-            <div className="space-y-2">
-              <Label>Slice (Filter View)</Label>
-              <Select
-                value={editSliceId || "_all"}
-                onValueChange={handleEditSliceChange}
-                disabled={!editReportId || loadingSlices}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a slice..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">All Data (no filters)</SelectItem>
-                  {slices.map((slice) => (
-                    <SelectItem key={slice.id} value={slice.id}>
-                      <div className="flex items-center gap-2">
-                        <Filter className="w-3.5 h-3.5 text-blue-500" />
-                        <span>{slice.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
+
+          {/* Filter Selector - Full width below */}
+          {editReportId && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <Label className="mb-2 block">Filters (optional)</Label>
+              <ReportFilterSelector
+                properties={filterProperties}
+                value={editFilterBindings}
+                onChange={setEditFilterBindings}
+                loading={loadingFilters}
+                disabled={saving}
+              />
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
@@ -426,9 +422,9 @@ export function ReportTab({
               <span className="font-medium text-sm text-gray-700">
                 {savedReport?.name || "Report"}
               </span>
-              {savedSlice && (
+              {savedFilterSummary && (
                 <span className="text-xs text-gray-500 bg-blue-50 px-2 py-0.5 rounded">
-                  {savedSlice.name}
+                  {savedFilterSummary}
                 </span>
               )}
               {previewData?.current && (

@@ -137,7 +137,7 @@ interface Job {
   isSnapshot?: boolean
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
-  reportSliceId?: string | null
+  reportFilterBindings?: Record<string, string[]> | null
 }
 
 interface Permissions {
@@ -1604,7 +1604,7 @@ export default function JobDetailPage() {
                 <ReportTab
                   jobId={jobId}
                   reportDefinitionId={job.reportDefinitionId || null}
-                  reportSliceId={job.reportSliceId || null}
+                  reportFilterBindings={job.reportFilterBindings || null}
                   boardPeriodStart={job.board?.periodStart}
                   boardCadence={job.board?.cadence}
                   isAdmin={permissions?.isAdmin}
@@ -1613,7 +1613,7 @@ export default function JobDetailPage() {
                     setJob(prev => prev ? {
                       ...prev,
                       reportDefinitionId: config.reportDefinitionId,
-                      reportSliceId: config.reportSliceId,
+                      reportFilterBindings: config.reportFilterBindings,
                     } : null)
                   }}
                 />

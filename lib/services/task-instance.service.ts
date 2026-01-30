@@ -63,7 +63,7 @@ export interface UpdateTaskInstanceInput {
   lineageId?: string | null  // For linking to lineage
   // Report configuration (for REPORTS type tasks)
   reportDefinitionId?: string | null
-  reportSliceId?: string | null
+  reportFilterBindings?: Record<string, string[]> | null  // Dynamic filters { columnKey: [values] }
 }
 
 export interface TaskInstanceOwner {
@@ -111,7 +111,7 @@ export interface TaskInstanceWithStats {
   isSnapshot: boolean
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
-  reportSliceId?: string | null
+  reportFilterBindings?: Record<string, string[]> | null
   createdAt: Date
   updatedAt: Date
   owner: TaskInstanceOwner
@@ -426,7 +426,7 @@ export class TaskInstanceService {
         ...(input.structuredData !== undefined && { structuredData: input.structuredData }),
         ...(input.isSnapshot !== undefined && { isSnapshot: input.isSnapshot }),
         ...(input.reportDefinitionId !== undefined && { reportDefinitionId: input.reportDefinitionId }),
-        ...(input.reportSliceId !== undefined && { reportSliceId: input.reportSliceId }),
+        ...(input.reportFilterBindings !== undefined && { reportFilterBindings: input.reportFilterBindings }),
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },

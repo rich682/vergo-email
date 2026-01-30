@@ -3,8 +3,7 @@
  * 
  * Handles generation and storage of period-specific reports.
  * Called when a board with REPORTS tasks completes to snapshot
- * the report output for that accounting period, or when users
- * manually create reports.
+ * the report output for that accounting period.
  * 
  * Note: Uses type assertions for Prisma models (generatedReport, reportSlice)
  * that are added via migration. These will work correctly after migration runs
@@ -82,7 +81,7 @@ export interface GeneratedReport {
 export interface GenerateReportInput {
   organizationId: string
   reportDefinitionId: string
-  reportSliceId?: string
+  filterBindings?: Record<string, string[]>  // Dynamic filters { columnKey: [values] }
   taskInstanceId: string
   boardId: string
   periodKey: string
@@ -100,8 +99,8 @@ export interface ListGeneratedReportsInput {
 export interface CreateManualReportInput {
   organizationId: string
   reportDefinitionId: string
+  reportSliceId?: string
   periodKey: string
-  filterBindings?: Record<string, string[]>  // { columnKey: [selected values] }
   createdBy: string
 }
 
@@ -117,97 +116,11 @@ export class ReportGenerationService {
     const {
       organizationId,
       reportDefinitionId,
-      reportSliceId,
+      filterBindings,
       taskInstanceId,
       boardId,
       periodKey,
       generatedBy = "system",
-    } = input
-
-    // Get slice filter bindings if slice is specified
-    let filters: Record<string, unknown> | undefined
-    let sliceName: string | undefined
-    
-    if (reportSliceId) {
-      const slice = await prismaAny.reportSlice.findFirst({
-        where: { id: reportSliceId, organizationId },
-      })
-      if (slice) {
-        filters = slice.filterBindings as Record<string, unknown>
-        sliceName = slice.name
-      }
-    }
-
-    // Get report definition for metadata
-    const reportDef = await prisma.reportDefinition.findFirst({
-      where: { id: reportDefinitionId, organizationId },
-    })
-
-    if (!reportDef) {
-      throw new Error("Report definition not found")
-    }
-
-    // Execute the report with period and filters
-    const result = await ReportExecutionService.executePreview({
-      reportDefinitionId,
-      organizationId,
-      currentPeriodKey: periodKey,
-      compareMode: (reportDef.compareMode as "none" | "mom" | "yoy") || "none",
-      filters,
-    })
-
-    // Build the data snapshot
-    const data: GeneratedReportData = {
-      current: result.current,
-      compare: result.compare,
-      table: result.table,
-      reportName: reportDef.name,
-      sliceName,
-      layout: reportDef.layout,
-    }
-
-    // Store in database
-    const generated = await prismaAny.generatedReport.create({
-      data: {
-        organizationId,
-        reportDefinitionId,
-        reportSliceId,
-        taskInstanceId,
-        boardId,
-        periodKey,
-        source: "task",
-        data: data,
-        generatedBy,
-      },
-      include: {
-        reportDefinition: {
-          select: { id: true, name: true, cadence: true, layout: true },
-        },
-        reportSlice: {
-          select: { id: true, name: true },
-        },
-        taskInstance: {
-          select: { id: true, name: true },
-        },
-        board: {
-          select: { id: true, name: true, periodStart: true, periodEnd: true },
-        },
-      },
-    })
-
-    return this.mapToGeneratedReport(generated)
-  }
-
-  /**
-   * Create a manual report (not tied to a task)
-   */
-  static async createManualReport(input: CreateManualReportInput): Promise<GeneratedReport> {
-    const {
-      organizationId,
-      reportDefinitionId,
-      periodKey,
-      filterBindings,
-      createdBy,
     } = input
 
     // Get report definition for metadata
@@ -254,12 +167,95 @@ export class ReportGenerationService {
       layout: reportDef.layout,
     }
 
-    // Store in database (no taskInstance or board for manual reports)
+    // Store in database
     const generated = await prismaAny.generatedReport.create({
       data: {
         organizationId,
         reportDefinitionId,
         reportSliceId: null,
+        taskInstanceId,
+        boardId,
+        periodKey,
+        source: "task",
+        data: data,
+        generatedBy,
+      },
+      include: {
+        reportDefinition: {
+          select: { id: true, name: true, cadence: true, layout: true },
+        },
+        taskInstance: {
+          select: { id: true, name: true },
+        },
+        board: {
+          select: { id: true, name: true, periodStart: true, periodEnd: true },
+        },
+      },
+    })
+
+    return this.mapToGeneratedReport(generated)
+  }
+
+  /**
+   * Create a manual report (not tied to a task)
+   */
+  static async createManualReport(input: CreateManualReportInput): Promise<GeneratedReport> {
+    const {
+      organizationId,
+      reportDefinitionId,
+      reportSliceId,
+      periodKey,
+      createdBy,
+    } = input
+
+    // Get slice filter bindings if slice is specified
+    let filters: Record<string, unknown> | undefined
+    let sliceName: string | undefined
+    
+    if (reportSliceId) {
+      const slice = await prismaAny.reportSlice.findFirst({
+        where: { id: reportSliceId, organizationId },
+      })
+      if (slice) {
+        filters = slice.filterBindings as Record<string, unknown>
+        sliceName = slice.name
+      }
+    }
+
+    // Get report definition for metadata
+    const reportDef = await prisma.reportDefinition.findFirst({
+      where: { id: reportDefinitionId, organizationId },
+    })
+
+    if (!reportDef) {
+      throw new Error("Report definition not found")
+    }
+
+    // Execute the report with period and filters
+    const result = await ReportExecutionService.executePreview({
+      reportDefinitionId,
+      organizationId,
+      currentPeriodKey: periodKey,
+      compareMode: (reportDef.compareMode as "none" | "mom" | "yoy") || "none",
+      filters,
+    })
+
+    // Build the data snapshot
+    const data: GeneratedReportData = {
+      current: result.current,
+      compare: result.compare,
+      table: result.table,
+      reportName: reportDef.name,
+      sliceName,
+      layout: reportDef.layout,
+    }
+
+    // Store in database (no taskInstance or board for manual reports)
+    const generated = await prismaAny.generatedReport.create({
+      data: {
+        organizationId,
+        reportDefinitionId,
+        reportSliceId,
         taskInstanceId: null,
         boardId: null,
         periodKey,

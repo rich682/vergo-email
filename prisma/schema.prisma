@@ -346,8 +346,9 @@ model TaskInstance {
   isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
   
   // Report configuration (for REPORTS type tasks)
-  reportDefinitionId String?
-  reportSliceId      String?
+  reportDefinitionId     String?
+  reportSliceId          String?
+  reportFilterBindings   Json?    // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
   
   // Stakeholder scope for task type categorization
   stakeholderScope   String?  // "accounting" | "employee" | "external"

@@ -46,6 +46,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { 
+  ReportFilterSelector, 
+  type FilterableProperty, 
+  type FilterBindings 
+} from "@/components/reports/report-filter-selector"
 
 // Types
 interface ReportColumn {
@@ -205,20 +210,18 @@ export default function ReportBuilderPage() {
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
   const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
 
-  // Slice state
+  // Filter state (replaces slice-first approach)
+  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
+  const [activeFilters, setActiveFilters] = useState<FilterBindings>({})
+  const [loadingFilters, setLoadingFilters] = useState(false)
+  
+  // Slice state (for saving reusable filter views)
   const [slices, setSlices] = useState<ReportSlice[]>([])
-  const [activeSliceId, setActiveSliceId] = useState<string | null>(null)
   const [sliceModalOpen, setSliceModalOpen] = useState(false)
   const [editingSlice, setEditingSlice] = useState<ReportSlice | null>(null)
   const [sliceName, setSliceName] = useState("")
-  const [sliceFilters, setSliceFilters] = useState<Array<{ key: string; value: string }>>([])
   const [savingSlice, setSavingSlice] = useState(false)
   const [bulkSliceModalOpen, setBulkSliceModalOpen] = useState(false)
-
-  // Get active slice
-  const activeSlice = useMemo(() => {
-    return slices.find(s => s.id === activeSliceId) || null
-  }, [slices, activeSliceId])
 
   // Fetch report definition
   const fetchReport = useCallback(async () => {
@@ -250,7 +253,23 @@ export default function ReportBuilderPage() {
     }
   }, [id, router])
 
-  // Fetch slices for this report
+  // Fetch filter properties for this report
+  const fetchFilterProperties = useCallback(async () => {
+    try {
+      setLoadingFilters(true)
+      const response = await fetch(`/api/reports/${id}/filter-properties`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setFilterProperties(data.properties || [])
+      }
+    } catch (err) {
+      console.error("Error fetching filter properties:", err)
+    } finally {
+      setLoadingFilters(false)
+    }
+  }, [id])
+
+  // Fetch slices for this report (for saved filter views)
   const fetchSlices = useCallback(async () => {
     try {
       const response = await fetch(`/api/reports/${id}/slices`, { credentials: "include" })
@@ -265,8 +284,9 @@ export default function ReportBuilderPage() {
 
   useEffect(() => {
     fetchReport()
+    fetchFilterProperties()
     fetchSlices()
-  }, [fetchReport, fetchSlices])
+  }, [fetchReport, fetchFilterProperties, fetchSlices])
 
   // Fetch preview from server
   // For pivot layout, auto-detect compare mode from comparison rows
@@ -306,8 +326,8 @@ export default function ReportBuilderPage() {
             metricRows,
             pivotFormulaColumns,
           },
-          // Apply slice filters if a slice is active
-          filters: activeSlice?.filterBindings,
+          // Apply active filters
+          filters: Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
         }),
       })
       
@@ -325,7 +345,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, activeSlice])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, activeFilters])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -538,101 +558,80 @@ export default function ReportBuilderPage() {
               </p>
             </div>
 
-            {/* === SLICES SECTION === */}
+            {/* === FILTERS SECTION === */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium text-sm text-gray-700">Slice</span>
+                  <span className="font-medium text-sm text-gray-700">Filters</span>
                 </div>
+                {Object.keys(activeFilters).length > 0 && (
+                  <button
+                    onClick={() => setActiveFilters({})}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear all
+                  </button>
+                )}
               </div>
-              <div className="p-3 space-y-2">
-                {/* Slice selector */}
-                <Select
-                  value={activeSliceId || "_all"}
-                  onValueChange={(value) => {
-                    setActiveSliceId(value === "_all" ? null : value)
-                  }}
-                >
-                  <SelectTrigger className="w-full h-9">
-                    <SelectValue placeholder="Select a slice..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all">All Data (no filters)</SelectItem>
-                    {slices.map((slice) => (
-                      <SelectItem key={slice.id} value={slice.id}>
-                        {slice.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="p-3 space-y-3">
+                {/* Filter selector */}
+                <ReportFilterSelector
+                  properties={filterProperties}
+                  value={activeFilters}
+                  onChange={setActiveFilters}
+                  loading={loadingFilters}
+                />
 
-                {/* Active slice info */}
-                {activeSlice && (
-                  <div className="px-2 py-2 bg-blue-50 rounded-lg text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-blue-800">{activeSlice.name}</span>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => {
-                            setEditingSlice(activeSlice)
-                            setSliceName(activeSlice.name)
-                            setSliceFilters(
-                              Object.entries(activeSlice.filterBindings).map(([key, value]) => ({
-                                key,
-                                value: String(value),
-                              }))
-                            )
-                            setSliceModalOpen(true)
-                          }}
-                          className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                          title="Edit slice"
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm("Delete this slice?")) return
-                            try {
-                              await fetch(`/api/reports/${id}/slices/${activeSlice.id}`, {
-                                method: "DELETE",
-                                credentials: "include",
-                              })
-                              setActiveSliceId(null)
-                              fetchSlices()
-                            } catch (err) {
-                              console.error("Error deleting slice:", err)
-                            }
-                          }}
-                          className="p-1 hover:bg-red-100 rounded text-red-500"
-                          title="Delete slice"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
+                {/* Saved Slices - Quick Apply */}
+                {slices.length > 0 && (
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-600">Saved Slices</span>
                     </div>
-                    <div className="text-blue-600">
-                      {Object.entries(activeSlice.filterBindings).map(([key, value]) => (
-                        <span key={key} className="inline-block mr-2">
-                          {databaseColumns.find(c => c.key === key)?.label || key} = {String(value)}
-                        </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {slices.slice(0, 6).map((slice) => (
+                        <button
+                          key={slice.id}
+                          onClick={() => {
+                            // Apply slice filters to active filters
+                            const newFilters: FilterBindings = {}
+                            for (const [key, value] of Object.entries(slice.filterBindings)) {
+                              // Convert single values to arrays for the filter selector
+                              newFilters[key] = Array.isArray(value) ? value : [String(value)]
+                            }
+                            setActiveFilters(newFilters)
+                          }}
+                          className="px-2 py-1 text-xs bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded transition-colors"
+                        >
+                          {slice.name}
+                        </button>
                       ))}
+                      {slices.length > 6 && (
+                        <span className="px-2 py-1 text-xs text-gray-400">
+                          +{slices.length - 6} more
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Slice action buttons */}
-                <div className="flex gap-2">
+                {/* Save/Manage Slices buttons */}
+                <div className="flex gap-2 pt-2 border-t border-gray-200">
                   <Button
                     variant="outline"
                     size="sm"
                     className="flex-1"
                     onClick={() => {
                       setEditingSlice(null)
-                      setSliceName("")
-                      setSliceFilters([{ key: "", value: "" }])
+                      // Pre-fill slice name based on active filters
+                      const filterParts = Object.entries(activeFilters)
+                        .filter(([_, values]) => values.length > 0)
+                        .map(([_, values]) => values.length === 1 ? values[0] : `${values.length} items`)
+                      setSliceName(filterParts.join(", "))
                       setSliceModalOpen(true)
                     }}
+                    disabled={Object.keys(activeFilters).length === 0}
                   >
                     <Plus className="w-3.5 h-3.5 mr-1.5" />
                     Save as Slice
@@ -1368,15 +1367,13 @@ export default function ReportBuilderPage() {
         }}
       />
 
-      {/* Slice Modal */}
+      {/* Slice Modal - Save current filters as a named slice */}
       <Dialog open={sliceModalOpen} onOpenChange={(open) => !open && setSliceModalOpen(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingSlice ? "Edit Slice" : "Save as Slice"}</DialogTitle>
+            <DialogTitle>Save as Slice</DialogTitle>
             <DialogDescription>
-              {editingSlice 
-                ? "Update the slice name or filters" 
-                : "Create a reusable filter view for this report"}
+              Save the current filters as a reusable slice for quick access
             </DialogDescription>
           </DialogHeader>
 
@@ -1391,80 +1388,26 @@ export default function ReportBuilderPage() {
               />
             </div>
 
-            {/* Filters */}
+            {/* Current filters preview */}
             <div className="space-y-2">
-              <Label>Filters</Label>
-              <div className="space-y-2">
-                {sliceFilters.map((filter, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Select
-                      value={filter.key || "_empty"}
-                      onValueChange={(value) => {
-                        const newFilters = [...sliceFilters]
-                        newFilters[index].key = value === "_empty" ? "" : value
-                        setSliceFilters(newFilters)
-                      }}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Column..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty" disabled>Select column...</SelectItem>
-                        {databaseColumns.map((col) => (
-                          <SelectItem key={col.key} value={col.key}>
-                            {col.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <span className="flex items-center text-gray-400">=</span>
-                    <Select
-                      value={filter.value || "_empty"}
-                      onValueChange={(value) => {
-                        const newFilters = [...sliceFilters]
-                        newFilters[index].value = value === "_empty" ? "" : value
-                        setSliceFilters(newFilters)
-                      }}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Value..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty" disabled>Select value...</SelectItem>
-                        {filter.key && (
-                          // Get unique values for this column from preview data
-                          [...new Set(
-                            (report?.database.rows || [])
-                              .map(row => row[filter.key])
-                              .filter(v => v !== null && v !== undefined)
-                              .map(v => String(v))
-                          )].slice(0, 50).map((value) => (
-                            <SelectItem key={value} value={value}>
-                              {value}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <button
-                      onClick={() => {
-                        const newFilters = sliceFilters.filter((_, i) => i !== index)
-                        setSliceFilters(newFilters.length > 0 ? newFilters : [{ key: "", value: "" }])
-                      }}
-                      className="p-2 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSliceFilters([...sliceFilters, { key: "", value: "" }])}
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Add Filter
-                </Button>
+              <Label>Filters to Save</Label>
+              <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                {Object.entries(activeFilters)
+                  .filter(([_, values]) => values.length > 0)
+                  .map(([key, values]) => {
+                    const col = filterProperties.find(p => p.key === key)
+                    return (
+                      <div key={key} className="flex items-center gap-2 py-1">
+                        <span className="font-medium text-gray-700">{col?.label || key}:</span>
+                        <span className="text-gray-600">
+                          {values.length === 1 ? values[0] : `${values.length} values`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                {Object.keys(activeFilters).length === 0 && (
+                  <span className="text-gray-400">No filters selected</span>
+                )}
               </div>
             </div>
           </div>
@@ -1477,58 +1420,43 @@ export default function ReportBuilderPage() {
               onClick={async () => {
                 if (!sliceName.trim()) return
                 
-                // Build filter bindings from filter rows
+                // Convert activeFilters to filterBindings format for the slice
+                // Slices use single values, so we take the first value if multiple selected
                 const filterBindings: Record<string, unknown> = {}
-                for (const filter of sliceFilters) {
-                  if (filter.key && filter.value) {
-                    filterBindings[filter.key] = filter.value
+                for (const [key, values] of Object.entries(activeFilters)) {
+                  if (values.length > 0) {
+                    // Store as array for multi-select support
+                    filterBindings[key] = values
                   }
                 }
                 
                 setSavingSlice(true)
                 try {
-                  if (editingSlice) {
-                    // Update existing slice
-                    await fetch(`/api/reports/${id}/slices/${editingSlice.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({
-                        name: sliceName.trim(),
-                        filterBindings,
-                      }),
-                    })
-                  } else {
-                    // Create new slice
-                    const response = await fetch(`/api/reports/${id}/slices`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({
-                        name: sliceName.trim(),
-                        filterBindings,
-                      }),
-                    })
-                    const data = await response.json()
-                    if (data.slice) {
-                      setActiveSliceId(data.slice.id)
-                    }
-                  }
+                  await fetch(`/api/reports/${id}/slices`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      name: sliceName.trim(),
+                      filterBindings,
+                    }),
+                  })
                   fetchSlices()
                   setSliceModalOpen(false)
+                  setSliceName("")
                 } catch (err) {
                   console.error("Error saving slice:", err)
                 } finally {
                   setSavingSlice(false)
                 }
               }}
-              disabled={!sliceName.trim() || savingSlice}
+              disabled={!sliceName.trim() || savingSlice || Object.keys(activeFilters).length === 0}
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {savingSlice ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
               ) : null}
-              {editingSlice ? "Update Slice" : "Save Slice"}
+              Save Slice
             </Button>
           </DialogFooter>
         </DialogContent>

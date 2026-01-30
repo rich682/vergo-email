@@ -158,7 +158,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, type, createLineage, reportDefinitionId, reportSliceId } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, type, createLineage, reportDefinitionId, reportFilterBindings } = body
 
     // 1. Handle TaskLineage promotion if requested
     let lineageId = existingInstance.lineageId
@@ -234,7 +234,7 @@ export async function PATCH(
       lineageId: lineageId || undefined,
       // Report configuration (for REPORTS type tasks)
       reportDefinitionId: reportDefinitionId !== undefined ? reportDefinitionId : undefined,
-      reportSliceId: reportSliceId !== undefined ? reportSliceId : undefined,
+      reportFilterBindings: reportFilterBindings !== undefined ? reportFilterBindings : undefined,
     })
 
     if (!taskInstance) {
@@ -278,7 +278,7 @@ export async function PATCH(
             await ReportGenerationService.generateForPeriod({
               organizationId,
               reportDefinitionId,
-              reportSliceId: reportSliceId || undefined,
+              filterBindings: reportFilterBindings || undefined,
               taskInstanceId: id,
               boardId: taskInstance.boardId,
               periodKey,
