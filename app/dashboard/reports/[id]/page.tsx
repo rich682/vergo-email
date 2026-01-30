@@ -1163,18 +1163,18 @@ export default function ReportBuilderPage() {
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
-                    <thead className="bg-gray-100 border-b-2 border-gray-200">
+                    <thead className="bg-white border-b border-gray-300">
                       <tr>
                         {previewData.table.columns.map((col, colIndex) => (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
+                            className={`px-4 py-3 text-left text-sm font-medium text-gray-900 ${
                               colIndex > 0 ? "border-l border-gray-200" : ""
-                            } ${col.type === "formula" ? "bg-purple-100 text-purple-700" : "text-gray-600"}`}
+                            }`}
                           >
                             <div className="flex items-center gap-1.5">
                               {col.type === "formula" && (
-                                <FunctionSquare className="w-3.5 h-3.5 text-purple-600" />
+                                <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
                               )}
                               {col.label}
                             </div>
@@ -1183,62 +1183,58 @@ export default function ReportBuilderPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white">
-                      {previewData.table.rows.map((row, rowIndex) => (
-                        <tr key={rowIndex} className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : ""}`}>
-                          {previewData.table.columns.map((col, colIndex) => {
-                            // For pivot layouts, use row's _format if available (except for label column)
-                            const effectiveFormat = col.key === "_label" 
-                              ? "text" 
-                              : ((row._format as string) || col.dataType)
-                            const rowType = row._type as string | undefined
-                            const isLabelColumn = col.key === "_label"
-                            const isFormulaColumn = col.type === "formula"
-                            return (
-                              <td 
-                                key={col.key} 
-                                className={`px-4 py-3 text-sm border-b border-gray-100 ${
-                                  colIndex > 0 ? "border-l border-gray-100" : ""
-                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""} ${
-                                  isFormulaColumn ? "bg-purple-50 text-purple-900" : "text-gray-700"
-                                }`}
-                              >
-                                {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
-                                  <span className="flex items-center gap-1.5">
-                                    {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
-                                    {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
-                                    {formatCellValue(row[col.key], effectiveFormat)}
-                                  </span>
-                                ) : (
-                                  formatCellValue(row[col.key], effectiveFormat)
-                                )}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
+                      {previewData.table.rows.map((row, rowIndex) => {
+                        const rowType = row._type as string | undefined
+                        return (
+                          <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
+                            {previewData.table.columns.map((col, colIndex) => {
+                              // For pivot layouts, use row's _format if available (except for label column)
+                              const effectiveFormat = col.key === "_label" 
+                                ? "text" 
+                                : ((row._format as string) || col.dataType)
+                              const isLabelColumn = col.key === "_label"
+                              return (
+                                <td 
+                                  key={col.key} 
+                                  className={`px-4 py-3 text-sm text-gray-900 border-b border-gray-200 ${
+                                    colIndex > 0 ? "border-l border-gray-200" : ""
+                                  }`}
+                                >
+                                  {isLabelColumn ? (
+                                    <span className="flex items-center gap-1.5">
+                                      {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
+                                      {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                      {formatCellValue(row[col.key], effectiveFormat)}
+                                    </span>
+                                  ) : (
+                                    formatCellValue(row[col.key], effectiveFormat)
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
                       {/* Formula rows */}
                       {previewData.table.formulaRows.map((fr) => (
-                        <tr key={fr.key} className="bg-blue-50 font-medium border-t-2 border-blue-200">
-                          {previewData.table.columns.map((col, colIndex) => {
-                            const isFormulaColumn = col.type === "formula"
-                            return (
-                              <td 
-                                key={col.key} 
-                                className={`px-4 py-3 text-sm ${
-                                  colIndex > 0 ? "border-l border-blue-100" : ""
-                                } ${isFormulaColumn ? "bg-purple-100 text-purple-900" : "text-gray-900"}`}
-                              >
-                                {colIndex === 0 ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <FunctionSquare className="w-3.5 h-3.5 text-green-600" />
-                                    {fr.label}
-                                  </span>
-                                ) : (
-                                  formatCellValue(fr.values[col.key], col.dataType)
-                                )}
-                              </td>
-                            )
-                          })}
+                        <tr key={fr.key} className="hover:bg-gray-50 transition-colors">
+                          {previewData.table.columns.map((col, colIndex) => (
+                            <td 
+                              key={col.key} 
+                              className={`px-4 py-3 text-sm text-gray-900 border-b border-gray-200 ${
+                                colIndex > 0 ? "border-l border-gray-200" : ""
+                              }`}
+                            >
+                              {colIndex === 0 ? (
+                                <span className="flex items-center gap-1.5">
+                                  <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
+                                  {fr.label}
+                                </span>
+                              ) : (
+                                formatCellValue(fr.values[col.key], col.dataType)
+                              )}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
