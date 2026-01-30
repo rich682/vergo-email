@@ -41,7 +41,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[API/boards/[id]] Error getting board:", error)
     return NextResponse.json(
-      { error: "Failed to get board", message: error.message },
+      { error: "Failed to get board", message: error.message, code: error.code, meta: error.meta },
       { status: 500 }
     )
   }

@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("TaskInstances list error:", error)
     return NextResponse.json(
-      { error: "Failed to list task instances", message: error.message },
+      { error: "Failed to list task instances", message: error.message, code: error.code, meta: error.meta },
       { status: 500 }
     )
   }
