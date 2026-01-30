@@ -61,13 +61,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Parse the database schema to find filterable columns
-    const schema = report.database.schema as Array<{
-      key: string
-      label: string
-      dataType: string
-    }> | null
+    // DatabaseSchema is an object with { columns: [...], version: number }
+    const schemaData = report.database.schema as {
+      columns: Array<{ key: string; label: string; dataType: string }>
+      version?: number
+    } | null
 
-    if (!schema || schema.length === 0) {
+    const schema = schemaData?.columns || []
+
+    if (schema.length === 0) {
       return NextResponse.json({ properties: [] })
     }
 
