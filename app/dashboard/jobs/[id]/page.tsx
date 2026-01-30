@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -272,14 +272,18 @@ function getInitials(name: string | null, email: string): string {
 export default function JobDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const jobId = params.id as string
+
+  // Get initial tab from URL query parameter
+  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "reconciliation" | "compare" | "report" | null
 
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare" | "report">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare" | "report">(initialTab || "overview")
   const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
   
   // Inline editing states

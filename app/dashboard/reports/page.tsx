@@ -441,11 +441,18 @@ export default function ReportsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link href={`/api/generated-reports/${report.id}`}>
-                          <Button variant="ghost" size="sm">
+                        {report.taskInstance ? (
+                          <Link href={`/dashboard/jobs/${report.taskInstance.id}?tab=report`}>
+                            <Button variant="ghost" size="sm" title="View in Task">
+                              <Eye className="w-4 h-4 mr-1" />
+                              <span className="text-xs">View</span>
+                            </Button>
+                          </Link>
+                        ) : (
+                          <Button variant="ghost" size="sm" disabled>
                             <Eye className="w-4 h-4" />
                           </Button>
-                        </Link>
+                        )}
                       </td>
                     </tr>
                   ))
