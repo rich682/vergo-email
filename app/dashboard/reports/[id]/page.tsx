@@ -79,6 +79,14 @@ interface MetricRow {
   order: number
 }
 
+// Formula column for pivot layout - computed columns that aggregate across pivot columns
+interface PivotFormulaColumn {
+  key: string
+  label: string
+  expression: string  // "SUM(*)" or "[Col A] + [Col B]"
+  order: number
+}
+
 interface DatabaseSchema {
   columns: Array<{
     key: string
@@ -102,6 +110,7 @@ interface ReportDefinition {
   // Pivot layout fields
   pivotColumnKey: string | null
   metricRows: MetricRow[]
+  pivotFormulaColumns: PivotFormulaColumn[]  // Formula columns for pivot layout
   database: {
     id: string
     name: string
@@ -181,6 +190,10 @@ export default function ReportBuilderPage() {
     open: boolean
     editingKey: string | null  // null = new row, string = editing existing
   }>({ open: false, editingKey: null })
+  const [pivotFormulaColumnModal, setPivotFormulaColumnModal] = useState<{
+    open: boolean
+    editingKey: string | null
+  }>({ open: false, editingKey: null })
   // Editing state - Standard layout
   const [reportColumns, setReportColumns] = useState<ReportColumn[]>([])
   const [reportFormulaRows, setReportFormulaRows] = useState<ReportFormulaRow[]>([])
@@ -188,6 +201,7 @@ export default function ReportBuilderPage() {
   // Editing state - Pivot layout
   const [pivotColumnKey, setPivotColumnKey] = useState<string | null>(null)
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
+  const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
 
   // Slice state
   const [slices, setSlices] = useState<ReportSlice[]>([])
@@ -223,6 +237,7 @@ export default function ReportBuilderPage() {
       // Pivot layout state
       setPivotColumnKey(data.report.pivotColumnKey || null)
       setMetricRows(data.report.metricRows || [])
+      setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
     } catch (err: any) {
@@ -286,6 +301,7 @@ export default function ReportBuilderPage() {
             formulaRows: reportFormulaRows,
             pivotColumnKey,
             metricRows,
+            pivotFormulaColumns,
           },
           // Apply slice filters if a slice is active
           filters: activeSlice?.filterBindings,
@@ -306,7 +322,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, activeSlice])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, activeSlice])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -335,6 +351,7 @@ export default function ReportBuilderPage() {
           // Pivot layout fields
           pivotColumnKey,
           metricRows,
+          pivotFormulaColumns,
           // Variance settings
           compareMode,
         }),
@@ -354,7 +371,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, compareMode])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -383,7 +400,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, compareMode, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -738,6 +755,88 @@ export default function ReportBuilderPage() {
               </div>
             )}
 
+            {/* === PIVOT COLUMNS SECTION === */}
+            {report.layout === "pivot" && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
+                  <div>
+                    <span className="font-medium text-sm text-gray-700">Pivot Columns</span>
+                    <p className="text-xs text-gray-400 mt-0.5">Auto-generated + formula columns</p>
+                  </div>
+                </div>
+
+                <div className="p-3 space-y-3">
+                  {/* Auto-generated columns from pivot */}
+                  {previewData?.table?.columns && previewData.table.columns.filter(c => c.key !== "_label" && c.type === "source").length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                        From Data
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {previewData.table.columns
+                          .filter(c => c.key !== "_label" && c.type === "source")
+                          .map(col => (
+                            <span
+                              key={col.key}
+                              className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs"
+                            >
+                              {col.label}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Formula columns */}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                      Formula Columns
+                    </p>
+                    {pivotFormulaColumns.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">No formula columns yet</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {[...pivotFormulaColumns].sort((a, b) => a.order - b.order).map(fc => (
+                          <button
+                            key={fc.key}
+                            onClick={() => setPivotFormulaColumnModal({ open: true, editingKey: fc.key })}
+                            className="flex items-center gap-2 w-full px-2 py-1.5 rounded hover:bg-gray-100 text-left group"
+                          >
+                            <FunctionSquare className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                            <span className="flex-1 text-sm text-gray-700 truncate">{fc.label}</span>
+                            <span className="text-xs text-gray-400 font-mono truncate max-w-24">{fc.expression}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPivotFormulaColumns(prev => prev.filter(c => c.key !== fc.key))
+                                setHasUnsavedChanges(true)
+                              }}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add Formula Column Button */}
+                <div className="px-3 py-2 border-t border-gray-200 bg-gray-50">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setPivotFormulaColumnModal({ open: true, editingKey: null })}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Add Formula Column
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* === STANDARD LAYOUT UI === */}
             {report.layout !== "pivot" && (
               <>
@@ -1056,13 +1155,13 @@ export default function ReportBuilderPage() {
                         {previewData.table.columns.map((col, colIndex) => (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                            className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${
                               colIndex > 0 ? "border-l border-gray-200" : ""
-                            }`}
+                            } ${col.type === "formula" ? "bg-purple-100 text-purple-700" : "text-gray-600"}`}
                           >
                             <div className="flex items-center gap-1.5">
                               {col.type === "formula" && (
-                                <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
+                                <FunctionSquare className="w-3.5 h-3.5 text-purple-600" />
                               )}
                               {col.label}
                             </div>
@@ -1080,12 +1179,15 @@ export default function ReportBuilderPage() {
                               : ((row._format as string) || col.dataType)
                             const rowType = row._type as string | undefined
                             const isLabelColumn = col.key === "_label"
+                            const isFormulaColumn = col.type === "formula"
                             return (
                               <td 
                                 key={col.key} 
-                                className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-100 ${
+                                className={`px-4 py-3 text-sm border-b border-gray-100 ${
                                   colIndex > 0 ? "border-l border-gray-100" : ""
-                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
+                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""} ${
+                                  isFormulaColumn ? "bg-purple-50 text-purple-900" : "text-gray-700"
+                                }`}
                               >
                                 {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
                                   <span className="flex items-center gap-1.5">
@@ -1104,23 +1206,26 @@ export default function ReportBuilderPage() {
                       {/* Formula rows */}
                       {previewData.table.formulaRows.map((fr) => (
                         <tr key={fr.key} className="bg-blue-50 font-medium border-t-2 border-blue-200">
-                          {previewData.table.columns.map((col, colIndex) => (
-                            <td 
-                              key={col.key} 
-                              className={`px-4 py-3 text-sm text-gray-900 ${
-                                colIndex > 0 ? "border-l border-blue-100" : ""
-                              }`}
-                            >
-                              {colIndex === 0 ? (
-                                <span className="flex items-center gap-1.5">
-                                  <FunctionSquare className="w-3.5 h-3.5 text-green-600" />
-                                  {fr.label}
-                                </span>
-                              ) : (
-                                formatCellValue(fr.values[col.key], col.dataType)
-                              )}
-                            </td>
-                          ))}
+                          {previewData.table.columns.map((col, colIndex) => {
+                            const isFormulaColumn = col.type === "formula"
+                            return (
+                              <td 
+                                key={col.key} 
+                                className={`px-4 py-3 text-sm ${
+                                  colIndex > 0 ? "border-l border-blue-100" : ""
+                                } ${isFormulaColumn ? "bg-purple-100 text-purple-900" : "text-gray-900"}`}
+                              >
+                                {colIndex === 0 ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <FunctionSquare className="w-3.5 h-3.5 text-green-600" />
+                                    {fr.label}
+                                  </span>
+                                ) : (
+                                  formatCellValue(fr.values[col.key], col.dataType)
+                                )}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -1221,6 +1326,36 @@ export default function ReportBuilderPage() {
           setMetricRows(prev => [...prev, newMetric])
           setHasUnsavedChanges(true)
           return newMetric.key
+        }}
+      />
+
+      {/* Pivot Formula Column Modal */}
+      <PivotFormulaColumnModal
+        open={pivotFormulaColumnModal.open}
+        editingKey={pivotFormulaColumnModal.editingKey}
+        pivotFormulaColumns={pivotFormulaColumns}
+        pivotValues={
+          // Get auto-generated pivot column labels from preview data (exclude _label and formula columns)
+          previewData?.table?.columns
+            ?.filter(c => c.key !== "_label" && c.type === "source")
+            ?.map(c => c.label) || []
+        }
+        onClose={() => setPivotFormulaColumnModal({ open: false, editingKey: null })}
+        onSave={(column) => {
+          if (pivotFormulaColumnModal.editingKey) {
+            setPivotFormulaColumns(prev =>
+              prev.map(c => c.key === pivotFormulaColumnModal.editingKey ? column : c)
+            )
+          } else {
+            setPivotFormulaColumns(prev => [...prev, { ...column, order: prev.length }])
+          }
+          setHasUnsavedChanges(true)
+          setPivotFormulaColumnModal({ open: false, editingKey: null })
+        }}
+        onDelete={(key) => {
+          setPivotFormulaColumns(prev => prev.filter(c => c.key !== key))
+          setHasUnsavedChanges(true)
+          setPivotFormulaColumnModal({ open: false, editingKey: null })
         }}
       />
 
@@ -2232,6 +2367,191 @@ function MetricRowModal({
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {editingKey ? "Update" : "Add"} Row
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================
+// Pivot Formula Column Modal Component
+// ============================================
+interface PivotFormulaColumnModalProps {
+  open: boolean
+  editingKey: string | null
+  pivotFormulaColumns: PivotFormulaColumn[]
+  pivotValues: string[]  // Available pivot column labels for reference
+  onClose: () => void
+  onSave: (column: PivotFormulaColumn) => void
+  onDelete: (key: string) => void
+}
+
+function PivotFormulaColumnModal({
+  open,
+  editingKey,
+  pivotFormulaColumns,
+  pivotValues,
+  onClose,
+  onSave,
+  onDelete,
+}: PivotFormulaColumnModalProps) {
+  const [label, setLabel] = useState("")
+  const [expression, setExpression] = useState("")
+
+  const editingColumn = editingKey
+    ? pivotFormulaColumns.find(c => c.key === editingKey)
+    : null
+
+  // Reset form when opening
+  useEffect(() => {
+    if (open) {
+      if (editingColumn) {
+        setLabel(editingColumn.label)
+        setExpression(editingColumn.expression)
+      } else {
+        setLabel("")
+        setExpression("")
+      }
+    }
+  }, [open, editingColumn])
+
+  const handleSave = () => {
+    if (!label.trim() || !expression.trim()) return
+
+    const key = editingKey || `pfc_${Date.now()}`
+    onSave({
+      key,
+      label: label.trim(),
+      expression: expression.trim(),
+      order: editingColumn?.order ?? pivotFormulaColumns.length,
+    })
+  }
+
+  const insertExpression = (expr: string) => {
+    setExpression(prev => prev + (prev ? " " : "") + expr)
+  }
+
+  const isValid = label.trim() && expression.trim()
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{editingKey ? "Edit Formula Column" : "Add Formula Column"}</DialogTitle>
+          <DialogDescription>
+            Create a computed column that aggregates across pivot columns
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Label */}
+          <div className="space-y-2">
+            <Label>Column Label *</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g., Total, Combo, Average"
+            />
+          </div>
+
+          {/* Expression */}
+          <div className="space-y-2">
+            <Label>Formula Expression *</Label>
+            <Input
+              value={expression}
+              onChange={(e) => setExpression(e.target.value)}
+              placeholder="e.g., SUM(*) or [Col A] + [Col B]"
+              className="font-mono"
+            />
+            <p className="text-xs text-gray-500">
+              Use SUM(*) to total all columns, or [Column Name] to reference specific columns
+            </p>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Quick formulas
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => insertExpression("SUM(*)")}
+                className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium"
+              >
+                SUM(*)
+              </button>
+              <button
+                type="button"
+                onClick={() => insertExpression("AVG(*)")}
+                className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium"
+              >
+                AVG(*)
+              </button>
+              <button
+                type="button"
+                onClick={() => insertExpression("MIN(*)")}
+                className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium"
+              >
+                MIN(*)
+              </button>
+              <button
+                type="button"
+                onClick={() => insertExpression("MAX(*)")}
+                className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-xs font-medium"
+              >
+                MAX(*)
+              </button>
+            </div>
+          </div>
+
+          {/* Available Pivot Columns */}
+          {pivotValues.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Click to reference specific columns
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {pivotValues.map(pv => (
+                  <button
+                    key={pv}
+                    type="button"
+                    onClick={() => insertExpression(`[${pv}]`)}
+                    className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs"
+                  >
+                    {pv}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="flex items-center justify-between">
+          <div>
+            {editingKey && (
+              <Button
+                variant="ghost"
+                onClick={() => onDelete(editingKey)}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Delete
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!isValid}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {editingKey ? "Update" : "Add"} Column
             </Button>
           </div>
         </DialogFooter>

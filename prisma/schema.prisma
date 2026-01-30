@@ -1227,6 +1227,10 @@ model ReportDefinition {
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, format, order }
   metricRows      Json     @default("[]")
   
+  // Formula columns for pivot layout - computed columns that aggregate across pivot columns
+  // Array of: { key, label, expression, order }
+  pivotFormulaColumns Json @default("[]")
+  
   // Variance analysis configuration
   compareMode     String   @default("none")  // "none" | "mom" | "yoy"
   

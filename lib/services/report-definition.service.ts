@@ -56,6 +56,14 @@ export interface MetricRow {
 export type ComparePeriodType = "mom" | "qoq" | "yoy"
 export type CompareOutputType = "value" | "delta" | "percent"
 
+// Formula column for pivot layout - computed columns that aggregate across pivot columns
+export interface PivotFormulaColumn {
+  key: string                    // Unique key for this column (e.g., "total_col")
+  label: string                  // Display label (e.g., "Total", "Combo")
+  expression: string             // Formula: "SUM(*)" for all, or "[Col A] + [Col B]" for specific
+  order: number                  // Position after auto-generated pivot columns
+}
+
 // Valid cadence values for reports
 export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
 
@@ -79,6 +87,7 @@ export interface CreateReportDefinitionInput {
   // Pivot layout fields
   pivotColumnKey?: string
   metricRows?: MetricRow[]
+  pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
   organizationId: string
   createdById: string
 }
@@ -94,6 +103,7 @@ export interface UpdateReportDefinitionInput {
   // Pivot layout fields
   pivotColumnKey?: string
   metricRows?: MetricRow[]
+  pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
 }
 
 export interface ReportPreviewResult {
@@ -238,6 +248,7 @@ export class ReportDefinitionService {
         formulaRows: (input.formulaRows || []) as any,
         pivotColumnKey: input.pivotColumnKey,
         metricRows: (input.metricRows || []) as any,
+        pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
       },
       include: {
@@ -288,6 +299,7 @@ export class ReportDefinitionService {
         // Pivot layout fields
         ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
         ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
+        ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns as any }),
       },
       include: {
         database: {

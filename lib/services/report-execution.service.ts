@@ -37,6 +37,7 @@ export interface ExecutePreviewInput {
     formulaRows?: any[]
     pivotColumnKey?: string | null
     metricRows?: any[]
+    pivotFormulaColumns?: any[]  // Formula columns for pivot layout
   }
   filters?: Record<string, unknown>  // Optional - column-value filters from slice
 }
@@ -108,6 +109,13 @@ interface MetricRow {
   order: number
 }
 
+interface PivotFormulaColumn {
+  key: string
+  label: string
+  expression: string  // "SUM(*)" or "[Col A] + [Col B]"
+  order: number
+}
+
 // ============================================
 // Service
 // ============================================
@@ -146,6 +154,7 @@ export class ReportExecutionService {
       formulaRows: liveConfig.formulaRows ?? report.formulaRows,
       pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : report.pivotColumnKey,
       metricRows: liveConfig.metricRows ?? report.metricRows,
+      pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
     } : report
 
     const cadence = report.cadence as ReportCadence
@@ -545,6 +554,20 @@ export class ReportExecutionService {
       }
     }
 
+    // Get formula columns for pivot layout
+    const pivotFormulaColumns = (report.pivotFormulaColumns || []) as PivotFormulaColumn[]
+    const sortedFormulaColumns = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
+
+    // Add formula columns to output columns
+    for (const fc of sortedFormulaColumns) {
+      columns.push({
+        key: fc.key,
+        label: fc.label,
+        dataType: "number",
+        type: "formula",
+      })
+    }
+
     // Build output rows with format and type information
     const dataRows = sortedMetrics.map(metric => {
       const row: Record<string, unknown> = { 
@@ -555,10 +578,107 @@ export class ReportExecutionService {
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]
       }
+      
+      // Compute formula column values for this row
+      for (const fc of sortedFormulaColumns) {
+        row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
+      }
+      
       return row
     })
 
     return { columns, rows: dataRows, formulaRows: [] }
+  }
+
+  /**
+   * Evaluate a formula column expression for a single row
+   * Supports:
+   * - SUM(*) - sum all pivot columns
+   * - AVG(*) - average all pivot columns
+   * - MIN(*), MAX(*) - min/max of all pivot columns
+   * - [Col A] + [Col B] - reference specific columns by label
+   */
+  private static evaluatePivotFormulaColumn(
+    expression: string,
+    row: Record<string, unknown>,
+    pivotValues: string[]
+  ): number | null {
+    const trimmedExpr = expression.trim().toUpperCase()
+    
+    // Handle aggregate functions with wildcard: SUM(*), AVG(*), MIN(*), MAX(*)
+    const wildcardMatch = trimmedExpr.match(/^(SUM|AVG|AVERAGE|MIN|MAX|COUNT)\s*\(\s*\*\s*\)$/i)
+    if (wildcardMatch) {
+      const fn = wildcardMatch[1].toUpperCase()
+      
+      // Collect all numeric values from pivot columns
+      const values: number[] = []
+      for (const pv of pivotValues) {
+        const val = row[pv]
+        if (typeof val === "number" && !isNaN(val)) {
+          values.push(val)
+        } else if (typeof val === "string" && !isNaN(Number(val))) {
+          values.push(Number(val))
+        }
+      }
+      
+      if (values.length === 0) return null
+      
+      switch (fn) {
+        case "SUM":
+          return Math.round(values.reduce((a, b) => a + b, 0) * 100) / 100
+        case "AVG":
+        case "AVERAGE":
+          return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
+        case "MIN":
+          return Math.min(...values)
+        case "MAX":
+          return Math.max(...values)
+        case "COUNT":
+          return values.length
+        default:
+          return null
+      }
+    }
+    
+    // Handle column references: [Col A] + [Col B]
+    // Replace [column label] with the actual value from the row
+    let evalExpr = expression
+    const columnRefPattern = /\[([^\]]+)\]/g
+    let match
+    
+    while ((match = columnRefPattern.exec(expression)) !== null) {
+      const columnLabel = match[1]
+      // Find the pivot value that matches this label
+      const val = row[columnLabel]
+      let numVal = 0
+      
+      if (typeof val === "number" && !isNaN(val)) {
+        numVal = val
+      } else if (typeof val === "string" && !isNaN(Number(val))) {
+        numVal = Number(val)
+      } else if (val === null || val === undefined) {
+        numVal = 0
+      }
+      
+      evalExpr = evalExpr.replace(match[0], String(numVal))
+    }
+    
+    // Evaluate the resulting arithmetic expression
+    // Only allow numbers, operators, parentheses, and spaces
+    if (!/^[\d\s+\-*/().]+$/.test(evalExpr)) {
+      return null
+    }
+    
+    try {
+      // eslint-disable-next-line no-eval
+      const result = Function(`"use strict"; return (${evalExpr})`)()
+      if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
+        return Math.round(result * 100) / 100
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
   /**
