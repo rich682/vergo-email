@@ -24,6 +24,8 @@ import {
   MoreVertical,
   AlertTriangle,
   GripVertical,
+  Layers,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -211,6 +213,7 @@ export default function ReportBuilderPage() {
   const [sliceName, setSliceName] = useState("")
   const [sliceFilters, setSliceFilters] = useState<Array<{ key: string; value: string }>>([])
   const [savingSlice, setSavingSlice] = useState(false)
+  const [bulkSliceModalOpen, setBulkSliceModalOpen] = useState(false)
 
   // Get active slice
   const activeSlice = useMemo(() => {
@@ -618,21 +621,31 @@ export default function ReportBuilderPage() {
                   </div>
                 )}
 
-                {/* Save as slice button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setEditingSlice(null)
-                    setSliceName("")
-                    setSliceFilters([{ key: "", value: "" }])
-                    setSliceModalOpen(true)
-                  }}
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Save as Slice
-                </Button>
+                {/* Slice action buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setEditingSlice(null)
+                      setSliceName("")
+                      setSliceFilters([{ key: "", value: "" }])
+                      setSliceModalOpen(true)
+                    }}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Save as Slice
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBulkSliceModalOpen(true)}
+                    title="Create multiple slices from column values"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -1524,6 +1537,19 @@ export default function ReportBuilderPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Slice Modal */}
+      <BulkSliceModal
+        open={bulkSliceModalOpen}
+        reportId={id}
+        databaseColumns={databaseColumns}
+        databaseRows={(report?.database?.rows || []) as Array<Record<string, unknown>>}
+        existingSliceNames={slices.map(s => s.name)}
+        onClose={() => setBulkSliceModalOpen(false)}
+        onCreated={() => {
+          fetchSlices()
+        }}
+      />
 
     </div>
   )
@@ -2555,6 +2581,282 @@ function PivotFormulaColumnModal({
             </Button>
           </div>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================
+// Bulk Slice Modal Component
+// ============================================
+interface BulkSliceModalProps {
+  open: boolean
+  reportId: string
+  databaseColumns: Array<{ key: string; label: string; dataType: string }>
+  databaseRows: Array<Record<string, unknown>>
+  existingSliceNames: string[]
+  onClose: () => void
+  onCreated: () => void  // Callback to refresh slices list
+}
+
+function BulkSliceModal({
+  open,
+  reportId,
+  databaseColumns,
+  databaseRows,
+  existingSliceNames,
+  onClose,
+  onCreated,
+}: BulkSliceModalProps) {
+  const [selectedColumnKey, setSelectedColumnKey] = useState("")
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set())
+  const [namePrefix, setNamePrefix] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null)
+
+  // Get unique values for the selected column
+  const uniqueValues = useMemo(() => {
+    if (!selectedColumnKey) return []
+    const values = new Set<string>()
+    for (const row of databaseRows) {
+      const val = row[selectedColumnKey]
+      if (val !== null && val !== undefined && String(val).trim()) {
+        values.add(String(val))
+      }
+    }
+    return [...values].sort()
+  }, [selectedColumnKey, databaseRows])
+
+  // Check which values would be skipped (already have slices)
+  const existingNamesSet = useMemo(() => new Set(existingSliceNames), [existingSliceNames])
+  
+  const getSliceName = (value: string) => namePrefix ? `${namePrefix}${value}` : value
+  
+  const wouldBeSkipped = (value: string) => existingNamesSet.has(getSliceName(value))
+
+  // Reset form when opening
+  useEffect(() => {
+    if (open) {
+      setSelectedColumnKey("")
+      setSelectedValues(new Set())
+      setNamePrefix("")
+      setResult(null)
+    }
+  }, [open])
+
+  // Auto-select all values when column changes
+  useEffect(() => {
+    if (selectedColumnKey && uniqueValues.length > 0) {
+      setSelectedValues(new Set(uniqueValues))
+    }
+  }, [selectedColumnKey, uniqueValues])
+
+  const toggleValue = (value: string) => {
+    setSelectedValues(prev => {
+      const next = new Set(prev)
+      if (next.has(value)) {
+        next.delete(value)
+      } else {
+        next.add(value)
+      }
+      return next
+    })
+  }
+
+  const selectAll = () => setSelectedValues(new Set(uniqueValues))
+  const deselectAll = () => setSelectedValues(new Set())
+
+  const handleCreate = async () => {
+    if (selectedValues.size === 0) return
+
+    setCreating(true)
+    setResult(null)
+
+    try {
+      const response = await fetch(`/api/reports/${reportId}/slices/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          columnKey: selectedColumnKey,
+          values: [...selectedValues],
+          namePrefix: namePrefix || undefined,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setResult({
+          created: data.created?.length || 0,
+          skipped: data.skipped?.length || 0,
+        })
+        onCreated()
+      } else {
+        const data = await response.json()
+        console.error("Error creating slices:", data.error)
+      }
+    } catch (err) {
+      console.error("Error creating slices:", err)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const selectedCount = selectedValues.size
+  const newSlicesCount = [...selectedValues].filter(v => !wouldBeSkipped(v)).length
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Bulk Create Slices</DialogTitle>
+          <DialogDescription>
+            Create multiple slices at once from unique values in a column
+          </DialogDescription>
+        </DialogHeader>
+
+        {result ? (
+          // Show result
+          <div className="py-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <Check className="w-6 h-6 text-green-600" />
+            </div>
+            <p className="text-lg font-medium text-gray-900 mb-1">
+              {result.created} slice{result.created !== 1 ? "s" : ""} created
+            </p>
+            {result.skipped > 0 && (
+              <p className="text-sm text-gray-500">
+                {result.skipped} skipped (already exist)
+              </p>
+            )}
+            <Button
+              className="mt-4"
+              onClick={onClose}
+            >
+              Done
+            </Button>
+          </div>
+        ) : (
+          // Show form
+          <div className="space-y-4 py-2">
+            {/* Column selector */}
+            <div className="space-y-2">
+              <Label>Select Column</Label>
+              <Select value={selectedColumnKey} onValueChange={setSelectedColumnKey}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a column..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {databaseColumns.map(col => (
+                    <SelectItem key={col.key} value={col.key}>
+                      {col.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                A slice will be created for each unique value in this column
+              </p>
+            </div>
+
+            {/* Name prefix (optional) */}
+            <div className="space-y-2">
+              <Label>Name Prefix (optional)</Label>
+              <Input
+                value={namePrefix}
+                onChange={(e) => setNamePrefix(e.target.value)}
+                placeholder="e.g., Location: "
+              />
+              <p className="text-xs text-gray-500">
+                {namePrefix 
+                  ? `Preview: "${getSliceName(uniqueValues[0] || "Value")}"` 
+                  : "Leave empty to use values as-is"}
+              </p>
+            </div>
+
+            {/* Value selection */}
+            {selectedColumnKey && uniqueValues.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Select Values ({selectedCount} of {uniqueValues.length})</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAll}
+                      className="text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      type="button"
+                      onClick={deselectAll}
+                      className="text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                  {uniqueValues.map(value => {
+                    const isSkipped = wouldBeSkipped(value)
+                    return (
+                      <label
+                        key={value}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 ${
+                          isSkipped ? "opacity-50" : ""
+                        }`}
+                      >
+                        <Checkbox
+                          checked={selectedValues.has(value)}
+                          onCheckedChange={() => toggleValue(value)}
+                          disabled={isSkipped}
+                        />
+                        <span className="text-sm text-gray-700 flex-1">{value}</span>
+                        {isSkipped && (
+                          <span className="text-xs text-gray-400">exists</span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+                {newSlicesCount < selectedCount && (
+                  <p className="text-xs text-amber-600">
+                    {selectedCount - newSlicesCount} selected value(s) will be skipped (slice already exists)
+                  </p>
+                )}
+              </div>
+            )}
+
+            {selectedColumnKey && uniqueValues.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">
+                No values found for this column
+              </p>
+            )}
+          </div>
+        )}
+
+        {!result && (
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || selectedValues.size === 0 || newSlicesCount === 0}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                `Create ${newSlicesCount} Slice${newSlicesCount !== 1 ? "s" : ""}`
+              )}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

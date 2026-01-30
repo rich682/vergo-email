@@ -43,6 +43,20 @@ export interface UpdateSliceInput {
   filterBindings?: FilterBindings
 }
 
+export interface BulkCreateSlicesInput {
+  organizationId: string
+  reportDefinitionId: string
+  columnKey: string          // The filter column key
+  values: string[]           // Unique values to create slices for
+  createdById: string
+  namePrefix?: string        // Optional prefix (e.g., "Location: ")
+}
+
+export interface BulkCreateSlicesResult {
+  created: ReportSlice[]
+  skipped: string[]  // Values that already have slices with that name
+}
+
 // ============================================
 // Service
 // ============================================
@@ -194,6 +208,65 @@ export class ReportSliceService {
     await prisma.reportSlice.delete({
       where: { id: sliceId },
     })
+  }
+
+  /**
+   * Bulk create slices from unique values in a column
+   * Creates one slice per value, skipping values that already have slices
+   */
+  static async createBulkSlices(input: BulkCreateSlicesInput): Promise<BulkCreateSlicesResult> {
+    const { organizationId, reportDefinitionId, columnKey, values, createdById, namePrefix } = input
+
+    // Verify report exists and belongs to organization
+    const report = await prisma.reportDefinition.findFirst({
+      where: {
+        id: reportDefinitionId,
+        organizationId,
+      },
+    })
+
+    if (!report) {
+      throw new Error("Report not found")
+    }
+
+    // Get existing slice names to check for duplicates
+    const existingSlices = await prisma.reportSlice.findMany({
+      where: {
+        reportDefinitionId,
+        organizationId,
+      },
+      select: { name: true },
+    })
+    const existingNames = new Set(existingSlices.map(s => s.name))
+
+    const created: ReportSlice[] = []
+    const skipped: string[] = []
+
+    // Create slices for each value
+    for (const value of values) {
+      const sliceName = namePrefix ? `${namePrefix}${value}` : value
+
+      // Skip if a slice with this name already exists
+      if (existingNames.has(sliceName)) {
+        skipped.push(value)
+        continue
+      }
+
+      const slice = await prisma.reportSlice.create({
+        data: {
+          organizationId,
+          reportDefinitionId,
+          name: sliceName,
+          filterBindings: { [columnKey]: value } as any,
+          createdById,
+        },
+      })
+
+      created.push(this.mapToSlice(slice))
+      existingNames.add(sliceName) // Track in case of duplicate values in input
+    }
+
+    return { created, skipped }
   }
 
   /**
