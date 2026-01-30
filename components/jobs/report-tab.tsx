@@ -169,7 +169,7 @@ export function ReportTab({
   const saveConfig = useCallback(async (newReportId: string | null, newSliceId: string | null) => {
     setSaving(true)
     try {
-      await fetch(`/api/task-instances/${jobId}`, {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -179,9 +179,17 @@ export function ReportTab({
         }),
       })
       
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Failed to save report config:", response.status, errorData)
+        alert(`Failed to save report configuration: ${errorData.error || response.statusText}`)
+        return
+      }
+      
       onConfigChange?.({ reportDefinitionId: newReportId, reportSliceId: newSliceId })
     } catch (error) {
       console.error("Error saving config:", error)
+      alert("Failed to save report configuration. Please try again.")
     } finally {
       setSaving(false)
     }
