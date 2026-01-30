@@ -34,6 +34,10 @@ import {
   type FilterableProperty, 
   type FilterBindings 
 } from "@/components/reports/report-filter-selector"
+import { 
+  ReportInsightsPanel, 
+  InsightsButton 
+} from "@/components/reports/report-insights-panel"
 
 interface ReportItem {
   id: string
@@ -137,6 +141,7 @@ export default function ReportsPage() {
   const [viewerPreviewData, setViewerPreviewData] = useState<GeneratedReportItem["data"]["table"] | null>(null)
   const [viewerFilterProperties, setViewerFilterProperties] = useState<FilterableProperty[]>([])
   const [viewerPeriods, setViewerPeriods] = useState<AvailablePeriod[]>([])
+  const [viewerInsightsOpen, setViewerInsightsOpen] = useState(false)
 
   // Fetch filter properties and periods when template changes
   const fetchTemplateData = useCallback(async (templateId: string) => {
@@ -867,6 +872,10 @@ export default function ReportsPage() {
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
+                <InsightsButton
+                  onClick={() => setViewerInsightsOpen(true)}
+                  disabled={!viewerPeriod || !viewingReport?.reportDefinition?.id}
+                />
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -1018,6 +1027,17 @@ export default function ReportsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* AI Insights Panel for Viewer */}
+      {viewerInsightsOpen && viewingReport?.reportDefinition?.id && viewerPeriod && (
+        <ReportInsightsPanel
+          reportId={viewingReport.reportDefinition.id}
+          periodKey={viewerPeriod}
+          filterBindings={viewerFilters}
+          compareMode="mom"
+          onClose={() => setViewerInsightsOpen(false)}
+        />
+      )}
     </div>
   )
 }

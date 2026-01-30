@@ -51,6 +51,10 @@ import {
   type FilterableProperty, 
   type FilterBindings 
 } from "@/components/reports/report-filter-selector"
+import { 
+  ReportInsightsPanel, 
+  InsightsButton 
+} from "@/components/reports/report-insights-panel"
 
 // Types
 interface ReportColumn {
@@ -183,6 +187,7 @@ export default function ReportBuilderPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle")
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialLoadRef = useRef(true)
+  const [insightsPanelOpen, setInsightsPanelOpen] = useState(false)
 
   // Modal state
   const [formulaColumnPanel, setFormulaColumnPanel] = useState<{
@@ -1023,15 +1028,21 @@ export default function ReportBuilderPage() {
                 <span className="text-sm font-medium text-gray-700">Preview</span>
                 {previewLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchPreview}
-                disabled={previewLoading}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${previewLoading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                <InsightsButton
+                  onClick={() => setInsightsPanelOpen(true)}
+                  disabled={!currentPeriodKey || previewLoading}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchPreview}
+                  disabled={previewLoading}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${previewLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
             </div>
             
             {/* Period and Compare Mode Controls */}
@@ -1475,6 +1486,16 @@ export default function ReportBuilderPage() {
         }}
       />
 
+      {/* AI Insights Panel */}
+      {insightsPanelOpen && report && currentPeriodKey && (
+        <ReportInsightsPanel
+          reportId={id}
+          periodKey={currentPeriodKey}
+          filterBindings={activeFilters}
+          compareMode={effectiveCompareMode}
+          onClose={() => setInsightsPanelOpen(false)}
+        />
+      )}
     </div>
   )
 }
