@@ -1279,15 +1279,16 @@ model ReportSlice {
 }
 
 // GeneratedReport stores the output of a report for a specific period
-// Created automatically when a board with REPORTS tasks completes
+// Created automatically when a board with REPORTS tasks completes, or manually by user
 model GeneratedReport {
   id                 String   @id @default(cuid())
   organizationId     String
   reportDefinitionId String
   reportSliceId      String?
-  taskInstanceId     String   // Source task that triggered generation
-  boardId            String   // Board period that was completed
+  taskInstanceId     String?  // Source task that triggered generation (null for manual reports)
+  boardId            String?  // Board period that was completed (null for manual reports)
   periodKey          String   // e.g., "2026-01" for monthly, "2026-Q1" for quarterly
+  source             String   @default("task") // "task" or "manual"
   
   // Snapshot of report output at generation time
   data               Json     // { columns, rows, formulaRows, metrics, etc. }
@@ -1299,8 +1300,8 @@ model GeneratedReport {
   organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
   reportSlice        ReportSlice?     @relation(fields: [reportSliceId], references: [id], onDelete: SetNull)
-  taskInstance       TaskInstance     @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  board              Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  taskInstance       TaskInstance?    @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  board              Board?           @relation(fields: [boardId], references: [id], onDelete: Cascade)
   
   @@index([organizationId, periodKey])
   @@index([reportDefinitionId])

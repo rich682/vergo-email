@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,7 +19,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
+import { 
+  ReportFilterSelector, 
+  type FilterableProperty, 
+  type FilterBindings 
+} from "@/components/reports/report-filter-selector"
 
 interface ReportItem {
   id: string
@@ -43,6 +57,7 @@ interface ReportItem {
 interface GeneratedReportItem {
   id: string
   periodKey: string
+  source?: "task" | "manual"
   generatedAt: string
   generatedBy: string
   data: {
@@ -62,11 +77,11 @@ interface GeneratedReportItem {
   taskInstance?: {
     id: string
     name: string
-  }
+  } | null
   board?: {
     id: string
     name: string
-  }
+  } | null
 }
 
 const CADENCE_LABELS: Record<string, string> = {
@@ -90,6 +105,123 @@ export default function ReportsPage() {
   const [generatedLoading, setGeneratedLoading] = useState(true)
   const [periodFilter, setPeriodFilter] = useState<string>("all")
   const [templateFilter, setTemplateFilter] = useState<string>("all")
+
+  // Create Report modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [createReportLoading, setCreateReportLoading] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>("")
+  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
+  const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
+  const [filtersLoading, setFiltersLoading] = useState(false)
+
+  // Fetch filter properties when template changes
+  const fetchFilterProperties = useCallback(async (templateId: string) => {
+    if (!templateId) {
+      setFilterProperties([])
+      return
+    }
+    try {
+      setFiltersLoading(true)
+      const response = await fetch(`/api/reports/${templateId}/filter-properties`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setFilterProperties(data.properties || [])
+      }
+    } catch (error) {
+      console.error("Error fetching filter properties:", error)
+    } finally {
+      setFiltersLoading(false)
+    }
+  }, [])
+
+  // Handle template selection change
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId)
+    setFilterBindings({})
+    fetchFilterProperties(templateId)
+  }
+
+  // Create manual report
+  const handleCreateReport = async () => {
+    if (!selectedTemplateId || !selectedPeriodKey) return
+
+    // Convert filter bindings to the format expected by the API
+    // Only include filters that have actual selections (not "all")
+    const activeFilters: Record<string, string[]> = {}
+    for (const [key, values] of Object.entries(filterBindings)) {
+      if (values.length > 0) {
+        activeFilters[key] = values
+      }
+    }
+
+    try {
+      setCreateReportLoading(true)
+      const response = await fetch("/api/generated-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          reportDefinitionId: selectedTemplateId,
+          periodKey: selectedPeriodKey,
+          filterBindings: Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
+        }),
+      })
+
+      if (response.ok) {
+        // Close modal and refresh list
+        setIsCreateModalOpen(false)
+        setSelectedTemplateId("")
+        setSelectedPeriodKey("")
+        setFilterBindings({})
+        fetchGeneratedReports()
+      } else {
+        const error = await response.json()
+        alert(error.error || "Failed to create report")
+      }
+    } catch (error) {
+      console.error("Error creating report:", error)
+      alert("Failed to create report")
+    } finally {
+      setCreateReportLoading(false)
+    }
+  }
+
+  // Download report as Excel
+  const handleDownload = async (reportId: string) => {
+    try {
+      const response = await fetch(`/api/generated-reports/${reportId}/export`, {
+        credentials: "include",
+      })
+      if (!response.ok) {
+        throw new Error("Export failed")
+      }
+      
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get("Content-Disposition")
+      let filename = "report.xlsx"
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/)
+        if (match) {
+          filename = match[1]
+        }
+      }
+      
+      // Download the blob
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Error downloading report:", error)
+      alert("Failed to download report")
+    }
+  }
 
   // Fetch report templates
   const fetchReports = useCallback(async () => {
@@ -327,7 +459,7 @@ export default function ReportsPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Generated Reports</h2>
-              <p className="text-sm text-gray-500">Reports automatically produced during accounting periods</p>
+              <p className="text-sm text-gray-500">Reports produced during accounting periods or created manually</p>
             </div>
             <div className="flex items-center gap-2">
               <Select value={periodFilter} onValueChange={setPeriodFilter}>
@@ -358,6 +490,14 @@ export default function ReportsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button 
+                onClick={() => setIsCreateModalOpen(true)} 
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+                disabled={reports.length === 0}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Report
+              </Button>
             </div>
           </div>
 
@@ -428,7 +568,11 @@ export default function ReportsPage() {
                         {format(new Date(report.generatedAt), "MMM d, yyyy h:mm a")}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {report.taskInstance ? (
+                        {report.source === "manual" || !report.taskInstance ? (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                            Manual
+                          </span>
+                        ) : (
                           <Link
                             href={`/dashboard/jobs/${report.taskInstance.id}`}
                             className="flex items-center gap-1 text-blue-600 hover:underline"
@@ -436,23 +580,26 @@ export default function ReportsPage() {
                             {report.taskInstance.name}
                             <ExternalLink className="w-3 h-3" />
                           </Link>
-                        ) : (
-                          <span className="text-gray-400">{report.generatedBy}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {report.taskInstance ? (
-                          <Link href={`/dashboard/jobs/${report.taskInstance.id}?tab=report`}>
-                            <Button variant="ghost" size="sm" title="View in Task">
-                              <Eye className="w-4 h-4 mr-1" />
-                              <span className="text-xs">View</span>
-                            </Button>
-                          </Link>
-                        ) : (
-                          <Button variant="ghost" size="sm" disabled>
-                            <Eye className="w-4 h-4" />
+                        <div className="flex items-center justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            title="Download Excel"
+                            onClick={() => handleDownload(report.id)}
+                          >
+                            <Download className="w-4 h-4" />
                           </Button>
-                        )}
+                          {report.taskInstance ? (
+                            <Link href={`/dashboard/jobs/${report.taskInstance.id}?tab=report`}>
+                              <Button variant="ghost" size="sm" title="View in Task">
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </Link>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -462,6 +609,87 @@ export default function ReportsPage() {
           </div>
         </section>
       </div>
+
+      {/* Create Report Modal */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Create Report</DialogTitle>
+            <DialogDescription>
+              Generate a new report from an existing template for a specific period.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Template Selection */}
+            <div className="grid gap-2">
+              <Label htmlFor="template">Report Template</Label>
+              <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
+                <SelectTrigger id="template">
+                  <SelectValue placeholder="Select a template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {reports.map((report) => (
+                    <SelectItem key={report.id} value={report.id}>
+                      {report.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Period Selection */}
+            <div className="grid gap-2">
+              <Label htmlFor="period">Period</Label>
+              <Input
+                id="period"
+                type="text"
+                placeholder="e.g., 2026-01 or 2026-Q1"
+                value={selectedPeriodKey}
+                onChange={(e) => setSelectedPeriodKey(e.target.value)}
+              />
+              <p className="text-xs text-gray-500">
+                Enter a period key like &quot;2026-01&quot; (monthly) or &quot;2026-Q1&quot; (quarterly)
+              </p>
+            </div>
+
+            {/* Filter Selection */}
+            {selectedTemplateId && (
+              <div className="grid gap-2">
+                <Label>Filters (optional)</Label>
+                <ReportFilterSelector
+                  properties={filterProperties}
+                  value={filterBindings}
+                  onChange={setFilterBindings}
+                  loading={filtersLoading}
+                  disabled={createReportLoading}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsCreateModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateReport}
+              disabled={!selectedTemplateId || !selectedPeriodKey || createReportLoading}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {createReportLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Report"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

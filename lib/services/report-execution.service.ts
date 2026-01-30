@@ -32,14 +32,7 @@ export interface ExecutePreviewInput {
   organizationId: string
   currentPeriodKey?: string  // Optional - if not provided, uses all rows
   compareMode?: CompareMode  // Default: "none"
-  liveConfig?: {             // Optional - override saved config for live preview
-    columns?: any[]
-    formulaRows?: any[]
-    pivotColumnKey?: string | null
-    metricRows?: any[]
-    pivotFormulaColumns?: any[]  // Formula columns for pivot layout
-  }
-  filters?: Record<string, unknown>  // Optional - column-value filters from slice
+  filters?: Record<string, string[]>  // { columnKey: [selected values] }
 }
 
 export interface PeriodInfo {
@@ -98,21 +91,10 @@ interface ReportFormulaRow {
 interface MetricRow {
   key: string
   label: string
-  type: "source" | "formula" | "comparison"
+  type: "source" | "formula"
   sourceColumnKey?: string
   expression?: string
-  // Comparison fields
-  compareRowKey?: string
-  comparePeriod?: "mom" | "qoq" | "yoy"
-  compareOutput?: "value" | "delta" | "percent"
-  format: "text" | "number" | "currency" | "percent"
-  order: number
-}
-
-interface PivotFormulaColumn {
-  key: string
-  label: string
-  expression: string  // "SUM(*)" or "[Col A] + [Col B]"
+  format: string
   order: number
 }
 
@@ -125,7 +107,7 @@ export class ReportExecutionService {
    * Execute a report preview with optional period filtering and comparison
    */
   static async executePreview(input: ExecutePreviewInput): Promise<ExecutePreviewResult> {
-    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none", liveConfig, filters } = input
+    const { reportDefinitionId, organizationId, currentPeriodKey, compareMode = "none", filters } = input
 
     // Load report definition with database
     const report = await prisma.reportDefinition.findFirst({
@@ -147,20 +129,15 @@ export class ReportExecutionService {
       throw new Error("Report not found")
     }
 
-    // Apply liveConfig overrides if provided (for preview without saving)
-    const effectiveReport = liveConfig ? {
-      ...report,
-      columns: liveConfig.columns ?? report.columns,
-      formulaRows: liveConfig.formulaRows ?? report.formulaRows,
-      pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : report.pivotColumnKey,
-      metricRows: liveConfig.metricRows ?? report.metricRows,
-      pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
-    } : report
-
     const cadence = report.cadence as ReportCadence
     const dateColumnKey = report.dateColumnKey
     const layout = report.layout as "standard" | "pivot"
-    const allRows = (report.database.rows || []) as Array<Record<string, unknown>>
+    let allRows = (report.database.rows || []) as Array<Record<string, unknown>>
+
+    // Apply column filters if provided
+    if (filters && Object.keys(filters).length > 0) {
+      allRows = this.applyColumnFilters(allRows, filters)
+    }
 
     // Get available periods from the data
     const availablePeriods = getPeriodsFromRows(allRows, dateColumnKey, cadence)
@@ -210,31 +187,13 @@ export class ReportExecutionService {
       currentRows = allRows
     }
 
-    // Apply column-value filters (from slice filterBindings)
-    if (filters && Object.keys(filters).length > 0) {
-      currentRows = this.filterRowsByColumnValues(currentRows, filters)
-      
-      // Update row count in currentInfo if it exists
-      if (currentInfo) {
-        currentInfo.rowCount = currentRows.length
-      }
-      
-      // Also filter compare rows if they exist
-      if (compareRows) {
-        compareRows = this.filterRowsByColumnValues(compareRows, filters)
-        if (compareInfo) {
-          compareInfo.rowCount = compareRows.length
-        }
-      }
-    }
-
     // Evaluate based on layout
     let table: ExecutePreviewResult["table"]
 
     if (layout === "pivot") {
-      table = this.evaluatePivotLayout(effectiveReport, currentRows, compareRows)
+      table = this.evaluatePivotLayout(report, currentRows, compareRows)
     } else {
-      table = this.evaluateStandardLayout(effectiveReport, currentRows, compareRows)
+      table = this.evaluateStandardLayout(report, currentRows, compareRows)
     }
 
     return {
@@ -276,51 +235,35 @@ export class ReportExecutionService {
   }
 
   /**
-   * Filter rows by column-value filters (from slice filterBindings)
-   * 
-   * Filtering rules (V1):
-   * - filters is a map of columnKey -> expectedValue
-   * - A row matches if for every filter key:
-   *   - row[key] exists and equals expectedValue (strict equality for primitives)
-   *   - If expectedValue is an array, treat it as "IN" (row[key] in expectedValue array)
-   *   - If filter value is null/undefined: ignore that filter key
-   *   - If a filter key doesn't exist on the row at all: row fails (excluded)
+   * Apply column value filters to rows
+   * Filters format: { columnKey: [selected values] }
+   * A row passes if ALL filter columns have a value in their selected values list
    */
-  private static filterRowsByColumnValues(
+  private static applyColumnFilters(
     rows: Array<Record<string, unknown>>,
-    filters: Record<string, unknown>
+    filters: Record<string, string[]>
   ): Array<Record<string, unknown>> {
-    // Get active filter entries (non-null/undefined values)
+    // Get active filters (non-empty arrays)
     const activeFilters = Object.entries(filters).filter(
-      ([_, value]) => value !== null && value !== undefined
+      ([_, values]) => values && values.length > 0
     )
 
     if (activeFilters.length === 0) {
       return rows
     }
 
-    return rows.filter(row => {
-      for (const [key, expectedValue] of activeFilters) {
-        // If row doesn't have the key, exclude it
-        if (!(key in row)) {
-          return false
-        }
-
-        const rowValue = row[key]
-
-        // Handle array filter (IN operator)
-        if (Array.isArray(expectedValue)) {
-          if (!expectedValue.includes(rowValue)) {
-            return false
-          }
-        } else {
-          // Strict equality for primitives
-          if (rowValue !== expectedValue) {
-            return false
-          }
-        }
-      }
-      return true
+    return rows.filter((row) => {
+      // Row must pass ALL filters (AND logic)
+      return activeFilters.every(([columnKey, allowedValues]) => {
+        const cellValue = row[columnKey]
+        
+        // Handle null/undefined - treat as empty string
+        const stringValue = cellValue === null || cellValue === undefined 
+          ? "" 
+          : String(cellValue).trim()
+        
+        return allowedValues.includes(stringValue)
+      })
     })
   }
 
@@ -434,13 +377,12 @@ export class ReportExecutionService {
     }
 
     // Build columns: first is label column, rest are pivot values
-    // Note: dataType on columns is "text" as a fallback; actual formatting is per-row via _format
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
         label: pv,
-        dataType: "number" as const, // Default; actual format comes from row
+        dataType: "text",
         type: "source" as const,
       }))
     ]
@@ -448,41 +390,14 @@ export class ReportExecutionService {
     // Sort metrics by order
     const sortedMetrics = [...metricRows].sort((a, b) => a.order - b.order)
 
-    // Build metric values for current period - store as unknown to support text
-    const metricValuesByPivot: Record<string, Record<string, unknown>> = {}
-    // Build numeric values for compare period (for comparison calculations)
-    const numericMetricsByPivot: Record<string, Record<string, number | null>> = {}
-    const compareNumericMetricsByPivot: Record<string, Record<string, number | null>> = {}
-
-    // Initialize
+    // First pass: compute source values
+    const metricValuesByPivot: Record<string, Record<string, number | null>> = {}
     for (const pv of pivotValues) {
       metricValuesByPivot[pv] = {}
-      numericMetricsByPivot[pv] = {}
-      compareNumericMetricsByPivot[pv] = {}
-    }
-
-    // First pass: compute source values (current period)
-    for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "source" && metric.sourceColumnKey) {
-          const rawValue = currentDataByPivot[pv]?.[metric.sourceColumnKey]
-          
-          // For text format, store the raw value directly
-          if (metric.format === "text") {
-            metricValuesByPivot[pv][metric.key] = rawValue ?? null
-          } else {
-            // For numeric formats, parse as number
-            const num = parseNumericValue(rawValue)
-            metricValuesByPivot[pv][metric.key] = num
-            numericMetricsByPivot[pv][metric.key] = num
-          }
-          
-          // Also compute compare period source values (only for numeric)
-          if (compareRows && metric.format !== "text") {
-            const compareRaw = compareDataByPivot[pv]?.[metric.sourceColumnKey]
-            const compareNum = parseNumericValue(compareRaw)
-            compareNumericMetricsByPivot[pv][metric.key] = compareNum
-          }
+          const num = parseNumericValue(currentDataByPivot[pv]?.[metric.sourceColumnKey])
+          metricValuesByPivot[pv][metric.key] = num
         }
       }
     }
@@ -491,194 +406,28 @@ export class ReportExecutionService {
     for (const pv of pivotValues) {
       for (const metric of sortedMetrics) {
         if (metric.type === "formula" && metric.expression) {
-          // Build context with numeric metric values for this pivot
+          // Build context with other metric values for this pivot
           const context: Record<string, number> = {}
-          for (const [key, val] of Object.entries(numericMetricsByPivot[pv])) {
+          for (const [key, val] of Object.entries(metricValuesByPivot[pv])) {
             if (val !== null) {
               context[key] = val
             }
           }
-          const result = evaluateSafeExpression(metric.expression, context)
-          metricValuesByPivot[pv][metric.key] = result
-          numericMetricsByPivot[pv][metric.key] = result
-
-          // Also compute compare period formula values
-          if (compareRows) {
-            const compareContext: Record<string, number> = {}
-            for (const [key, val] of Object.entries(compareNumericMetricsByPivot[pv])) {
-              if (val !== null) {
-                compareContext[key] = val
-              }
-            }
-            compareNumericMetricsByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, compareContext)
-          }
+          metricValuesByPivot[pv][metric.key] = evaluateSafeExpression(metric.expression, context)
         }
       }
     }
 
-    // Third pass: compute comparison rows
-    for (const pv of pivotValues) {
-      for (const metric of sortedMetrics) {
-        if (metric.type === "comparison" && metric.compareRowKey) {
-          const currentValue = numericMetricsByPivot[pv][metric.compareRowKey]
-          const compareValue = compareNumericMetricsByPivot[pv][metric.compareRowKey]
-
-          if (currentValue === null || currentValue === undefined || 
-              compareValue === null || compareValue === undefined) {
-            metricValuesByPivot[pv][metric.key] = null
-            continue
-          }
-
-          // Calculate based on output type
-          switch (metric.compareOutput) {
-            case "value":
-              // Just show the compare period value
-              metricValuesByPivot[pv][metric.key] = compareValue
-              break
-            case "delta":
-              // Current - Compare (positive = growth)
-              metricValuesByPivot[pv][metric.key] = Math.round((currentValue - compareValue) * 100) / 100
-              break
-            case "percent":
-              // Percentage change: (current - compare) / compare * 100
-              if (compareValue === 0) {
-                metricValuesByPivot[pv][metric.key] = null
-              } else {
-                metricValuesByPivot[pv][metric.key] = Math.round(((currentValue - compareValue) / compareValue) * 10000) / 100
-              }
-              break
-            default:
-              metricValuesByPivot[pv][metric.key] = compareValue
-          }
-        }
-      }
-    }
-
-    // Get formula columns for pivot layout
-    const pivotFormulaColumns = (report.pivotFormulaColumns || []) as PivotFormulaColumn[]
-    const sortedFormulaColumns = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
-
-    // Add formula columns to output columns
-    for (const fc of sortedFormulaColumns) {
-      columns.push({
-        key: fc.key,
-        label: fc.label,
-        dataType: "number",
-        type: "formula",
-      })
-    }
-
-    // Build output rows with format and type information
+    // Build output rows
     const dataRows = sortedMetrics.map(metric => {
-      const row: Record<string, unknown> = { 
-        _label: metric.label,
-        _format: metric.format, // Include format for frontend rendering
-        _type: metric.type, // Include type to show formula/comparison icons
-      }
+      const row: Record<string, unknown> = { _label: metric.label }
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]
       }
-      
-      // Compute formula column values for this row
-      for (const fc of sortedFormulaColumns) {
-        row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
-      }
-      
       return row
     })
 
     return { columns, rows: dataRows, formulaRows: [] }
-  }
-
-  /**
-   * Evaluate a formula column expression for a single row
-   * Supports:
-   * - SUM(*) - sum all pivot columns
-   * - AVG(*) - average all pivot columns
-   * - MIN(*), MAX(*) - min/max of all pivot columns
-   * - [Col A] + [Col B] - reference specific columns by label
-   */
-  private static evaluatePivotFormulaColumn(
-    expression: string,
-    row: Record<string, unknown>,
-    pivotValues: string[]
-  ): number | null {
-    const trimmedExpr = expression.trim().toUpperCase()
-    
-    // Handle aggregate functions with wildcard: SUM(*), AVG(*), MIN(*), MAX(*)
-    const wildcardMatch = trimmedExpr.match(/^(SUM|AVG|AVERAGE|MIN|MAX|COUNT)\s*\(\s*\*\s*\)$/i)
-    if (wildcardMatch) {
-      const fn = wildcardMatch[1].toUpperCase()
-      
-      // Collect all numeric values from pivot columns
-      const values: number[] = []
-      for (const pv of pivotValues) {
-        const val = row[pv]
-        if (typeof val === "number" && !isNaN(val)) {
-          values.push(val)
-        } else if (typeof val === "string" && !isNaN(Number(val))) {
-          values.push(Number(val))
-        }
-      }
-      
-      if (values.length === 0) return null
-      
-      switch (fn) {
-        case "SUM":
-          return Math.round(values.reduce((a, b) => a + b, 0) * 100) / 100
-        case "AVG":
-        case "AVERAGE":
-          return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
-        case "MIN":
-          return Math.min(...values)
-        case "MAX":
-          return Math.max(...values)
-        case "COUNT":
-          return values.length
-        default:
-          return null
-      }
-    }
-    
-    // Handle column references: [Col A] + [Col B]
-    // Replace [column label] with the actual value from the row
-    let evalExpr = expression
-    const columnRefPattern = /\[([^\]]+)\]/g
-    let match
-    
-    while ((match = columnRefPattern.exec(expression)) !== null) {
-      const columnLabel = match[1]
-      // Find the pivot value that matches this label
-      const val = row[columnLabel]
-      let numVal = 0
-      
-      if (typeof val === "number" && !isNaN(val)) {
-        numVal = val
-      } else if (typeof val === "string" && !isNaN(Number(val))) {
-        numVal = Number(val)
-      } else if (val === null || val === undefined) {
-        numVal = 0
-      }
-      
-      evalExpr = evalExpr.replace(match[0], String(numVal))
-    }
-    
-    // Evaluate the resulting arithmetic expression
-    // Only allow numbers, operators, parentheses, and spaces
-    if (!/^[\d\s+\-*/().]+$/.test(evalExpr)) {
-      return null
-    }
-    
-    try {
-      // eslint-disable-next-line no-eval
-      const result = Function(`"use strict"; return (${evalExpr})`)()
-      if (typeof result === "number" && !isNaN(result) && isFinite(result)) {
-        return Math.round(result * 100) / 100
-      }
-      return null
-    } catch {
-      return null
-    }
   }
 
   /**

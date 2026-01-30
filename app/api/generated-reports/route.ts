@@ -1,7 +1,8 @@
 /**
- * Generated Reports API - List
+ * Generated Reports API - List and Create
  * 
  * GET /api/generated-reports - List generated reports with filters
+ * POST /api/generated-reports - Create a manual report
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -53,6 +54,69 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: "Failed to list generated reports" },
       { status: 500 }
+    )
+  }
+}
+
+// POST - Create a manual report
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, organizationId: true },
+    })
+
+    if (!user?.organizationId) {
+      return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { reportDefinitionId, periodKey, filterBindings } = body as {
+      reportDefinitionId?: string
+      periodKey?: string
+      filterBindings?: Record<string, string[]>
+    }
+
+    // Validate required fields
+    if (!reportDefinitionId) {
+      return NextResponse.json(
+        { error: "reportDefinitionId is required" },
+        { status: 400 }
+      )
+    }
+
+    if (!periodKey) {
+      return NextResponse.json(
+        { error: "periodKey is required" },
+        { status: 400 }
+      )
+    }
+
+    // Create the manual report
+    const report = await ReportGenerationService.createManualReport({
+      organizationId: user.organizationId,
+      reportDefinitionId,
+      periodKey,
+      filterBindings,
+      createdBy: user.id,
+    })
+
+    return NextResponse.json({ report }, { status: 201 })
+  } catch (error: any) {
+    console.error("Error creating manual report:", error)
+    
+    if (error.message === "Report definition not found") {
+      return NextResponse.json({ error: "Report template not found" }, { status: 404 })
+    }
+    
+    return NextResponse.json(
+      { error: error.message || "Failed to create report" },
+      { status: 400 }
     )
   }
 }
