@@ -50,8 +50,23 @@ export interface UpdateDatabaseInput {
 
 export interface ImportResult {
   added: number
+  updated: number
   duplicates: number
   errors: string[]
+}
+
+export interface ColumnChange {
+  columnKey: string
+  columnLabel: string
+  oldValue: unknown
+  newValue: unknown
+}
+
+export interface UpdateCandidate {
+  identifierValues: Record<string, unknown>
+  changes: ColumnChange[]
+  newRowData: DatabaseRow
+  existingRowIndex: number
 }
 
 // ============================================
@@ -72,6 +87,66 @@ export function getCompositeKey(row: DatabaseRow, identifierKeys: string[]): str
   return identifierKeys
     .map(key => String(row[key] ?? ""))
     .join("|||")  // Use a delimiter unlikely to appear in data
+}
+
+/**
+ * Generate a full row key from ALL column values for exact duplicate detection
+ */
+export function getFullRowKey(row: DatabaseRow, schema: DatabaseSchema): string {
+  return schema.columns
+    .sort((a, b) => a.order - b.order)
+    .map(col => {
+      const value = row[col.key]
+      // Normalize values for consistent comparison
+      if (value === null || value === undefined) return ""
+      if (typeof value === "number") return String(value)
+      return String(value).trim()
+    })
+    .join("|||")
+}
+
+/**
+ * Get the differences between two rows for the same identifier
+ */
+export function getRowDiff(
+  existingRow: DatabaseRow,
+  newRow: DatabaseRow,
+  schema: DatabaseSchema,
+  identifierKeys: string[]
+): ColumnChange[] {
+  const changes: ColumnChange[] = []
+  
+  for (const col of schema.columns) {
+    // Skip identifier columns - they're the same by definition
+    if (identifierKeys.includes(col.key)) continue
+    
+    const oldValue = existingRow[col.key]
+    const newValue = newRow[col.key]
+    
+    // Normalize for comparison
+    const normalizedOld = normalizeValue(oldValue)
+    const normalizedNew = normalizeValue(newValue)
+    
+    if (normalizedOld !== normalizedNew) {
+      changes.push({
+        columnKey: col.key,
+        columnLabel: col.label,
+        oldValue,
+        newValue,
+      })
+    }
+  }
+  
+  return changes
+}
+
+/**
+ * Normalize a value for comparison
+ */
+function normalizeValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "number") return String(value)
+  return String(value).trim()
 }
 
 // ============================================
@@ -178,39 +253,75 @@ export function validateRows(
 }
 
 /**
- * Validate rows against existing database data (for append-only import)
- * Returns which rows are new vs duplicates
+ * Validate rows against existing database data
+ * Returns categorized rows: new, exact duplicates, and update candidates
  */
 export function validateRowsAgainstExisting(
   newRows: DatabaseRow[],
   existingRows: DatabaseRow[],
-  identifierKeys: string[]
-): { newRows: DatabaseRow[]; duplicateRows: DatabaseRow[]; duplicateKeys: string[] } {
-  // Build set of existing composite keys
-  const existingKeys = new Set<string>()
-  for (const row of existingRows) {
-    existingKeys.add(getCompositeKey(row, identifierKeys))
-  }
+  identifierKeys: string[],
+  schema: DatabaseSchema
+): {
+  newRows: DatabaseRow[]
+  exactDuplicates: DatabaseRow[]
+  updateCandidates: UpdateCandidate[]
+} {
+  // Build maps for existing data
+  const existingByIdentifier = new Map<string, { row: DatabaseRow; index: number }>()
+  const existingFullKeys = new Set<string>()
+  
+  existingRows.forEach((row, index) => {
+    const identifierKey = getCompositeKey(row, identifierKeys)
+    const fullKey = getFullRowKey(row, schema)
+    existingByIdentifier.set(identifierKey, { row, index })
+    existingFullKeys.add(fullKey)
+  })
 
   const validNewRows: DatabaseRow[] = []
-  const duplicateRows: DatabaseRow[] = []
-  const duplicateKeys: string[] = []
+  const exactDuplicates: DatabaseRow[] = []
+  const updateCandidates: UpdateCandidate[] = []
 
   for (const row of newRows) {
-    const compositeKey = getCompositeKey(row, identifierKeys)
-    if (existingKeys.has(compositeKey)) {
-      duplicateRows.push(row)
-      // Create human-readable key description
-      const keyDescription = identifierKeys.length === 1 
-        ? String(row[identifierKeys[0]]) 
-        : identifierKeys.map(k => `${k}="${row[k]}"`).join(", ")
-      duplicateKeys.push(keyDescription)
-    } else {
-      validNewRows.push(row)
+    const fullKey = getFullRowKey(row, schema)
+    const identifierKey = getCompositeKey(row, identifierKeys)
+    
+    // Check if ALL columns match (exact duplicate)
+    if (existingFullKeys.has(fullKey)) {
+      exactDuplicates.push(row)
+      continue
     }
+    
+    // Check if identifier matches (potential update)
+    const existingMatch = existingByIdentifier.get(identifierKey)
+    if (existingMatch) {
+      // Get the differences
+      const changes = getRowDiff(existingMatch.row, row, schema, identifierKeys)
+      
+      if (changes.length > 0) {
+        // Build identifier values for display
+        const identifierValues: Record<string, unknown> = {}
+        for (const key of identifierKeys) {
+          identifierValues[key] = row[key]
+        }
+        
+        updateCandidates.push({
+          identifierValues,
+          changes,
+          newRowData: row,
+          existingRowIndex: existingMatch.index,
+        })
+      } else {
+        // No actual changes (shouldn't happen if fullKey check passed, but safety)
+        exactDuplicates.push(row)
+      }
+      continue
+    }
+    
+    // Truly new row
+    validNewRows.push(row)
   }
 
-  return { newRows: validNewRows, duplicateRows, duplicateKeys }
+  return { newRows: validNewRows, exactDuplicates, updateCandidates }
 }
 
 // ============================================
@@ -380,14 +491,20 @@ export class DatabaseService {
   }
 
   /**
-   * Import rows into a database (append-only - adds new rows, rejects duplicates)
+   * Import rows into a database with optional update support
+   * - Exact duplicates (all columns match) are silently skipped
+   * - Update candidates (identifier match, data differs) are updated if updateExisting=true
+   * - New rows are added
    */
   static async importRows(
     id: string,
     organizationId: string,
     userId: string,
-    rows: DatabaseRow[]
+    rows: DatabaseRow[],
+    options: { updateExisting?: boolean } = {}
   ): Promise<ImportResult> {
+    const { updateExisting = false } = options
+
     // Get the database and its schema
     const database = await prisma.database.findFirst({
       where: { id, organizationId },
@@ -406,16 +523,18 @@ export class DatabaseService {
     if (!validation.valid) {
       return {
         added: 0,
+        updated: 0,
         duplicates: 0,
         errors: validation.errors,
       }
     }
 
     // Check against existing data
-    const { newRows, duplicateRows, duplicateKeys } = validateRowsAgainstExisting(
+    const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
       rows,
       existingRows,
-      identifierKeys
+      identifierKeys,
+      schema
     )
 
     // Check if adding new rows would exceed limit
@@ -423,51 +542,45 @@ export class DatabaseService {
     if (totalAfterImport > MAX_ROWS) {
       return {
         added: 0,
-        duplicates: duplicateRows.length,
+        updated: 0,
+        duplicates: exactDuplicates.length,
         errors: [
           `Cannot add ${newRows.length} rows. Database has ${existingRows.length} rows and limit is ${MAX_ROWS.toLocaleString()}.`
         ],
       }
     }
 
-    // If there are duplicates, return error (user probably made a mistake)
-    if (duplicateRows.length > 0) {
-      const maxDuplicatesToShow = 5
-      const duplicateErrors = duplicateKeys.slice(0, maxDuplicatesToShow).map(
-        key => `Duplicate: ${key}`
-      )
-      if (duplicateKeys.length > maxDuplicatesToShow) {
-        duplicateErrors.push(`...and ${duplicateKeys.length - maxDuplicatesToShow} more duplicates`)
-      }
+    // Build the final rows array
+    let finalRows = [...existingRows]
+    let updatedCount = 0
 
-      return {
-        added: 0,
-        duplicates: duplicateRows.length,
-        errors: [
-          `${duplicateRows.length} row(s) already exist in the database:`,
-          ...duplicateErrors,
-        ],
+    // Handle updates if requested
+    if (updateExisting && updateCandidates.length > 0) {
+      for (const candidate of updateCandidates) {
+        finalRows[candidate.existingRowIndex] = candidate.newRowData
+        updatedCount++
       }
     }
 
-    // No new rows to add
-    if (newRows.length === 0) {
+    // Append new rows
+    finalRows = [...finalRows, ...newRows]
+
+    // No changes to make
+    if (newRows.length === 0 && updatedCount === 0) {
       return {
         added: 0,
-        duplicates: 0,
-        errors: ["No new rows to import"],
+        updated: 0,
+        duplicates: exactDuplicates.length,
+        errors: exactDuplicates.length > 0 ? [] : ["No new rows to import"],
       }
     }
-
-    // Append new rows to existing data
-    const allRows = [...existingRows, ...newRows]
 
     // Update database with combined rows
     await prisma.database.update({
       where: { id },
       data: {
-        rows: allRows as any,
-        rowCount: allRows.length,
+        rows: finalRows as any,
+        rowCount: finalRows.length,
         lastImportedAt: new Date(),
         lastImportedById: userId,
       },
@@ -475,13 +588,14 @@ export class DatabaseService {
 
     return {
       added: newRows.length,
-      duplicates: 0,
+      updated: updatedCount,
+      duplicates: exactDuplicates.length,
       errors: [],
     }
   }
 
   /**
-   * Preview import (validation and duplicate detection, no persistence)
+   * Preview import (validation, duplicate detection, and update candidates)
    */
   static async previewImport(
     id: string,
@@ -504,11 +618,12 @@ export class DatabaseService {
     // Validate rows within import batch
     const validation = validateRows(rows, schema, identifierKeys)
 
-    // Check against existing data
-    const { newRows, duplicateRows, duplicateKeys } = validateRowsAgainstExisting(
+    // Check against existing data using new categorization
+    const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
       rows,
       existingRows,
-      identifierKeys
+      identifierKeys,
+      schema
     )
 
     // Check row limit
@@ -525,28 +640,33 @@ export class DatabaseService {
       )
     }
 
-    // Add duplicate warnings (first 5)
-    const duplicateWarnings: string[] = []
-    if (duplicateRows.length > 0) {
-      const maxToShow = 5
-      duplicateWarnings.push(`${duplicateRows.length} duplicate row(s) will be skipped:`)
-      for (let i = 0; i < Math.min(duplicateKeys.length, maxToShow); i++) {
-        duplicateWarnings.push(`  - ${duplicateKeys[i]}`)
-      }
-      if (duplicateKeys.length > maxToShow) {
-        duplicateWarnings.push(`  - ...and ${duplicateKeys.length - maxToShow} more`)
-      }
+    // Build warnings array
+    const warnings: string[] = []
+    
+    // Add exact duplicate info
+    if (exactDuplicates.length > 0) {
+      warnings.push(`${exactDuplicates.length} identical row(s) will be skipped (already exist)`)
     }
 
+    // The preview is valid if:
+    // - No validation errors
+    // - Not exceeding row limit
+    // - There are new rows OR there are update candidates
+    const hasContent = newRows.length > 0 || updateCandidates.length > 0
+    const isValid = validation.valid && !wouldExceedLimit && hasContent
+
     return {
-      valid: validation.valid && !wouldExceedLimit && duplicateRows.length === 0,
+      valid: isValid,
       errors,
-      warnings: duplicateWarnings,
+      warnings,
       rowCount: rows.length,
       newRowCount: newRows.length,
-      duplicateCount: duplicateRows.length,
+      exactDuplicateCount: exactDuplicates.length,
+      updateCandidates,  // Include full update candidate data for UI to display diffs
       existingRowCount: database.rowCount,
       totalAfterImport: existingRows.length + newRows.length,
+      identifierKeys,  // Include for UI display
+      schema,  // Include for column labels in UI
     }
   }
 

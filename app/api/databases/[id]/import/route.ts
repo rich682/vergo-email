@@ -1,8 +1,10 @@
 /**
  * Database Import API
  * 
- * POST /api/databases/[id]/import - Confirm and execute import (append-only)
- * Adds new rows only, rejects duplicates based on composite identifier keys
+ * POST /api/databases/[id]/import - Confirm and execute import
+ * - Exact duplicates (all columns match) are silently skipped
+ * - Update candidates (identifier match, data differs) are updated if updateExisting=true
+ * - New rows are added
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -50,9 +52,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const schema = database.schema as DatabaseSchema
 
-    // Parse the uploaded file
+    // Parse the uploaded file and options
     const formData = await request.formData()
     const file = formData.get("file") as File | null
+    const updateExisting = formData.get("updateExisting") === "true"
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
@@ -63,35 +66,55 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
       const rows = parseExcelWithSchema(Buffer.from(buffer), schema)
 
-      // Import the rows (append-only: adds new rows, rejects duplicates)
+      // Import the rows with optional update support
       const result = await DatabaseService.importRows(
         params.id,
         user.organizationId,
         user.id,
-        rows
+        rows,
+        { updateExisting }
       )
 
       if (result.errors.length > 0) {
         return NextResponse.json({
           success: false,
           added: result.added,
+          updated: result.updated,
           duplicates: result.duplicates,
           errors: result.errors,
           message: result.errors[0],
         }, { status: 400 })
       }
 
+      // Build success message
+      const messageParts: string[] = []
+      if (result.added > 0) {
+        messageParts.push(`${result.added.toLocaleString()} new row(s) added`)
+      }
+      if (result.updated > 0) {
+        messageParts.push(`${result.updated.toLocaleString()} row(s) updated`)
+      }
+      if (result.duplicates > 0) {
+        messageParts.push(`${result.duplicates.toLocaleString()} identical row(s) skipped`)
+      }
+
+      const message = messageParts.length > 0 
+        ? `Successfully: ${messageParts.join(", ")}`
+        : "No changes made"
+
       return NextResponse.json({
         success: true,
         added: result.added,
+        updated: result.updated,
         duplicates: result.duplicates,
         errors: [],
-        message: `Successfully added ${result.added.toLocaleString()} new row(s)`,
+        message,
       })
     } catch (importError: any) {
       return NextResponse.json({
         success: false,
         added: 0,
+        updated: 0,
         duplicates: 0,
         errors: [importError.message || "Failed to import data"],
         message: importError.message || "Failed to import data",

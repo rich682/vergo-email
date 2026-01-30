@@ -88,15 +88,34 @@ interface ColumnFilter {
   selectedValues: Set<string>
 }
 
+interface ColumnChange {
+  columnKey: string
+  columnLabel: string
+  oldValue: unknown
+  newValue: unknown
+}
+
+interface UpdateCandidate {
+  identifierValues: Record<string, unknown>
+  changes: ColumnChange[]
+  newRowData: DatabaseRow
+  existingRowIndex: number
+}
+
 interface ImportPreviewResult {
   valid: boolean
   errors: string[]
   warnings?: string[]
   rowCount: number
   newRowCount: number
-  duplicateCount: number
+  exactDuplicateCount?: number
+  updateCandidates?: UpdateCandidate[]
   existingRowCount: number
   totalAfterImport: number
+  identifierKeys?: string[]
+  schema?: DatabaseSchema
+  // Deprecated fields for backwards compat
+  duplicateCount?: number
   sampleRows?: DatabaseRow[]
 }
 
@@ -126,6 +145,7 @@ export default function DatabaseDetailPage() {
   const [importPreview, setImportPreview] = useState<ImportPreviewResult | null>(null)
   const [importing, setImporting] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+  const [updateExisting, setUpdateExisting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Schema editing state
@@ -326,6 +346,7 @@ export default function DatabaseDetailPage() {
     try {
       const formData = new FormData()
       formData.append("file", importFile)
+      formData.append("updateExisting", String(updateExisting))
 
       const response = await fetch(`/api/databases/${databaseId}/import`, {
         method: "POST",
@@ -339,6 +360,7 @@ export default function DatabaseDetailPage() {
         setImportModalOpen(false)
         setImportFile(null)
         setImportPreview(null)
+        setUpdateExisting(false)
         // Refresh the database data
         fetchDatabase()
       } else {
@@ -347,7 +369,7 @@ export default function DatabaseDetailPage() {
           errors: result.errors || [result.error || "Import failed"],
           rowCount: importPreview?.rowCount || 0,
           newRowCount: 0,
-          duplicateCount: result.duplicates || 0,
+          exactDuplicateCount: result.duplicates || 0,
           existingRowCount: database?.rowCount || 0,
           totalAfterImport: database?.rowCount || 0,
         })
@@ -1172,28 +1194,85 @@ export default function DatabaseDetailPage() {
                   </Button>
                 </div>
 
-                {/* Import summary */}
-                {importPreview.newRowCount > 0 && importPreview.valid && (
+                {/* New rows summary */}
+                {importPreview.newRowCount > 0 && (
                   <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <Plus className="w-4 h-4 text-green-600 mt-0.5" />
                     <div className="text-sm text-green-700">
                       <strong>{importPreview.newRowCount.toLocaleString()}</strong> new row(s) will be added
-                      {database.rowCount > 0 && (
-                        <span className="text-green-600">
-                          {" "}(total: {importPreview.totalAfterImport.toLocaleString()})
-                        </span>
-                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Duplicate warning */}
-                {importPreview.duplicateCount > 0 && (
-                  <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
-                    <p className="text-sm text-amber-700">
-                      <strong>{importPreview.duplicateCount.toLocaleString()}</strong> duplicate row(s) will be rejected
+                {/* Exact duplicates info */}
+                {(importPreview.exactDuplicateCount || 0) > 0 && (
+                  <div className="flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <Check className="w-4 h-4 text-gray-500 mt-0.5" />
+                    <p className="text-sm text-gray-600">
+                      <strong>{importPreview.exactDuplicateCount?.toLocaleString()}</strong> identical row(s) will be skipped (already exist)
                     </p>
+                  </div>
+                )}
+
+                {/* Update candidates section */}
+                {importPreview.updateCandidates && importPreview.updateCandidates.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium text-amber-700">
+                          {importPreview.updateCandidates.length} row(s) have changes
+                        </p>
+                        <p className="text-sm text-amber-600 mt-1">
+                          These rows match existing data by identifier but have different values:
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Show first 5 update candidates with diffs */}
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {importPreview.updateCandidates.slice(0, 5).map((candidate, idx) => (
+                        <div key={idx} className="bg-white rounded border border-amber-200 p-3 text-sm">
+                          <p className="font-medium text-gray-700 mb-2">
+                            Row: {Object.entries(candidate.identifierValues).map(([k, v]) => 
+                              `${k}="${v}"`
+                            ).join(", ")}
+                          </p>
+                          <div className="space-y-1">
+                            {candidate.changes.map((change, cIdx) => (
+                              <div key={cIdx} className="flex items-center gap-2 text-xs">
+                                <span className="font-medium text-gray-600">{change.columnLabel}:</span>
+                                <span className="text-red-600 line-through">
+                                  {String(change.oldValue ?? "—")}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span className="text-green-600 font-medium">
+                                  {String(change.newValue ?? "—")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {importPreview.updateCandidates.length > 5 && (
+                        <p className="text-xs text-amber-600 text-center">
+                          ...and {importPreview.updateCandidates.length - 5} more rows with changes
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Update checkbox */}
+                    <label className="flex items-center gap-2 pt-2 border-t border-amber-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={updateExisting}
+                        onChange={(e) => setUpdateExisting(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="text-sm font-medium text-amber-800">
+                        Update existing rows with new values
+                      </span>
+                    </label>
                   </div>
                 )}
 
@@ -1236,8 +1315,8 @@ export default function DatabaseDetailPage() {
                   </div>
                 )}
 
-                {/* Valid preview */}
-                {importPreview.valid && importPreview.newRowCount > 0 && (
+                {/* Valid preview summary */}
+                {importPreview.valid && (importPreview.newRowCount > 0 || (updateExisting && (importPreview.updateCandidates?.length || 0) > 0)) && (
                   <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <Check className="w-4 h-4 text-blue-600 mt-0.5" />
                     <p className="text-sm text-blue-700">
@@ -1256,13 +1335,18 @@ export default function DatabaseDetailPage() {
                 setImportModalOpen(false)
                 setImportFile(null)
                 setImportPreview(null)
+                setUpdateExisting(false)
               }}
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirmImport}
-              disabled={!importPreview?.valid || importing || (importPreview?.newRowCount || 0) === 0}
+              disabled={
+                !importPreview?.valid || 
+                importing || 
+                ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0))
+              }
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {importing ? (
@@ -1273,7 +1357,16 @@ export default function DatabaseDetailPage() {
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add {importPreview?.newRowCount?.toLocaleString() || 0} Rows
+                  {(() => {
+                    const parts: string[] = []
+                    if ((importPreview?.newRowCount || 0) > 0) {
+                      parts.push(`Add ${importPreview?.newRowCount?.toLocaleString()}`)
+                    }
+                    if (updateExisting && (importPreview?.updateCandidates?.length || 0) > 0) {
+                      parts.push(`Update ${importPreview?.updateCandidates?.length?.toLocaleString()}`)
+                    }
+                    return parts.length > 0 ? `${parts.join(" + ")} Rows` : "No Changes"
+                  })()}
                 </>
               )}
             </Button>

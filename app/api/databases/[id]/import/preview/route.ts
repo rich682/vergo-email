@@ -2,14 +2,14 @@
  * Database Import Preview API
  * 
  * POST /api/databases/[id]/import/preview - Validate import data without persisting
- * Returns info about which rows are new vs duplicates
+ * Returns info about which rows are new, exact duplicates, and update candidates
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { DatabaseService, DatabaseSchema, validateRows, validateRowsAgainstExisting, MAX_ROWS } from "@/lib/services/database.service"
+import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
 
 interface RouteParams {
@@ -52,8 +52,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const schema = database.schema as DatabaseSchema
-    const identifierKeys = database.identifierKeys as string[]
-    const existingRows = database.rows as Record<string, any>[]
 
     // Parse the uploaded file
     const formData = await request.formData()
@@ -69,64 +67,35 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const rows = parseExcelWithSchema(Buffer.from(buffer), schema)
 
       // Check for missing columns (warnings)
-      const warnings: string[] = []
+      const additionalWarnings: string[] = []
       const rowKeys = rows.length > 0 ? new Set(Object.keys(rows[0])) : new Set()
       
       for (const col of schema.columns) {
         if (!rowKeys.has(col.key) && col.required) {
-          warnings.push(`Required column "${col.label}" not found in file`)
+          additionalWarnings.push(`Required column "${col.label}" not found in file`)
         }
       }
 
-      // Validate rows within import batch
-      const validation = validateRows(rows, schema, identifierKeys)
-
-      // Check against existing data
-      const { newRows, duplicateRows, duplicateKeys } = validateRowsAgainstExisting(
-        rows,
-        existingRows,
-        identifierKeys
+      // Use the service to preview import with full categorization
+      const preview = await DatabaseService.previewImport(
+        params.id,
+        user.organizationId,
+        rows
       )
 
-      // Check row limit
-      const totalAfterImport = existingRows.length + newRows.length
-      const wouldExceedLimit = totalAfterImport > MAX_ROWS
-
-      // Collect all errors
-      const errors = [...validation.errors]
-      
-      if (wouldExceedLimit) {
-        errors.push(
-          `Adding ${newRows.length} rows would exceed the ${MAX_ROWS.toLocaleString()} row limit ` +
-          `(current: ${existingRows.length})`
-        )
-      }
-
-      // Add duplicate info to warnings
-      if (duplicateRows.length > 0) {
-        const maxToShow = 5
-        warnings.push(`${duplicateRows.length} duplicate row(s) will be rejected:`)
-        for (let i = 0; i < Math.min(duplicateKeys.length, maxToShow); i++) {
-          warnings.push(`  • ${duplicateKeys[i]}`)
-        }
-        if (duplicateKeys.length > maxToShow) {
-          warnings.push(`  • ...and ${duplicateKeys.length - maxToShow} more`)
-        }
-      }
-
-      // Determine validity: valid if no validation errors, no row limit issues, and no duplicates
-      const valid = validation.valid && !wouldExceedLimit && duplicateRows.length === 0
-
       return NextResponse.json({
-        valid,
-        errors: errors.slice(0, 50), // Limit error messages
-        warnings,
-        rowCount: rows.length,
-        newRowCount: newRows.length,
-        duplicateCount: duplicateRows.length,
-        existingRowCount: database.rowCount,
-        totalAfterImport: valid ? existingRows.length + newRows.length : existingRows.length,
-        sampleRows: newRows.slice(0, 5), // Return sample of new rows for preview
+        valid: preview.valid,
+        errors: preview.errors.slice(0, 50), // Limit error messages
+        warnings: [...preview.warnings, ...additionalWarnings],
+        rowCount: preview.rowCount,
+        newRowCount: preview.newRowCount,
+        exactDuplicateCount: preview.exactDuplicateCount,
+        updateCandidates: preview.updateCandidates,
+        existingRowCount: preview.existingRowCount,
+        totalAfterImport: preview.totalAfterImport,
+        identifierKeys: preview.identifierKeys,
+        schema: preview.schema,
+        sampleRows: [], // Removed for performance - full data available in updateCandidates
       })
     } catch (parseError: any) {
       return NextResponse.json({
@@ -135,7 +104,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         warnings: [],
         rowCount: 0,
         newRowCount: 0,
-        duplicateCount: 0,
+        exactDuplicateCount: 0,
+        updateCandidates: [],
         existingRowCount: database.rowCount,
         totalAfterImport: database.rowCount,
       })
