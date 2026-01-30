@@ -104,9 +104,11 @@ interface UpdateCandidate {
 
 interface ImportPreviewResult {
   valid: boolean
-  errors: string[]
-  warnings?: string[]
+  errors: string[]  // Blocking errors only
+  warnings?: string[]  // Non-blocking (validation errors, duplicates)
   rowCount: number
+  validRowCount?: number  // Rows that passed validation
+  invalidRowCount?: number  // Rows with validation errors (skipped)
   newRowCount: number
   exactDuplicateCount?: number
   updateCandidates?: UpdateCandidate[]
@@ -114,9 +116,6 @@ interface ImportPreviewResult {
   totalAfterImport: number
   identifierKeys?: string[]
   schema?: DatabaseSchema
-  // Deprecated fields for backwards compat
-  duplicateCount?: number
-  sampleRows?: DatabaseRow[]
 }
 
 // ============================================
@@ -329,7 +328,7 @@ export default function DatabaseDetailPage() {
         errors: ["Failed to preview file"],
         rowCount: 0,
         newRowCount: 0,
-        duplicateCount: 0,
+        exactDuplicateCount: 0,
         existingRowCount: database?.rowCount || 0,
         totalAfterImport: database?.rowCount || 0,
       })
@@ -381,7 +380,7 @@ export default function DatabaseDetailPage() {
         errors: ["Failed to import data"],
         rowCount: importPreview?.rowCount || 0,
         newRowCount: 0,
-        duplicateCount: 0,
+        exactDuplicateCount: 0,
         existingRowCount: database?.rowCount || 0,
         totalAfterImport: database?.rowCount || 0,
       })

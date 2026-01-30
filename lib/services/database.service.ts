@@ -215,41 +215,50 @@ export function validateSchema(schema: DatabaseSchema, identifierKeys: string[])
 export function validateRows(
   rows: DatabaseRow[],
   schema: DatabaseSchema,
-  identifierKeys: string[]
-): { valid: boolean; errors: string[] } {
+  _identifierKeys: string[]  // No longer used for within-batch duplicate detection
+): { valid: boolean; errors: string[]; validRows: DatabaseRow[]; invalidRowIndices: number[] } {
   const errors: string[] = []
+  const validRows: DatabaseRow[] = []
+  const invalidRowIndices: number[] = []
 
   if (rows.length > MAX_ROWS) {
     errors.push(`Cannot import more than ${MAX_ROWS.toLocaleString()} rows`)
-    return { valid: false, errors }
+    return { valid: false, errors, validRows: [], invalidRowIndices: [] }
   }
 
-  const compositeKeyValues = new Set<string>()
+  // Use ALL columns for within-batch duplicate detection
+  const fullRowKeys = new Set<string>()
   const requiredColumns = schema.columns.filter(c => c.required)
 
   rows.forEach((row, index) => {
     const rowNum = index + 1
+    let rowHasError = false
 
     // Check required fields
     for (const col of requiredColumns) {
       const value = row[col.key]
       if (value === null || value === undefined || value === "") {
         errors.push(`Row ${rowNum}: Required field "${col.label}" is empty`)
+        rowHasError = true
       }
     }
 
-    // Check composite key uniqueness within import batch
-    const compositeKey = getCompositeKey(row, identifierKeys)
-    if (compositeKeyValues.has(compositeKey)) {
-      const keyDescription = identifierKeys.length === 1 
-        ? `"${row[identifierKeys[0]]}"` 
-        : identifierKeys.map(k => `${k}="${row[k]}"`).join(", ")
-      errors.push(`Row ${rowNum}: Duplicate identifier (${keyDescription})`)
+    // Check ALL-COLUMN uniqueness within import batch
+    const fullKey = getFullRowKey(row, schema)
+    if (fullRowKeys.has(fullKey)) {
+      errors.push(`Row ${rowNum}: Exact duplicate of another row in this file`)
+      rowHasError = true
     }
-    compositeKeyValues.add(compositeKey)
+    fullRowKeys.add(fullKey)
+
+    if (rowHasError) {
+      invalidRowIndices.push(index)
+    } else {
+      validRows.push(row)
+    }
   })
 
-  return { valid: errors.length === 0, errors }
+  return { valid: errors.length === 0, errors, validRows, invalidRowIndices }
 }
 
 /**
@@ -492,6 +501,7 @@ export class DatabaseService {
 
   /**
    * Import rows into a database with optional update support
+   * - Rows with validation errors are skipped (partial import)
    * - Exact duplicates (all columns match) are silently skipped
    * - Update candidates (identifier match, data differs) are updated if updateExisting=true
    * - New rows are added
@@ -518,9 +528,11 @@ export class DatabaseService {
     const identifierKeys = database.identifierKeys as string[]
     const existingRows = database.rows as DatabaseRow[]
 
-    // Validate rows within import batch
+    // Validate rows within import batch - now supports partial import
     const validation = validateRows(rows, schema, identifierKeys)
-    if (!validation.valid) {
+    
+    // If ALL rows have errors, return the errors
+    if (validation.validRows.length === 0) {
       return {
         added: 0,
         updated: 0,
@@ -529,9 +541,9 @@ export class DatabaseService {
       }
     }
 
-    // Check against existing data
+    // Check VALID rows against existing data (partial import)
     const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
-      rows,
+      validation.validRows,  // Only process rows that passed validation
       existingRows,
       identifierKeys,
       schema
@@ -596,6 +608,7 @@ export class DatabaseService {
 
   /**
    * Preview import (validation, duplicate detection, and update candidates)
+   * Supports partial imports - valid rows can be imported even if some rows have errors
    */
   static async previewImport(
     id: string,
@@ -615,12 +628,12 @@ export class DatabaseService {
     const identifierKeys = database.identifierKeys as string[]
     const existingRows = database.rows as DatabaseRow[]
 
-    // Validate rows within import batch
+    // Validate rows within import batch - now returns validRows for partial import
     const validation = validateRows(rows, schema, identifierKeys)
 
-    // Check against existing data using new categorization
+    // Check VALID rows against existing data (not all rows)
     const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
-      rows,
+      validation.validRows,  // Only process rows that passed validation
       existingRows,
       identifierKeys,
       schema
@@ -630,9 +643,29 @@ export class DatabaseService {
     const totalAfterImport = existingRows.length + newRows.length
     const wouldExceedLimit = totalAfterImport > MAX_ROWS
 
-    // Collect all errors
-    const errors = [...validation.errors]
+    // Collect validation errors as warnings (since we support partial import)
+    const warnings: string[] = []
     
+    // Add validation errors as warnings (rows will be skipped, not blocking)
+    if (validation.errors.length > 0) {
+      warnings.push(`${validation.invalidRowIndices.length} row(s) have errors and will be skipped:`)
+      // Show first few errors
+      const maxErrorsToShow = 5
+      validation.errors.slice(0, maxErrorsToShow).forEach(err => {
+        warnings.push(`  • ${err}`)
+      })
+      if (validation.errors.length > maxErrorsToShow) {
+        warnings.push(`  • ...and ${validation.errors.length - maxErrorsToShow} more`)
+      }
+    }
+    
+    // Add exact duplicate info
+    if (exactDuplicates.length > 0) {
+      warnings.push(`${exactDuplicates.length} identical row(s) will be skipped (already exist)`)
+    }
+
+    // Blocking errors (things that prevent ANY import)
+    const errors: string[] = []
     if (wouldExceedLimit) {
       errors.push(
         `Adding ${newRows.length} rows would exceed the ${MAX_ROWS.toLocaleString()} row limit ` +
@@ -640,26 +673,19 @@ export class DatabaseService {
       )
     }
 
-    // Build warnings array
-    const warnings: string[] = []
-    
-    // Add exact duplicate info
-    if (exactDuplicates.length > 0) {
-      warnings.push(`${exactDuplicates.length} identical row(s) will be skipped (already exist)`)
-    }
-
     // The preview is valid if:
-    // - No validation errors
     // - Not exceeding row limit
-    // - There are new rows OR there are update candidates
+    // - There are new rows OR there are update candidates (even if some rows had validation errors)
     const hasContent = newRows.length > 0 || updateCandidates.length > 0
-    const isValid = validation.valid && !wouldExceedLimit && hasContent
+    const isValid = !wouldExceedLimit && hasContent
 
     return {
       valid: isValid,
-      errors,
-      warnings,
+      errors,  // Only blocking errors
+      warnings,  // Validation errors + duplicate info (non-blocking)
       rowCount: rows.length,
+      validRowCount: validation.validRows.length,  // NEW: rows that passed validation
+      invalidRowCount: validation.invalidRowIndices.length,  // NEW: rows with errors
       newRowCount: newRows.length,
       exactDuplicateCount: exactDuplicates.length,
       updateCandidates,  // Include full update candidate data for UI to display diffs
