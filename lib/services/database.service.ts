@@ -263,36 +263,36 @@ export function validateRows(
 
 /**
  * Validate rows against existing database data
- * Returns categorized rows: new, exact duplicates, and update candidates
+ * Uses ALL columns to determine uniqueness:
+ * - Exact duplicate (all columns match) → skip
+ * - Any column differs → new row (add it)
+ * 
+ * Note: Update candidates are no longer automatically detected.
+ * Each unique combination of data is treated as a separate row.
  */
 export function validateRowsAgainstExisting(
   newRows: DatabaseRow[],
   existingRows: DatabaseRow[],
-  identifierKeys: string[],
+  _identifierKeys: string[],  // Kept for API compatibility but not used
   schema: DatabaseSchema
 ): {
   newRows: DatabaseRow[]
   exactDuplicates: DatabaseRow[]
-  updateCandidates: UpdateCandidate[]
+  updateCandidates: UpdateCandidate[]  // Always empty now - kept for API compatibility
 } {
-  // Build maps for existing data
-  const existingByIdentifier = new Map<string, { row: DatabaseRow; index: number }>()
+  // Build set of existing full row keys (ALL columns)
   const existingFullKeys = new Set<string>()
   
-  existingRows.forEach((row, index) => {
-    const identifierKey = getCompositeKey(row, identifierKeys)
+  existingRows.forEach((row) => {
     const fullKey = getFullRowKey(row, schema)
-    existingByIdentifier.set(identifierKey, { row, index })
     existingFullKeys.add(fullKey)
   })
 
   const validNewRows: DatabaseRow[] = []
   const exactDuplicates: DatabaseRow[] = []
-  const updateCandidates: UpdateCandidate[] = []
 
   for (const row of newRows) {
     const fullKey = getFullRowKey(row, schema)
-    const identifierKey = getCompositeKey(row, identifierKeys)
     
     // Check if ALL columns match (exact duplicate)
     if (existingFullKeys.has(fullKey)) {
@@ -300,37 +300,12 @@ export function validateRowsAgainstExisting(
       continue
     }
     
-    // Check if identifier matches (potential update)
-    const existingMatch = existingByIdentifier.get(identifierKey)
-    if (existingMatch) {
-      // Get the differences
-      const changes = getRowDiff(existingMatch.row, row, schema, identifierKeys)
-      
-      if (changes.length > 0) {
-        // Build identifier values for display
-        const identifierValues: Record<string, unknown> = {}
-        for (const key of identifierKeys) {
-          identifierValues[key] = row[key]
-        }
-        
-        updateCandidates.push({
-          identifierValues,
-          changes,
-          newRowData: row,
-          existingRowIndex: existingMatch.index,
-        })
-      } else {
-        // No actual changes (shouldn't happen if fullKey check passed, but safety)
-        exactDuplicates.push(row)
-      }
-      continue
-    }
-    
-    // Truly new row
+    // Any difference in any column = new row
     validNewRows.push(row)
   }
 
-  return { newRows: validNewRows, exactDuplicates, updateCandidates }
+  // No update candidates - all non-duplicates are new rows
+  return { newRows: validNewRows, exactDuplicates, updateCandidates: [] }
 }
 
 // ============================================
