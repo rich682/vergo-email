@@ -19,8 +19,9 @@ interface RouteParams {
 // Maximum unique values to return per column (to avoid huge payloads)
 const MAX_UNIQUE_VALUES = 500
 
-// Data types suitable for filtering
-const FILTERABLE_DATA_TYPES = ["text", "status", "category", "enum"]
+// Data types suitable for filtering (includes all text-like types)
+// Also allow any column where the actual values are strings/categorical
+const FILTERABLE_DATA_TYPES = ["text", "status", "category", "enum", "string"]
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -81,16 +82,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         continue
       }
 
-      // Check if data type is filterable
-      const isFilterableType = FILTERABLE_DATA_TYPES.includes(column.dataType.toLowerCase()) ||
-        column.dataType.toLowerCase() === "string"
-
-      if (!isFilterableType) {
-        continue
-      }
-
-      // Get unique values for this column
+      // Get unique values for this column first (we'll use this to determine if it's filterable)
       const uniqueValues = new Set<string>()
+      let hasNonNumericValues = false
       
       for (const row of rows) {
         const value = row[column.key]
@@ -98,6 +92,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           const strValue = String(value).trim()
           if (strValue) {
             uniqueValues.add(strValue)
+            // Check if value looks like text (not a pure number)
+            if (isNaN(Number(strValue)) || strValue.includes(" ") || strValue.includes(",")) {
+              hasNonNumericValues = true
+            }
           }
         }
         
@@ -107,15 +105,32 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         }
       }
 
-      // Skip columns with too few or too many unique values
-      // (1 value = not useful for filtering, too many = probably not categorical)
+      // Skip columns with too few unique values (not useful for filtering)
       const valueCount = uniqueValues.size
       if (valueCount < 2) {
         continue
       }
 
-      // Skip if every row has a unique value (probably an ID column)
-      if (valueCount > rows.length * 0.8 && valueCount > 50) {
+      // Determine if column is filterable based on data type OR actual values
+      const isFilterableType = FILTERABLE_DATA_TYPES.includes(column.dataType.toLowerCase())
+      
+      // Also allow any column where values look categorical (not pure numbers, reasonable cardinality)
+      const looksCategorial = hasNonNumericValues && valueCount <= MAX_UNIQUE_VALUES
+      
+      // Skip if declared as number/currency AND values are all numeric (probably metrics, not categories)
+      const isNumericType = ["number", "currency"].includes(column.dataType.toLowerCase())
+      if (isNumericType && !hasNonNumericValues) {
+        continue
+      }
+
+      // Skip if too many unique values relative to row count (probably IDs)
+      // But be more permissive - allow up to 500 unique values if they look categorical
+      if (valueCount > rows.length * 0.9 && valueCount > 100 && !isFilterableType) {
+        continue
+      }
+
+      // Include if explicitly filterable type, or if values look categorical
+      if (!isFilterableType && !looksCategorial) {
         continue
       }
 
