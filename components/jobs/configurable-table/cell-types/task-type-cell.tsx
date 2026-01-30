@@ -2,9 +2,9 @@
 
 import { Database, FileSpreadsheet, ClipboardList, FileBarChart, FileText } from "lucide-react"
 
-// Task types - GENERIC, RECONCILIATION, TABLE are in the DB schema
-// REPORT and FORMS are frontend-only for now
-export type TaskTypeValue = "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORT" | "FORMS"
+// Task types - GENERIC, RECONCILIATION, TABLE, REPORTS are in the DB schema
+// FORMS is frontend-only for now
+export type TaskTypeValue = "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS" | "FORMS"
 
 interface TaskTypeCellProps {
   value: TaskTypeValue | undefined
@@ -29,7 +29,7 @@ const TYPE_CONFIG: Record<TaskTypeValue, { label: string; icon: typeof Clipboard
     bgColor: "bg-blue-100",
     textColor: "text-blue-700",
   },
-  REPORT: {
+  REPORTS: {
     label: "Report",
     icon: FileBarChart,
     bgColor: "bg-emerald-100",

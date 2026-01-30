@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar } from "lucide-react"
+import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -52,6 +52,7 @@ interface ReportTabProps {
   boardPeriodStart?: string | null
   boardCadence?: string | null
   onConfigChange?: (config: { reportDefinitionId: string | null; reportSliceId: string | null }) => void
+  isAdmin?: boolean  // Controls whether configuration UI is shown (only admins can configure)
 }
 
 const CADENCE_LABELS: Record<string, string> = {
@@ -72,6 +73,7 @@ export function ReportTab({
   boardPeriodStart,
   boardCadence,
   onConfigChange,
+  isAdmin = false,
 }: ReportTabProps) {
   // State
   const [reports, setReports] = useState<ReportDefinition[]>([])
@@ -239,87 +241,89 @@ export function ReportTab({
 
   return (
     <div className="space-y-6">
-      {/* Configuration Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-base font-semibold text-gray-900 mb-4">Report Configuration</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Report Template Selector */}
-          <div className="space-y-2">
-            <Label>Report Template</Label>
-            <Select
-              value={selectedReportId || "_none"}
-              onValueChange={handleReportChange}
-              disabled={loadingReports}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a report template..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none">No template selected</SelectItem>
-                {reports.map((report) => (
-                  <SelectItem key={report.id} value={report.id}>
-                    <div className="flex items-center gap-2">
-                      {report.layout === "pivot" ? (
-                        <LayoutGrid className="w-3.5 h-3.5 text-purple-500" />
-                      ) : (
-                        <Table2 className="w-3.5 h-3.5 text-gray-400" />
-                      )}
-                      <span>{report.name}</span>
-                      <span className="text-xs text-gray-400">
-                        ({CADENCE_LABELS[report.cadence] || report.cadence})
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedReport && (
-              <p className="text-xs text-gray-500">
-                Data source: {selectedReport.database.name}
-              </p>
-            )}
+      {/* Configuration Section - Only visible to admins */}
+      {isAdmin && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Report Configuration</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Report Template Selector */}
+            <div className="space-y-2">
+              <Label>Report Template</Label>
+              <Select
+                value={selectedReportId || "_none"}
+                onValueChange={handleReportChange}
+                disabled={loadingReports}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a report template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">No template selected</SelectItem>
+                  {reports.map((report) => (
+                    <SelectItem key={report.id} value={report.id}>
+                      <div className="flex items-center gap-2">
+                        {report.layout === "pivot" ? (
+                          <LayoutGrid className="w-3.5 h-3.5 text-purple-500" />
+                        ) : (
+                          <Table2 className="w-3.5 h-3.5 text-gray-400" />
+                        )}
+                        <span>{report.name}</span>
+                        <span className="text-xs text-gray-400">
+                          ({CADENCE_LABELS[report.cadence] || report.cadence})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedReport && (
+                <p className="text-xs text-gray-500">
+                  Data source: {selectedReport.database.name}
+                </p>
+              )}
+            </div>
+
+            {/* Slice Selector */}
+            <div className="space-y-2">
+              <Label>Slice (Filter View)</Label>
+              <Select
+                value={selectedSliceId || "_all"}
+                onValueChange={handleSliceChange}
+                disabled={!selectedReportId || loadingSlices}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a slice..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">All Data (no filters)</SelectItem>
+                  {slices.map((slice) => (
+                    <SelectItem key={slice.id} value={slice.id}>
+                      <div className="flex items-center gap-2">
+                        <Filter className="w-3.5 h-3.5 text-blue-500" />
+                        <span>{slice.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedSlice && (
+                <p className="text-xs text-gray-500">
+                  Filters: {Object.entries(selectedSlice.filterBindings).map(([k, v]) => `${k}=${v}`).join(", ")}
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Slice Selector */}
-          <div className="space-y-2">
-            <Label>Slice (Filter View)</Label>
-            <Select
-              value={selectedSliceId || "_all"}
-              onValueChange={handleSliceChange}
-              disabled={!selectedReportId || loadingSlices}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a slice..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All Data (no filters)</SelectItem>
-                {slices.map((slice) => (
-                  <SelectItem key={slice.id} value={slice.id}>
-                    <div className="flex items-center gap-2">
-                      <Filter className="w-3.5 h-3.5 text-blue-500" />
-                      <span>{slice.name}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedSlice && (
-              <p className="text-xs text-gray-500">
-                Filters: {Object.entries(selectedSlice.filterBindings).map(([k, v]) => `${k}=${v}`).join(", ")}
-              </p>
-            )}
-          </div>
+          {/* Saving indicator */}
+          {saving && (
+            <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Saving...
+            </div>
+          )}
         </div>
-
-        {/* Saving indicator */}
-        {saving && (
-          <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Saving...
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Preview Section */}
       {selectedReportId && (
@@ -448,15 +452,28 @@ export function ReportTab({
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - Different messages for admin vs collaborator */}
       {!selectedReportId && (
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-          <FileText className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-          <h3 className="text-base font-medium text-gray-900 mb-1">No Report Configured</h3>
-          <p className="text-sm text-gray-500 max-w-md mx-auto">
-            Select a report template above to configure which report this task will display.
-            The report will be automatically generated when this board period completes.
-          </p>
+          {isAdmin ? (
+            <>
+              <FileText className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+              <h3 className="text-base font-medium text-gray-900 mb-1">No Report Configured</h3>
+              <p className="text-sm text-gray-500 max-w-md mx-auto">
+                Select a report template above to configure which report this task will display.
+                The report will be automatically generated when this board period completes.
+              </p>
+            </>
+          ) : (
+            <>
+              <Lock className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+              <h3 className="text-base font-medium text-gray-900 mb-1">Report Not Yet Configured</h3>
+              <p className="text-sm text-gray-500 max-w-md mx-auto">
+                An administrator needs to configure the report for this task.
+                Please contact your admin to set up the report template and filters.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

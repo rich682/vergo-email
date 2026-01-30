@@ -16,9 +16,11 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
+import { ReportGenerationService } from "@/lib/services/report-generation.service"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { isReadOnly } from "@/lib/permissions"
+import { periodKeyFromDate } from "@/lib/utils/period"
 
 export async function GET(
   request: NextRequest,
@@ -240,6 +242,54 @@ export async function PATCH(
         { error: "Task instance not found" },
         { status: 404 }
       )
+    }
+
+    // Generate report when report configuration is set on a REPORTS task
+    // This creates/updates a GeneratedReport entry for the current period
+    if (reportDefinitionId !== undefined && reportDefinitionId && taskInstance.boardId) {
+      try {
+        // Get board to determine period
+        const board = await prisma.board.findUnique({
+          where: { id: taskInstance.boardId },
+          select: { id: true, periodStart: true, cadence: true }
+        })
+        
+        if (board?.periodStart) {
+          const periodKey = periodKeyFromDate(board.periodStart, (board.cadence as any) || "monthly")
+          
+          if (periodKey) {
+            // Check if a generated report already exists for this task+period
+            const existingReport = await (prisma as any).generatedReport.findFirst({
+              where: {
+                taskInstanceId: id,
+                periodKey,
+                organizationId
+              }
+            })
+
+            // Delete existing if it exists (to regenerate with new config)
+            if (existingReport) {
+              await (prisma as any).generatedReport.delete({
+                where: { id: existingReport.id }
+              })
+            }
+
+            // Generate fresh report
+            await ReportGenerationService.generateForPeriod({
+              organizationId,
+              reportDefinitionId,
+              reportSliceId: reportSliceId || undefined,
+              taskInstanceId: id,
+              boardId: taskInstance.boardId,
+              periodKey,
+              generatedBy: userId,
+            })
+          }
+        }
+      } catch (error) {
+        // Log but don't fail the request if report generation fails
+        console.error("Error generating report on config change:", error)
+      }
     }
 
     // Sync board status if task instance has a board and status was changed

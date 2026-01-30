@@ -1603,6 +1603,7 @@ export default function JobDetailPage() {
                   reportSliceId={job.reportSliceId || null}
                   boardPeriodStart={job.board?.periodStart}
                   boardCadence={job.board?.cadence}
+                  isAdmin={permissions?.isAdmin}
                   onConfigChange={(config) => {
                     // Update local state when config changes
                     setJob(prev => prev ? {
