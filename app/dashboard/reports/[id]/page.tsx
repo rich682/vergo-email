@@ -1201,6 +1201,27 @@ export default function ReportBuilderPage() {
           setHasUnsavedChanges(true)
           setMetricRowModal({ open: false, editingKey: null })
         }}
+        onAddSourceRow={(column) => {
+          // Auto-create a source metric row for this database column
+          const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
+            text: "text",
+            number: "number",
+            currency: "currency",
+            date: "text",
+            boolean: "text",
+          }
+          const newMetric: MetricRow = {
+            key: `src_${column.key}_${Date.now()}`,
+            label: column.label,
+            type: "source",
+            sourceColumnKey: column.key,
+            format: formatMap[column.dataType] || "number",
+            order: metricRows.length,
+          }
+          setMetricRows(prev => [...prev, newMetric])
+          setHasUnsavedChanges(true)
+          return newMetric.key
+        }}
       />
 
       {/* Slice Modal */}
@@ -1796,6 +1817,7 @@ interface MetricRowModalProps {
   onClose: () => void
   onSave: (metric: MetricRow) => void
   onDelete: (key: string) => void
+  onAddSourceRow: (column: { key: string; label: string; dataType: string }) => string // Returns the new metric key
 }
 
 function MetricRowModal({
@@ -1806,6 +1828,7 @@ function MetricRowModal({
   onClose,
   onSave,
   onDelete,
+  onAddSourceRow,
 }: MetricRowModalProps) {
   const [label, setLabel] = useState("")
   const [type, setType] = useState<"source" | "formula" | "comparison">("source")
@@ -1919,6 +1942,10 @@ function MetricRowModal({
   // Get other metrics for formula/comparison references
   const otherMetrics = metricRows.filter(m => m.key !== editingKey)
   const sourceAndFormulaMetrics = otherMetrics.filter(m => m.type !== "comparison")
+  
+  // Get database columns that don't have corresponding source metric rows
+  const usedColumnKeys = new Set(metricRows.filter(m => m.type === "source" && m.sourceColumnKey).map(m => m.sourceColumnKey))
+  const unusedDatabaseColumns = databaseColumns.filter(col => !usedColumnKeys.has(col.key))
 
   const isValid = label.trim() && (
     (type === "source" && sourceColumnKey) ||
@@ -2074,6 +2101,36 @@ function MetricRowModal({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Database columns not yet added as rows */}
+              {unusedDatabaseColumns.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Database columns (click to add as row)
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unusedDatabaseColumns.map(col => (
+                      <button
+                        key={col.key}
+                        type="button"
+                        onClick={() => {
+                          // Add as source row and insert reference
+                          const newKey = onAddSourceRow(col)
+                          // Insert reference using the column's label
+                          setExpression(prev => prev + (prev ? " " : "") + `[${col.label}]`)
+                        }}
+                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs border border-dashed border-gray-300"
+                        title={`Click to add "${col.label}" as a source row and reference it`}
+                      >
+                        + {col.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Clicking will add the column as a new source row
+                  </p>
                 </div>
               )}
             </div>
