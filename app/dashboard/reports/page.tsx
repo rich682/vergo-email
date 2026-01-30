@@ -307,15 +307,27 @@ export default function ReportsPage() {
 
   // Format cell value for display
   const formatCellValue = (value: unknown, format?: string): string => {
-    if (value === null || value === undefined) return "-"
-    if (format === "currency" && typeof value === "number") {
-      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
-    }
-    if (format === "percent" && typeof value === "number") {
-      return `${value.toLocaleString()}%`
-    }
+    if (value === null || value === undefined) return "—"
+    
+    // Coerce string numbers to actual numbers for formatting
+    let numValue: number | null = null
     if (typeof value === "number") {
-      return value.toLocaleString()
+      numValue = value
+    } else if (typeof value === "string" && !isNaN(Number(value)) && value.trim() !== "") {
+      numValue = Number(value)
+    }
+    
+    // Normalize format to lowercase
+    const fmt = (format || "").toLowerCase()
+    
+    if (fmt === "currency" && numValue !== null) {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
+    }
+    if (fmt === "percent" && numValue !== null) {
+      return `${numValue.toLocaleString()}%`
+    }
+    if ((fmt === "number" || !fmt) && numValue !== null) {
+      return numValue.toLocaleString()
     }
     return String(value)
   }

@@ -1482,14 +1482,26 @@ export default function ReportBuilderPage() {
 // Helper to format cell values
 function formatCellValue(value: unknown, dataType: string): string {
   if (value === null || value === undefined) return "—"
-  if (dataType === "currency" && typeof value === "number") {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+  
+  // Coerce string numbers to actual numbers for formatting
+  let numValue: number | null = null
+  if (typeof value === "number") {
+    numValue = value
+  } else if (typeof value === "string" && !isNaN(Number(value)) && value.trim() !== "") {
+    numValue = Number(value)
   }
-  if (dataType === "percent" && typeof value === "number") {
-    return `${value.toLocaleString()}%`
+  
+  // Normalize dataType to lowercase for comparison
+  const format = (dataType || "").toLowerCase()
+  
+  if (format === "currency" && numValue !== null) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
   }
-  if (dataType === "number" && typeof value === "number") {
-    return value.toLocaleString()
+  if (format === "percent" && numValue !== null) {
+    return `${numValue.toLocaleString()}%`
+  }
+  if ((format === "number" || !format) && numValue !== null) {
+    return numValue.toLocaleString()
   }
   return String(value)
 }
