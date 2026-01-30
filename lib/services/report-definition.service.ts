@@ -104,6 +104,8 @@ export interface UpdateReportDefinitionInput {
   pivotColumnKey?: string
   metricRows?: MetricRow[]
   pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
+  // Filter configuration - which database columns to expose as filters
+  filterColumnKeys?: string[]
 }
 
 export interface ReportPreviewResult {
@@ -300,6 +302,8 @@ export class ReportDefinitionService {
         ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
         ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
         ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns as any }),
+        // Filter configuration
+        ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys as any }),
       },
       include: {
         database: {

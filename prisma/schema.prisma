@@ -1236,6 +1236,11 @@ model ReportDefinition {
   // Variance analysis configuration
   compareMode     String   @default("none")  // "none" | "mom" | "yoy"
   
+  // Filter configuration - which database columns to expose as filters
+  // Array of column keys: ["location", "brand", "pm"]
+  // If empty, no filters are shown (explicit opt-in)
+  filterColumnKeys Json    @default("[]")
+  
   // Metadata
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

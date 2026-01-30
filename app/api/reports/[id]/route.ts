@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { name, description, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows } = body
+    const { name, description, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys } = body
 
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
@@ -86,6 +86,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         formulaRows: formulaRows as ReportFormulaRow[] | undefined,
         pivotColumnKey,
         metricRows: metricRows as MetricRow[] | undefined,
+        pivotFormulaColumns,
+        filterColumnKeys,
       }
     )
 

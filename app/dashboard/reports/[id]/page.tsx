@@ -216,6 +216,10 @@ export default function ReportBuilderPage() {
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
   const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
 
+  // Filter column configuration - which database columns are exposed as filters
+  const [filterColumnKeys, setFilterColumnKeys] = useState<string[]>([])
+  const [filterConfigOpen, setFilterConfigOpen] = useState(false)
+
   // Filter state (replaces slice-first approach)
   const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
   const [activeFilters, setActiveFilters] = useState<FilterBindings>({})
@@ -252,6 +256,8 @@ export default function ReportBuilderPage() {
       setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
+      // Filter column configuration
+      setFilterColumnKeys(data.report.filterColumnKeys || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -383,6 +389,8 @@ export default function ReportBuilderPage() {
           pivotFormulaColumns,
           // Variance settings
           compareMode,
+          // Filter configuration
+          filterColumnKeys,
         }),
       })
 
@@ -400,7 +408,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, filterColumnKeys])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -429,7 +437,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, filterColumnKeys, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -570,16 +578,69 @@ export default function ReportBuilderPage() {
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <span className="font-medium text-sm text-gray-700">Filters</span>
+                  {filterColumnKeys.length > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                      {filterColumnKeys.length}
+                    </span>
+                  )}
                 </div>
-                {Object.keys(activeFilters).length > 0 && (
+                <div className="flex items-center gap-2">
+                  {Object.keys(activeFilters).length > 0 && (
+                    <button
+                      onClick={() => setActiveFilters({})}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Clear
+                    </button>
+                  )}
                   <button
-                    onClick={() => setActiveFilters({})}
-                    className="text-xs text-gray-500 hover:text-gray-700"
+                    onClick={() => setFilterConfigOpen(!filterConfigOpen)}
+                    className="p-1 hover:bg-gray-200 rounded"
+                    title="Configure filterable columns"
                   >
-                    Clear all
+                    <Settings2 className="w-3.5 h-3.5 text-gray-500" />
                   </button>
-                )}
+                </div>
               </div>
+              
+              {/* Filter Configuration Panel */}
+              {filterConfigOpen && (
+                <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
+                  <p className="text-xs text-blue-700 font-medium mb-2">
+                    Select columns to expose as filters:
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {databaseColumns
+                      .filter(col => col.key !== report.dateColumnKey) // Exclude date column
+                      .map((col) => (
+                        <label
+                          key={col.key}
+                          className="flex items-center gap-2 px-2 py-1 hover:bg-blue-100 rounded cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filterColumnKeys.includes(col.key)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFilterColumnKeys([...filterColumnKeys, col.key])
+                              } else {
+                                setFilterColumnKeys(filterColumnKeys.filter(k => k !== col.key))
+                              }
+                              setHasUnsavedChanges(true)
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs text-gray-700">{col.label}</span>
+                          <span className="text-xs text-gray-400">({col.dataType})</span>
+                        </label>
+                      ))}
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    Changes auto-save. Refresh to see updated filter options.
+                  </p>
+                </div>
+              )}
+              
               <div className="p-3 space-y-3">
                 {/* Filter selector */}
                 <ReportFilterSelector

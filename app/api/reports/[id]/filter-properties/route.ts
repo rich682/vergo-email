@@ -3,8 +3,10 @@
  * 
  * GET /api/reports/[id]/filter-properties - Get filterable columns and their unique values
  * 
- * Returns columns from the report's source database that are suitable for filtering
- * (typically text columns with reasonable cardinality), along with their unique values.
+ * Returns columns explicitly configured as filterable in the report definition,
+ * along with their unique values from the database.
+ * 
+ * If no filterColumnKeys are configured, returns empty (explicit opt-in model).
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -18,10 +20,6 @@ interface RouteParams {
 
 // Maximum unique values to return per column (to avoid huge payloads)
 const MAX_UNIQUE_VALUES = 500
-
-// Data types suitable for filtering (includes all text-like types)
-// Also allow any column where the actual values are strings/categorical
-const FILTERABLE_DATA_TYPES = ["text", "status", "category", "enum", "string"]
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -60,8 +58,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
     }
 
-    // Parse the database schema to find filterable columns
-    // DatabaseSchema is an object with { columns: [...], version: number }
+    // Get the configured filter column keys (explicit opt-in)
+    const filterColumnKeys = (report as any).filterColumnKeys as string[] || []
+    
+    // If no filter columns configured, return empty
+    if (filterColumnKeys.length === 0) {
+      return NextResponse.json({ properties: [] })
+    }
+
+    // Parse the database schema
     const schemaData = report.database.schema as {
       columns: Array<{ key: string; label: string; dataType: string }>
       version?: number
@@ -75,18 +80,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const rows = (report.database.rows || []) as Array<Record<string, unknown>>
 
-    // Find columns that are good candidates for filtering
+    // Build filter properties only for explicitly configured columns
     const filterableProperties = []
 
-    for (const column of schema) {
-      // Skip the date column used for period filtering
-      if (column.key === report.dateColumnKey) {
-        continue
-      }
+    for (const columnKey of filterColumnKeys) {
+      // Find the column in schema
+      const column = schema.find(c => c.key === columnKey)
+      if (!column) continue
 
-      // Get unique values for this column first (we'll use this to determine if it's filterable)
+      // Get unique values for this column
       const uniqueValues = new Set<string>()
-      let hasNonNumericValues = false
       
       for (const row of rows) {
         const value = row[column.key]
@@ -94,10 +97,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           const strValue = String(value).trim()
           if (strValue) {
             uniqueValues.add(strValue)
-            // Check if value looks like text (not a pure number)
-            if (isNaN(Number(strValue)) || strValue.includes(" ") || strValue.includes(",")) {
-              hasNonNumericValues = true
-            }
           }
         }
         
@@ -108,31 +107,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
 
       // Skip columns with too few unique values (not useful for filtering)
-      const valueCount = uniqueValues.size
-      if (valueCount < 2) {
-        continue
-      }
-
-      // Determine if column is filterable based on data type OR actual values
-      const isFilterableType = FILTERABLE_DATA_TYPES.includes(column.dataType.toLowerCase())
-      
-      // Also allow any column where values look categorical (not pure numbers, reasonable cardinality)
-      const looksCategorial = hasNonNumericValues && valueCount <= MAX_UNIQUE_VALUES
-      
-      // Skip if declared as number/currency AND values are all numeric (probably metrics, not categories)
-      const isNumericType = ["number", "currency"].includes(column.dataType.toLowerCase())
-      if (isNumericType && !hasNonNumericValues) {
-        continue
-      }
-
-      // Skip if too many unique values relative to row count (probably IDs)
-      // But be more permissive - allow up to 500 unique values if they look categorical
-      if (valueCount > rows.length * 0.9 && valueCount > 100 && !isFilterableType) {
-        continue
-      }
-
-      // Include if explicitly filterable type, or if values look categorical
-      if (!isFilterableType && !looksCategorial) {
+      if (uniqueValues.size < 2) {
         continue
       }
 
@@ -142,9 +117,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         values: Array.from(uniqueValues).sort((a, b) => a.localeCompare(b)),
       })
     }
-
-    // Sort properties by label
-    filterableProperties.sort((a, b) => a.label.localeCompare(b.label))
 
     return NextResponse.json({ properties: filterableProperties })
   } catch (error) {
