@@ -111,13 +111,17 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
 }
 
-// Core workflow nav items (excluding Tasks and Collection which have their own expandable sections)
-const coreNavItems: NavItem[] = [
+// Nav items before Collection
+const preCollectionNavItems: NavItem[] = [
   {
     href: "/dashboard/requests",
     label: "Requests",
     icon: RequestsIcon
   },
+]
+
+// Nav items after Collection
+const postCollectionNavItems: NavItem[] = [
   {
     href: "/dashboard/reports",
     label: "Reports",
@@ -209,8 +213,8 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
             </Link>
           </li>
 
-          {/* Core Nav Items (Requests) */}
-          {coreNavItems.map((item) => {
+          {/* Nav Items before Collection (Requests) */}
+          {preCollectionNavItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
             
@@ -331,6 +335,34 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
               </ul>
             )}
           </li>
+
+          {/* Nav Items after Collection (Reports, Databases) */}
+          {postCollectionNavItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+            const Icon = item.icon
+            
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`
+                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                    transition-all duration-150
+                    ${isActive 
+                      ? "bg-gray-100 text-gray-900" 
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }
+                  `}
+                  style={{ width: "calc(100% - 24px)" }}
+                >
+                  <Icon className="w-6 h-6 flex-shrink-0" />
+                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                    {item.label}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
 
         </ul>
 
