@@ -887,7 +887,7 @@ export default function ReportsPage() {
                                 key={col.key} 
                                 className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
                                   colIndex > 0 ? "border-l border-gray-100" : ""
-                                } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
+                                }`}
                               >
                                 {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
                                   <span className="flex items-center gap-1.5">
@@ -912,7 +912,7 @@ export default function ReportsPage() {
                           {viewingReport.data.table.columns.map((col, colIndex) => (
                             <td
                               key={col.key}
-                              className={`px-4 py-3 font-medium text-gray-900 ${
+                              className={`px-4 py-3 text-gray-900 ${
                                 colIndex > 0 ? "border-l border-blue-100" : ""
                               }`}
                             >

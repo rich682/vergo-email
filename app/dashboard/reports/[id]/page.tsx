@@ -321,8 +321,8 @@ export default function ReportBuilderPage() {
           pivotColumnKey,
           metricRows,
           pivotFormulaColumns,
-          // Variance settings
-          compareMode,
+          // Variance settings - use effectiveCompareMode to ensure comparison rows work
+          compareMode: effectiveCompareMode,
           // Filter configuration
           filterColumnKeys,
         }),
@@ -342,7 +342,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, filterColumnKeys])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterColumnKeys])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -371,7 +371,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, compareMode, filterColumnKeys, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterColumnKeys, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
