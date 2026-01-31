@@ -1104,8 +1104,6 @@ export default function JobsPage() {
                       className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
                     >
                       <option value="GENERIC">Standard</option>
-                      <option value="TABLE">Variance</option>
-                      <option value="RECONCILIATION">Reconciliation</option>
                       <option value="REPORTS">Report</option>
                     </select>
                   </div>

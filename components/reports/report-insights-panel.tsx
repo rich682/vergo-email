@@ -82,6 +82,8 @@ interface ReportInsightsPanelProps {
   filterBindings?: Record<string, string[]>
   compareMode?: "none" | "mom" | "yoy"
   onClose: () => void
+  // For generated reports - enables caching
+  generatedReportId?: string
 }
 
 // ============================================
@@ -94,6 +96,7 @@ export function ReportInsightsPanel({
   filterBindings,
   compareMode = "mom",
   onClose,
+  generatedReportId,
 }: ReportInsightsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -101,6 +104,8 @@ export function ReportInsightsPanel({
   const [insights, setInsights] = useState<ReportInsight | null>(null)
   const [context, setContext] = useState<{ reportName: string; filterSummary: string } | null>(null)
   const [copiedSection, setCopiedSection] = useState<string | null>(null)
+  const [isCached, setIsCached] = useState(false)
+  const [cachedAt, setCachedAt] = useState<string | null>(null)
 
   // Collapsible sections state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -111,22 +116,41 @@ export function ReportInsightsPanel({
     highlights: false,
   })
 
-  // Fetch insights on mount
-  const fetchInsights = useCallback(async () => {
+  // Fetch insights on mount (use cached for generated reports)
+  const fetchInsights = useCallback(async (forceRefresh = false) => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/reports/${reportId}/insights`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          periodKey,
-          filterBindings,
-          compareMode,
-        }),
-      })
+      let response: Response
+
+      if (generatedReportId) {
+        // For generated reports - use caching endpoint
+        if (forceRefresh) {
+          // POST to force regenerate
+          response = await fetch(`/api/generated-reports/${generatedReportId}/insights`, {
+            method: "POST",
+            credentials: "include",
+          })
+        } else {
+          // GET to use cached or generate if not cached
+          response = await fetch(`/api/generated-reports/${generatedReportId}/insights`, {
+            credentials: "include",
+          })
+        }
+      } else {
+        // For live preview - always generate fresh
+        response = await fetch(`/api/reports/${reportId}/insights`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            periodKey,
+            filterBindings,
+            compareMode,
+          }),
+        })
+      }
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -136,17 +160,19 @@ export function ReportInsightsPanel({
       const data = await response.json()
       setInsights(data.insights)
       setContext(data.context)
+      setIsCached(data.cached || false)
+      setCachedAt(data.cachedAt || null)
     } catch (err: any) {
       setError(err.message || "Failed to generate insights")
     } finally {
       setLoading(false)
     }
-  }, [reportId, periodKey, filterBindings, compareMode])
+  }, [reportId, periodKey, filterBindings, compareMode, generatedReportId])
 
   // Initial fetch on mount
   useEffect(() => {
-    fetchInsights()
-  }, [fetchInsights])
+    fetchInsights(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Toggle section expansion
   const toggleSection = (section: string) => {
@@ -243,7 +269,7 @@ export function ReportInsightsPanel({
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchInsights}
+            onClick={() => fetchInsights(true)}
             disabled={loading}
             title="Regenerate insights"
             className="h-8 w-8 p-0"
@@ -501,7 +527,20 @@ export function ReportInsightsPanel({
 
             {/* Generated timestamp */}
             <p className="text-xs text-gray-400 text-center pt-2">
-              Generated {new Date(insights.generatedAt).toLocaleString()}
+              {isCached && cachedAt ? (
+                <>
+                  <span className="text-green-600">Cached</span> {new Date(cachedAt).toLocaleString()}
+                  <span className="text-gray-300 mx-1">•</span>
+                  <button 
+                    onClick={() => fetchInsights(true)} 
+                    className="text-purple-500 hover:text-purple-700 hover:underline"
+                  >
+                    Regenerate
+                  </button>
+                </>
+              ) : (
+                <>Generated {new Date(insights.generatedAt).toLocaleString()}</>
+              )}
             </p>
           </div>
         ) : null}

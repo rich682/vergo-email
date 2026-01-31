@@ -1013,6 +1013,7 @@ export default function ReportsPage() {
           periodKey={viewingReport.periodKey}
           compareMode="mom"
           onClose={() => setViewerInsightsOpen(false)}
+          generatedReportId={viewingReport.id}
         />
       )}
     </div>
