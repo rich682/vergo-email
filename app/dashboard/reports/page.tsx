@@ -591,7 +591,7 @@ export default function ReportsPage() {
                     Report Name
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Slice
+                    Filters
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Period
@@ -620,7 +620,7 @@ export default function ReportsPage() {
                       <Clock className="mx-auto h-8 w-8 text-gray-300" />
                       <p className="mt-2 text-sm text-gray-500">No generated reports yet</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        Reports will appear here when tasks with report slices complete during accounting periods
+                        Use "Create Report" to generate reports from your report templates
                       </p>
                     </td>
                   </tr>
@@ -635,12 +635,12 @@ export default function ReportsPage() {
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-blue-500" />
                           <span className="font-medium text-gray-900 hover:text-blue-600">
-                            {report.data.reportName}
+                            {report.data?.reportName || "Untitled Report"}
                           </span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {report.data.sliceName || (
+                        {report.data?.sliceName || (
                           <span className="text-gray-400">All Data</span>
                         )}
                       </td>
@@ -847,7 +847,7 @@ export default function ReportsPage() {
 
           {/* Report Data Table */}
           <div className="flex-1 overflow-auto mt-4">
-            {!viewingReport?.data?.table || !viewingReport.data.table.columns?.length ? (
+            {!viewingReport?.data?.table || !viewingReport.data.table.columns?.length || !viewingReport.data.table.rows ? (
               <div className="text-center py-12 text-gray-500">
                 <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 <p className="text-sm">No data available</p>

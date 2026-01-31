@@ -1,6 +1,6 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-29  
+> **Living Document** - Last updated: 2026-01-30  
 > **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
@@ -317,8 +317,8 @@ Column keys starting with `_` are **not allowed** in schema definitions. This re
 | Databases List | `/dashboard/databases` | PWF-11: Databases | WF-11a, WF-11f | `/api/databases` |
 | Database Detail | `/dashboard/databases/[id]` | PWF-11: Databases | WF-11d, WF-11e, WF-11f | `/api/databases/[id]`, `/api/databases/[id]/import/*`, `/api/databases/[id]/*.xlsx` |
 | New Database | `/dashboard/databases/new` | PWF-11: Databases | WF-11a, WF-11b, WF-11c | `/api/databases` |
-| Reports List | `/dashboard/reports` | PWF-12: Reports | WF-12a, WF-12f | `/api/reports` |
-| Report Builder | `/dashboard/reports/[id]` | PWF-12: Reports | WF-12b, WF-12c, WF-12d, WF-12e | `/api/reports/[id]`, `/api/reports/[id]/preview`, `/api/reports/[id]/slices/*` |
+| Reports List | `/dashboard/reports` | PWF-12: Reports | WF-12a, WF-12g, WF-12h, WF-12i, WF-12j, WF-12k | `/api/reports`, `/api/generated-reports`, `/api/reports/[id]/insights` |
+| Report Builder | `/dashboard/reports/[id]` | PWF-12: Reports | WF-12b, WF-12c, WF-12d, WF-12e, WF-12f | `/api/reports/[id]`, `/api/reports/[id]/preview` |
 
 ### Auth Pages
 
@@ -369,7 +369,7 @@ Every route has two classification fields:
 
 ## Section C: API Route Inventory
 
-### FRONTEND Routes (83 routes)
+### FRONTEND Routes (85 routes)
 
 Routes with verified `fetch()` calls from `app/` or `components/`.
 
@@ -459,9 +459,10 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/databases/[id]/import` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:218` |
 | `/api/reports` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx`, `app/dashboard/reports/new/page.tsx` |
 | `/api/reports/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` |
-| `/api/reports/[id]/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (preview with period, compareMode, liveConfig, filters) |
-| `/api/reports/[id]/slices` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (list/create slices) |
-| `/api/reports/[id]/slices/[sliceId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (update/delete slice) |
+| `/api/reports/[id]/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (preview with period, compareMode, liveConfig) |
+| `/api/reports/[id]/filter-properties` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (get filterable columns for report creation) |
+| `/api/reports/[id]/insights` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (AI-powered report analysis) |
+| `/api/generated-reports` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (list and create fixed report snapshots) |
 
 ### ADMIN Routes (18 routes)
 
@@ -752,8 +753,8 @@ awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
 
 | Metric | Count | Source |
 |--------|-------|--------|
-| Total API Routes | 138 | `find app/api -name "route.ts" \| wc -l` |
-| FRONTEND | 91 | This document |
+| Total API Routes | 136 | `find app/api -name "route.ts" \| wc -l` |
+| FRONTEND | 90 | This document |
 | ADMIN | 18 | Routes in `/api/admin/*` |
 | EXTERNAL | 8 | OAuth, webhooks, tracking |
 | TEST_ONLY | 3 | Only test file callers |
