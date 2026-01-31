@@ -917,31 +917,36 @@ export default function ReportsPage() {
           </div>
 
           {/* Report Data Table */}
-          <div className="flex-1 overflow-auto mt-4">
+          <div className="flex-1 overflow-hidden mt-4">
             {!viewingReport?.data?.table || !viewingReport.data.table.columns?.length || !viewingReport.data.table.rows ? (
               <div className="text-center py-12 text-gray-500">
                 <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 <p className="text-sm">No data available</p>
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
+              <div className="rounded-lg border border-gray-200 overflow-auto h-full">
+                <table className="text-sm border-collapse">
+                  <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
-                      {viewingReport.data.table.columns.map((col, colIndex) => (
-                        <th
-                          key={col.key}
-                          className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
-                            colIndex > 0 ? "border-l border-gray-200" : ""
-                          }`}
-                        >
-                          {col.label}
-                        </th>
-                      ))}
+                      {viewingReport.data.table.columns.map((col, colIndex) => {
+                        const isLabelColumn = col.key === "_label"
+                        return (
+                          <th
+                            key={col.key}
+                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap ${
+                              isLabelColumn 
+                                ? "text-left sticky left-0 z-30 bg-gray-100 min-w-[180px]" 
+                                : "text-center border-l border-gray-200"
+                            }`}
+                          >
+                            {col.label}
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
-                    {viewingReport.data.table.rows.slice(0, 50).map((row, rowIndex) => {
+                    {viewingReport.data.table.rows.map((row, rowIndex) => {
                       const rowType = row._type as string | undefined
                       return (
                         <tr 
@@ -956,9 +961,11 @@ export default function ReportsPage() {
                             return (
                               <td 
                                 key={col.key} 
-                                className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
-                                  colIndex > 0 ? "border-l border-gray-100" : ""
-                                }`}
+                                className={`px-4 py-3 text-gray-700 border-b border-gray-100 whitespace-nowrap ${
+                                  isLabelColumn 
+                                    ? "sticky left-0 z-10 bg-inherit min-w-[180px]" 
+                                    : "text-center border-l border-gray-100"
+                                } ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
                               >
                                 {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
                                   <span className="flex items-center gap-1.5">
@@ -977,29 +984,29 @@ export default function ReportsPage() {
                     })}
                   </tbody>
                   {viewingReport.data.table.formulaRows && viewingReport.data.table.formulaRows.length > 0 && (
-                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200 sticky bottom-0 z-20">
                       {viewingReport.data.table.formulaRows.map((fRow) => (
                         <tr key={fRow.key}>
-                          {viewingReport.data.table.columns.map((col, colIndex) => (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-3 text-gray-900 ${
-                                colIndex > 0 ? "border-l border-blue-100" : ""
-                              }`}
-                            >
-                              {colIndex === 0 ? fRow.label : formatCellValue(fRow.values[col.key])}
-                            </td>
-                          ))}
+                          {viewingReport.data.table.columns.map((col, colIndex) => {
+                            const isLabelColumn = colIndex === 0
+                            return (
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 text-gray-900 whitespace-nowrap ${
+                                  isLabelColumn 
+                                    ? "sticky left-0 z-10 bg-blue-50 min-w-[180px]" 
+                                    : "text-center border-l border-blue-100"
+                                }`}
+                              >
+                                {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tfoot>
                   )}
                 </table>
-                {viewingReport.data.table.rows.length > 50 && (
-                  <p className="text-xs text-gray-400 text-center py-2 bg-gray-50 border-t border-gray-100">
-                    Showing 50 of {viewingReport.data.table.rows.length} rows
-                  </p>
-                )}
               </div>
             )}
           </div>
