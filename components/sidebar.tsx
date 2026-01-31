@@ -111,7 +111,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
 }
 
-// Nav items before Collection
+// Nav items before Collection (admin-only)
 const preCollectionNavItems: NavItem[] = [
   {
     href: "/dashboard/requests",
@@ -213,8 +213,8 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
             </Link>
           </li>
 
-          {/* Nav Items before Collection (Requests) */}
-          {preCollectionNavItems.map((item) => {
+          {/* Nav Items before Collection (Requests) - Admin Only */}
+          {isAdmin && preCollectionNavItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
             

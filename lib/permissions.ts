@@ -20,6 +20,7 @@ const ADMIN_ONLY_ROUTES = [
   "/dashboard/databases",
   "/dashboard/contacts",
   "/dashboard/collection",
+  "/dashboard/requests",
   "/api/org/settings",
   "/api/org/users",
   "/api/org/team",
@@ -28,6 +29,7 @@ const ADMIN_ONLY_ROUTES = [
   "/api/databases",
   "/api/contacts",
   "/api/collection",
+  "/api/requests",
 ]
 
 /**
