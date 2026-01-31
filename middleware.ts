@@ -22,7 +22,7 @@ const ADMIN_ONLY_ROUTES = [
   "/dashboard/collection",
   "/dashboard/requests",
   "/api/org/settings",
-  "/api/org/users",
+  // Note: /api/org/users is NOT admin-only - it returns filtered data (non-admins only see themselves)
   "/api/org/team",
   "/api/reports", // Report definitions (templates) are admin-only
   "/api/databases",

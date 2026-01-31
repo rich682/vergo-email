@@ -136,6 +136,9 @@ export default function JobsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
+  // User role state
+  const [isAdmin, setIsAdmin] = useState(false)
+  
   // Board context from URL
   const boardId = searchParams.get("boardId")
   const [currentBoard, setCurrentBoard] = useState<Board | null>(null)
@@ -308,6 +311,22 @@ export default function JobsPage() {
     }
   }, [])
 
+  // Fetch user role to determine admin status
+  const fetchUserRole = useCallback(async () => {
+    try {
+      const response = await fetch("/api/org/users", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        // Find the current user (marked with isCurrentUser: true)
+        const currentUser = data.users?.find((u: any) => u.isCurrentUser)
+        setIsAdmin(currentUser?.role === "ADMIN")
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error)
+    }
+  }, [])
+
+  useEffect(() => { fetchUserRole() }, [fetchUserRole])
   useEffect(() => { fetchJobs() }, [fetchJobs])
   useEffect(() => { fetchBoard() }, [fetchBoard])
   useEffect(() => { fetchTeamMembers() }, [fetchTeamMembers]) // Fetch team members on page load for inline editing
@@ -1002,6 +1021,7 @@ export default function JobsPage() {
             )}
           </div>
           
+          {isAdmin && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
               <Sparkles className="w-4 h-4 mr-2" />
@@ -1400,6 +1420,7 @@ export default function JobsPage() {
             </DialogContent>
           </Dialog>
           </div>
+          )}
         </div>
 
         {/* Search */}
@@ -1425,14 +1446,16 @@ export default function JobsPage() {
           <EmptyState
             icon={<CheckCircle className="w-12 h-12 text-gray-300" />}
             title="No tasks yet"
-            description={currentBoard 
-              ? "Create your first task in this board"
-              : "Create a board and add tasks to get started"
+            description={isAdmin 
+              ? (currentBoard 
+                  ? "Create your first task in this board"
+                  : "Create a board and add tasks to get started")
+              : "You don't have any tasks assigned to you yet. Ask an admin to add you as a collaborator."
             }
-            action={{
+            action={isAdmin ? {
               label: "Create Task",
               onClick: () => setIsCreateOpen(true)
-            }}
+            } : undefined}
           />
         ) : filteredJobs.length === 0 && searchQuery ? (
           <div className="text-center py-12 text-gray-500">
@@ -1444,9 +1467,9 @@ export default function JobsPage() {
             teamMembers={teamMembers}
             boardId={boardId}
             onJobUpdate={handleJobUpdate}
-            onAddTask={() => setIsCreateOpen(true)}
-            onDelete={handleBulkDelete}
-            onDuplicate={handleBulkDuplicate}
+            onAddTask={isAdmin ? () => setIsCreateOpen(true) : undefined}
+            onDelete={isAdmin ? handleBulkDelete : undefined}
+            onDuplicate={isAdmin ? handleBulkDuplicate : undefined}
           />
         )}
       </div>
