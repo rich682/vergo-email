@@ -45,15 +45,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  ReportFilterSelector, 
-  type FilterableProperty, 
-  type FilterBindings 
-} from "@/components/reports/report-filter-selector"
-import { 
-  ReportInsightsPanel, 
-  InsightsButton 
-} from "@/components/reports/report-insights-panel"
 
 // Types
 interface ReportColumn {
@@ -178,7 +169,6 @@ export default function ReportBuilderPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialLoadRef = useRef(true)
-  const [insightsPanelOpen, setInsightsPanelOpen] = useState(false)
 
   // Modal state
   const [formulaColumnPanel, setFormulaColumnPanel] = useState<{
@@ -209,12 +199,6 @@ export default function ReportBuilderPage() {
   // Filter column configuration - which database columns are exposed as filters
   const [filterColumnKeys, setFilterColumnKeys] = useState<string[]>([])
   const [filterConfigOpen, setFilterConfigOpen] = useState(false)
-
-  // Filter state (replaces slice-first approach)
-  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
-  const [activeFilters, setActiveFilters] = useState<FilterBindings>({})
-  const [loadingFilters, setLoadingFilters] = useState(false)
-  
 
   // Fetch report definition
   const fetchReport = useCallback(async () => {
@@ -248,26 +232,9 @@ export default function ReportBuilderPage() {
     }
   }, [id, router])
 
-  // Fetch filter properties for this report
-  const fetchFilterProperties = useCallback(async () => {
-    try {
-      setLoadingFilters(true)
-      const response = await fetch(`/api/reports/${id}/filter-properties`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setFilterProperties(data.properties || [])
-      }
-    } catch (err) {
-      console.error("Error fetching filter properties:", err)
-    } finally {
-      setLoadingFilters(false)
-    }
-  }, [id])
-
   useEffect(() => {
     fetchReport()
-    fetchFilterProperties()
-  }, [fetchReport, fetchFilterProperties])
+  }, [fetchReport])
 
   // Fetch preview from server
   // For pivot layout, auto-detect compare mode from comparison rows
@@ -307,8 +274,6 @@ export default function ReportBuilderPage() {
             metricRows,
             pivotFormulaColumns,
           },
-          // Apply active filters
-          filters: Object.keys(activeFilters).length > 0 ? activeFilters : undefined,
         }),
       })
       
@@ -326,7 +291,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, activeFilters])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -541,7 +506,7 @@ export default function ReportBuilderPage() {
               </p>
             </div>
 
-            {/* === FILTERS SECTION === */}
+            {/* === FILTERS CONFIGURATION === */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -553,23 +518,13 @@ export default function ReportBuilderPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {Object.keys(activeFilters).length > 0 && (
-                    <button
-                      onClick={() => setActiveFilters({})}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setFilterConfigOpen(!filterConfigOpen)}
-                    className="p-1 hover:bg-gray-200 rounded"
-                    title="Configure filterable columns"
-                  >
-                    <Settings2 className="w-3.5 h-3.5 text-gray-500" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => setFilterConfigOpen(!filterConfigOpen)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Configure filterable columns"
+                >
+                  <Settings2 className="w-3.5 h-3.5 text-gray-500" />
+                </button>
               </div>
               
               {/* Filter Configuration Panel */}
@@ -604,21 +559,27 @@ export default function ReportBuilderPage() {
                         </label>
                       ))}
                   </div>
-                  <p className="text-xs text-blue-600 mt-2">
-                    Changes auto-save. Refresh to see updated filter options.
-                  </p>
                 </div>
               )}
               
-              <div className="p-3 space-y-3">
-                {/* Filter selector */}
-                <ReportFilterSelector
-                  properties={filterProperties}
-                  value={activeFilters}
-                  onChange={setActiveFilters}
-                  loading={loadingFilters}
-                />
-
+              {/* Display configured filter columns */}
+              <div className="p-3">
+                {filterColumnKeys.length > 0 ? (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">
+                      Columns available as filters:
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      {filterColumnKeys
+                        .map(key => databaseColumns.find(c => c.key === key)?.label || key)
+                        .join(", ")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">
+                    No filter columns configured. Click the gear icon to select columns.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -997,21 +958,15 @@ export default function ReportBuilderPage() {
                 <span className="text-sm font-medium text-gray-700">Preview</span>
                 {previewLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
               </div>
-              <div className="flex items-center gap-2">
-                <InsightsButton
-                  onClick={() => setInsightsPanelOpen(true)}
-                  disabled={!currentPeriodKey || previewLoading}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchPreview}
-                  disabled={previewLoading}
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${previewLoading ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchPreview}
+                disabled={previewLoading}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${previewLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
             </div>
             
             {/* Period and Compare Mode Controls */}
@@ -1346,17 +1301,6 @@ export default function ReportBuilderPage() {
           setPivotFormulaColumnModal({ open: false, editingKey: null })
         }}
       />
-
-      {/* AI Insights Panel */}
-      {insightsPanelOpen && report && currentPeriodKey && (
-        <ReportInsightsPanel
-          reportId={id}
-          periodKey={currentPeriodKey}
-          filterBindings={activeFilters}
-          compareMode={effectiveCompareMode}
-          onClose={() => setInsightsPanelOpen(false)}
-        />
-      )}
     </div>
   )
 }
