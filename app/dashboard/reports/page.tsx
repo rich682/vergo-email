@@ -121,6 +121,7 @@ export default function ReportsPage() {
   // Create Report modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createReportLoading, setCreateReportLoading] = useState(false)
+  const [reportName, setReportName] = useState<string>("")
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>("")
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
@@ -209,6 +210,7 @@ export default function ReportsPage() {
           reportDefinitionId: selectedTemplateId,
           filterBindings: Object.keys(cleanedFilters).length > 0 ? cleanedFilters : undefined,
           periodKey: selectedPeriodKey,
+          name: reportName.trim() || undefined,
         }),
       })
 
@@ -216,6 +218,7 @@ export default function ReportsPage() {
         const data = await response.json()
         // Close modal and refresh list
         setIsCreateModalOpen(false)
+        setReportName("")
         setSelectedTemplateId("")
         setFilterBindings({})
         setSelectedPeriodKey("")
@@ -767,6 +770,17 @@ export default function ReportsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* Report Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="reportName">Report Name (optional)</Label>
+              <Input
+                id="reportName"
+                value={reportName}
+                onChange={(e) => setReportName(e.target.value)}
+                placeholder="Leave blank to use template name"
+              />
+            </div>
+
             {/* Template Selection */}
             <div className="grid gap-2">
               <Label htmlFor="template">Report Template</Label>

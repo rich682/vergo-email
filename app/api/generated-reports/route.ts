@@ -76,10 +76,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { reportDefinitionId, filterBindings, periodKey } = body as {
+    const { reportDefinitionId, filterBindings, periodKey, name } = body as {
       reportDefinitionId?: string
       filterBindings?: Record<string, string[]>
       periodKey?: string
+      name?: string
     }
 
     // Validate required fields
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
       filterBindings,
       periodKey,
       createdBy: user.id,
+      name: name?.trim() || undefined,
     })
 
     return NextResponse.json({ report }, { status: 201 })

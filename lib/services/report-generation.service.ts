@@ -93,6 +93,7 @@ export interface CreateManualReportInput {
   filterBindings?: Record<string, string[]>
   periodKey: string
   createdBy: string
+  name?: string  // Custom report name (optional)
 }
 
 // ============================================
@@ -196,6 +197,7 @@ export class ReportGenerationService {
       filterBindings,
       periodKey,
       createdBy,
+      name,
     } = input
 
     // Get report definition for metadata
@@ -237,7 +239,7 @@ export class ReportGenerationService {
       current: result.current,
       compare: result.compare,
       table: result.table,
-      reportName: reportDef.name,
+      reportName: name || reportDef.name,  // Use custom name if provided
       sliceName: filterName,
       layout: reportDef.layout,
     }
