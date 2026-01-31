@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { organizationId: true },
+      select: { id: true, organizationId: true, role: true },
     })
 
     if (!user?.organizationId) {
@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
     const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
     const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
 
+    // Determine viewer filter: admins see all, non-admins only see reports they're viewers of
+    const viewerUserId = user.role === "ADMIN" ? undefined : user.id
+
     // Fetch reports
     const reports = await ReportGenerationService.list({
       organizationId: user.organizationId,
@@ -44,10 +47,11 @@ export async function GET(request: NextRequest) {
       periodKey,
       boardId,
       limit,
+      viewerUserId, // Pass viewer filter for non-admins
     })
 
-    // Also fetch distinct periods for filtering
-    const periods = await ReportGenerationService.getDistinctPeriods(user.organizationId)
+    // Also fetch distinct periods for filtering (only from visible reports for non-admins)
+    const periods = await ReportGenerationService.getDistinctPeriods(user.organizationId, viewerUserId)
 
     return NextResponse.json({ reports, periods })
   } catch (error) {
@@ -83,11 +87,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
     }
     
-    const { reportDefinitionId, filterBindings, periodKey, name } = body as {
+    const { reportDefinitionId, filterBindings, periodKey, name, viewerIds } = body as {
       reportDefinitionId?: string
       filterBindings?: Record<string, string[]>
       periodKey?: string
       name?: string
+      viewerIds?: string[]
     }
 
     // Validate required fields
@@ -114,6 +119,31 @@ export async function POST(request: NextRequest) {
       createdBy: user.id,
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     })
+
+    // Add viewers if specified
+    if (viewerIds && viewerIds.length > 0) {
+      // Validate viewerIds are valid users in the same org
+      const validUsers = await prisma.user.findMany({
+        where: {
+          id: { in: viewerIds },
+          organizationId: user.organizationId,
+        },
+        select: { id: true },
+      })
+      
+      const validUserIds = validUsers.map(u => u.id)
+      
+      if (validUserIds.length > 0) {
+        await prisma.generatedReportViewer.createMany({
+          data: validUserIds.map(userId => ({
+            generatedReportId: report.id,
+            userId,
+            addedBy: user.id,
+          })),
+          skipDuplicates: true,
+        })
+      }
+    }
 
     return NextResponse.json({ report }, { status: 201 })
   } catch (error: any) {

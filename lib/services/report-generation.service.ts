@@ -85,6 +85,7 @@ export interface ListGeneratedReportsInput {
   periodKey?: string
   boardId?: string
   limit?: number
+  viewerUserId?: string  // If provided, only return reports this user can view
 }
 
 export interface CreateManualReportInput {
@@ -270,13 +271,14 @@ export class ReportGenerationService {
    * List generated reports with filters
    */
   static async list(input: ListGeneratedReportsInput): Promise<GeneratedReport[]> {
-    const { organizationId, reportDefinitionId, periodKey, boardId, limit = 100 } = input
+    const { organizationId, reportDefinitionId, periodKey, boardId, limit = 100, viewerUserId } = input
 
     const where: {
       organizationId: string
       reportDefinitionId?: string
       periodKey?: string
       boardId?: string
+      viewers?: { some: { userId: string } }
     } = { organizationId }
 
     if (reportDefinitionId) {
@@ -289,6 +291,11 @@ export class ReportGenerationService {
 
     if (boardId) {
       where.boardId = boardId
+    }
+
+    // Non-admin filter: only show reports where user is a viewer
+    if (viewerUserId) {
+      where.viewers = { some: { userId: viewerUserId } }
     }
 
     const reports = await prismaAny.generatedReport.findMany({
@@ -338,10 +345,21 @@ export class ReportGenerationService {
 
   /**
    * Get distinct period keys for filtering
+   * If viewerUserId is provided, only return periods from reports the user can view
    */
-  static async getDistinctPeriods(organizationId: string): Promise<string[]> {
+  static async getDistinctPeriods(organizationId: string, viewerUserId?: string): Promise<string[]> {
+    const where: {
+      organizationId: string
+      viewers?: { some: { userId: string } }
+    } = { organizationId }
+
+    // Non-admin filter: only periods from reports where user is a viewer
+    if (viewerUserId) {
+      where.viewers = { some: { userId: viewerUserId } }
+    }
+
     const results = await prismaAny.generatedReport.findMany({
-      where: { organizationId },
+      where,
       select: { periodKey: true },
       distinct: ["periodKey"],
       orderBy: { periodKey: "desc" },

@@ -128,6 +128,9 @@ export default function ReportsPage() {
   const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
   const [templatePeriods, setTemplatePeriods] = useState<AvailablePeriod[]>([])
   const [loadingTemplateData, setLoadingTemplateData] = useState(false)
+  const [selectedViewerIds, setSelectedViewerIds] = useState<string[]>([])
+  const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string | null; email: string; role: string }>>([])
+  const [loadingOrgUsers, setLoadingOrgUsers] = useState(false)
 
   // Report Viewer modal state
   const [viewerOpen, setViewerOpen] = useState(false)
@@ -205,6 +208,7 @@ export default function ReportsPage() {
           filterBindings: Object.keys(cleanedFilters).length > 0 ? cleanedFilters : undefined,
           periodKey: selectedPeriodKey,
           name: reportName.trim() || undefined,
+          viewerIds: selectedViewerIds.length > 0 ? selectedViewerIds : undefined,
         }),
       })
 
@@ -216,6 +220,7 @@ export default function ReportsPage() {
         setSelectedTemplateId("")
         setFilterBindings({})
         setSelectedPeriodKey("")
+        setSelectedViewerIds([])
         fetchGeneratedReports()
         
         // Open the newly created report in viewer
@@ -347,10 +352,36 @@ export default function ReportsPage() {
     }
   }, [periodFilter, templateFilter])
 
+  // Fetch org users (non-admins) for viewer selector
+  const fetchOrgUsers = useCallback(async () => {
+    if (orgUsers.length > 0) return // Already fetched
+    try {
+      setLoadingOrgUsers(true)
+      const response = await fetch("/api/org/users", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to non-admin users for the viewer selector
+        const nonAdminUsers = (data.users || []).filter((u: any) => u.role !== "ADMIN")
+        setOrgUsers(nonAdminUsers)
+      }
+    } catch (error) {
+      console.error("Error fetching org users:", error)
+    } finally {
+      setLoadingOrgUsers(false)
+    }
+  }, [orgUsers.length])
+
   useEffect(() => {
     fetchReports()
     fetchGeneratedReports()
   }, [fetchReports, fetchGeneratedReports])
+
+  // Fetch org users when create modal opens
+  useEffect(() => {
+    if (isCreateModalOpen) {
+      fetchOrgUsers()
+    }
+  }, [isCreateModalOpen, fetchOrgUsers])
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -770,6 +801,46 @@ export default function ReportsPage() {
                 />
               </div>
             )}
+
+            {/* Viewer Selection */}
+            <div className="grid gap-2">
+              <Label>Share with (optional)</Label>
+              <p className="text-xs text-gray-500">Admins can always see all reports. Select team members who should have access.</p>
+              {loadingOrgUsers ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading team members...
+                </div>
+              ) : orgUsers.length === 0 ? (
+                <p className="text-sm text-gray-500 py-2">No team members available</p>
+              ) : (
+                <div className="max-h-32 overflow-y-auto border rounded-md p-2 space-y-1">
+                  {orgUsers.map((user) => (
+                    <label 
+                      key={user.id}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedViewerIds.includes(user.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedViewerIds([...selectedViewerIds, user.id])
+                          } else {
+                            setSelectedViewerIds(selectedViewerIds.filter(id => id !== user.id))
+                          }
+                        }}
+                        className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {user.name || user.email}
+                        {user.name && <span className="text-gray-400 ml-1">({user.email})</span>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button 

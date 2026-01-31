@@ -233,6 +233,7 @@ model User {
   createdDatabases           Database[]                 @relation("DatabaseCreator")
   importedDatabases          Database[]                 @relation("DatabaseImporter")
   createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
+  reportViewerPermissions    GeneratedReportViewer[]
 
   @@index([organizationId])
   @@index([email])
@@ -1274,10 +1275,27 @@ model GeneratedReport {
   reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
   taskInstance       TaskInstance?    @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   board              Board?           @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  viewers            GeneratedReportViewer[]
   
   @@index([organizationId, periodKey])
   @@index([reportDefinitionId])
   @@index([boardId])
   @@index([taskInstanceId])
+}
+
+// GeneratedReportViewer - join table for report viewer permissions
+// Admins can see all reports; non-admins can only see reports they're viewers of
+model GeneratedReportViewer {
+  id                String   @id @default(cuid())
+  generatedReportId String
+  userId            String
+  addedAt           DateTime @default(now())
+  addedBy           String
+  
+  generatedReport GeneratedReport @relation(fields: [generatedReportId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([generatedReportId, userId])
+  @@index([userId])
 }
 
