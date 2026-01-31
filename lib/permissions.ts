@@ -17,10 +17,17 @@ import { UserRole, Prisma } from "@prisma/client"
 const ADMIN_ONLY_ROUTES = [
   "/dashboard/settings/team",
   "/dashboard/settings", // Org settings (but not sub-routes like /settings/profile if we add it)
+  "/dashboard/databases",
+  "/dashboard/contacts",
+  "/dashboard/collection",
   "/api/org/settings",
   "/api/org/users",
   "/api/org/team",
   "/api/admin",
+  "/api/reports", // Report definitions (templates) are admin-only
+  "/api/databases",
+  "/api/contacts",
+  "/api/collection",
 ]
 
 /**
@@ -127,4 +134,31 @@ export function canModifyJob(
 export function isAdmin(role: UserRole | string | undefined): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
   return normalizedRole === UserRole.ADMIN
+}
+
+/**
+ * Get Prisma where clause to filter boards by user access
+ * 
+ * ADMIN: No filter (sees all org boards)
+ * MEMBER/VIEWER: Only boards where user is owner or collaborator
+ */
+export function getBoardAccessFilter(
+  userId: string,
+  role: UserRole | string | undefined
+): Prisma.BoardWhereInput | null {
+  // Normalize role
+  const normalizedRole = role?.toUpperCase() as UserRole | undefined
+  
+  // ADMIN sees all boards - no filter needed
+  if (normalizedRole === UserRole.ADMIN) {
+    return null
+  }
+  
+  // MEMBER and VIEWER: filter to owned or collaborated boards
+  return {
+    OR: [
+      { ownerId: userId },
+      { collaborators: { some: { userId } } }
+    ]
+  }
 }

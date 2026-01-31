@@ -227,6 +227,9 @@ export class BoardService {
 
   /**
    * Get all boards for an organization
+   * 
+   * @param userId - Current user ID (for access filtering)
+   * @param userRole - Current user role (ADMIN sees all, others see owned/collaborated)
    */
   static async getByOrganizationId(
     organizationId: string,
@@ -236,6 +239,8 @@ export class BoardService {
       ownerId?: string
       year?: number
       includeTaskInstanceCount?: boolean
+      userId?: string
+      userRole?: string
     }
   ): Promise<BoardWithCounts[]> {
     const where: any = { organizationId }
@@ -256,6 +261,18 @@ export class BoardService {
       where.periodStart = {
         gte: new Date(options.year, 0, 1),
         lt: new Date(options.year + 1, 0, 1)
+      }
+    }
+
+    // Apply role-based access filter for non-admins
+    if (options?.userId && options?.userRole) {
+      const normalizedRole = options.userRole.toUpperCase()
+      if (normalizedRole !== "ADMIN") {
+        // Non-admins can only see boards they own or collaborate on
+        where.OR = [
+          { ownerId: options.userId },
+          { collaborators: { some: { userId: options.userId } } }
+        ]
       }
     }
 

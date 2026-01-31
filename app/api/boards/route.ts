@@ -19,11 +19,13 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = session.user.role
     const { searchParams } = new URL(request.url)
     
     // Parse status filter
@@ -66,7 +68,9 @@ export async function GET(request: NextRequest) {
       cadence,
       ownerId,
       year,
-      includeTaskInstanceCount: true
+      includeTaskInstanceCount: true,
+      userId,
+      userRole
     })
 
     // Return timezone, or null if not configured (don't default to UTC)

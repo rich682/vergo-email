@@ -106,7 +106,10 @@ const CADENCE_LABELS: Record<string, string> = {
 export default function ReportsPage() {
   const router = useRouter()
   
-  // Report templates state
+  // User role state
+  const [isAdmin, setIsAdmin] = useState(false)
+  
+  // Report templates state (admin-only)
   const [reports, setReports] = useState<ReportItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -309,7 +312,24 @@ export default function ReportsPage() {
     }
   }
 
-  // Fetch report templates
+  // Fetch user role to determine admin status
+  const fetchUserRole = useCallback(async () => {
+    try {
+      const response = await fetch("/api/org/users", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        // The currentUser field contains the current user's info
+        const currentUserRole = data.currentUser?.role || data.users?.[0]?.role
+        setIsAdmin(currentUserRole === "ADMIN")
+        return currentUserRole === "ADMIN"
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error)
+    }
+    return false
+  }, [])
+
+  // Fetch report templates (admin-only)
   const fetchReports = useCallback(async () => {
     try {
       setLoading(true)
@@ -319,6 +339,9 @@ export default function ReportsPage() {
         setReports(data.reports || [])
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/reports"
+      } else if (response.status === 403) {
+        // Non-admin - expected, just don't show reports
+        setReports([])
       }
     } catch (error) {
       console.error("Error fetching reports:", error)
@@ -372,9 +395,16 @@ export default function ReportsPage() {
   }, [orgUsers.length])
 
   useEffect(() => {
-    fetchReports()
-    fetchGeneratedReports()
-  }, [fetchReports, fetchGeneratedReports])
+    // Fetch user role first, then fetch appropriate data
+    fetchUserRole().then((admin) => {
+      if (admin) {
+        fetchReports() // Only admins can see report templates
+      } else {
+        setLoading(false) // Skip template loading for non-admins
+      }
+    })
+    fetchGeneratedReports() // All users can see generated reports (filtered by viewer permissions)
+  }, [fetchUserRole, fetchReports, fetchGeneratedReports])
 
   // Fetch org users when create modal opens
   useEffect(() => {
@@ -422,15 +452,19 @@ export default function ReportsPage() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <h1 className="text-2xl font-semibold text-gray-900">Reports</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Build report templates and view system-generated reports
+            {isAdmin 
+              ? "Build report templates and view generated reports"
+              : "View reports you have access to"
+            }
           </p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
         {/* ============================================ */}
-        {/* SECTION 1: Report Builder */}
+        {/* SECTION 1: Report Builder (Admin Only) */}
         {/* ============================================ */}
+        {isAdmin && (
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -563,6 +597,7 @@ export default function ReportsPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* ============================================ */}
         {/* SECTION 2: Generated Reports */}
@@ -588,28 +623,32 @@ export default function ReportsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={templateFilter} onValueChange={setTemplateFilter}>
-                <SelectTrigger className="w-[160px] h-9">
-                  <Filter className="w-4 h-4 mr-2 text-gray-400" />
-                  <SelectValue placeholder="Template" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Templates</SelectItem>
-                  {reports.map((report) => (
-                    <SelectItem key={report.id} value={report.id}>
-                      {report.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button 
-                onClick={() => setIsCreateModalOpen(true)} 
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-                disabled={reports.length === 0}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Report
-              </Button>
+              {isAdmin && (
+                <>
+                  <Select value={templateFilter} onValueChange={setTemplateFilter}>
+                    <SelectTrigger className="w-[160px] h-9">
+                      <Filter className="w-4 h-4 mr-2 text-gray-400" />
+                      <SelectValue placeholder="Template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Templates</SelectItem>
+                      {reports.map((report) => (
+                        <SelectItem key={report.id} value={report.id}>
+                          {report.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    onClick={() => setIsCreateModalOpen(true)} 
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                    disabled={reports.length === 0}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Report
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -649,9 +688,12 @@ export default function ReportsPage() {
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center">
                       <Clock className="mx-auto h-8 w-8 text-gray-300" />
-                      <p className="mt-2 text-sm text-gray-500">No generated reports yet</p>
+                      <p className="mt-2 text-sm text-gray-500">No reports available</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        Use "Create Report" to generate reports from your report templates
+                        {isAdmin 
+                          ? "Use \"Create Report\" to generate reports from your report templates"
+                          : "You don't have access to any reports yet. Ask an admin to share reports with you."
+                        }
                       </p>
                     </td>
                   </tr>

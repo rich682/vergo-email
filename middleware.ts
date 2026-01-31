@@ -17,9 +17,16 @@ function generateRequestId(): string {
 const ADMIN_ONLY_ROUTES = [
   "/dashboard/settings/team",
   "/dashboard/settings",
+  "/dashboard/databases",
+  "/dashboard/contacts",
+  "/dashboard/collection",
   "/api/org/settings",
   "/api/org/users",
   "/api/org/team",
+  "/api/reports", // Report definitions (templates) are admin-only
+  "/api/databases",
+  "/api/contacts",
+  "/api/collection",
 ]
 
 /**
