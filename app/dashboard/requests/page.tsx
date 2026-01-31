@@ -394,12 +394,16 @@ export default function RequestsPage() {
             // Fallback to job page
             if (request.job?.id) {
               router.push(`/dashboard/jobs/${request.job.id}`)
+            } else {
+              alert("This request is not associated with a task.")
             }
           }
         })
         .catch(() => {
           if (request.job?.id) {
             router.push(`/dashboard/jobs/${request.job.id}`)
+          } else {
+            alert("This request is not associated with a task.")
           }
         })
       return
@@ -408,6 +412,8 @@ export default function RequestsPage() {
     // No replies - go to job detail page
     if (request.job?.id) {
       router.push(`/dashboard/jobs/${request.job.id}`)
+    } else {
+      alert("This request is not associated with a task.")
     }
   }
 
