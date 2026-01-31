@@ -925,7 +925,7 @@ export default function ReportsPage() {
               </div>
             ) : (
               <div className="rounded-lg border border-gray-200 overflow-auto h-full">
-                <table className="text-sm border-collapse">
+                <table className="text-sm border-collapse table-fixed">
                   <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
                       {viewingReport.data.table.columns.map((col, colIndex) => {
@@ -933,10 +933,10 @@ export default function ReportsPage() {
                         return (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap ${
+                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ${
                               isLabelColumn 
-                                ? "text-left sticky left-0 z-30 bg-gray-100 min-w-[180px]" 
-                                : "text-center border-l border-gray-200"
+                                ? "text-left sticky left-0 z-30 bg-gray-100 w-[200px] whitespace-nowrap" 
+                                : "text-center border-l border-gray-200 w-[120px]"
                             }`}
                           >
                             {col.label}
@@ -951,7 +951,7 @@ export default function ReportsPage() {
                       return (
                         <tr 
                           key={`row-${row._label || rowIndex}`} 
-                          className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
+                          className="hover:bg-blue-50 transition-colors bg-white"
                         >
                           {viewingReport.data.table.columns.map((col, colIndex) => {
                             const effectiveFormat = col.key === "_label" 
@@ -961,11 +961,11 @@ export default function ReportsPage() {
                             return (
                               <td 
                                 key={col.key} 
-                                className={`px-4 py-3 text-gray-700 border-b border-gray-100 whitespace-nowrap ${
+                                className={`px-4 py-3 border-b border-gray-100 whitespace-nowrap ${
                                   isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-inherit min-w-[180px]" 
-                                    : "text-center border-l border-gray-100"
-                                } ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
+                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900 w-[200px]" 
+                                    : "text-center border-l border-gray-100 text-gray-700 w-[120px]"
+                                }`}
                               >
                                 {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
                                   <span className="flex items-center gap-1.5">
@@ -992,10 +992,10 @@ export default function ReportsPage() {
                             return (
                               <td
                                 key={col.key}
-                                className={`px-4 py-3 text-gray-900 whitespace-nowrap ${
+                                className={`px-4 py-3 whitespace-nowrap ${
                                   isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-blue-50 min-w-[180px]" 
-                                    : "text-center border-l border-blue-100"
+                                    ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900 w-[200px]" 
+                                    : "text-center border-l border-blue-100 text-gray-900 w-[120px]"
                                 }`}
                               >
                                 {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}

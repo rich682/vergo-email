@@ -1095,18 +1095,18 @@ export default function ReportBuilderPage() {
               </div>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto h-full">
-                <table className="border-collapse">
-                  <thead className="bg-gray-50 border-b border-gray-300 sticky top-0 z-20">
+                <table className="border-collapse table-fixed">
+                  <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-20">
                     <tr>
                       {previewData.table.columns.map((col, colIndex) => {
                         const isLabelColumn = col.key === "_label"
                         return (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap ${
+                            className={`px-4 py-3 text-sm font-semibold text-gray-600 ${
                               isLabelColumn 
-                                ? "text-left sticky left-0 z-30 bg-gray-50 min-w-[180px]" 
-                                : "text-center border-l border-gray-200"
+                                ? "text-left sticky left-0 z-30 bg-gray-100 w-[200px] whitespace-nowrap" 
+                                : "text-center border-l border-gray-200 w-[120px]"
                             }`}
                           >
                             <div className={`flex items-center gap-1.5 ${isLabelColumn ? "" : "justify-center"}`}>
@@ -1124,7 +1124,7 @@ export default function ReportBuilderPage() {
                     {previewData.table.rows.map((row, rowIndex) => {
                       const rowType = row._type as string | undefined
                       return (
-                        <tr key={`row-${row._label || rowIndex}`} className={`hover:bg-gray-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}>
+                        <tr key={`row-${row._label || rowIndex}`} className="hover:bg-blue-50 transition-colors bg-white">
                           {previewData.table.columns.map((col, colIndex) => {
                             // For pivot layouts, use row's _format if available (except for label column)
                             const effectiveFormat = col.key === "_label" 
@@ -1134,11 +1134,11 @@ export default function ReportBuilderPage() {
                             return (
                               <td 
                                 key={col.key} 
-                                className={`px-4 py-3 text-sm text-gray-900 border-b border-gray-200 whitespace-nowrap ${
+                                className={`px-4 py-3 text-sm border-b border-gray-200 whitespace-nowrap ${
                                   isLabelColumn 
-                                    ? "sticky left-0 z-10 min-w-[180px]" 
-                                    : "text-center border-l border-gray-200"
-                                } ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
+                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900 w-[200px]" 
+                                    : "text-center border-l border-gray-200 text-gray-700 w-[120px]"
+                                }`}
                               >
                                 {isLabelColumn ? (
                                   <span className="flex items-center gap-1.5">
@@ -1163,10 +1163,10 @@ export default function ReportBuilderPage() {
                           return (
                             <td 
                               key={col.key} 
-                              className={`px-4 py-3 text-sm text-gray-900 border-b border-blue-200 whitespace-nowrap ${
+                              className={`px-4 py-3 text-sm border-b border-blue-200 whitespace-nowrap ${
                                 isLabelColumn 
-                                  ? "sticky left-0 z-10 bg-blue-50 min-w-[180px]" 
-                                  : "text-center border-l border-blue-200"
+                                  ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900 w-[200px]" 
+                                  : "text-center border-l border-blue-200 text-gray-700 w-[120px]"
                               }`}
                             >
                               {isLabelColumn ? (
