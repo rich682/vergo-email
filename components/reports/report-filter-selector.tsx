@@ -130,21 +130,33 @@ function PropertyFilter({
 }: PropertyFilterProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selectedValues))
+  // If no values selected (meaning "all"), show all checkboxes as checked
+  const [localSelected, setLocalSelected] = useState<Set<string>>(
+    new Set(selectedValues.length === 0 ? property.values : selectedValues)
+  )
 
   // Sync local state when prop changes
   useEffect(() => {
-    setLocalSelected(new Set(selectedValues))
-  }, [selectedValues])
+    if (selectedValues.length === 0) {
+      setLocalSelected(new Set(property.values))
+    } else {
+      setLocalSelected(new Set(selectedValues))
+    }
+  }, [selectedValues, property.values])
 
   // Reset search when closed
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open)
     if (open) {
       setSearchQuery("")
-      setLocalSelected(new Set(selectedValues))
+      // If no values selected (meaning "all"), show all checkboxes as checked
+      if (selectedValues.length === 0) {
+        setLocalSelected(new Set(property.values))
+      } else {
+        setLocalSelected(new Set(selectedValues))
+      }
     }
-  }, [selectedValues])
+  }, [selectedValues, property.values])
 
   // Filter values by search
   const filteredValues = useMemo(() => {
@@ -237,12 +249,14 @@ function PropertyFilter({
         {/* Select all / Clear */}
         <div className="flex items-center justify-between px-2 py-1.5 text-xs border-b border-gray-100">
           <button
+            type="button"
             className="text-gray-600 hover:text-gray-800"
             onClick={handleSelectAll}
           >
             Select all
           </button>
           <button
+            type="button"
             className="text-gray-600 hover:text-gray-800"
             onClick={handleClearAll}
           >
