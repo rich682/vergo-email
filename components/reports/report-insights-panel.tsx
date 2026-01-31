@@ -107,12 +107,12 @@ export function ReportInsightsPanel({
   const [isCached, setIsCached] = useState(false)
   const [cachedAt, setCachedAt] = useState<string | null>(null)
 
-  // Collapsible sections state
+  // Collapsible sections state - all collapsed by default
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    findings: true,
-    comparison: true,
-    trends: true,
-    recommendations: true,
+    findings: false,
+    comparison: false,
+    trends: false,
+    recommendations: false,
     highlights: false,
   })
 
