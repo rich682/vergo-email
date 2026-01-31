@@ -1095,7 +1095,7 @@ export default function ReportBuilderPage() {
               </div>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto h-full">
-                <table className="border-collapse table-fixed">
+                <table className="border-collapse" style={{ tableLayout: 'fixed' }}>
                   <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-20">
                     <tr>
                       {previewData.table.columns.map((col, colIndex) => {
@@ -1105,9 +1105,14 @@ export default function ReportBuilderPage() {
                             key={col.key}
                             className={`px-4 py-3 text-sm font-semibold text-gray-600 ${
                               isLabelColumn 
-                                ? "text-left sticky left-0 z-30 bg-gray-100 w-[200px] whitespace-nowrap" 
-                                : "text-center border-l border-gray-200 w-[120px]"
+                                ? "text-left sticky left-0 z-30 bg-gray-100 whitespace-nowrap" 
+                                : "text-center border-l border-gray-200"
                             }`}
+                            style={{ 
+                              width: isLabelColumn ? 200 : 120, 
+                              minWidth: isLabelColumn ? 200 : 120,
+                              maxWidth: isLabelColumn ? 200 : 120
+                            }}
                           >
                             <div className={`flex items-center gap-1.5 ${isLabelColumn ? "" : "justify-center"}`}>
                               {col.type === "formula" && (
@@ -1134,11 +1139,16 @@ export default function ReportBuilderPage() {
                             return (
                               <td 
                                 key={col.key} 
-                                className={`px-4 py-3 text-sm border-b border-gray-200 whitespace-nowrap ${
+                                className={`px-4 py-3 text-sm border-b border-gray-200 overflow-hidden text-ellipsis whitespace-nowrap ${
                                   isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900 w-[200px]" 
-                                    : "text-center border-l border-gray-200 text-gray-700 w-[120px]"
+                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900" 
+                                    : "text-center border-l border-gray-200 text-gray-700"
                                 }`}
+                                style={{ 
+                                  width: isLabelColumn ? 200 : 120, 
+                                  minWidth: isLabelColumn ? 200 : 120,
+                                  maxWidth: isLabelColumn ? 200 : 120
+                                }}
                               >
                                 {isLabelColumn ? (
                                   <span className="flex items-center gap-1.5">
@@ -1163,11 +1173,16 @@ export default function ReportBuilderPage() {
                           return (
                             <td 
                               key={col.key} 
-                              className={`px-4 py-3 text-sm border-b border-blue-200 whitespace-nowrap ${
+                              className={`px-4 py-3 text-sm border-b border-blue-200 overflow-hidden text-ellipsis whitespace-nowrap ${
                                 isLabelColumn 
-                                  ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900 w-[200px]" 
-                                  : "text-center border-l border-blue-200 text-gray-700 w-[120px]"
+                                  ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900" 
+                                  : "text-center border-l border-blue-200 text-gray-700"
                               }`}
+                              style={{ 
+                                width: isLabelColumn ? 200 : 120, 
+                                minWidth: isLabelColumn ? 200 : 120,
+                                maxWidth: isLabelColumn ? 200 : 120
+                              }}
                             >
                               {isLabelColumn ? (
                                 <span className="flex items-center gap-1.5">
