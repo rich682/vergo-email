@@ -1120,7 +1120,7 @@ export default function ReportBuilderPage() {
                       {previewData.table.rows.map((row, rowIndex) => {
                         const rowType = row._type as string | undefined
                         return (
-                          <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
+                          <tr key={`row-${row._label || rowIndex}`} className="hover:bg-gray-50 transition-colors">
                             {previewData.table.columns.map((col, colIndex) => {
                               // For pivot layouts, use row's _format if available (except for label column)
                               const effectiveFormat = col.key === "_label" 

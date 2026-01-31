@@ -21,7 +21,14 @@ import {
   parseNumericValue,
   computeAggregate,
   extractColumnValues,
+  type AggregateFunction,
 } from "@/lib/utils/safe-expression"
+import type {
+  ReportColumn,
+  ReportFormulaRow,
+  MetricRow,
+  PivotFormulaColumn,
+} from "./report-definition.service"
 
 // ============================================
 // Types
@@ -33,13 +40,13 @@ export interface ExecutePreviewInput {
   currentPeriodKey?: string  // Optional - if not provided, uses all rows
   compareMode?: CompareMode  // Default: "none"
   liveConfig?: {             // Optional - override saved config for live preview
-    columns?: any[]
-    formulaRows?: any[]
+    columns?: ReportColumn[]
+    formulaRows?: ReportFormulaRow[]
     pivotColumnKey?: string | null
-    metricRows?: any[]
-    pivotFormulaColumns?: any[]  // Formula columns for pivot layout
+    metricRows?: MetricRow[]
+    pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
   }
-  filters?: Record<string, unknown>  // Optional - column-value filters from slice
+  filters?: Record<string, string[]>  // Optional - column-value filters
 }
 
 export interface PeriodInfo {
@@ -77,43 +84,18 @@ export interface ExecutePreviewResult {
   }
 }
 
-// Types from report-definition.service
-interface ReportColumn {
-  key: string
-  label: string
-  type: "source" | "formula"
-  sourceColumnKey?: string
-  expression?: string
-  dataType: string
-  order: number
-}
-
-interface ReportFormulaRow {
-  key: string
-  label: string
-  columnFormulas: Record<string, string>
-  order: number
-}
-
-interface MetricRow {
-  key: string
-  label: string
-  type: "source" | "formula" | "comparison"
-  sourceColumnKey?: string
-  expression?: string
-  // Comparison fields
-  compareRowKey?: string
-  comparePeriod?: "mom" | "qoq" | "yoy"
-  compareOutput?: "value" | "delta" | "percent"
-  format: "text" | "number" | "currency" | "percent"
-  order: number
-}
-
-interface PivotFormulaColumn {
-  key: string
-  label: string
-  expression: string  // "SUM(*)" or "[Col A] + [Col B]"
-  order: number
+// ReportWithConfig - internal type for report with all config fields
+// Used in evaluate functions
+interface ReportWithConfig {
+  columns?: ReportColumn[]
+  formulaRows?: ReportFormulaRow[]
+  pivotColumnKey?: string | null
+  metricRows?: MetricRow[]
+  pivotFormulaColumns?: PivotFormulaColumn[]
+  cadence: ReportCadence
+  dateColumnKey: string
+  layout: "standard" | "pivot"
+  compareMode?: "none" | "mom" | "yoy"
 }
 
 // ============================================
@@ -328,12 +310,12 @@ export class ReportExecutionService {
    * Evaluate standard layout (rows = data rows, columns = selected columns)
    */
   private static evaluateStandardLayout(
-    report: any,
+    report: ReportWithConfig,
     currentRows: Array<Record<string, unknown>>,
     compareRows: Array<Record<string, unknown>> | null
   ): ExecutePreviewResult["table"] {
-    const reportColumns = (report.columns || []) as ReportColumn[]
-    const reportFormulaRows = (report.formulaRows || []) as ReportFormulaRow[]
+    const reportColumns = report.columns || []
+    const reportFormulaRows = report.formulaRows || []
 
     if (reportColumns.length === 0) {
       return { columns: [], rows: [], formulaRows: [] }
@@ -393,12 +375,12 @@ export class ReportExecutionService {
    * Evaluate pivot layout (rows = metrics, columns = pivot values)
    */
   private static evaluatePivotLayout(
-    report: any,
+    report: ReportWithConfig,
     currentRows: Array<Record<string, unknown>>,
     compareRows: Array<Record<string, unknown>> | null
   ): ExecutePreviewResult["table"] {
-    const pivotColumnKey = report.pivotColumnKey as string | null
-    const metricRows = (report.metricRows || []) as MetricRow[]
+    const pivotColumnKey = report.pivotColumnKey
+    const metricRows = report.metricRows || []
 
     if (!pivotColumnKey || metricRows.length === 0) {
       return { columns: [], rows: [], formulaRows: [] }
@@ -729,9 +711,9 @@ export class ReportExecutionService {
         
         // Check if it's just a function name (e.g., "SUM")
         if (["SUM", "AVG", "COUNT", "MIN", "MAX", "AVERAGE"].includes(upperFormula)) {
-          const fn = upperFormula === "AVERAGE" ? "AVG" : upperFormula
+          const fn: AggregateFunction = upperFormula === "AVERAGE" ? "AVG" : upperFormula as AggregateFunction
           const columnValues = extractColumnValues(currentRows, sourceKey)
-          values[columnKey] = computeAggregate(fn as any, columnValues)
+          values[columnKey] = computeAggregate(fn, columnValues)
           continue
         }
 

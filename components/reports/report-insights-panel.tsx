@@ -317,7 +317,7 @@ export function ReportInsightsPanel({
                 <div className="space-y-3">
                   {insights.keyFindings.map((finding, index) => (
                     <div
-                      key={index}
+                      key={`finding-${finding.category}-${index}`}
                       className={`p-3 rounded-lg border ${
                         finding.category === "positive"
                           ? "bg-green-50 border-green-200"
@@ -374,9 +374,9 @@ export function ReportInsightsPanel({
                   <p className="text-xs text-gray-500 mb-3">
                     {insights.periodComparison.currentPeriod} vs {insights.periodComparison.comparePeriod}
                   </p>
-                  {insights.periodComparison.changes.map((change, index) => (
+                  {insights.periodComparison.changes.map((change) => (
                     <div
-                      key={index}
+                      key={`change-${change.metric}`}
                       className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200"
                     >
                       <span className="text-sm font-medium text-gray-700">{change.metric}</span>
@@ -411,7 +411,7 @@ export function ReportInsightsPanel({
                 <div className="space-y-3">
                   {insights.concerningTrends.map((trend, index) => (
                     <div
-                      key={index}
+                      key={`trend-${trend.entity}-${trend.metric}-${index}`}
                       className={`p-3 rounded-lg border ${
                         trend.severity === "critical"
                           ? "bg-red-50 border-red-200"
@@ -461,7 +461,7 @@ export function ReportInsightsPanel({
                 <ol className="space-y-2">
                   {insights.recommendations.map((rec, index) => (
                     <li
-                      key={index}
+                      key={`rec-${index}-${rec.substring(0, 30)}`}
                       className="flex items-start gap-3 p-2 bg-yellow-50 rounded border border-yellow-200"
                     >
                       <span className="flex-shrink-0 w-5 h-5 bg-yellow-200 text-yellow-800 rounded-full text-xs font-medium flex items-center justify-center">
@@ -483,9 +483,9 @@ export function ReportInsightsPanel({
                 onToggle={() => toggleSection("highlights")}
               >
                 <div className="grid grid-cols-2 gap-2">
-                  {insights.dataHighlights.map((highlight, index) => (
+                  {insights.dataHighlights.map((highlight) => (
                     <div
-                      key={index}
+                      key={`highlight-${highlight.label}`}
                       className="p-3 bg-gray-50 rounded border border-gray-200"
                     >
                       <p className="text-xs text-gray-500">{highlight.label}</p>

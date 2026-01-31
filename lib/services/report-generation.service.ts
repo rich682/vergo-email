@@ -272,7 +272,12 @@ export class ReportGenerationService {
   static async list(input: ListGeneratedReportsInput): Promise<GeneratedReport[]> {
     const { organizationId, reportDefinitionId, periodKey, boardId, limit = 100 } = input
 
-    const where: any = { organizationId }
+    const where: {
+      organizationId: string
+      reportDefinitionId?: string
+      periodKey?: string
+      boardId?: string
+    } = { organizationId }
 
     if (reportDefinitionId) {
       where.reportDefinitionId = reportDefinitionId

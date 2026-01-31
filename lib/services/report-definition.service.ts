@@ -246,11 +246,11 @@ export class ReportDefinitionService {
         dateColumnKey: input.dateColumnKey,
         layout,
         compareMode: input.compareMode || "none",
-        columns: (input.columns || []) as any,
-        formulaRows: (input.formulaRows || []) as any,
+        columns: input.columns || [],
+        formulaRows: input.formulaRows || [],
         pivotColumnKey: input.pivotColumnKey,
-        metricRows: (input.metricRows || []) as any,
-        pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
+        metricRows: input.metricRows || [],
+        pivotFormulaColumns: input.pivotFormulaColumns || [],
         createdById: input.createdById,
       },
       include: {
@@ -296,14 +296,14 @@ export class ReportDefinitionService {
         ...(input.layout !== undefined && { layout: input.layout }),
         ...(input.compareMode !== undefined && { compareMode: input.compareMode }),
         // Standard layout fields
-        ...(input.columns !== undefined && { columns: input.columns as any }),
-        ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows as any }),
+        ...(input.columns !== undefined && { columns: input.columns }),
+        ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows }),
         // Pivot layout fields
         ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
-        ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
-        ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns as any }),
+        ...(input.metricRows !== undefined && { metricRows: input.metricRows }),
+        ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns }),
         // Filter configuration
-        ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys as any }),
+        ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys }),
       },
       include: {
         database: {

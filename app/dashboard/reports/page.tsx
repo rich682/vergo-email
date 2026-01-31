@@ -874,7 +874,7 @@ export default function ReportsPage() {
                       const rowType = row._type as string | undefined
                       return (
                         <tr 
-                          key={rowIndex} 
+                          key={`row-${row._label || rowIndex}`} 
                           className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
                         >
                           {viewingReport.data.table.columns.map((col, colIndex) => {
