@@ -30,7 +30,14 @@ export async function POST(
     }
 
     const reportId = params.id
-    const body = await request.json()
+    
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    
     const { periodKey, filterBindings, compareMode } = body as {
       periodKey: string
       filterBindings?: Record<string, string[]>

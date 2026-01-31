@@ -36,7 +36,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Parse request body
-    const body = await request.json()
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    
     const { currentPeriodKey, compareMode, liveConfig, filters } = body as {
       currentPeriodKey?: string
       compareMode?: CompareMode

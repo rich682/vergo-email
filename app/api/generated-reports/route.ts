@@ -34,7 +34,8 @@ export async function GET(request: NextRequest) {
     const periodKey = searchParams.get("periodKey") || undefined
     const boardId = searchParams.get("boardId") || undefined
     const limitParam = searchParams.get("limit")
-    const limit = limitParam ? parseInt(limitParam, 10) : 100
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
+    const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
 
     // Fetch reports
     const reports = await ReportGenerationService.list({
@@ -75,7 +76,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    const body = await request.json()
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    
     const { reportDefinitionId, filterBindings, periodKey, name } = body as {
       reportDefinitionId?: string
       filterBindings?: Record<string, string[]>
@@ -105,7 +112,7 @@ export async function POST(request: NextRequest) {
       filterBindings,
       periodKey,
       createdBy: user.id,
-      name: name?.trim() || undefined,
+      name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     })
 
     return NextResponse.json({ report }, { status: 201 })
