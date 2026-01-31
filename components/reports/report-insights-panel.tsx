@@ -209,7 +209,7 @@ export function ReportInsightsPanel({
 
   return (
     <div
-      className={`fixed top-0 right-0 h-full bg-white shadow-2xl border-l border-gray-200 flex flex-col z-50 transition-all duration-300 ${
+      className={`fixed top-0 right-0 h-full bg-white shadow-2xl border-l border-gray-200 flex flex-col z-[100] transition-all duration-300 ${
         isExpanded ? "w-[90vw]" : "w-[450px]"
       }`}
     >
