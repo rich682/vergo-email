@@ -24,6 +24,7 @@ import {
   addMonths,
   isWeekend,
   nextMonday,
+  format,
 } from "date-fns"
 
 // Board cadence types
@@ -119,39 +120,44 @@ export function getStartOfPeriod(
 
 /**
  * Get the end of a period based on the period start and cadence.
+ * 
+ * IMPORTANT: Period dates are date-only fields stored as UTC midnight.
+ * We use parseDateOnly to get the calendar date without timezone shift.
  */
 export function getEndOfPeriod(
   cadence: BoardCadence,
   periodStart: Date,
-  timezone: string,
+  _timezone: string, // Kept for API compatibility - dates are now parsed without TZ shift
   options?: { fiscalYearStartMonth?: number }
 ): Date | null {
   if (!periodStart) return null
 
-  const zonedStart = toZonedTime(periodStart, timezone)
+  // Parse as date-only to avoid timezone shift
+  const dateStr = periodStart.toISOString()
+  const start = parseDateOnly(dateStr)
   const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
 
   switch (cadence) {
     case "DAILY":
-      return endOfDay(zonedStart)
+      return endOfDay(start)
     case "WEEKLY":
-      return endOfWeek(zonedStart, { weekStartsOn: 1 })
+      return endOfWeek(start, { weekStartsOn: 1 })
     case "MONTHLY":
-      return endOfMonth(zonedStart)
+      return endOfMonth(start)
     case "QUARTERLY": {
       if (fiscalYearStartMonth === 1) {
-        return endOfQuarter(zonedStart)
+        return endOfQuarter(start)
       }
       // Fiscal quarter end: 3 months after start, minus 1 day
-      const quarterEnd = addMonths(zonedStart, 3)
+      const quarterEnd = addMonths(start, 3)
       return addDays(quarterEnd, -1)
     }
     case "YEAR_END": {
       if (fiscalYearStartMonth === 1) {
-        return endOfYear(zonedStart)
+        return endOfYear(start)
       }
       // Fiscal year end: 12 months after start, minus 1 day
-      const yearEnd = addMonths(zonedStart, 12)
+      const yearEnd = addMonths(start, 12)
       return addDays(yearEnd, -1)
     }
     case "AD_HOC":
@@ -163,57 +169,64 @@ export function getEndOfPeriod(
 
 /**
  * Calculate the next period start date based on cadence.
+ * 
+ * IMPORTANT: Period dates are date-only fields stored as UTC midnight.
+ * We use parseDateOnly to get the calendar date without timezone shift.
+ * This prevents Jan 1 UTC from being interpreted as Dec 31 in US timezones.
  */
 export function calculateNextPeriodStart(
   cadence: BoardCadence | null | undefined,
   currentPeriodStart: Date | null | undefined,
-  timezone: string,
+  _timezone: string, // Kept for API compatibility - dates are now parsed without TZ shift
   options?: { skipWeekends?: boolean; fiscalYearStartMonth?: number }
 ): Date | null {
   if (!cadence || !currentPeriodStart || cadence === "AD_HOC") return null
 
-  const zonedCurrent = toZonedTime(currentPeriodStart, timezone)
+  // Parse as date-only to avoid timezone shift (e.g., Jan 1 UTC becoming Dec 31 in US timezones)
+  const dateStr = currentPeriodStart.toISOString()
+  const current = parseDateOnly(dateStr)
+  
   const skipWeekends = options?.skipWeekends ?? true
   const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
 
   switch (cadence) {
     case "DAILY": {
-      let nextDate = addDays(zonedCurrent, 1)
+      let nextDate = addDays(current, 1)
       if (skipWeekends && isWeekend(nextDate)) {
         nextDate = nextMonday(nextDate)
       }
       return nextDate
     }
     case "WEEKLY":
-      return addWeeks(startOfWeek(zonedCurrent, { weekStartsOn: 1 }), 1)
+      return addWeeks(startOfWeek(current, { weekStartsOn: 1 }), 1)
     case "MONTHLY":
-      return addMonths(startOfMonth(zonedCurrent), 1)
+      return addMonths(startOfMonth(current), 1)
     case "QUARTERLY": {
       if (fiscalYearStartMonth === 1) {
-        const quarterMonth = Math.floor(zonedCurrent.getMonth() / 3) * 3
-        const currentQuarterStart = new Date(zonedCurrent.getFullYear(), quarterMonth, 1)
+        const quarterMonth = Math.floor(current.getMonth() / 3) * 3
+        const currentQuarterStart = new Date(current.getFullYear(), quarterMonth, 1)
         return addMonths(currentQuarterStart, 3)
       }
       // Fiscal quarters
       const fiscalMonthIndex = fiscalYearStartMonth - 1
-      const monthsFromFiscalStart = (zonedCurrent.getMonth() - fiscalMonthIndex + 12) % 12
+      const monthsFromFiscalStart = (current.getMonth() - fiscalMonthIndex + 12) % 12
       const fiscalQuarter = Math.floor(monthsFromFiscalStart / 3)
       const quarterStartMonthOffset = fiscalQuarter * 3
       const currentFiscalQuarterStartMonth = (fiscalMonthIndex + quarterStartMonthOffset) % 12
-      let year = zonedCurrent.getFullYear()
-      if (currentFiscalQuarterStartMonth > zonedCurrent.getMonth() && zonedCurrent.getMonth() < fiscalMonthIndex) {
+      let year = current.getFullYear()
+      if (currentFiscalQuarterStartMonth > current.getMonth() && current.getMonth() < fiscalMonthIndex) {
         year--
       }
       const currentFiscalQuarterStart = new Date(year, currentFiscalQuarterStartMonth, 1)
       return addMonths(currentFiscalQuarterStart, 3)
     }
     case "YEAR_END": {
-      const currentYear = zonedCurrent.getFullYear()
+      const currentYear = current.getFullYear()
       if (fiscalYearStartMonth === 1) {
         return new Date(currentYear + 1, 0, 1)
       }
       const fiscalMonthIndex = fiscalYearStartMonth - 1
-      if (zonedCurrent.getMonth() >= fiscalMonthIndex) {
+      if (current.getMonth() >= fiscalMonthIndex) {
         return new Date(currentYear + 1, fiscalMonthIndex, 1)
       } else {
         return new Date(currentYear, fiscalMonthIndex, 1)
@@ -360,38 +373,43 @@ export function generatePeriodBoardName(
 
 /**
  * Format a period for display based on cadence.
+ * 
+ * IMPORTANT: Uses parseDateOnly to avoid timezone shift issues.
+ * Period dates are date-only fields (stored as UTC midnight) and should
+ * be displayed as the calendar date, not shifted by timezone.
  */
 export function formatPeriodDisplay(
   periodStart: Date | string | null,
   periodEnd: Date | string | null,
   cadence: BoardCadence | null,
-  timezone: string
+  _timezone: string // Kept for API compatibility but not used - dates are parsed without TZ shift
 ): string {
   if (!periodStart) return "—"
   
-  const start = typeof periodStart === "string" ? new Date(periodStart) : periodStart
+  // Use parseDateOnly to avoid timezone shift (e.g., Jan 1 UTC showing as Dec 31 in US timezones)
+  const start = typeof periodStart === "string" ? parseDateOnly(periodStart) : periodStart
   
   switch (cadence) {
     case "MONTHLY":
-      return formatMonthYearInTimezone(start, timezone)
+      return format(start, "MMMM yyyy")
     case "WEEKLY":
-      return `Week of ${formatDateInTimezone(start, timezone)}`
+      return `Week of ${format(start, "MMM d, yyyy")}`
     case "QUARTERLY": {
-      const month = getMonthInTimezone(start, timezone)
-      const year = getYearInTimezone(start, timezone)
+      const month = start.getMonth()
+      const year = start.getFullYear()
       const q = Math.floor(month / 3) + 1
       return `Q${q} ${year}`
     }
     case "YEAR_END":
-      return getYearInTimezone(start, timezone).toString()
+      return start.getFullYear().toString()
     case "DAILY":
-      return formatDateInTimezone(start, timezone)
+      return format(start, "MMM d, yyyy")
     default:
       // For AD_HOC or unknown, show date range if end exists
       if (periodEnd) {
-        const end = typeof periodEnd === "string" ? new Date(periodEnd) : periodEnd
-        return `${formatDateInTimezone(start, timezone).split(",")[0]} - ${formatDateInTimezone(end, timezone)}`
+        const end = typeof periodEnd === "string" ? parseDateOnly(periodEnd) : periodEnd
+        return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`
       }
-      return formatDateInTimezone(start, timezone)
+      return format(start, "MMM d, yyyy")
   }
 }

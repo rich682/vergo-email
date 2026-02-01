@@ -36,7 +36,7 @@ import {
   ChevronDown
 } from "lucide-react"
 import { format } from "date-fns"
-import { formatDateInTimezone } from "@/lib/utils/timezone"
+import { formatDateInTimezone, parseDateOnly } from "@/lib/utils/timezone"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -882,12 +882,10 @@ export default function JobsPage() {
                     <Calendar className="w-4 h-4 text-gray-400" />
                     <span className="font-medium text-gray-700">Period:</span>
                     <span className="text-gray-600">
-                      {currentBoard.periodStart && currentBoard.periodEnd && organizationTimezone
-                        ? `${formatDateInTimezone(new Date(currentBoard.periodStart), organizationTimezone)} - ${formatDateInTimezone(new Date(currentBoard.periodEnd), organizationTimezone)}`
-                        : currentBoard.periodStart && organizationTimezone
-                        ? formatDateInTimezone(new Date(currentBoard.periodStart), organizationTimezone)
+                      {currentBoard.periodStart && currentBoard.periodEnd
+                        ? `${format(parseDateOnly(currentBoard.periodStart), "MMM d, yyyy")} - ${format(parseDateOnly(currentBoard.periodEnd), "MMM d, yyyy")}`
                         : currentBoard.periodStart
-                        ? format(new Date(currentBoard.periodStart), "MMM d, yyyy")
+                        ? format(parseDateOnly(currentBoard.periodStart), "MMM d, yyyy")
                         : "Not set"}
                     </span>
                   </div>
