@@ -338,8 +338,36 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
             </li>
           )}
 
-          {/* Nav Items after Collection (Reports, Databases) - Admin Only */}
-          {isAdmin && postCollectionNavItems.map((item) => {
+          {/* Reports - visible to all users */}
+          {postCollectionNavItems.filter(item => item.href === "/dashboard/reports").map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+            const Icon = item.icon
+            
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`
+                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                    transition-all duration-150
+                    ${isActive 
+                      ? "bg-gray-100 text-gray-900" 
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }
+                  `}
+                  style={{ width: "calc(100% - 24px)" }}
+                >
+                  <Icon className="w-6 h-6 flex-shrink-0" />
+                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                    {item.label}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+
+          {/* Databases - Admin Only */}
+          {isAdmin && postCollectionNavItems.filter(item => item.href === "/dashboard/databases").map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
             
