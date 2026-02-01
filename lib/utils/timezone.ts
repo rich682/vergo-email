@@ -2,9 +2,27 @@
  * Timezone Utilities
  * 
  * Centralized timezone-aware date operations for the application.
- * All date operations should use the organization's configured timezone.
  * 
- * IMPORTANT: Never default to "UTC" - always require timezone to be explicitly passed.
+ * ============================================================================
+ * CRITICAL: DATE-ONLY FIELDS (periodStart, periodEnd, dueDate)
+ * ============================================================================
+ * 
+ * Date-only fields are stored as UTC midnight (e.g., "2026-01-01T00:00:00.000Z").
+ * 
+ * NEVER use these patterns with date-only fields:
+ *   ❌ new Date(periodStart)           - causes timezone shift
+ *   ❌ toZonedTime(periodStart, tz)    - causes timezone shift
+ *   ❌ formatInTimeZone(date, tz, fmt) - causes timezone shift
+ * 
+ * ALWAYS use these patterns instead:
+ *   ✅ parseDateOnly(periodStart)      - extracts date without TZ shift
+ *   ✅ formatDateOnly(periodStart)     - formats without TZ shift
+ *   ✅ formatPeriodDisplay(...)        - already uses parseDateOnly internally
+ * 
+ * Why? UTC midnight in a US timezone becomes the previous day:
+ *   new Date("2026-01-01T00:00:00.000Z") in PST = Dec 31, 2025 4:00 PM
+ * 
+ * ============================================================================
  */
 
 import { formatInTimeZone, toZonedTime } from "date-fns-tz"
@@ -238,13 +256,18 @@ export function calculateNextPeriodStart(
 }
 
 // ============================================
-// Date-Only Parsing (Critical for avoiding timezone shifts)
+// DATE-ONLY FIELD HANDLING
+// ============================================
+// 
+// Use these functions for: periodStart, periodEnd, dueDate
+// These fields are stored as UTC midnight and should NEVER be timezone-converted.
+//
 // ============================================
 
 /**
  * Parse a date-only ISO string without timezone conversion.
  * 
- * CRITICAL: Use this for date-only fields (dueDate, periodStart, periodEnd)
+ * USE THIS for date-only fields (dueDate, periodStart, periodEnd)
  * to avoid off-by-one day errors caused by UTC → local timezone conversion.
  * 
  * @example
@@ -275,8 +298,47 @@ export function parseDateOnlySafe(dateStr: string | null | undefined): Date | nu
   }
 }
 
+/**
+ * Format a date-only field (periodStart, periodEnd, dueDate) for display.
+ * 
+ * USE THIS instead of format(new Date(dateStr), ...) to avoid timezone shift.
+ * 
+ * @param dateStr - ISO date string like "2026-01-31T00:00:00.000Z"
+ * @param formatStr - date-fns format string (default: "MMM d, yyyy")
+ * @returns Formatted date string, or "—" if null
+ * 
+ * @example
+ * formatDateOnly("2026-01-31T00:00:00.000Z") // "Jan 31, 2026"
+ * formatDateOnly("2026-01-31T00:00:00.000Z", "MMMM yyyy") // "January 2026"
+ */
+export function formatDateOnly(
+  dateStr: string | null | undefined,
+  formatStr: string = "MMM d, yyyy"
+): string {
+  if (!dateStr) return "—"
+  const date = parseDateOnly(dateStr)
+  return format(date, formatStr)
+}
+
+/**
+ * Format a date range from two date-only fields.
+ * 
+ * @example
+ * formatDateOnlyRange("2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z")
+ * // "Jan 1, 2026 - Jan 31, 2026"
+ */
+export function formatDateOnlyRange(
+  startStr: string | null | undefined,
+  endStr: string | null | undefined,
+  formatStr: string = "MMM d, yyyy"
+): string {
+  if (!startStr) return "—"
+  if (!endStr) return formatDateOnly(startStr, formatStr)
+  return `${formatDateOnly(startStr, formatStr)} - ${formatDateOnly(endStr, formatStr)}`
+}
+
 // ============================================
-// Formatting Functions
+// TIMEZONE-AWARE FORMATTING (for timestamps, NOT date-only fields)
 // ============================================
 
 /**

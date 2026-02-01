@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import OpenAI from "openai"
-import { differenceInDays, format } from "date-fns"
+import { differenceInDays, startOfDay } from "date-fns"
+import { parseDateOnlySafe, formatDateOnly } from "@/lib/utils/timezone"
 
 export const dynamic = "force-dynamic"
 
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const now = new Date()
+    const today = startOfDay(new Date()) // Today at midnight for consistent day comparisons
     const completedItems = instances.filter(i => i.status === "COMPLETE").length
     const activeItems = instances.filter(i => i.status === "NOT_STARTED" || i.status === "IN_PROGRESS" || i.status === "BLOCKED").length
     
@@ -67,8 +68,9 @@ export async function POST(request: NextRequest) {
     for (const instance of instances) {
       if (instance.status === "COMPLETE") continue
       
-      const dueDate = instance.dueDate ? new Date(instance.dueDate) : null
-      const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : null
+      // Use parseDateOnlySafe to avoid timezone shift with date-only fields
+      const dueDate = parseDateOnlySafe(instance.dueDate)
+      const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
       
       let reason: string | null = null
       
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
           id: instance.id,
           name: instance.name,
           reason,
-          dueDate: dueDate ? format(dueDate, "MMM d, yyyy") : null,
+          dueDate: formatDateOnly(instance.dueDate),
           daysUntilDue
         })
       }
@@ -100,8 +102,9 @@ export async function POST(request: NextRequest) {
     })
 
     const instancesContext = instances.slice(0, 50).map(instance => {
-      const dueDate = instance.dueDate ? new Date(instance.dueDate) : null
-      const daysUntilDue = dueDate ? differenceInDays(dueDate, now) : null
+      // Use parseDateOnlySafe for date-only fields
+      const dueDate = parseDateOnlySafe(instance.dueDate)
+      const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
       const labels = instance.labels as any
       
       return {

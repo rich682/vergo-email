@@ -33,18 +33,11 @@ import {
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
   FileText, FolderOpen, FileSpreadsheet, ExternalLink
 } from "lucide-react"
-import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO } from "date-fns"
+import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO, startOfDay } from "date-fns"
+import { parseDateOnly } from "@/lib/utils/timezone"
 
-/**
- * Parse a date string for display, handling timezone correctly.
- * Dates stored as "2026-01-31T00:00:00.000Z" should display as Jan 31, not Jan 30.
- */
-function parseDateForDisplay(dateStr: string): Date {
-  // Extract just the date part (YYYY-MM-DD) and create a local date
-  const datePart = dateStr.split("T")[0]
-  const [year, month, day] = datePart.split("-").map(Number)
-  return new Date(year, month - 1, day)
-}
+// Alias for backward compatibility - use parseDateOnly from centralized utility
+const parseDateForDisplay = parseDateOnly
 import { UI_LABELS } from "@/lib/ui-labels"
 
 // Design system components

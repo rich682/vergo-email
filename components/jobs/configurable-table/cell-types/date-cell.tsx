@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Calendar, X } from "lucide-react"
-import { format, parseISO, isValid } from "date-fns"
+import { format, isValid } from "date-fns"
+import { parseDateOnlySafe } from "@/lib/utils/timezone"
 
 interface DateCellProps {
   value: string | null // ISO date string
@@ -15,15 +16,8 @@ export function DateCell({ value, onChange, className = "" }: DateCellProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Parse date for display - extract just the date part to avoid timezone shifts
-  const parseDateForDisplay = (dateStr: string): Date | null => {
-    const datePart = dateStr.split("T")[0]
-    const [year, month, day] = datePart.split("-").map(Number)
-    if (isNaN(year) || isNaN(month) || isNaN(day)) return null
-    return new Date(year, month - 1, day)
-  }
-  
-  const parsedDate = value ? parseDateForDisplay(value) : null
+  // Use centralized date-only parsing to avoid timezone shift
+  const parsedDate = parseDateOnlySafe(value)
   const isValidDate = parsedDate && isValid(parsedDate)
   const displayValue = isValidDate ? format(parsedDate, "MMM d") : null
   const inputValue = value ? value.split("T")[0] : "" // Use date part directly for input
