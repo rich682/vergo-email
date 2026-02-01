@@ -1046,24 +1046,30 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          <button
-            onClick={() => setActiveTab("requests")}
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Requests ({requests.length})
-            {draftRequests.length > 0 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
-                {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''}
-              </span>
-            )}
-          </button>
+          {/* Requests tab - only visible to owners/admins */}
+          {permissions?.canEdit && (
+            <button
+              onClick={() => setActiveTab("requests")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Requests ({requests.length})
+              {draftRequests.length > 0 && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                  {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab("collection")}
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Evidence ({job.collectedItemCount || 0})
-          </button>
+          {/* Evidence tab - only visible to owners/admins */}
+          {permissions?.canEdit && (
+            <button
+              onClick={() => setActiveTab("collection")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Evidence ({job.collectedItemCount || 0})
+            </button>
+          )}
 
           {job.type === "REPORTS" && (
             <button
@@ -1525,7 +1531,7 @@ export default function JobDetailPage() {
               </>
             )}
 
-            {activeTab === "requests" && (
+            {activeTab === "requests" && permissions?.canEdit && (
               <div className="space-y-4">
                 {/* Draft Requests Banner */}
                 {draftRequests.length > 0 && (
@@ -1589,7 +1595,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "collection" && (
+            {activeTab === "collection" && permissions?.canEdit && (
               <div className="space-y-4">
                 <SectionHeader title="Evidence Collection" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
                 <CollectionTab jobId={jobId} />
