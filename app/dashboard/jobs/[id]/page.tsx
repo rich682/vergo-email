@@ -22,6 +22,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { 
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
@@ -875,9 +880,9 @@ export default function JobDetailPage() {
     }
   }
 
-  const handleRemoveCollaborator = async (collaboratorId: string) => {
+  const handleRemoveCollaborator = async (userId: string) => {
     try {
-      await fetch(`/api/task-instances/${jobId}/collaborators?collaboratorId=${collaboratorId}`, {
+      await fetch(`/api/task-instances/${jobId}/collaborators?userId=${userId}`, {
         method: "DELETE",
         credentials: "include"
       })
@@ -1675,7 +1680,37 @@ export default function JobDetailPage() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Collaborators</h4>
-                    {permissions?.canManageCollaborators && <button onClick={() => setIsAddCollaboratorOpen(true)} className="text-[10px] text-orange-500 hover:text-orange-600 flex items-center gap-1"><UserPlus className="w-3 h-3" /> Add</button>}
+                    {permissions?.canManageCollaborators && (
+                      <Popover open={isAddCollaboratorOpen} onOpenChange={setIsAddCollaboratorOpen}>
+                        <PopoverTrigger asChild>
+                          <button className="text-[10px] text-orange-500 hover:text-orange-600 flex items-center gap-1">
+                            <UserPlus className="w-3 h-3" /> Add
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-2" align="end">
+                          <div className="space-y-1">
+                            {teamMembers
+                              .filter(m => m.id !== job?.ownerId && !collaborators.some(c => c.userId === m.id))
+                              .map(member => (
+                                <button
+                                  key={member.id}
+                                  onClick={() => handleAddCollaborator(member.id)}
+                                  disabled={addingCollaborator}
+                                  className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left text-sm disabled:opacity-50"
+                                >
+                                  <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">
+                                    {getInitials(member.name, member.email)}
+                                  </div>
+                                  <span>{member.name || member.email.split("@")[0]}</span>
+                                </button>
+                              ))}
+                            {teamMembers.filter(m => m.id !== job?.ownerId && !collaborators.some(c => c.userId === m.id)).length === 0 && (
+                              <p className="text-xs text-gray-500 p-2">No team members available</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
                   </div>
                   {collaborators.length === 0 ? <p className="text-xs text-gray-500 italic">None yet</p> : (
                     <div className="space-y-2">
@@ -1685,7 +1720,7 @@ export default function JobDetailPage() {
                             <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user.name, c.user.email)}</div>
                             <span>{c.user.name || c.user.email.split("@")[0]}</span>
                           </div>
-                          {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
+                          {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.userId)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
                         </div>
                       ))}
                     </div>
