@@ -506,19 +506,29 @@ export function ReportTab({
               </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
+                <table className="text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
+                  <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
-                      {previewData.table.columns.map((col, colIndex) => (
-                        <th
-                          key={col.key}
-                          className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
-                            colIndex > 0 ? "border-l border-gray-200" : ""
-                          }`}
-                        >
-                          {col.label}
-                        </th>
-                      ))}
+                      {previewData.table.columns.map((col, colIndex) => {
+                        const isLabelColumn = col.key === "_label"
+                        return (
+                          <th
+                            key={col.key}
+                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                              isLabelColumn 
+                                ? "text-left whitespace-nowrap" 
+                                : "text-center border-l border-gray-200"
+                            }`}
+                            style={{ 
+                              width: isLabelColumn ? 200 : 120, 
+                              minWidth: isLabelColumn ? 200 : 120,
+                              maxWidth: isLabelColumn ? 200 : 120
+                            }}
+                          >
+                            {col.label}
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -537,9 +547,16 @@ export function ReportTab({
                           return (
                             <td 
                               key={col.key} 
-                              className={`px-4 py-3 text-gray-700 border-b border-gray-100 ${
-                                colIndex > 0 ? "border-l border-gray-100" : ""
-                              } ${(rowType === "formula" || rowType === "comparison") ? "font-medium" : ""}`}
+                              className={`px-4 py-3 border-b border-gray-100 overflow-hidden text-ellipsis whitespace-nowrap ${
+                                isLabelColumn 
+                                  ? "font-medium text-gray-900" 
+                                  : "text-center border-l border-gray-100 text-gray-700"
+                              } ${(rowType === "formula" || rowType === "comparison") && !isLabelColumn ? "font-medium" : ""}`}
+                              style={{ 
+                                width: isLabelColumn ? 200 : 120, 
+                                minWidth: isLabelColumn ? 200 : 120,
+                                maxWidth: isLabelColumn ? 200 : 120
+                              }}
                             >
                               {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
                                 <span className="flex items-center gap-1.5">
@@ -560,16 +577,26 @@ export function ReportTab({
                     <tfoot className="bg-blue-50 border-t-2 border-blue-200">
                       {previewData.table.formulaRows.map((fRow) => (
                         <tr key={fRow.key}>
-                          {previewData.table.columns.map((col, colIndex) => (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-3 font-medium text-gray-900 ${
-                                colIndex > 0 ? "border-l border-blue-100" : ""
-                              }`}
-                            >
-                              {colIndex === 0 ? fRow.label : formatCellValue(fRow.values[col.key])}
-                            </td>
-                          ))}
+                          {previewData.table.columns.map((col, colIndex) => {
+                            const isLabelColumn = colIndex === 0
+                            return (
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 overflow-hidden text-ellipsis whitespace-nowrap ${
+                                  isLabelColumn 
+                                    ? "font-medium text-gray-900" 
+                                    : "text-center border-l border-blue-100 text-gray-900"
+                                }`}
+                                style={{ 
+                                  width: isLabelColumn ? 200 : 120, 
+                                  minWidth: isLabelColumn ? 200 : 120,
+                                  maxWidth: isLabelColumn ? 200 : 120
+                                }}
+                              >
+                                {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tfoot>
