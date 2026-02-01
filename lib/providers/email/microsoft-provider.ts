@@ -93,6 +93,18 @@ export class MicrosoftProvider implements EmailProviderDriver {
     if (internetMessageHeaders.length > 0) {
       body.message.internetMessageHeaders = internetMessageHeaders
     }
+
+    // Add attachments if provided
+    if (params.attachments && params.attachments.length > 0) {
+      body.message.attachments = params.attachments.map(attachment => ({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: attachment.filename,
+        contentType: attachment.contentType,
+        contentBytes: Buffer.isBuffer(attachment.content)
+          ? attachment.content.toString("base64")
+          : attachment.content,
+      }))
+    }
     
     // If we have a conversationId/threadId, try to use the reply endpoint for proper threading
     // Note: Microsoft Graph doesn't have a direct "add to conversation" like Gmail's threadId

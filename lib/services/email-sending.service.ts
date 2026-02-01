@@ -277,6 +277,7 @@ export class EmailSendingService {
       maxCount: number
       approved: boolean
     }
+    attachments?: Array<{ filename: string; content: string; contentType: string }>
   }): Promise<{
     taskId: string
     threadId: string
@@ -396,6 +397,13 @@ export class EmailSendingService {
     // Send email based on provider
     let sendResult: { messageId: string; providerData: any }
     
+    // Convert attachments to Buffer format for providers
+    const providerAttachments = data.attachments?.map(a => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, 'base64'),
+      contentType: a.contentType
+    }))
+
     if (account.provider === EmailProvider.GMAIL) {
       const provider = new GmailProvider()
       sendResult = await provider.sendEmail({
@@ -404,7 +412,8 @@ export class EmailSendingService {
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
-        replyTo
+        replyTo,
+        attachments: providerAttachments
       })
     } else if (account.provider === EmailProvider.MICROSOFT) {
       const provider = new MicrosoftProvider()
@@ -414,7 +423,8 @@ export class EmailSendingService {
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
-        replyTo
+        replyTo,
+        attachments: providerAttachments
       })
     } else {
       // GENERIC_SMTP or fallback
@@ -424,7 +434,8 @@ export class EmailSendingService {
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
-        replyTo
+        replyTo,
+        attachments: providerAttachments
       })
     }
 
@@ -634,6 +645,7 @@ export class EmailSendingService {
       maxCount: number
       approved: boolean
     }
+    attachments?: Array<{ filename: string; content: string; contentType: string }>
   }): Promise<Array<{
     email: string
     taskId: string
@@ -673,7 +685,8 @@ export class EmailSendingService {
           campaignType: data.campaignType,
           accountId: data.accountId,
           deadlineDate,
-          remindersConfig: data.remindersConfig
+          remindersConfig: data.remindersConfig,
+          attachments: data.attachments
         })
 
         results.push({

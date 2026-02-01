@@ -56,14 +56,16 @@ export async function POST(
       )
     }
 
-    // Parse request body for optional edits
+    // Parse request body for optional edits and attachments
     let editedSubject: string | undefined
     let editedBody: string | undefined
+    let attachments: Array<{ filename: string; content: string; contentType: string }> | undefined
     
     try {
       const body = await request.json()
       editedSubject = body.subject
       editedBody = body.body
+      attachments = body.attachments
     } catch {
       // No body or invalid JSON - that's fine, we'll use the existing content
     }
@@ -84,8 +86,8 @@ export async function POST(
       await EmailDraftService.update(id, organizationId, updates)
     }
 
-    // Execute quest
-    const result = await QuestService.execute(id, organizationId)
+    // Execute quest with attachments
+    const result = await QuestService.execute(id, organizationId, { attachments })
 
     return NextResponse.json({
       success: result.success,

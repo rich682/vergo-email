@@ -356,7 +356,11 @@ export class QuestService {
   /**
    * Execute Quest (send emails)
    */
-  static async execute(id: string, organizationId: string): Promise<QuestExecutionResult> {
+  static async execute(
+    id: string, 
+    organizationId: string,
+    options?: { attachments?: Array<{ filename: string; content: string; contentType: string }> }
+  ): Promise<QuestExecutionResult> {
     const quest = await this.findById(id, organizationId)
     if (!quest) {
       throw new Error("Quest not found")
@@ -449,7 +453,8 @@ export class QuestService {
         perRecipientEmails,
         campaignName,
         deadlineDate: quest.scheduleConfig?.deadline || null,
-        remindersConfig
+        remindersConfig,
+        attachments: options?.attachments
       })
 
       const successful = results.filter(r => !r.error)

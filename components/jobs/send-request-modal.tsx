@@ -49,6 +49,10 @@ import {
   Calendar,
   CalendarClock,
   ClipboardList,
+  Paperclip,
+  Upload,
+  File,
+  Trash2,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -92,6 +96,18 @@ interface Job {
   } | null
 }
 
+// Attachment for email
+interface EmailAttachment {
+  id: string
+  filename: string
+  content: string // Base64 encoded
+  contentType: string
+  size: number
+}
+
+// Max total attachment size (10MB)
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+
 interface SendRequestModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -134,6 +150,7 @@ interface DraftResponse {
     labels: string[]
   }
   usedFallback: boolean
+  noRecipients?: boolean
 }
 
 // Error codes from backend
@@ -196,7 +213,11 @@ export function SendRequestModal({
   const [remindersEnabled, setRemindersEnabled] = useState(false)
   const [reminderDays, setReminderDays] = useState(7) // Default to weekly
   const [usedFallback, setUsedFallback] = useState(false)
+  const [noRecipients, setNoRecipients] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Attachments
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([])
   
   // Computed: is this a recurring board (non-AD_HOC cadence with period dates)?
   const isRecurringBoard = Boolean(
@@ -336,6 +357,7 @@ export function SendRequestModal({
       setSubject(data.draft.subject)
       setBody(data.draft.body)
       setUsedFallback(data.usedFallback)
+      setNoRecipients(data.noRecipients || false)
       
       // Initialize recipients from response with labels (all included by default)
       setRecipients(
@@ -461,7 +483,9 @@ export function SendRequestModal({
       setRemindersEnabled(false)
       setReminderDays(7)
       setUsedFallback(false)
+      setNoRecipients(false)
       setError(null)
+      setAttachments([])
       setRecipients([])
       setShowPreview(false)
       setPreviewIndex(0)
@@ -517,6 +541,61 @@ export function SendRequestModal({
     } finally {
       setLoadingReminderPreviews(false)
     }
+  }
+
+  // Handle file attachment
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const newAttachments: EmailAttachment[] = []
+    let totalSize = attachments.reduce((sum, a) => sum + a.size, 0)
+
+    for (const file of Array.from(files)) {
+      // Check total size
+      if (totalSize + file.size > MAX_ATTACHMENT_SIZE) {
+        setError(`Total attachment size cannot exceed ${Math.round(MAX_ATTACHMENT_SIZE / 1024 / 1024)}MB`)
+        break
+      }
+
+      // Read file as base64
+      const content = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          // Remove data URL prefix to get just base64
+          const base64 = result.split(',')[1] || result
+          resolve(base64)
+        }
+        reader.readAsDataURL(file)
+      })
+
+      newAttachments.push({
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        filename: file.name,
+        content,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      })
+
+      totalSize += file.size
+    }
+
+    setAttachments(prev => [...prev, ...newAttachments])
+    // Reset input
+    e.target.value = ''
+  }
+
+  // Remove attachment
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id))
+  }
+
+  // Format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   }
 
   // Handle refinement
@@ -715,6 +794,11 @@ export function SendRequestModal({
         body: JSON.stringify({
           subject: subject.trim(),
           body: body.trim(),
+          attachments: attachments.map(a => ({
+            filename: a.filename,
+            content: a.content,
+            contentType: a.contentType,
+          })),
         }),
       })
 
@@ -1003,8 +1087,21 @@ export function SendRequestModal({
               </div>
             )}
 
-            {/* Fallback Warning */}
-            {usedFallback && !error && (
+            {/* No Recipients Warning */}
+            {noRecipients && !error && (
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800">No stakeholders assigned</p>
+                  <p className="text-sm text-amber-700">
+                    Add stakeholders to this task before sending a request.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Fallback Warning (only show if not due to no recipients) */}
+            {usedFallback && !noRecipients && !error && (
               <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1327,6 +1424,54 @@ export function SendRequestModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Attachments */}
+            <div className="border-t border-gray-200 pt-4">
+              <Label className="flex items-center gap-2 mb-2">
+                <Paperclip className="w-4 h-4 text-gray-500" />
+                Attachments
+              </Label>
+              
+              {/* File list */}
+              {attachments.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {attachments.map(attachment => (
+                    <div 
+                      key={attachment.id}
+                      className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <File className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate">{attachment.filename}</span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">({formatFileSize(attachment.size)})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(attachment.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="text-xs text-gray-400">
+                    Total: {formatFileSize(attachments.reduce((sum, a) => sum + a.size, 0))} / {Math.round(MAX_ATTACHMENT_SIZE / 1024 / 1024)}MB
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload button */}
+              <label className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg cursor-pointer transition-colors">
+                <Upload className="w-4 h-4" />
+                Add files
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             {/* Refinement */}

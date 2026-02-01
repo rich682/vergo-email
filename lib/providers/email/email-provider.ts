@@ -1,5 +1,11 @@
 import { ConnectedEmailAccount } from "@prisma/client"
 
+export interface EmailAttachment {
+  filename: string
+  content: Buffer | string  // Buffer or Base64 encoded string
+  contentType: string
+}
+
 export interface EmailSendParams {
   account: ConnectedEmailAccount
   to: string
@@ -11,6 +17,8 @@ export interface EmailSendParams {
   inReplyTo?: string       // Message-ID of the email being replied to
   references?: string      // Chain of Message-IDs in the thread
   threadId?: string        // Gmail threadId or Microsoft conversationId for threading
+  // Attachments
+  attachments?: EmailAttachment[]
 }
 
 export interface ContactSyncResult {

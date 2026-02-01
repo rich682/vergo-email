@@ -61,37 +61,76 @@ export class GmailProvider implements EmailProviderDriver {
     const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${account.email.split('@')[1] || 'gmail.com'}>`
 
     // Build message headers - include threading headers if this is a reply
-    const messageParts = [
+    const headerParts = [
       `To: ${params.to}`,
       `From: ${account.email}`,
       `Reply-To: ${params.replyTo}`,
       `Message-ID: ${messageIdHeader}`,
       `Subject: ${params.subject}`,
+      "MIME-Version: 1.0",
     ]
 
     // Add In-Reply-To header for threading (critical for email clients to group as thread)
     if (params.inReplyTo) {
       // Ensure proper format with angle brackets
       const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
-      messageParts.push(`In-Reply-To: ${inReplyToFormatted}`)
+      headerParts.push(`In-Reply-To: ${inReplyToFormatted}`)
     }
 
     // Add References header for threading (chain of message IDs)
     if (params.references) {
-      messageParts.push(`References: ${params.references}`)
+      headerParts.push(`References: ${params.references}`)
     } else if (params.inReplyTo) {
       // If no references but we have inReplyTo, use that as references
       const inReplyToFormatted = params.inReplyTo.startsWith('<') ? params.inReplyTo : `<${params.inReplyTo}>`
-      messageParts.push(`References: ${inReplyToFormatted}`)
+      headerParts.push(`References: ${inReplyToFormatted}`)
     }
 
-    messageParts.push(
-      "Content-Type: text/html; charset=utf-8",
-      "",
-      params.htmlBody || params.body,
-    )
+    let message: string
 
-    const message = messageParts.join("\n")
+    // Check if we have attachments
+    if (params.attachments && params.attachments.length > 0) {
+      // Build multipart/mixed message with attachments
+      const boundary = `boundary_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+      headerParts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
+      
+      const messageParts = [
+        headerParts.join("\r\n"),
+        "",
+        `--${boundary}`,
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        params.htmlBody || params.body,
+      ]
+
+      // Add each attachment
+      for (const attachment of params.attachments) {
+        const contentBase64 = Buffer.isBuffer(attachment.content)
+          ? attachment.content.toString("base64")
+          : attachment.content
+        
+        messageParts.push(
+          `--${boundary}`,
+          `Content-Type: ${attachment.contentType}; name="${attachment.filename}"`,
+          "Content-Transfer-Encoding: base64",
+          `Content-Disposition: attachment; filename="${attachment.filename}"`,
+          "",
+          contentBase64
+        )
+      }
+
+      messageParts.push(`--${boundary}--`)
+      message = messageParts.join("\r\n")
+    } else {
+      // Simple HTML message without attachments
+      headerParts.push("Content-Type: text/html; charset=utf-8")
+      message = [
+        headerParts.join("\r\n"),
+        "",
+        params.htmlBody || params.body,
+      ].join("\r\n")
+    }
+
     const encodedMessage = Buffer.from(message)
       .toString("base64")
       .replace(/\+/g, "-")

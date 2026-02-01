@@ -212,7 +212,8 @@ export async function POST(
         draft: fallback,
         recipients: [],
         itemContext,
-        usedFallback: true
+        usedFallback: true,
+        noRecipients: true
       })
     }
 
