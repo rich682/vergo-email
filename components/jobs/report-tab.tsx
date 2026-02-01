@@ -160,7 +160,7 @@ export function ReportTab({
         credentials: "include",
         body: JSON.stringify({
           currentPeriodKey: currentPeriodKey || undefined,
-          compareMode: "none",
+          compareMode: "mom",  // Enable month-over-month comparison for comparison rows
           filters: reportFilterBindings,
         }),
       })
@@ -551,7 +551,7 @@ export function ReportTab({
                                 isLabelColumn 
                                   ? "font-medium text-gray-900" 
                                   : "text-center border-l border-gray-100 text-gray-700"
-                              } ${(rowType === "formula" || rowType === "comparison") && !isLabelColumn ? "font-medium" : ""}`}
+                              }`}
                               style={{ 
                                 width: isLabelColumn ? 200 : 120, 
                                 minWidth: isLabelColumn ? 200 : 120,
