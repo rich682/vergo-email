@@ -317,9 +317,8 @@ export default function JobsPage() {
       const response = await fetch("/api/org/users", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        // Find the current user (marked with isCurrentUser: true)
-        const currentUser = data.users?.find((u: any) => u.isCurrentUser)
-        setIsAdmin(currentUser?.role === "ADMIN")
+        // The API returns isAdmin directly as a boolean
+        setIsAdmin(data.isAdmin === true)
       }
     } catch (error) {
       console.error("Error fetching user role:", error)

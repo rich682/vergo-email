@@ -318,10 +318,9 @@ export default function ReportsPage() {
       const response = await fetch("/api/org/users", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        // The currentUser field contains the current user's info
-        const currentUserRole = data.currentUser?.role || data.users?.[0]?.role
-        setIsAdmin(currentUserRole === "ADMIN")
-        return currentUserRole === "ADMIN"
+        // The API returns isAdmin directly as a boolean
+        setIsAdmin(data.isAdmin === true)
+        return data.isAdmin === true
       }
     } catch (error) {
       console.error("Error fetching user role:", error)
