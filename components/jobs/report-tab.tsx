@@ -181,13 +181,33 @@ export function ReportTab({
         if (!currentPeriodKey && data.availablePeriods?.length > 0) {
           setCurrentPeriodKey(data.availablePeriods[0].key)
         }
+        
+        // Auto-store as GeneratedReport so it appears in Reports page
+        // This is idempotent - won't create duplicates if already exists
+        const effectivePeriodKey = data.current?.periodKey || currentPeriodKey
+        if (effectivePeriodKey) {
+          fetch("/api/generated-reports/ensure-for-task", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              taskInstanceId: jobId,
+              reportDefinitionId,
+              periodKey: effectivePeriodKey,
+              filterBindings: reportFilterBindings,
+            }),
+          }).catch(err => {
+            // Don't block preview on ensure failure
+            console.error("Error ensuring task report:", err)
+          })
+        }
       }
     } catch (error) {
       console.error("Error fetching preview:", error)
     } finally {
       setPreviewLoading(false)
     }
-  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey])
+  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey, jobId])
 
   // Save configuration
   const saveConfig = useCallback(async () => {
