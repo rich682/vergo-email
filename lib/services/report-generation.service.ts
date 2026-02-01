@@ -185,6 +185,38 @@ export class ReportGenerationService {
       },
     })
 
+    // Add task owner and collaborators as viewers so they can see the report in the Reports page
+    if (taskInstanceId) {
+      try {
+        const taskInstance = await prisma.taskInstance.findUnique({
+          where: { id: taskInstanceId },
+          select: {
+            ownerId: true,
+            collaborators: { select: { userId: true } }
+          }
+        })
+        
+        if (taskInstance) {
+          const viewerIds = new Set<string>()
+          viewerIds.add(taskInstance.ownerId)
+          taskInstance.collaborators.forEach(c => viewerIds.add(c.userId))
+          if (generatedBy !== "system") viewerIds.add(generatedBy)
+          
+          await prismaAny.generatedReportViewer.createMany({
+            data: Array.from(viewerIds).map(userId => ({
+              generatedReportId: generated.id,
+              userId,
+              addedBy: generatedBy === "system" ? taskInstance.ownerId : generatedBy
+            })),
+            skipDuplicates: true
+          })
+        }
+      } catch (error) {
+        // Log but don't fail if viewer creation fails
+        console.error("Error adding viewers to task-generated report:", error)
+      }
+    }
+
     return this.mapToGeneratedReport(generated)
   }
 
