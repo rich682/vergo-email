@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X, FunctionSquare, TrendingUp } from "lucide-react"
+import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X, FunctionSquare, TrendingUp, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -16,6 +16,11 @@ import {
   type FilterableProperty, 
   type FilterBindings 
 } from "@/components/reports/report-filter-selector"
+import { 
+  ReportInsightsPanel, 
+  InsightsButton 
+} from "@/components/reports/report-insights-panel"
+import * as XLSX from "xlsx"
 
 // ============================================
 // Types
@@ -94,6 +99,9 @@ export function ReportTab({
   const [currentPeriodKey, setCurrentPeriodKey] = useState<string>("")
   
   const [saving, setSaving] = useState(false)
+  
+  // AI Insights state
+  const [insightsOpen, setInsightsOpen] = useState(false)
 
   // Get saved report details (for display)
   const savedReport = useMemo(() => {
@@ -316,6 +324,68 @@ export function ReportTab({
     return String(value)
   }
 
+  // Export to Excel
+  const handleExportExcel = useCallback(() => {
+    if (!previewData || !previewData.table.columns.length) return
+    
+    // Build worksheet data
+    const wsData: unknown[][] = []
+    
+    // Add header row
+    const headers = previewData.table.columns.map(col => col.label || col.key)
+    wsData.push(headers)
+    
+    // Add data rows
+    for (const row of previewData.table.rows) {
+      const rowData = previewData.table.columns.map(col => {
+        const value = row[col.key]
+        if (value === null || value === undefined) return ""
+        return value
+      })
+      wsData.push(rowData)
+    }
+    
+    // Add formula rows if present
+    if (previewData.table.formulaRows && previewData.table.formulaRows.length > 0) {
+      wsData.push([]) // Empty row separator
+      for (const formulaRow of previewData.table.formulaRows) {
+        const rowData = previewData.table.columns.map((col, idx) => {
+          if (idx === 0) return formulaRow.label
+          const value = formulaRow.values[col.key]
+          if (value === null || value === undefined) return ""
+          return value
+        })
+        wsData.push(rowData)
+      }
+    }
+    
+    // Create workbook and worksheet
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet(wsData)
+    
+    // Set column widths
+    const colWidths = headers.map((header, idx) => {
+      let maxWidth = String(header).length
+      for (const row of wsData) {
+        const cellValue = String(row[idx] || "")
+        if (cellValue.length > maxWidth) maxWidth = cellValue.length
+      }
+      return { wch: Math.min(maxWidth + 2, 50) }
+    })
+    worksheet["!cols"] = colWidths
+    
+    // Add worksheet
+    const sheetName = (savedReport?.name || "Report").substring(0, 31)
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+    
+    // Generate filename
+    const filename = `${savedReport?.name || "Report"} - ${currentPeriodKey || "Report"}.xlsx`
+      .replace(/[/\\?%*:|"<>]/g, "-")
+    
+    // Download
+    XLSX.writeFile(workbook, filename)
+  }, [previewData, savedReport, currentPeriodKey])
+
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     if (editReportId !== reportDefinitionId) return true
@@ -472,8 +542,27 @@ export function ReportTab({
                 size="sm"
                 onClick={fetchPreview}
                 disabled={previewLoading}
+                title="Refresh"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${previewLoading ? "animate-spin" : ""}`} />
+              </Button>
+
+              {/* AI Insights Button */}
+              <InsightsButton
+                onClick={() => setInsightsOpen(true)}
+                disabled={!reportDefinitionId || !currentPeriodKey}
+              />
+
+              {/* Export Excel Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                disabled={!previewData || !previewData.table.columns.length}
+                title="Export to Excel"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export
               </Button>
 
               {/* Settings gear - Admin only */}
@@ -623,6 +712,17 @@ export function ReportTab({
             Please contact your admin to set up the report template and filters.
           </p>
         </div>
+      )}
+
+      {/* AI Insights Panel */}
+      {insightsOpen && reportDefinitionId && currentPeriodKey && (
+        <ReportInsightsPanel
+          reportId={reportDefinitionId}
+          periodKey={currentPeriodKey}
+          compareMode="mom"
+          filterBindings={reportFilterBindings || undefined}
+          onClose={() => setInsightsOpen(false)}
+        />
       )}
     </div>
   )
