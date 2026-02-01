@@ -301,33 +301,45 @@ export class ReportGenerationService {
 
   /**
    * List generated reports with filters
+   * 
+   * For non-admin users (viewerUserId provided), shows reports where:
+   * - User is an explicit viewer, OR
+   * - Report is from a task where user is owner or collaborator
    */
   static async list(input: ListGeneratedReportsInput): Promise<GeneratedReport[]> {
     const { organizationId, reportDefinitionId, periodKey, boardId, limit = 100, viewerUserId } = input
 
-    const where: {
-      organizationId: string
-      reportDefinitionId?: string
-      periodKey?: string
-      boardId?: string
-      viewers?: { some: { userId: string } }
-    } = { organizationId }
+    // Base filters
+    const baseFilters: any = { organizationId }
 
     if (reportDefinitionId) {
-      where.reportDefinitionId = reportDefinitionId
+      baseFilters.reportDefinitionId = reportDefinitionId
     }
 
     if (periodKey) {
-      where.periodKey = periodKey
+      baseFilters.periodKey = periodKey
     }
 
     if (boardId) {
-      where.boardId = boardId
+      baseFilters.boardId = boardId
     }
 
-    // Non-admin filter: only show reports where user is a viewer
+    // Build the where clause
+    let where: any = baseFilters
+
+    // Non-admin filter: show reports where user has access
     if (viewerUserId) {
-      where.viewers = { some: { userId: viewerUserId } }
+      where = {
+        ...baseFilters,
+        OR: [
+          // User is an explicit viewer
+          { viewers: { some: { userId: viewerUserId } } },
+          // Report is from a task where user is the owner
+          { taskInstance: { ownerId: viewerUserId } },
+          // Report is from a task where user is a collaborator
+          { taskInstance: { collaborators: { some: { userId: viewerUserId } } } },
+        ]
+      }
     }
 
     const reports = await prismaAny.generatedReport.findMany({
@@ -380,14 +392,21 @@ export class ReportGenerationService {
    * If viewerUserId is provided, only return periods from reports the user can view
    */
   static async getDistinctPeriods(organizationId: string, viewerUserId?: string): Promise<string[]> {
-    const where: {
-      organizationId: string
-      viewers?: { some: { userId: string } }
-    } = { organizationId }
+    let where: any = { organizationId }
 
-    // Non-admin filter: only periods from reports where user is a viewer
+    // Non-admin filter: only periods from reports where user has access
     if (viewerUserId) {
-      where.viewers = { some: { userId: viewerUserId } }
+      where = {
+        organizationId,
+        OR: [
+          // User is an explicit viewer
+          { viewers: { some: { userId: viewerUserId } } },
+          // Report is from a task where user is the owner
+          { taskInstance: { ownerId: viewerUserId } },
+          // Report is from a task where user is a collaborator
+          { taskInstance: { collaborators: { some: { userId: viewerUserId } } } },
+        ]
+      }
     }
 
     const results = await prismaAny.generatedReport.findMany({
