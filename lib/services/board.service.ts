@@ -268,10 +268,16 @@ export class BoardService {
     if (options?.userId && options?.userRole) {
       const normalizedRole = options.userRole.toUpperCase()
       if (normalizedRole !== "ADMIN") {
-        // Non-admins can only see boards they own or collaborate on
+        // Non-admins can see boards where they have any access:
+        // - Board owner
+        // - Board collaborator
+        // - Owner of any task in the board
+        // - Collaborator on any task in the board
         where.OR = [
           { ownerId: options.userId },
-          { collaborators: { some: { userId: options.userId } } }
+          { collaborators: { some: { userId: options.userId } } },
+          { taskInstances: { some: { ownerId: options.userId } } },
+          { taskInstances: { some: { collaborators: { some: { userId: options.userId } } } } }
         ]
       }
     }
