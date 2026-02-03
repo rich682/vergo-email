@@ -248,9 +248,15 @@ export async function GET(request: NextRequest) {
       return acc
     }, {} as Record<string, number>)
 
+    // Map taskInstance to job for frontend compatibility
+    const mappedTasks = filteredTasks.map(task => ({
+      ...task,
+      job: task.taskInstance, // Frontend expects 'job' field
+    }))
+
     return NextResponse.json({
       success: true,
-      requests: filteredTasks,
+      requests: mappedTasks,
       total: ownerId ? filteredTasks.length : totalCount, // Use filtered count if owner filter applied client-side
       page,
       limit,
