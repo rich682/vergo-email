@@ -467,21 +467,35 @@ export class QuestService {
       const finalStatus: QuestStatus = errors.length === 0 ? "completed" : 
         successful.length > 0 ? "completed" : "failed"
 
-      await this.updateQuestMetadata(id, organizationId, {
-        status: finalStatus,
-        executedAt: new Date().toISOString()
-      })
+      // Post-send updates - these should not fail the overall request if emails were sent
+      // Wrap in try/catch to avoid showing error when email actually succeeded
+      try {
+        await this.updateQuestMetadata(id, organizationId, {
+          status: finalStatus,
+          executedAt: new Date().toISOString()
+        })
+      } catch (err) {
+        log.error("Failed to update quest metadata after send", err, { questId: id }, { organizationId, operation: "execute" })
+      }
 
-      // Update EmailDraft status and sentAt timestamp
-      await EmailDraftService.update(id, organizationId, {
-        status: "SENT",
-        sentAt: new Date()
-      })
+      try {
+        // Update EmailDraft status and sentAt timestamp
+        await EmailDraftService.update(id, organizationId, {
+          status: "SENT",
+          sentAt: new Date()
+        })
+      } catch (err) {
+        log.error("Failed to update EmailDraft status after send", err, { questId: id }, { organizationId, operation: "execute" })
+      }
 
       // Auto-transition task instance to IN_PROGRESS if sending request
       if (taskInstanceId && successful.length > 0) {
-        const { TaskInstanceService } = await import("./task-instance.service")
-        await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+        try {
+          const { TaskInstanceService } = await import("./task-instance.service")
+          await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+        } catch (err) {
+          log.error("Failed to mark task in progress after send", err, { questId: id, taskInstanceId }, { organizationId, operation: "execute" })
+        }
       }
 
       log.info("Quest execution complete", {
