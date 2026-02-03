@@ -111,7 +111,9 @@ export async function POST(
       errorCode = "NO_VALID_RECIPIENTS"
     } else if (errorMessage.includes("No active email account")) {
       errorCode = "SENDER_NOT_CONNECTED"
-    } else if (errorMessage.includes("Gmail") || errorMessage.includes("SMTP") || errorMessage.includes("email provider")) {
+    } else if (errorMessage.includes("No refresh token") || errorMessage.includes("No access token") || errorMessage.includes("token expired")) {
+      errorCode = "SENDER_NOT_CONNECTED"
+    } else if (errorMessage.includes("Gmail") || errorMessage.includes("SMTP") || errorMessage.includes("email provider") || errorMessage.includes("401") || errorMessage.includes("403")) {
       errorCode = "PROVIDER_SEND_FAILED"
     }
     

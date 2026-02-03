@@ -804,7 +804,8 @@ export function SendRequestModal({
 
       if (!executeResponse.ok) {
         const data = await executeResponse.json()
-        const errorMessage = getErrorMessage(data.errorCode, data.error || "Failed to send request")
+        // Use data.message for actual error details, fall back to data.error
+        const errorMessage = getErrorMessage(data.errorCode, data.message || data.error || "Failed to send request")
         throw new Error(errorMessage)
       }
 
