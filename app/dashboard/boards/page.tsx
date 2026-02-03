@@ -23,12 +23,9 @@ import {
   Pencil,
   PlayCircle,
   CheckCircle2,
-  PauseCircle,
-  ChevronRight,
-  ChevronDown,
-  Calendar
+  PauseCircle
 } from "lucide-react"
-import { format, formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "date-fns"
 import { 
   formatDateInTimezone, 
   formatMonthYearInTimezone, 
@@ -38,15 +35,6 @@ import {
 } from "@/lib/utils/timezone"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 
-/**
- * Parse a date-only field (dueDate, periodStart, etc.) for display.
- * Avoids timezone shift by using the date part directly.
- */
-function parseDateOnly(dateStr: string): Date {
-  const datePart = dateStr.split("T")[0]
-  const [year, month, day] = datePart.split("-").map(Number)
-  return new Date(year, month - 1, day)
-}
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -62,22 +50,10 @@ const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
   { id: "updatedAt", label: "Date", width: 120, visible: true, order: 5, isSystem: true },
 ]
 
-// Default task columns (for tasks within expanded board rows)
-// Matches the columns available in the main jobs table
-const DEFAULT_TASK_COLUMNS: BoardColumnDefinition[] = [
-  { id: "name", label: "Task", width: 280, visible: true, order: 0, isSystem: true },
-  { id: "status", label: "Status", width: 130, visible: true, order: 1, isSystem: true },
-  { id: "owner", label: "Owner", width: 120, visible: true, order: 2, isSystem: true },
-  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 3, isSystem: true },
-  { id: "responses", label: "Responses", width: 100, visible: true, order: 4, isSystem: true },
-  { id: "notes", label: "Notes", width: 150, visible: true, order: 5, isSystem: true },
-  { id: "files", label: "Files", width: 80, visible: true, order: 6, isSystem: true },
-]
 
 // Types
 type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "OPEN" | "CLOSED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
-type JobStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "STUCK" | "ACTIVE" | "WAITING" | "COMPLETED" | "ARCHIVED"
 
 interface BoardOwner {
   id: string
@@ -96,29 +72,6 @@ interface BoardCollaborator {
   }
 }
 
-interface JobOwner {
-  id: string
-  name: string | null
-  email: string
-}
-
-interface Job {
-  id: string
-  name: string
-  description: string | null
-  type: "GENERIC" | "TABLE" | "RECONCILIATION" | "DATABASE"
-  status: JobStatus
-  dueDate: string | null
-  notes: string | null
-  owner: JobOwner
-  taskCount?: number // Number of requests/responses
-  collectedItemCount?: number // Number of files/evidence
-  _count?: {
-    tasks: number
-    subtasks: number
-  }
-}
-
 interface Board {
   id: string
   name: string
@@ -133,7 +86,6 @@ interface Board {
   createdAt: string
   automationEnabled?: boolean
   skipWeekends?: boolean
-  jobs?: Job[] // Populated when expanded
 }
 
 type StatusFilter = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "ALL"
@@ -158,20 +110,6 @@ function normalizeStatus(status: BoardStatus): BoardStatus {
   return status
 }
 
-function normalizeJobStatus(status: JobStatus): string {
-  // Handle legacy statuses
-  switch (status) {
-    case "ACTIVE":
-    case "WAITING":
-      return "IN_PROGRESS"
-    case "COMPLETED":
-    case "ARCHIVED":
-      return "COMPLETE"
-    default:
-      return status
-  }
-}
-
 function getStatusBadge(status: BoardStatus) {
   const normalized = normalizeStatus(status)
   switch (normalized) {
@@ -187,24 +125,6 @@ function getStatusBadge(status: BoardStatus) {
       return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">Archived</span>
     default:
       return null
-  }
-}
-
-function getJobStatusBadge(status: JobStatus) {
-  const normalized = normalizeJobStatus(status)
-  switch (normalized) {
-    case "NOT_STARTED":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">Not Started</span>
-    case "IN_PROGRESS":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">In Progress</span>
-    case "COMPLETE":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">Complete</span>
-    case "BLOCKED":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-700">Blocked</span>
-    case "STUCK":
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700">Stuck</span>
-    default:
-      return <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{status}</span>
   }
 }
 
@@ -269,11 +189,6 @@ export default function BoardsPage() {
   // Organization timezone for date formatting
   const [organizationTimezone, setOrganizationTimezone] = useState<string>("UTC")
   
-  // Expanded boards state
-  const [expandedBoards, setExpandedBoards] = useState<Set<string>>(new Set())
-  const [loadingJobs, setLoadingJobs] = useState<Set<string>>(new Set())
-  const [boardJobs, setBoardJobs] = useState<Record<string, Job[]>>({})
-  
   // Modal states
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<Board | null>(null)
@@ -283,8 +198,6 @@ export default function BoardsPage() {
   
   // Column configuration state (for board rows)
   const [columns, setColumns] = useState<BoardColumnDefinition[]>(DEFAULT_BOARD_COLUMNS)
-  // Column configuration state (for task rows within expanded boards)
-  const [taskColumns, setTaskColumns] = useState<BoardColumnDefinition[]>(DEFAULT_TASK_COLUMNS)
   
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -300,9 +213,6 @@ export default function BoardsPage() {
           if (data.columns && data.columns.length > 0) {
             setColumns(data.columns)
           }
-          if (data.taskColumns && data.taskColumns.length > 0) {
-            setTaskColumns(data.taskColumns)
-          }
         }
       } catch (error) {
         console.error("Error fetching board column config:", error)
@@ -312,31 +222,23 @@ export default function BoardsPage() {
   }, [])
 
   // Save column configuration when columns change
-  const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[], newTaskColumns?: BoardColumnDefinition[]) => {
+  const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[]) => {
     try {
       await fetch("/api/boards/column-config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ 
-          columns: newColumns,
-          taskColumns: newTaskColumns || taskColumns
-        })
+        body: JSON.stringify({ columns: newColumns })
       })
     } catch (error) {
       console.error("Error saving board column config:", error)
     }
-  }, [taskColumns])
+  }, [])
 
   const handleColumnsChange = useCallback((newColumns: BoardColumnDefinition[]) => {
     setColumns(newColumns)
-    saveColumnConfig(newColumns, taskColumns)
-  }, [saveColumnConfig, taskColumns])
-
-  const handleTaskColumnsChange = useCallback((newTaskColumns: BoardColumnDefinition[]) => {
-    setTaskColumns(newTaskColumns)
-    saveColumnConfig(columns, newTaskColumns)
-  }, [saveColumnConfig, columns])
+    saveColumnConfig(newColumns)
+  }, [saveColumnConfig])
 
   // Filter visible columns and sort by order
   const visibleColumns = useMemo(() => {
@@ -344,13 +246,6 @@ export default function BoardsPage() {
       .filter(col => col.visible)
       .sort((a, b) => a.order - b.order)
   }, [columns])
-
-  // Filter visible task columns and sort by order
-  const visibleTaskColumns = useMemo(() => {
-    return taskColumns
-      .filter(col => col.visible)
-      .sort((a, b) => a.order - b.order)
-  }, [taskColumns])
 
   // Fetch all boards
   const fetchBoards = async () => {
@@ -369,47 +264,6 @@ export default function BoardsPage() {
       console.error("Error fetching boards:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  // Fetch jobs for a specific board
-  const fetchBoardJobs = async (boardId: string) => {
-    if (boardJobs[boardId]) return // Already loaded
-    
-    setLoadingJobs(prev => new Set(prev).add(boardId))
-    try {
-      const response = await fetch(`/api/boards/${boardId}?includeJobs=true`)
-      if (response.ok) {
-        const data = await response.json()
-        setBoardJobs(prev => ({
-          ...prev,
-          [boardId]: data.board.jobs || []
-        }))
-      }
-    } catch (error) {
-      console.error("Error fetching board jobs:", error)
-    } finally {
-      setLoadingJobs(prev => {
-        const next = new Set(prev)
-        next.delete(boardId)
-        return next
-      })
-    }
-  }
-
-  // Toggle board expansion
-  const toggleBoardExpansion = async (boardId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    
-    if (expandedBoards.has(boardId)) {
-      setExpandedBoards(prev => {
-        const next = new Set(prev)
-        next.delete(boardId)
-        return next
-      })
-    } else {
-      setExpandedBoards(prev => new Set(prev).add(boardId))
-      fetchBoardJobs(boardId)
     }
   }
 
@@ -480,20 +334,24 @@ export default function BoardsPage() {
       })
   }, [boards, statusFilter, cadenceFilter, searchQuery, sortOption])
 
-  // Split boards into recurring and ad hoc
-  const { recurringBoards, adHocBoards } = useMemo(() => {
+  // Split boards into recurring, ad hoc, and complete sections
+  const { recurringBoards, adHocBoards, completeBoards } = useMemo(() => {
     const recurring: Board[] = []
     const adHoc: Board[] = []
+    const complete: Board[] = []
     
     filteredBoards.forEach(board => {
-      if (board.cadence === "AD_HOC" || !board.cadence) {
+      const normalized = normalizeStatus(board.status)
+      if (normalized === "COMPLETE") {
+        complete.push(board)
+      } else if (board.cadence === "AD_HOC" || !board.cadence) {
         adHoc.push(board)
       } else {
         recurring.push(board)
       }
     })
     
-    return { recurringBoards: recurring, adHocBoards: adHoc }
+    return { recurringBoards: recurring, adHocBoards: adHoc, completeBoards: complete }
   }, [filteredBoards])
 
   // Board actions
@@ -708,41 +566,28 @@ export default function BoardsPage() {
                 <h3 className="text-sm font-medium text-gray-700">Recurring</h3>
                 <span className="text-xs text-gray-400">{recurringBoards.length}</span>
               </div>
-              {recurringBoards.map((board) => {
-                const isExpanded = expandedBoards.has(board.id)
-                const isLoadingJobs = loadingJobs.has(board.id)
-                const jobs = boardJobs[board.id] || []
-                
-                return (
-                  <BoardRow 
-                    key={board.id}
-                    board={board}
-                    isExpanded={isExpanded}
-                    isLoadingJobs={isLoadingJobs}
-                    jobs={jobs}
-                    menuOpenId={menuOpenId}
-                    menuRef={menuRef}
-                    visibleColumns={visibleColumns}
-                    columns={columns}
-                    onColumnsChange={handleColumnsChange}
-                    visibleTaskColumns={visibleTaskColumns}
-                    taskColumns={taskColumns}
-                    onTaskColumnsChange={handleTaskColumnsChange}
-                    toggleBoardExpansion={toggleBoardExpansion}
-                    setMenuOpenId={setMenuOpenId}
-                    setEditingBoard={setEditingBoard}
-                    handleStatusChange={handleStatusChange}
-                    handleDuplicateBoard={handleDuplicateBoard}
-                    handleArchiveBoard={handleArchiveBoard}
-                    handleRestoreBoard={handleRestoreBoard}
-                    handleDeleteBoard={handleDeleteBoard}
-                    canDeleteBoard={canDeleteBoard}
-                    onBoardUpdate={handleBoardUpdate}
-                    organizationTimezone={organizationTimezone}
-                    router={router}
-                  />
-                )
-              })}
+              {recurringBoards.map((board) => (
+                <BoardRow 
+                  key={board.id}
+                  board={board}
+                  menuOpenId={menuOpenId}
+                  menuRef={menuRef}
+                  visibleColumns={visibleColumns}
+                  columns={columns}
+                  onColumnsChange={handleColumnsChange}
+                  setMenuOpenId={setMenuOpenId}
+                  setEditingBoard={setEditingBoard}
+                  handleStatusChange={handleStatusChange}
+                  handleDuplicateBoard={handleDuplicateBoard}
+                  handleArchiveBoard={handleArchiveBoard}
+                  handleRestoreBoard={handleRestoreBoard}
+                  handleDeleteBoard={handleDeleteBoard}
+                  canDeleteBoard={canDeleteBoard}
+                  onBoardUpdate={handleBoardUpdate}
+                  organizationTimezone={organizationTimezone}
+                  router={router}
+                />
+              ))}
             </div>
           )}
 
@@ -754,41 +599,61 @@ export default function BoardsPage() {
                 <h3 className="text-sm font-medium text-gray-700">Ad Hoc</h3>
                 <span className="text-xs text-gray-400">{adHocBoards.length}</span>
               </div>
-              {adHocBoards.map((board) => {
-                const isExpanded = expandedBoards.has(board.id)
-                const isLoadingJobs = loadingJobs.has(board.id)
-                const jobs = boardJobs[board.id] || []
-                
-                return (
-                  <BoardRow 
-                    key={board.id}
-                    board={board}
-                    isExpanded={isExpanded}
-                    isLoadingJobs={isLoadingJobs}
-                    jobs={jobs}
-                    menuOpenId={menuOpenId}
-                    menuRef={menuRef}
-                    visibleColumns={visibleColumns}
-                    columns={columns}
-                    onColumnsChange={handleColumnsChange}
-                    visibleTaskColumns={visibleTaskColumns}
-                    taskColumns={taskColumns}
-                    onTaskColumnsChange={handleTaskColumnsChange}
-                    toggleBoardExpansion={toggleBoardExpansion}
-                    setMenuOpenId={setMenuOpenId}
-                    setEditingBoard={setEditingBoard}
-                    handleStatusChange={handleStatusChange}
-                    handleDuplicateBoard={handleDuplicateBoard}
-                    handleArchiveBoard={handleArchiveBoard}
-                    handleRestoreBoard={handleRestoreBoard}
-                    handleDeleteBoard={handleDeleteBoard}
-                    canDeleteBoard={canDeleteBoard}
-                    onBoardUpdate={handleBoardUpdate}
-                    organizationTimezone={organizationTimezone}
-                    router={router}
-                  />
-                )
-              })}
+              {adHocBoards.map((board) => (
+                <BoardRow 
+                  key={board.id}
+                  board={board}
+                  menuOpenId={menuOpenId}
+                  menuRef={menuRef}
+                  visibleColumns={visibleColumns}
+                  columns={columns}
+                  onColumnsChange={handleColumnsChange}
+                  setMenuOpenId={setMenuOpenId}
+                  setEditingBoard={setEditingBoard}
+                  handleStatusChange={handleStatusChange}
+                  handleDuplicateBoard={handleDuplicateBoard}
+                  handleArchiveBoard={handleArchiveBoard}
+                  handleRestoreBoard={handleRestoreBoard}
+                  handleDeleteBoard={handleDeleteBoard}
+                  canDeleteBoard={canDeleteBoard}
+                  onBoardUpdate={handleBoardUpdate}
+                  organizationTimezone={organizationTimezone}
+                  router={router}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Complete Boards Section */}
+          {completeBoards.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1 pb-2">
+                <div className="h-1 w-1 rounded-full bg-green-500" />
+                <h3 className="text-sm font-medium text-gray-700">Complete</h3>
+                <span className="text-xs text-gray-400">{completeBoards.length}</span>
+              </div>
+              {completeBoards.map((board) => (
+                <BoardRow 
+                  key={board.id}
+                  board={board}
+                  menuOpenId={menuOpenId}
+                  menuRef={menuRef}
+                  visibleColumns={visibleColumns}
+                  columns={columns}
+                  onColumnsChange={handleColumnsChange}
+                  setMenuOpenId={setMenuOpenId}
+                  setEditingBoard={setEditingBoard}
+                  handleStatusChange={handleStatusChange}
+                  handleDuplicateBoard={handleDuplicateBoard}
+                  handleArchiveBoard={handleArchiveBoard}
+                  handleRestoreBoard={handleRestoreBoard}
+                  handleDeleteBoard={handleDeleteBoard}
+                  canDeleteBoard={canDeleteBoard}
+                  onBoardUpdate={handleBoardUpdate}
+                  organizationTimezone={organizationTimezone}
+                  router={router}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -845,18 +710,11 @@ export default function BoardsPage() {
 // Extracted BoardRow component for reuse
 interface BoardRowProps {
   board: Board
-  isExpanded: boolean
-  isLoadingJobs: boolean
-  jobs: Job[]
   menuOpenId: string | null
   menuRef: React.RefObject<HTMLDivElement>
   visibleColumns: BoardColumnDefinition[]
   columns: BoardColumnDefinition[]
   onColumnsChange: (columns: BoardColumnDefinition[]) => void
-  visibleTaskColumns: BoardColumnDefinition[]
-  taskColumns: BoardColumnDefinition[]
-  onTaskColumnsChange: (columns: BoardColumnDefinition[]) => void
-  toggleBoardExpansion: (boardId: string, e: React.MouseEvent) => void
   setMenuOpenId: (id: string | null) => void
   setEditingBoard: (board: Board | null) => void
   handleStatusChange: (boardId: string, newStatus: BoardStatus) => void
@@ -872,18 +730,11 @@ interface BoardRowProps {
 
 function BoardRow({
   board,
-  isExpanded,
-  isLoadingJobs,
-  jobs,
   menuOpenId,
   menuRef,
   visibleColumns,
   columns,
   onColumnsChange,
-  visibleTaskColumns,
-  taskColumns,
-  onTaskColumnsChange,
-  toggleBoardExpansion,
   setMenuOpenId,
   setEditingBoard,
   handleStatusChange,
@@ -962,33 +813,23 @@ function BoardRow({
   }
 
   return (
-    <div className="border rounded-lg bg-white">
-      {/* Board Header Row */}
-      <div 
-        className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-        onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
-      >
-        {/* Expand/Collapse Button */}
-        <button
-          onClick={(e) => toggleBoardExpansion(board.id, e)}
-          className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0"
-          disabled={board.jobCount === 0}
-        >
-          {board.jobCount === 0 ? (
-            <ChevronRight className="w-4 h-4 text-gray-300" />
-          ) : isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-gray-600" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-gray-600" />
-          )}
-        </button>
-
+    <div 
+      className="border rounded-lg bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+      onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
+    >
+      {/* Board Row */}
+      <div className="flex items-center gap-4 px-4 py-3">
         {/* Render visible columns */}
         {visibleColumns.map((column) => (
           <div key={column.id}>
             {renderColumnValue(column.id)}
           </div>
         ))}
+
+        {/* Task count indicator */}
+        <div className="flex-shrink-0 text-sm text-gray-500">
+          {board.jobCount || 0} tasks
+        </div>
 
         {/* Column Settings */}
         <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -1103,150 +944,6 @@ function BoardRow({
           )}
         </div>
       </div>
-
-      {/* Expanded Jobs Section */}
-      {isExpanded && (
-        <div className="border-t">
-              {isLoadingJobs ? (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                </div>
-              ) : jobs.length === 0 ? (
-                <div className="py-4 px-6 text-center text-gray-500 text-sm">
-                  No tasks in this board yet
-                </div>
-              ) : (
-                <div className="py-2">
-                  {/* Jobs Header */}
-                  <div className="flex items-center gap-4 px-6 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                    <div className="w-6"></div> {/* Indent spacer */}
-                    {visibleTaskColumns.map((column) => (
-                      <div 
-                        key={column.id} 
-                        className="flex-shrink-0"
-                        style={{ width: column.width || 120 }}
-                      >
-                        {column.label}
-                      </div>
-                    ))}
-                    <div className="w-12 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <BoardColumnHeader
-                        columns={taskColumns}
-                        onColumnsChange={onTaskColumnsChange}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Jobs List */}
-                  {jobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className="flex items-center gap-4 px-6 py-2.5 hover:bg-gray-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/dashboard/jobs/${job.id}`)
-                      }}
-                    >
-                      <div className="w-6"></div> {/* Indent spacer */}
-                      
-                      {visibleTaskColumns.map((column) => {
-                        switch (column.id) {
-                          case "name":
-                            return (
-                              <div key={column.id} className="flex-shrink-0 min-w-0" style={{ width: column.width || 280 }}>
-                                <span className="text-sm text-gray-900 truncate block">{job.name}</span>
-                              </div>
-                            )
-                          case "status":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 130 }}>
-                                {getJobStatusBadge(job.status)}
-                              </div>
-                            )
-                          case "owner":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 120 }}>
-                                {job.owner ? (
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                      <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                                        {getInitials(job.owner.name, job.owner.email)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <span className="text-sm text-gray-700 truncate">
-                                      {job.owner.name || job.owner.email.split("@")[0]}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 text-sm">—</span>
-                                )}
-                              </div>
-                            )
-                          case "dueDate":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
-                                {job.dueDate ? (
-                                  <div className="flex items-center gap-1 text-sm text-gray-600">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    {format(parseDateOnly(job.dueDate), "MMM d")}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 text-sm">—</span>
-                                )}
-                              </div>
-                            )
-                          case "responses":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 100 }}>
-                                <span className="text-sm text-gray-600">
-                                  {job.taskCount || 0}
-                                </span>
-                              </div>
-                            )
-                          case "notes":
-                            return (
-                              <div key={column.id} className="flex-shrink-0 truncate" style={{ width: column.width || 150 }}>
-                                {job.notes ? (
-                                  <span className="text-sm text-gray-600 truncate block">{job.notes}</span>
-                                ) : (
-                                  <span className="text-gray-400 text-sm">—</span>
-                                )}
-                              </div>
-                            )
-                          case "files":
-                            return (
-                              <div key={column.id} className="flex-shrink-0" style={{ width: column.width || 80 }}>
-                                <span className="text-sm text-gray-600">
-                                  {job.collectedItemCount || 0}
-                                </span>
-                              </div>
-                            )
-                          default:
-                            return null
-                        }
-                      })}
-
-                      {/* Spacer for alignment */}
-                      <div className="w-12"></div>
-                    </div>
-                  ))}
-                  
-                  {/* Add Task Button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      router.push(`/dashboard/jobs?boardId=${board.id}&action=create`)
-                    }}
-                    className="w-full flex items-center gap-2 px-6 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="w-6"></div>
-                    <Plus className="w-4 h-4" />
-                    <span>Add item</span>
-                  </button>
-                </div>
-              )}
-        </div>
-      )}
     </div>
   )
 }

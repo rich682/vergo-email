@@ -33,7 +33,9 @@ import {
   Users,
   Tag,
   Zap,
-  ChevronDown
+  ChevronDown,
+  LayoutGrid,
+  List
 } from "lucide-react"
 import { format } from "date-fns"
 import { formatDateInTimezone, formatDateOnlyRange } from "@/lib/utils/timezone"
@@ -51,6 +53,7 @@ import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 // Onboarding checklist hidden for now - not at that product stage
 // import { OnboardingChecklist } from "@/components/onboarding-checklist"
 import { ConfigurableTable, JobRow } from "@/components/jobs/configurable-table"
+import { KanbanView } from "@/components/jobs/kanban-view"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 
 // ============================================
@@ -148,6 +151,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [viewMode, setViewMode] = useState<"table" | "kanban">("table")
   
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -1418,8 +1422,8 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* Search */}
-        <div className="mb-4">
+        {/* Search and View Toggle */}
+        <div className="mb-4 flex items-center justify-between">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
@@ -1429,6 +1433,32 @@ export default function JobsPage() {
               className="pl-10"
             />
           </div>
+          
+          {/* View Toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                viewMode === "table"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <List className="w-4 h-4" />
+              Table
+            </button>
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Kanban
+            </button>
+          </div>
         </div>
 
         {/* AI Summary Panel */}
@@ -1436,7 +1466,7 @@ export default function JobsPage() {
           <AISummaryPanel boardId={boardId} />
         )}
 
-        {/* Configurable Task Table */}
+        {/* Task View - Table or Kanban */}
         {filteredJobs.length === 0 && !searchQuery ? (
           <EmptyState
             icon={<CheckCircle className="w-12 h-12 text-gray-300" />}
@@ -1456,6 +1486,11 @@ export default function JobsPage() {
           <div className="text-center py-12 text-gray-500">
             No tasks match "{searchQuery}"
           </div>
+        ) : viewMode === "kanban" ? (
+          <KanbanView
+            jobs={jobRows}
+            onStatusChange={handleStatusChange}
+          />
         ) : (
           <ConfigurableTable
             jobs={jobRows}
