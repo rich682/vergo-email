@@ -213,13 +213,25 @@ export default function FormBuilderPage() {
     fetchForm()
   }, [fetchForm])
 
+  // Ref to track if currently saving (to prevent duplicate saves)
+  const savingRef = useRef(false)
+
   // Save form function using ref to always get latest data
   const saveForm = useCallback(async () => {
     const currentForm = formRef.current
-    if (!currentForm) return
+    if (!currentForm) {
+      return
+    }
+
+    // Prevent duplicate saves using ref (not state, to avoid re-renders)
+    if (savingRef.current) {
+      return
+    }
 
     try {
+      savingRef.current = true
       setSaving(true)
+      
       const response = await fetch(`/api/forms/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -233,13 +245,16 @@ export default function FormBuilderPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to save")
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Save failed:', response.status, errorData)
+        throw new Error(errorData.error || "Failed to save")
       }
 
       setHasChanges(false)
     } catch (error) {
       console.error("Error saving form:", error)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }, [id])
@@ -416,7 +431,12 @@ export default function FormBuilderPage() {
                 </span>
               )}
               {!saving && hasChanges && (
-                <span className="text-sm text-orange-500">Unsaved changes</span>
+                <button
+                  onClick={() => saveForm()}
+                  className="text-sm text-orange-500 hover:text-orange-600 hover:underline cursor-pointer"
+                >
+                  Unsaved changes - click to save
+                </button>
               )}
               {!saving && !hasChanges && (
                 <span className="text-sm text-green-600">Saved</span>
