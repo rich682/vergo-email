@@ -42,6 +42,21 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium
 
+      - name: Create test directories
+        run: mkdir -p playwright/.auth test-results
+
+      - name: Verify environment variables
+        run: |
+          if [ -z "$TEST_BASE_URL" ]; then echo "ERROR: TEST_BASE_URL not set"; exit 1; fi
+          if [ -z "$TEST_USER_EMAIL" ]; then echo "ERROR: TEST_USER_EMAIL not set"; exit 1; fi
+          if [ -z "$TEST_USER_PASSWORD" ]; then echo "ERROR: TEST_USER_PASSWORD not set"; exit 1; fi
+          echo "All required environment variables are set"
+          echo "Base URL: $TEST_BASE_URL"
+        env:
+          TEST_BASE_URL: ${{ secrets.TEST_BASE_URL }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
       - name: Run E2E tests
         run: |
           if [ "${{ github.event.inputs.test_suite }}" = "all" ]; then
