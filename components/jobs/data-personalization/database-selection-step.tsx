@@ -163,6 +163,16 @@ function parsePeriodValue(value: string): { month?: number; year: number; quarte
     }
   }
   
+  // Try full ISO datetime format (e.g., "2026-02-01T00:00:00.000Z")
+  const isoDateTimeMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T/)
+  if (isoDateTimeMatch) {
+    const year = parseInt(isoDateTimeMatch[1])
+    const month = parseInt(isoDateTimeMatch[2])
+    if (month >= 1 && month <= 12) {
+      return { month, year }
+    }
+  }
+  
   return null
 }
 
