@@ -75,24 +75,28 @@ function normalizeKey(key: string): string {
 // Check if a column matches email patterns
 function isEmailColumn(col: DatabaseSchemaColumn): boolean {
   const key = normalizeKey(col.key)
+  const label = normalizeKey(col.label)
   const emailPatterns = ["email", "emailaddress", "recipientemail", "contactemail", "mail"]
-  return emailPatterns.some(p => key.includes(p))
+  return emailPatterns.some(p => key.includes(p) || label.includes(p))
 }
 
 // Check if a column matches first name patterns
 function isFirstNameColumn(col: DatabaseSchemaColumn): boolean {
   const key = normalizeKey(col.key)
+  const label = normalizeKey(col.label)
   const namePatterns = ["firstname", "first", "name"]
   // Avoid matching "company_name" or "last_name"
-  if (key.includes("company") || key.includes("last")) return false
-  return namePatterns.some(p => key === p || key.includes("firstname"))
+  if (key.includes("company") || key.includes("last") || label.includes("company") || label.includes("last")) return false
+  return namePatterns.some(p => key === p || key.includes("firstname") || label === p || label.includes("firstname"))
 }
 
 // Check if a column matches period patterns
 function isPeriodColumn(col: DatabaseSchemaColumn): boolean {
   const key = normalizeKey(col.key)
+  const label = normalizeKey(col.label)
   const periodPatterns = ["period", "timeperiod", "reportingperiod"]
-  return periodPatterns.some(p => key.includes(p))
+  // Check both key and label
+  return periodPatterns.some(p => key.includes(p) || label.includes(p))
 }
 
 // Month names for parsing
