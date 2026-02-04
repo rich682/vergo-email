@@ -62,6 +62,9 @@ import { ReconciliationResultCard } from "@/components/jobs/reconciliation-resul
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
+// Form requests panel
+import { FormRequestsPanel } from "@/components/jobs/form-requests-panel"
+
 // Draft Request Review Modal
 import { DraftRequestReviewModal } from "@/components/jobs/draft-request-review-modal"
 
@@ -1591,6 +1594,11 @@ export default function JobDetailPage() {
                 <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={<Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button>} />
                 <div className="space-y-3">
                   {requests.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No requests sent yet</p></div> : requests.map(r => <RequestCardExpandable key={r.id} request={r} onRefresh={fetchRequests} />)}
+                </div>
+                
+                {/* Form Requests */}
+                <div className="mt-6">
+                  <FormRequestsPanel jobId={jobId} />
                 </div>
               </div>
             )}
