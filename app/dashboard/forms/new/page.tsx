@@ -41,7 +41,7 @@ export default function NewFormPage() {
   // Form data
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [selectedDatabaseId, setSelectedDatabaseId] = useState<string>("")
+  const [selectedDatabaseId, setSelectedDatabaseId] = useState<string>("none")
 
   // Fetch databases when moving to database step
   useEffect(() => {
@@ -80,7 +80,7 @@ export default function NewFormPage() {
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || undefined,
-          databaseId: selectedDatabaseId || undefined,
+          databaseId: selectedDatabaseId && selectedDatabaseId !== "none" ? selectedDatabaseId : undefined,
           fields: [],
           settings: {
             allowEdit: false,
@@ -233,7 +233,7 @@ export default function NewFormPage() {
                         <SelectValue placeholder="Select a database (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No database</SelectItem>
+                        <SelectItem value="none">No database</SelectItem>
                         {databases.map((db) => (
                           <SelectItem key={db.id} value={db.id}>
                             {db.name}
@@ -251,7 +251,7 @@ export default function NewFormPage() {
                     </p>
                   </div>
 
-                  {selectedDatabaseId && (
+                  {selectedDatabaseId && selectedDatabaseId !== "none" && (
                     <div className="bg-gray-50 rounded-lg p-4">
                       <p className="text-sm font-medium text-gray-700 mb-2">
                         Database columns will be available as form fields:
