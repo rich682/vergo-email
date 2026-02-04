@@ -88,6 +88,14 @@ export async function POST(
       return NextResponse.json({ error: "At least one recipient is required" }, { status: 400 })
     }
 
+    console.log(`[FormRequests] Creating form requests:`, {
+      organizationId: session.user.organizationId,
+      taskInstanceId,
+      formDefinitionId,
+      recipientCount: recipientUserIds?.length,
+      deadlineDate,
+    })
+
     const result = await FormRequestService.createBulk(
       session.user.organizationId,
       taskInstanceId,
@@ -98,41 +106,47 @@ export async function POST(
         reminderConfig,
       }
     )
-
-    // Get form definition and sender info for email
-    const formDefinition = await prisma.formDefinition.findFirst({
-      where: { id: formDefinitionId, organizationId: session.user.organizationId },
-    })
     
-    const sender = await prisma.user.findFirst({
-      where: { id: session.user.id },
-      select: { name: true, email: true },
-    })
+    console.log(`[FormRequests] Created ${result.count} form requests successfully`)
 
-    // Get board period info
-    const boardPeriod = task.board?.periodStart 
-      ? new Date(task.board.periodStart).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-      : null
-
-    // Send email notifications to all recipients
-    if (formDefinition && result.formRequests.length > 0) {
-      const emailResult = await FormNotificationService.sendBulkFormRequestEmails(
-        result.formRequests,
-        formDefinition.name,
-        task.name,
-        sender?.name || null,
-        sender?.email || session.user.email || "",
-        deadlineDate ? new Date(deadlineDate) : null,
-        boardPeriod,
-        session.user.organizationId
-      )
+    // Send email notifications (non-blocking - don't fail the request if emails fail)
+    try {
+      const formDefinition = await prisma.formDefinition.findFirst({
+        where: { id: formDefinitionId, organizationId: session.user.organizationId },
+      })
       
-      console.log(`[FormRequests] Sent ${emailResult.sent} emails, ${emailResult.failed} failed`)
+      const sender = await prisma.user.findFirst({
+        where: { id: session.user.id },
+        select: { name: true, email: true },
+      })
+
+      // Get board period info
+      const boardPeriod = task.board?.periodStart 
+        ? new Date(task.board.periodStart).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+        : null
+
+      if (formDefinition && result.formRequests.length > 0) {
+        const emailResult = await FormNotificationService.sendBulkFormRequestEmails(
+          result.formRequests,
+          formDefinition.name,
+          task.name,
+          sender?.name || null,
+          sender?.email || "",
+          deadlineDate ? new Date(deadlineDate) : null,
+          boardPeriod,
+          session.user.organizationId
+        )
+        
+        console.log(`[FormRequests] Sent ${emailResult.sent} emails, ${emailResult.failed} failed`)
+      }
+    } catch (emailError: any) {
+      // Log but don't fail the request - form requests were created successfully
+      console.error("[FormRequests] Email sending failed:", emailError.message)
     }
 
     return NextResponse.json(result, { status: 201 })
   } catch (error: any) {
-    console.error("Error creating form requests:", error)
+    console.error("Error creating form requests:", error.message, error.stack)
     return NextResponse.json(
       { error: "Failed to create form requests", message: error.message },
       { status: 500 }
