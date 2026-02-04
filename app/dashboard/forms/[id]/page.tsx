@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, use } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -85,18 +85,13 @@ interface FormData {
   } | null
 }
 
-export default function FormBuilderPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  // Debug: Log params resolution
-  const resolvedParams = use(params)
-  console.log('[FormBuilder] Params resolved:', typeof resolvedParams, resolvedParams)
-  const id = typeof resolvedParams?.id === 'string' ? resolvedParams.id : String(resolvedParams?.id || '')
-  console.log('[FormBuilder] ID extracted:', typeof id, id)
-  
+export default function FormBuilderPage() {
   const router = useRouter()
+  const params = useParams()
+  
+  // Safely extract ID from params
+  const rawId = params?.id
+  const id = typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] || '' : ''
   const [form, setForm] = useState<FormData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
