@@ -691,106 +691,151 @@ export default function FormBuilderPage() {
               {isNewField ? "Add Field" : "Edit Field"}
             </DialogTitle>
           </DialogHeader>
-          {editingField && (
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Label *</Label>
-                <Input
-                  value={safeString(editingField.label)}
-                  onChange={(e) =>
-                    setEditingField({ ...editingField, label: e.target.value })
-                  }
-                  placeholder="Field label"
-                  className="mt-1.5"
-                />
-              </div>
+          {editingField && (() => {
+            // Check if this field is from a database column
+            const isDbField = form?.database?.schema?.columns?.some(
+              col => col.key === editingField.key
+            )
+            
+            return (
+              <div className="space-y-4 py-4">
+                {/* Database fields: show read-only info + required toggle */}
+                {isDbField && !isNewField ? (
+                  <>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-500">Label</span>
+                        <span className="text-sm font-medium">{safeString(editingField.label)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-500">Type</span>
+                        <span className="text-sm font-medium">{FIELD_TYPE_CONFIG[editingField.type]?.label || editingField.type}</span>
+                      </div>
+                      {editingField.type === "dropdown" && editingField.options && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-500">Options</span>
+                          <span className="text-sm font-medium">{editingField.options.length} options</span>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">
+                        This field is linked to a database column. Edit the database to change label, type, or options.
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-2">
+                      <Label>Required</Label>
+                      <Switch
+                        checked={editingField.required}
+                        onCheckedChange={(checked) =>
+                          setEditingField({ ...editingField, required: checked })
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  /* Custom fields: show full editor */
+                  <>
+                    <div>
+                      <Label>Label *</Label>
+                      <Input
+                        value={safeString(editingField.label)}
+                        onChange={(e) =>
+                          setEditingField({ ...editingField, label: e.target.value })
+                        }
+                        placeholder="Field label"
+                        className="mt-1.5"
+                      />
+                    </div>
 
-              <div>
-                <Label>Field Key</Label>
-                <Input
-                  value={safeString(editingField.key)}
-                  onChange={(e) =>
-                    setEditingField({
-                      ...editingField,
-                      key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
-                    })
-                  }
-                  placeholder="field_key"
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for database mapping. Lowercase, underscores only.
-                </p>
-              </div>
+                    <div>
+                      <Label>Field Key</Label>
+                      <Input
+                        value={safeString(editingField.key)}
+                        onChange={(e) =>
+                          setEditingField({
+                            ...editingField,
+                            key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
+                          })
+                        }
+                        placeholder="field_key"
+                        className="mt-1.5"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Used for database mapping. Lowercase, underscores only.
+                      </p>
+                    </div>
 
-              <div>
-                <Label>Type</Label>
-                <Select
-                  value={safeString(editingField.type)}
-                  onValueChange={(value) =>
-                    setEditingField({
-                      ...editingField,
-                      type: value as FormFieldType,
-                    })
-                  }
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(FIELD_TYPE_CONFIG).map(([type, config]) => (
-                      <SelectItem key={type} value={type}>
-                        {config.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                    <div>
+                      <Label>Type</Label>
+                      <Select
+                        value={safeString(editingField.type)}
+                        onValueChange={(value) =>
+                          setEditingField({
+                            ...editingField,
+                            type: value as FormFieldType,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="mt-1.5">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(FIELD_TYPE_CONFIG).map(([type, config]) => (
+                            <SelectItem key={type} value={type}>
+                              {config.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-              {editingField.type === "dropdown" && (
-                <div>
-                  <Label>Options (one per line)</Label>
-                  <Textarea
-                    value={editingField.options?.join("\n") || ""}
-                    onChange={(e) =>
-                      setEditingField({
-                        ...editingField,
-                        options: e.target.value.split("\n").filter(Boolean),
-                      })
-                    }
-                    placeholder="Option 1&#10;Option 2&#10;Option 3"
-                    className="mt-1.5"
-                    rows={4}
-                  />
-                </div>
-              )}
+                    {editingField.type === "dropdown" && (
+                      <div>
+                        <Label>Options (one per line)</Label>
+                        <Textarea
+                          value={editingField.options?.join("\n") || ""}
+                          onChange={(e) =>
+                            setEditingField({
+                              ...editingField,
+                              options: e.target.value.split("\n").filter(Boolean),
+                            })
+                          }
+                          placeholder="Option 1&#10;Option 2&#10;Option 3"
+                          className="mt-1.5"
+                          rows={4}
+                        />
+                      </div>
+                    )}
 
-              <div>
-                <Label>Help Text (optional)</Label>
-                <Input
-                  value={safeString(editingField.helpText) || ""}
-                  onChange={(e) =>
-                    setEditingField({
-                      ...editingField,
-                      helpText: e.target.value,
-                    })
-                  }
-                  placeholder="Additional instructions for this field"
-                  className="mt-1.5"
-                />
-              </div>
+                    <div>
+                      <Label>Help Text (optional)</Label>
+                      <Input
+                        value={safeString(editingField.helpText) || ""}
+                        onChange={(e) =>
+                          setEditingField({
+                            ...editingField,
+                            helpText: e.target.value,
+                          })
+                        }
+                        placeholder="Additional instructions for this field"
+                        className="mt-1.5"
+                      />
+                    </div>
 
-              <div className="flex items-center justify-between">
-                <Label>Required</Label>
-                <Switch
-                  checked={editingField.required}
-                  onCheckedChange={(checked) =>
-                    setEditingField({ ...editingField, required: checked })
-                  }
-                />
+                    <div className="flex items-center justify-between">
+                      <Label>Required</Label>
+                      <Switch
+                        checked={editingField.required}
+                        onCheckedChange={(checked) =>
+                          setEditingField({ ...editingField, required: checked })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          )}
+            )
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowFieldDialog(false)}>
               Cancel
