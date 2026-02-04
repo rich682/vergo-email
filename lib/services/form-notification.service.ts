@@ -10,6 +10,23 @@
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 
+/**
+ * Get the base URL for form links
+ * Priority: NEXTAUTH_URL > VERCEL_URL > NEXT_PUBLIC_APP_URL > localhost
+ */
+const getBaseUrl = (): string => {
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL.replace(/\/$/, "")
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
+  }
+  return "http://localhost:3000"
+}
+
 interface FormRequestEmailData {
   formRequestId: string
   recipientEmail: string
@@ -46,7 +63,7 @@ export class FormNotificationService {
       organizationId,
     } = data
 
-    const formUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.vergo.com"}/forms/${formRequestId}`
+    const formUrl = `${getBaseUrl()}/forms/${formRequestId}`
     const greeting = recipientName ? `Hi ${recipientName.split(" ")[0]},` : "Hello,"
     
     const deadlineText = deadlineDate
@@ -153,7 +170,7 @@ ${senderName || "The Team"}`
       organizationId,
     } = data
 
-    const formUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.vergo.com"}/forms/${formRequestId}`
+    const formUrl = `${getBaseUrl()}/forms/${formRequestId}`
     const greeting = recipientName ? `Hi ${recipientName.split(" ")[0]},` : "Hello,"
     
     const isLastReminder = reminderNumber >= maxReminders
