@@ -42,6 +42,21 @@ import {
 } from "@/components/ui/dialog"
 import type { FormField, FormFieldType, FormSettings } from "@/lib/types/form"
 
+// Helper to safely render any value as a string (prevents React error #438)
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return '[object]'
+    }
+  }
+  return String(value)
+}
+
 const FIELD_TYPE_CONFIG: Record<
   FormFieldType,
   { label: string; icon: React.ComponentType<{ className?: string }> }
@@ -270,7 +285,7 @@ export default function FormBuilderPage({
                 />
                 <p className="text-sm text-gray-500">
                   {form.fields.length} fields
-                  {form.database && ` • Linked to ${form.database.name}`}
+                  {form.database && ` • Linked to ${safeString(form.database.name)}`}
                 </p>
               </div>
             </div>
@@ -347,14 +362,14 @@ export default function FormBuilderPage({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">
-                          {field.label}
+                          {safeString(field.label)}
                           {field.required && (
                             <span className="text-red-500 ml-1">*</span>
                           )}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {FIELD_TYPE_CONFIG[field.type]?.label || field.type}
-                          {field.helpText && ` • ${field.helpText}`}
+                          {FIELD_TYPE_CONFIG[field.type]?.label || safeString(field.type)}
+                          {field.helpText && ` • ${safeString(field.helpText)}`}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -412,10 +427,10 @@ export default function FormBuilderPage({
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                {form.name || "Untitled Form"}
+                {safeString(form.name) || "Untitled Form"}
               </h3>
               {form.description && (
-                <p className="text-sm text-gray-500 mb-6">{form.description}</p>
+                <p className="text-sm text-gray-500 mb-6">{safeString(form.description)}</p>
               )}
 
               {sortedFields.length === 0 ? (
@@ -427,23 +442,23 @@ export default function FormBuilderPage({
                   {sortedFields.map((field) => (
                     <div key={field.key}>
                       <Label className="text-sm font-medium">
-                        {field.label}
+                        {safeString(field.label)}
                         {field.required && (
                           <span className="text-red-500 ml-1">*</span>
                         )}
                       </Label>
                       {field.helpText && (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {field.helpText}
+                          {safeString(field.helpText)}
                         </p>
                       )}
                       <div className="mt-1.5">
                         {field.type === "text" && (
-                          <Input placeholder={`Enter ${field.label.toLowerCase()}`} disabled />
+                          <Input placeholder={`Enter ${safeString(field.label).toLowerCase()}`} disabled />
                         )}
                         {field.type === "longText" && (
                           <Textarea
-                            placeholder={`Enter ${field.label.toLowerCase()}`}
+                            placeholder={`Enter ${safeString(field.label).toLowerCase()}`}
                             rows={3}
                             disabled
                           />
