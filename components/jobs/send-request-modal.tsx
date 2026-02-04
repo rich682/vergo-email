@@ -55,6 +55,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { formatPeriodDisplay } from "@/lib/utils/timezone"
 
 // Data Personalization Flow
 import { DataPersonalizationFlow } from "./data-personalization-flow"
@@ -984,10 +985,10 @@ export function SendRequestModal({
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2">Data Personalization</h3>
                 <p className="text-sm text-gray-500 text-center">
-                  Upload a CSV/Excel file with recipient data. Create personalized emails with merge fields.
+                  Select a database with recipient data. Create personalized emails with merge fields.
                 </p>
                 <span className="mt-3 text-xs text-purple-600 font-medium">
-                  Upload your own recipient list
+                  Select from your databases
                 </span>
               </button>
 
@@ -1019,6 +1020,16 @@ export function SendRequestModal({
           <DataPersonalizationFlow
             jobId={job.id}
             jobName={job.name}
+            boardPeriod={
+              job.board?.periodStart && job.board?.cadence
+                ? formatPeriodDisplay(
+                    job.board.periodStart,
+                    job.board.periodEnd,
+                    job.board.cadence as any,
+                    "UTC"
+                  )
+                : null
+            }
             onSuccess={() => {
               onOpenChange(false)
               onSuccess()

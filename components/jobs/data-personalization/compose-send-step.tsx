@@ -38,6 +38,15 @@ import {
 } from "lucide-react"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
+// Database mode specific props
+interface DatabaseModeProps {
+  databaseId: string
+  databaseName: string
+  emailColumnKey: string
+  firstNameColumnKey: string
+  boardPeriod?: string
+}
+
 interface ComposeSendStepProps {
   jobId: string
   draftId: string
@@ -47,6 +56,8 @@ interface ComposeSendStepProps {
   onColumnsChange: (columns: DatasetColumn[]) => void
   onBack: () => void
   onSuccess: () => void
+  // Optional: when provided, uses database send mode instead of CSV dataset mode
+  databaseMode?: DatabaseModeProps
 }
 
 type StepState = "generating" | "ready" | "refining" | "sending" | "success" | "error"
@@ -66,8 +77,10 @@ export function ComposeSendStep({
   onColumnsChange,
   onBack,
   onSuccess,
+  databaseMode,
 }: ComposeSendStepProps) {
-  const [state, setState] = useState<StepState>("generating")
+  // In database mode, start ready since we don't use AI draft generation
+  const [state, setState] = useState<StepState>(databaseMode ? "ready" : "generating")
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -187,10 +200,12 @@ export function ComposeSendStep({
     }
   }, [jobId, draftId])
   
-  // Auto-generate draft on mount
+  // Auto-generate draft on mount (only for CSV mode, not database mode)
   useEffect(() => {
-    generateDraft()
-  }, [])
+    if (!databaseMode) {
+      generateDraft()
+    }
+  }, [databaseMode])
 
   // Refine draft
   const refineDraft = useCallback(async () => {
@@ -355,29 +370,56 @@ export function ComposeSendStep({
     setError(null)
     setShowConfirmation(false)
 
-    // Save draft first
-    const saved = await saveDraft()
-    if (!saved) {
-      setState("ready")
-      return
+    // For CSV mode, save draft first
+    if (!databaseMode) {
+      const saved = await saveDraft()
+      if (!saved) {
+        setState("ready")
+        return
+      }
     }
 
     try {
-      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          draftId,
-          reminderConfig: remindersEnabled
-            ? {
-                enabled: true,
-                frequencyDays: reminderDays,
-                maxCount: reminderMaxCount,
-              }
-            : { enabled: false },
-        }),
-      })
+      let response: Response
+      
+      if (databaseMode) {
+        // Database mode: send using database endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/database/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            databaseId: databaseMode.databaseId,
+            boardPeriod: databaseMode.boardPeriod,
+            subjectTemplate: subject.trim(),
+            bodyTemplate: body.trim(),
+            reminderConfig: remindersEnabled
+              ? {
+                  enabled: true,
+                  frequencyDays: reminderDays,
+                  maxCount: reminderMaxCount,
+                }
+              : { enabled: false },
+          }),
+        })
+      } else {
+        // CSV mode: send using dataset endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/dataset/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            draftId,
+            reminderConfig: remindersEnabled
+              ? {
+                  enabled: true,
+                  frequencyDays: reminderDays,
+                  maxCount: reminderMaxCount,
+                }
+              : { enabled: false },
+          }),
+        })
+      }
 
       if (!response.ok) {
         const data = await response.json()
