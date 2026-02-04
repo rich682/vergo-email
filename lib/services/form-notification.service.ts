@@ -112,19 +112,21 @@ ${senderName || "The Team"}`
 </html>`
 
     try {
-      // Use EmailSendingService to send the email
-      // For now, we'll log and return true (actual implementation would use the email service)
       console.log(`[FormNotification] Sending form request email to ${recipientEmail}`)
       console.log(`[FormNotification] Subject: ${subject}`)
       
-      // In production, this would call EmailSendingService
-      // await EmailSendingService.sendEmail({
-      //   to: recipientEmail,
-      //   subject,
-      //   body,
-      //   htmlBody,
-      //   organizationId,
-      // })
+      // Send email using the organization's connected email account
+      await EmailSendingService.sendEmail({
+        organizationId,
+        to: recipientEmail,
+        toName: recipientName || undefined,
+        subject,
+        body,
+        htmlBody,
+        campaignName: formName,
+        campaignType: "form_request",
+        deadlineDate: deadlineDate || undefined,
+      })
 
       return true
     } catch (error) {
@@ -185,6 +187,53 @@ ${senderName || "The Team"}`
       console.log(`[FormNotification] Sending reminder ${reminderNumber} to ${recipientEmail}`)
       console.log(`[FormNotification] Subject: ${subject}`)
       
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <p>${greeting}</p>
+  
+  <p>This is a friendly reminder to complete your form:</p>
+  
+  <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 20px 0;">
+    <p style="margin: 0 0 8px 0;"><strong>📝 ${formName}</strong></p>
+    <p style="margin: 0 0 8px 0; color: #666;">📋 ${taskName}</p>
+    ${deadlineText ? `<p style="margin: 0; color: #666;">📅 ${deadlineText}</p>` : ""}
+  </div>
+  
+  <p style="color: ${isLastReminder ? '#dc2626' : '#666'}; font-weight: ${isLastReminder ? 'bold' : 'normal'};">
+    ${urgencyText}
+  </p>
+  
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${formUrl}" style="display: inline-block; background: #f97316; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500;">
+      Complete Form →
+    </a>
+  </div>
+  
+  <p>
+    Best regards,<br>
+    ${senderName || "The Team"}
+  </p>
+</body>
+</html>`
+
+      await EmailSendingService.sendEmail({
+        organizationId,
+        to: recipientEmail,
+        toName: recipientName || undefined,
+        subject,
+        body,
+        htmlBody,
+        campaignName: formName,
+        campaignType: "form_reminder",
+        skipRateLimit: true, // Reminders bypass rate limit
+      })
+      
       return true
     } catch (error) {
       console.error(`[FormNotification] Failed to send reminder email:`, error)
@@ -217,6 +266,10 @@ The Team`
     try {
       console.log(`[FormNotification] Sending submission confirmation to ${recipientEmail}`)
       console.log(`[FormNotification] Subject: ${subject}`)
+      
+      // Note: Confirmation emails are optional and lower priority
+      // We don't have organizationId here, so we skip actual sending for now
+      // TODO: Add organizationId to this method signature if confirmations are needed
       
       return true
     } catch (error) {
