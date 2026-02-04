@@ -95,10 +95,22 @@ export default function FormBuilderPage({
       const response = await fetch(`/api/forms/${id}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
+        // Safely parse JSON fields in case they come as strings
+        let fields = data.form.fields || []
+        let settings = data.form.settings || {}
+        
+        // Handle case where Prisma returns JSON as string
+        if (typeof fields === 'string') {
+          try { fields = JSON.parse(fields) } catch { fields = [] }
+        }
+        if (typeof settings === 'string') {
+          try { settings = JSON.parse(settings) } catch { settings = {} }
+        }
+        
         setForm({
           ...data.form,
-          fields: data.form.fields || [],
-          settings: data.form.settings || { allowEdit: false, enforceDeadline: false },
+          fields: Array.isArray(fields) ? fields : [],
+          settings: { allowEdit: false, enforceDeadline: false, ...settings },
         })
       } else if (response.status === 404) {
         router.push("/dashboard/forms")

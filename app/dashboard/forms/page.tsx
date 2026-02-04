@@ -45,7 +45,13 @@ export default function FormsPage() {
       const response = await fetch("/api/forms", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setForms(data.forms || [])
+        // Ensure fields is always an array for safe rendering
+        const forms = (data.forms || []).map((form: any) => ({
+          ...form,
+          fields: Array.isArray(form.fields) ? form.fields : 
+                  typeof form.fields === 'string' ? (() => { try { return JSON.parse(form.fields) } catch { return [] } })() : [],
+        }))
+        setForms(forms)
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/forms"
       }

@@ -89,16 +89,24 @@ export default function NewFormPage() {
         }),
       })
 
+      const data = await response.json()
+      
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to create form")
+        const errorMsg = typeof data.error === 'string' ? data.error : 
+                         typeof data.error === 'object' ? JSON.stringify(data.error) : 
+                         "Failed to create form"
+        throw new Error(errorMsg)
       }
 
-      const data = await response.json()
+      if (!data.form?.id) {
+        throw new Error("Invalid response from server")
+      }
+      
       router.push(`/dashboard/forms/${data.form.id}`)
     } catch (error: any) {
       console.error("Error creating form:", error)
-      alert(error.message || "Failed to create form")
+      const msg = typeof error.message === 'string' ? error.message : "Failed to create form"
+      alert(msg)
     } finally {
       setLoading(false)
     }
