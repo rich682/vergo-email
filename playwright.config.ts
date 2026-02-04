@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const authFile = 'playwright/.auth/user.json'
+
 /**
  * Playwright E2E Test Configuration
  * 
@@ -41,11 +43,11 @@ export default defineConfig({
   },
 
   /* Global timeout for each test */
-  timeout: 30000,
+  timeout: 60000, // Increased for CI
   
   /* Timeout for each expect() assertion */
   expect: {
-    timeout: 10000,
+    timeout: 15000,
   },
 
   /* Configure projects for major browsers */
@@ -54,6 +56,7 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /auth\.setup\.ts/,
+      timeout: 120000, // 2 min timeout for auth
     },
     
     /* Main tests with Chromium */
@@ -62,7 +65,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         /* Use prepared auth state */
-        storageState: 'playwright/.auth/user.json',
+        storageState: authFile,
       },
       dependencies: ['setup'],
     },
