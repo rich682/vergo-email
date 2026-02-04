@@ -171,15 +171,38 @@ export function ComposeSendStep({
     setError(null)
 
     try {
-      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          draftId,
-          userGoal: goal?.trim() || undefined,
-        }),
-      })
+      let response: Response
+      
+      if (databaseMode) {
+        // Database mode: use database draft endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/database/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            databaseId: databaseMode.databaseId,
+            databaseName: databaseMode.databaseName,
+            columns: columns.map(col => ({
+              key: col.key,
+              label: col.label,
+              dataType: col.type,
+            })),
+            sampleRows: rows.slice(0, 5).map(r => r.values),
+            userGoal: goal?.trim() || undefined,
+          }),
+        })
+      } else {
+        // CSV mode: use dataset draft endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            draftId,
+            userGoal: goal?.trim() || undefined,
+          }),
+        })
+      }
 
       if (!response.ok) {
         const data = await response.json()
@@ -198,14 +221,12 @@ export function ComposeSendStep({
       setError(err.message || "Failed to generate draft")
       setState("error")
     }
-  }, [jobId, draftId])
+  }, [jobId, draftId, databaseMode, columns, rows])
   
-  // Auto-generate draft on mount (only for CSV mode, not database mode)
+  // Auto-generate draft on mount
   useEffect(() => {
-    if (!databaseMode) {
-      generateDraft()
-    }
-  }, [databaseMode])
+    generateDraft()
+  }, [])
 
   // Refine draft
   const refineDraft = useCallback(async () => {
@@ -215,16 +236,39 @@ export function ComposeSendStep({
     setError(null)
 
     try {
-      const response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          draftId,
-          userGoal: refinementInstruction.trim(),
-          currentDraft: { subject, body },
-        }),
-      })
+      let response: Response
+      
+      if (databaseMode) {
+        // Database mode: use database draft endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/database/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            databaseId: databaseMode.databaseId,
+            databaseName: databaseMode.databaseName,
+            columns: columns.map(col => ({
+              key: col.key,
+              label: col.label,
+              dataType: col.type,
+            })),
+            userGoal: refinementInstruction.trim(),
+            currentDraft: { subject, body },
+          }),
+        })
+      } else {
+        // CSV mode: use dataset draft endpoint
+        response = await fetch(`/api/task-instances/${jobId}/request/dataset/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            draftId,
+            userGoal: refinementInstruction.trim(),
+            currentDraft: { subject, body },
+          }),
+        })
+      }
 
       if (!response.ok) {
         const data = await response.json()
