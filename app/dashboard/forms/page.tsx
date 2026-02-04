@@ -13,6 +13,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { FormField } from "@/lib/types/form"
 
+// Helper to safely render any value as a string (prevents React error #438)
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value) } catch { return '[object]' }
+  }
+  return String(value)
+}
+
 interface FormItem {
   id: string
   name: string
@@ -179,11 +190,11 @@ export default function FormsPage() {
                       </div>
                       <div>
                         <h3 className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {form.name}
+                          {safeString(form.name)}
                         </h3>
                         {form.description && (
                           <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
-                            {form.description}
+                            {safeString(form.description)}
                           </p>
                         )}
                       </div>
@@ -202,7 +213,7 @@ export default function FormsPage() {
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.preventDefault()
-                            handleDelete(form.id, form.name)
+                            handleDelete(form.id, safeString(form.name))
                           }}
                           className="text-red-600 focus:text-red-600"
                         >
@@ -218,7 +229,7 @@ export default function FormsPage() {
                     {form.database && (
                       <span className="flex items-center gap-1">
                         <Database className="w-3 h-3" />
-                        {form.database.name}
+                        {safeString(form.database.name)}
                       </span>
                     )}
                   </div>
