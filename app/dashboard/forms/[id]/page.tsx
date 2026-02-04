@@ -122,10 +122,34 @@ export default function FormBuilderPage({
           try { settings = JSON.parse(settings) } catch { settings = {} }
         }
         
+        // Ensure fields is an array and sanitize each field
+        const safeFields = (Array.isArray(fields) ? fields : []).map((f: any) => ({
+          key: typeof f.key === 'string' ? f.key : String(f.key || ''),
+          label: typeof f.label === 'string' ? f.label : String(f.label || ''),
+          type: typeof f.type === 'string' ? f.type : 'text',
+          required: Boolean(f.required),
+          helpText: typeof f.helpText === 'string' ? f.helpText : undefined,
+          options: Array.isArray(f.options) ? f.options.map((o: any) => String(o)) : undefined,
+          order: typeof f.order === 'number' ? f.order : 0,
+        }))
+        
+        // Ensure settings has boolean values
+        const safeSettings = {
+          allowEdit: Boolean(settings?.allowEdit),
+          enforceDeadline: Boolean(settings?.enforceDeadline),
+        }
+        
+        // Ensure name and description are strings
+        const safeName = typeof data.form.name === 'string' ? data.form.name : String(data.form.name || '')
+        const safeDescription = typeof data.form.description === 'string' ? data.form.description : 
+                                data.form.description ? String(data.form.description) : null
+        
         setForm({
           ...data.form,
-          fields: Array.isArray(fields) ? fields : [],
-          settings: { allowEdit: false, enforceDeadline: false, ...settings },
+          name: safeName,
+          description: safeDescription,
+          fields: safeFields,
+          settings: safeSettings,
         })
       } else if (response.status === 404) {
         router.push("/dashboard/forms")
@@ -278,13 +302,13 @@ export default function FormBuilderPage({
               </Link>
               <div>
                 <Input
-                  value={form.name}
+                  value={safeString(form.name)}
                   onChange={(e) => updateForm({ name: e.target.value })}
                   className="text-lg font-semibold border-0 p-0 h-auto focus-visible:ring-0 bg-transparent"
                   placeholder="Form name"
                 />
                 <p className="text-sm text-gray-500">
-                  {form.fields.length} fields
+                  {Array.isArray(form.fields) ? form.fields.length : 0} fields
                   {form.database && ` • Linked to ${safeString(form.database.name)}`}
                 </p>
               </div>
@@ -523,7 +547,7 @@ export default function FormBuilderPage({
               <div>
                 <Label>Label *</Label>
                 <Input
-                  value={editingField.label}
+                  value={safeString(editingField.label)}
                   onChange={(e) =>
                     setEditingField({ ...editingField, label: e.target.value })
                   }
@@ -535,7 +559,7 @@ export default function FormBuilderPage({
               <div>
                 <Label>Field Key</Label>
                 <Input
-                  value={editingField.key}
+                  value={safeString(editingField.key)}
                   onChange={(e) =>
                     setEditingField({
                       ...editingField,
@@ -553,7 +577,7 @@ export default function FormBuilderPage({
               <div>
                 <Label>Type</Label>
                 <Select
-                  value={editingField.type}
+                  value={safeString(editingField.type)}
                   onValueChange={(value) =>
                     setEditingField({
                       ...editingField,
@@ -595,7 +619,7 @@ export default function FormBuilderPage({
               <div>
                 <Label>Help Text (optional)</Label>
                 <Input
-                  value={editingField.helpText || ""}
+                  value={safeString(editingField.helpText) || ""}
                   onChange={(e) =>
                     setEditingField({
                       ...editingField,
