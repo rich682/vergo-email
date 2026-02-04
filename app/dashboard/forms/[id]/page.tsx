@@ -116,6 +116,7 @@ export default function FormBuilderPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   
   // Ref to track latest form data for auto-save
   const formRef = useRef<FormData | null>(null)
@@ -233,7 +234,17 @@ export default function FormBuilderPage() {
     try {
       savingRef.current = true
       setSaving(true)
+      setSaveError(null)
       
+      // Ensure dropdown fields have options array (validation requirement)
+      const fieldsToSave = currentForm.fields.map(field => {
+        if (field.type === "dropdown" && (!field.options || field.options.length === 0)) {
+          // Provide a default option if none exist
+          return { ...field, options: ["Option 1"] }
+        }
+        return field
+      })
+
       const response = await fetch(`/api/forms/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -241,7 +252,7 @@ export default function FormBuilderPage() {
         body: JSON.stringify({
           name: currentForm.name,
           description: currentForm.description,
-          fields: currentForm.fields,
+          fields: fieldsToSave,
           settings: currentForm.settings,
         }),
       })
@@ -249,12 +260,14 @@ export default function FormBuilderPage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('Save failed:', response.status, errorData)
-        throw new Error(errorData.error || "Failed to save")
+        throw new Error(errorData.error || errorData.message || "Failed to save")
       }
 
       setHasChanges(false)
-    } catch (error) {
+      setSaveError(null)
+    } catch (error: any) {
       console.error("Error saving form:", error)
+      setSaveError(error.message || "Save failed")
     } finally {
       savingRef.current = false
       setSaving(false)
@@ -447,10 +460,19 @@ export default function FormBuilderPage() {
                   Saving...
                 </span>
               )}
-              {!saving && hasChanges && (
-                <span className="text-sm text-orange-500">Saving soon...</span>
+              {!saving && saveError && (
+                <button
+                  onClick={() => { setSaveError(null); saveForm(); }}
+                  className="text-sm text-red-500 hover:text-red-600 hover:underline"
+                  title={saveError}
+                >
+                  Save failed - click to retry
+                </button>
               )}
-              {!saving && !hasChanges && (
+              {!saving && !saveError && hasChanges && (
+                <span className="text-sm text-orange-500">Saving...</span>
+              )}
+              {!saving && !saveError && !hasChanges && (
                 <span className="text-sm text-green-600">Saved</span>
               )}
               <Button
