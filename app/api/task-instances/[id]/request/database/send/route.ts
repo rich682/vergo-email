@@ -84,6 +84,102 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+// Month names for parsing
+const MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december"
+]
+const MONTH_ABBREVS = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec"
+]
+
+/**
+ * Parse a period value and extract month and year
+ */
+function parsePeriodValue(value: string): { month?: number; year: number; quarter?: number } | null {
+  const trimmed = value.trim()
+  
+  // Try "Month YYYY" or "Mon YYYY" format
+  const monthYearMatch = trimmed.match(/^([a-zA-Z]+)\s+(\d{4})$/i)
+  if (monthYearMatch) {
+    const monthStr = monthYearMatch[1].toLowerCase()
+    const year = parseInt(monthYearMatch[2])
+    let month = MONTH_NAMES.indexOf(monthStr) + 1
+    if (month === 0) {
+      month = MONTH_ABBREVS.indexOf(monthStr.substring(0, 3)) + 1
+    }
+    if (month > 0) {
+      return { month, year }
+    }
+  }
+  
+  // Try "QN YYYY" format
+  const quarterMatch = trimmed.match(/^Q([1-4])\s+(\d{4})$/i)
+  if (quarterMatch) {
+    const quarter = parseInt(quarterMatch[1])
+    const year = parseInt(quarterMatch[2])
+    return { year, quarter }
+  }
+  
+  // Try MM/DD/YY or MM/DD/YYYY format
+  const dateSlashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (dateSlashMatch) {
+    const month = parseInt(dateSlashMatch[1])
+    let year = parseInt(dateSlashMatch[3])
+    if (year < 100) {
+      year = year >= 50 ? 1900 + year : 2000 + year
+    }
+    if (month >= 1 && month <= 12) {
+      return { month, year }
+    }
+  }
+  
+  // Try YYYY-MM or YYYY-MM-DD format
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/)
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1])
+    const month = parseInt(isoMatch[2])
+    if (month >= 1 && month <= 12) {
+      return { month, year }
+    }
+  }
+  
+  return null
+}
+
+/**
+ * Check if two period values match semantically
+ */
+function periodsMatch(boardPeriod: string, rowPeriod: string): boolean {
+  const board = parsePeriodValue(boardPeriod)
+  const row = parsePeriodValue(rowPeriod)
+  
+  if (!board || !row) {
+    return boardPeriod.toLowerCase().trim() === rowPeriod.toLowerCase().trim()
+  }
+  
+  if (board.quarter && row.quarter) {
+    return board.year === row.year && board.quarter === row.quarter
+  }
+  
+  if (board.quarter && row.month) {
+    const rowQuarter = Math.ceil(row.month / 3)
+    return board.year === row.year && board.quarter === rowQuarter
+  }
+  
+  if (row.quarter && board.month) {
+    const boardQuarter = Math.ceil(board.month / 3)
+    return board.year === row.year && row.quarter === boardQuarter
+  }
+  
+  if (board.month && row.month) {
+    return board.year === row.year && board.month === row.month
+  }
+  
+  return board.year === row.year
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -145,11 +241,10 @@ export async function POST(
     // Filter rows by period if specified
     let filteredRows = allRows
     if (boardPeriod && periodColumnKey) {
-      const normalizedPeriod = boardPeriod.toLowerCase().trim()
       filteredRows = allRows.filter(row => {
         const rowPeriod = row[periodColumnKey]
         if (!rowPeriod) return false
-        return String(rowPeriod).toLowerCase().trim() === normalizedPeriod
+        return periodsMatch(boardPeriod, String(rowPeriod))
       })
     }
 
