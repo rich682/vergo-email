@@ -20,6 +20,7 @@ import {
   Loader2,
   Search,
   Calendar,
+  CalendarClock,
   Bell,
   Send,
   AlertCircle,
@@ -88,6 +89,10 @@ export function FormRequestFlow({
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [reminderDays, setReminderDays] = useState(3)
   const [maxReminders, setMaxReminders] = useState(3)
+  
+  // Scheduling
+  const [sendTiming, setSendTiming] = useState<"immediate" | "scheduled">("immediate")
+  const [scheduleOffsetDays, setScheduleOffsetDays] = useState(5)
 
   // Load forms on mount
   useEffect(() => {
@@ -149,11 +154,13 @@ export function FormRequestFlow({
           formDefinitionId: selectedFormId,
           recipientUserIds: Array.from(selectedUserIds),
           deadlineDate: deadline || undefined,
-          reminderConfig: {
+          sendTiming,
+          scheduleOffsetDays: sendTiming === "scheduled" ? scheduleOffsetDays : undefined,
+          reminderConfig: sendTiming === "immediate" ? {
             enabled: remindersEnabled,
             frequencyHours: reminderDays * 24,
             maxCount: maxReminders,
-          },
+          } : { enabled: false },
         }),
       })
 
@@ -217,13 +224,22 @@ export function FormRequestFlow({
       <div className="flex flex-col items-center justify-center py-12">
         <div className="relative">
           <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
-            <Send className="w-8 h-8 text-orange-500" />
+            {sendTiming === "scheduled" ? (
+              <CalendarClock className="w-8 h-8 text-orange-500" />
+            ) : (
+              <Send className="w-8 h-8 text-orange-500" />
+            )}
           </div>
           <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-orange-400 rounded-full animate-ping" />
         </div>
-        <h3 className="mt-4 font-medium text-gray-900">Sending form requests...</h3>
+        <h3 className="mt-4 font-medium text-gray-900">
+          {sendTiming === "scheduled" ? "Scheduling form requests..." : "Sending form requests..."}
+        </h3>
         <p className="text-sm text-gray-500 mt-1">
-          Sending to {selectedUserIds.size} recipient{selectedUserIds.size !== 1 ? "s" : ""}
+          {sendTiming === "scheduled" 
+            ? `Scheduling for ${selectedUserIds.size} recipient${selectedUserIds.size !== 1 ? "s" : ""}`
+            : `Sending to ${selectedUserIds.size} recipient${selectedUserIds.size !== 1 ? "s" : ""}`
+          }
         </p>
       </div>
     )
@@ -233,12 +249,23 @@ export function FormRequestFlow({
   if (step === "success") {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-          <CheckCircle className="w-8 h-8 text-green-500" />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+          sendTiming === "scheduled" ? "bg-blue-100" : "bg-green-100"
+        }`}>
+          {sendTiming === "scheduled" ? (
+            <CalendarClock className="w-8 h-8 text-blue-500" />
+          ) : (
+            <CheckCircle className="w-8 h-8 text-green-500" />
+          )}
         </div>
-        <h3 className="mt-4 font-medium text-gray-900">Form requests sent!</h3>
+        <h3 className="mt-4 font-medium text-gray-900">
+          {sendTiming === "scheduled" ? "Form requests scheduled!" : "Form requests sent!"}
+        </h3>
         <p className="text-sm text-gray-500 mt-1">
-          Recipients will receive an email with a link to complete the form
+          {sendTiming === "scheduled" 
+            ? `Scheduled to send ${scheduleOffsetDays} days before period end`
+            : "Recipients will receive an email with a link to complete the form"
+          }
         </p>
       </div>
     )
@@ -498,22 +525,117 @@ export function FormRequestFlow({
             />
           </div>
 
+          {/* When to Send */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <Label>When to send</Label>
+            </div>
+            
+            <div className="space-y-2">
+              {/* Send Now */}
+              <label 
+                className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                  sendTiming === "immediate" 
+                    ? "border-orange-500 bg-orange-50" 
+                    : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sendTiming"
+                  value="immediate"
+                  checked={sendTiming === "immediate"}
+                  onChange={() => setSendTiming("immediate")}
+                  className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Send className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-900">Send now</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Emails go out immediately</p>
+                </div>
+              </label>
+
+              {/* Schedule */}
+              <label 
+                className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                  sendTiming === "scheduled" 
+                    ? "border-orange-500 bg-orange-50" 
+                    : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sendTiming"
+                  value="scheduled"
+                  checked={sendTiming === "scheduled"}
+                  onChange={() => setSendTiming("scheduled")}
+                  className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-900">Schedule for later</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Send at a specific time relative to the period
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Schedule Options */}
+            {sendTiming === "scheduled" && (
+              <div className="ml-6 space-y-3">
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    When should this be sent?
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={scheduleOffsetDays}
+                      onChange={(e) => setScheduleOffsetDays(Number(e.target.value))}
+                      className="block w-24 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value={1}>1</option>
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                      <option value={5}>5</option>
+                      <option value={7}>7</option>
+                      <option value={10}>10</option>
+                      <option value={14}>14</option>
+                      <option value={21}>21</option>
+                      <option value={30}>30</option>
+                    </select>
+                    <span className="text-sm text-gray-700">business days before period end</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Reminders */}
-          <div className="space-y-4">
+          <div className={`space-y-4 ${sendTiming === "scheduled" ? "opacity-50" : ""}`}>
             <div className="flex items-center justify-between">
               <div>
                 <Label>Enable Reminders</Label>
                 <p className="text-xs text-gray-500">
-                  Send automatic reminders for incomplete forms
+                  {sendTiming === "scheduled" 
+                    ? "Coming soon for scheduled requests"
+                    : "Send automatic reminders for incomplete forms"
+                  }
                 </p>
               </div>
               <Switch
-                checked={remindersEnabled}
+                checked={remindersEnabled && sendTiming !== "scheduled"}
                 onCheckedChange={setRemindersEnabled}
+                disabled={sendTiming === "scheduled"}
               />
             </div>
 
-            {remindersEnabled && (
+            {remindersEnabled && sendTiming !== "scheduled" && (
               <div className="pl-4 border-l-2 border-orange-200 space-y-4">
                 <div>
                   <Label>Remind every</Label>
@@ -594,8 +716,17 @@ export function FormRequestFlow({
             onClick={handleSend}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
-            <Send className="w-4 h-4 mr-2" />
-            Send to {selectedUserIds.size} Recipient{selectedUserIds.size !== 1 ? "s" : ""}
+            {sendTiming === "scheduled" ? (
+              <>
+                <CalendarClock className="w-4 h-4 mr-2" />
+                Schedule for {selectedUserIds.size} Recipient{selectedUserIds.size !== 1 ? "s" : ""}
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 mr-2" />
+                Send to {selectedUserIds.size} Recipient{selectedUserIds.size !== 1 ? "s" : ""}
+              </>
+            )}
           </Button>
         )}
       </div>

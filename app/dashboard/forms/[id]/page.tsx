@@ -79,6 +79,7 @@ const DB_TYPE_TO_FIELD_TYPE: Record<string, FormFieldType> = {
   currency: "currency",
   date: "date",
   select: "dropdown",
+  dropdown: "dropdown",  // Direct mapping for dropdown type
   boolean: "checkbox",
   file: "file",
   // Fallbacks for common variations
@@ -100,7 +101,7 @@ interface FormData {
   database: {
     id: string
     name: string
-    schema: { columns: Array<{ key: string; label: string; dataType: string }> }
+    schema: { columns: Array<{ key: string; label: string; dataType: string; dropdownOptions?: string[] }> }
   } | null
 }
 
@@ -278,13 +279,21 @@ export default function FormBuilderPage() {
     const columnsToAdd = getAvailableColumns().filter(col => selectedColumns[col.key])
     if (columnsToAdd.length === 0) return
 
-    const newFields: FormField[] = columnsToAdd.map((col, index) => ({
-      key: col.key,
-      label: col.label,
-      type: DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text",
-      required: columnRequired[col.key] || false,
-      order: form.fields.length + index,
-    }))
+    const newFields: FormField[] = columnsToAdd.map((col, index) => {
+      const fieldType = DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text"
+      const field: FormField = {
+        key: col.key,
+        label: col.label,
+        type: fieldType,
+        required: columnRequired[col.key] || false,
+        order: form.fields.length + index,
+      }
+      // Copy dropdown options from database column if it's a dropdown type
+      if (fieldType === "dropdown" && col.dropdownOptions && col.dropdownOptions.length > 0) {
+        field.options = col.dropdownOptions
+      }
+      return field
+    })
 
     updateForm({ fields: [...form.fields, ...newFields] })
     setShowColumnPicker(false)
@@ -831,6 +840,11 @@ export default function FormBuilderPage() {
                       <p className="font-medium text-gray-900 truncate">{safeString(col.label)}</p>
                       <p className="text-xs text-gray-500">
                         {FIELD_TYPE_CONFIG[fieldType]?.label || "Text"}
+                        {fieldType === "dropdown" && col.dropdownOptions && col.dropdownOptions.length > 0 && (
+                          <span className="ml-1 text-gray-400">
+                            ({col.dropdownOptions.length} options)
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="w-20 flex justify-center">

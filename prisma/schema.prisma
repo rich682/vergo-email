@@ -160,6 +160,7 @@ model Organization {
   generatedReports        GeneratedReport[]
   formDefinitions         FormDefinition[]
   formRequests            FormRequest[]
+  formAttachments         FormAttachment[]
 
   @@index([slug])
 }
@@ -1268,6 +1269,7 @@ model FormRequest {
   taskInstance      TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   formDefinition    FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
   recipientUser     User           @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
+  attachments       FormAttachment[]
   
   @@unique([formDefinitionId, taskInstanceId, recipientUserId])
   @@index([organizationId])
@@ -1275,6 +1277,29 @@ model FormRequest {
   @@index([recipientUserId])
   @@index([status])
   @@index([nextReminderAt])
+}
+
+// FormAttachment stores files uploaded via form submissions
+// Files are stored in Vercel Blob, with metadata tracked here
+model FormAttachment {
+  id              String       @id @default(cuid())
+  organizationId  String
+  formRequestId   String
+  fieldKey        String       // Which form field this belongs to
+  
+  filename        String       // Original filename
+  url             String       // Vercel Blob URL
+  mimeType        String       // e.g., "application/pdf"
+  sizeBytes       Int
+  
+  uploadedAt      DateTime     @default(now())
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  formRequest     FormRequest  @relation(fields: [formRequestId], references: [id], onDelete: Cascade)
+  
+  @@index([organizationId])
+  @@index([formRequestId])
+  @@index([formRequestId, fieldKey])
 }
 
 // ReportDefinition represents an Excel-like report template

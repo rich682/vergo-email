@@ -35,6 +35,8 @@ import {
   Bell,
   Send,
   AlertTriangle,
+  Calendar,
+  CalendarClock,
 } from "lucide-react"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
@@ -110,6 +112,10 @@ export function ComposeSendStep({
   const [remindersEnabled, setRemindersEnabled] = useState(false)
   const [reminderDays, setReminderDays] = useState(7)
   const [reminderMaxCount, setReminderMaxCount] = useState(3)
+  
+  // Scheduling
+  const [sendTiming, setSendTiming] = useState<"immediate" | "scheduled">("immediate")
+  const [scheduleOffsetDays, setScheduleOffsetDays] = useState(5)
   
   // Confirmation modal
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -437,7 +443,9 @@ export function ComposeSendStep({
             boardPeriod: databaseMode.boardPeriod,
             subjectTemplate: subject.trim(),
             bodyTemplate: body.trim(),
-            reminderConfig: remindersEnabled
+            sendTiming,
+            scheduleOffsetDays: sendTiming === "scheduled" ? scheduleOffsetDays : undefined,
+            reminderConfig: sendTiming === "immediate" && remindersEnabled
               ? {
                   enabled: true,
                   frequencyDays: reminderDays,
@@ -454,7 +462,9 @@ export function ComposeSendStep({
           credentials: "include",
           body: JSON.stringify({
             draftId,
-            reminderConfig: remindersEnabled
+            sendTiming,
+            scheduleOffsetDays: sendTiming === "scheduled" ? scheduleOffsetDays : undefined,
+            reminderConfig: sendTiming === "immediate" && remindersEnabled
               ? {
                   enabled: true,
                   frequencyDays: reminderDays,
@@ -693,36 +703,132 @@ export function ComposeSendStep({
             </div>
           </div>
 
-          {/* Reminder Settings */}
+          {/* When to Send */}
           <div className="border rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <Label className="font-medium text-sm">When to send</Label>
+            </div>
+            
+            <div className="space-y-2">
+              {/* Send Now */}
+              <label 
+                className={`flex items-center gap-3 p-2.5 border rounded-lg cursor-pointer transition-colors ${
+                  sendTiming === "immediate" 
+                    ? "border-orange-500 bg-orange-50" 
+                    : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sendTiming"
+                  value="immediate"
+                  checked={sendTiming === "immediate"}
+                  onChange={() => setSendTiming("immediate")}
+                  className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Send className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-sm text-gray-900">Send now</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Emails go out immediately</p>
+                </div>
+              </label>
+
+              {/* Schedule */}
+              <label 
+                className={`flex items-center gap-3 p-2.5 border rounded-lg cursor-pointer transition-colors ${
+                  sendTiming === "scheduled" 
+                    ? "border-orange-500 bg-orange-50" 
+                    : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sendTiming"
+                  value="scheduled"
+                  checked={sendTiming === "scheduled"}
+                  onChange={() => setSendTiming("scheduled")}
+                  className="w-4 h-4 text-orange-500 focus:ring-orange-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-sm text-gray-900">Schedule for later</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Send at a specific time relative to the period</p>
+                </div>
+              </label>
+            </div>
+
+            {/* Schedule Options */}
+            {sendTiming === "scheduled" && (
+              <div className="mt-3 pt-3 border-t">
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  When should this be sent?
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={scheduleOffsetDays}
+                    onChange={(e) => setScheduleOffsetDays(Number(e.target.value))}
+                    className="block w-20 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={5}>5</option>
+                    <option value={7}>7</option>
+                    <option value={10}>10</option>
+                    <option value={14}>14</option>
+                    <option value={21}>21</option>
+                    <option value={30}>30</option>
+                  </select>
+                  <span className="text-sm text-gray-700">business days before period end</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reminder Settings */}
+          <div className={`border rounded-lg p-3 ${sendTiming === "scheduled" ? "opacity-50" : ""}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Bell className="w-4 h-4 text-gray-500" />
                 <div>
                   <Label className="font-medium text-sm">Automatic Reminders</Label>
                   <p className="text-xs text-gray-500">
-                    Follow-up with non-responders
+                    {sendTiming === "scheduled" 
+                      ? "Coming soon for scheduled requests"
+                      : "Follow-up with non-responders"
+                    }
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setRemindersEnabled(!remindersEnabled)}
+                onClick={() => sendTiming !== "scheduled" && setRemindersEnabled(!remindersEnabled)}
+                disabled={sendTiming === "scheduled"}
                 className={`
                   relative inline-flex h-5 w-9 items-center rounded-full transition-colors
-                  ${remindersEnabled ? "bg-orange-500" : "bg-gray-200"}
+                  ${sendTiming === "scheduled" 
+                    ? "bg-gray-200 cursor-not-allowed" 
+                    : remindersEnabled 
+                      ? "bg-orange-500" 
+                      : "bg-gray-200"
+                  }
                 `}
               >
                 <span
                   className={`
                     inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform
-                    ${remindersEnabled ? "translate-x-5" : "translate-x-1"}
+                    ${remindersEnabled && sendTiming !== "scheduled" ? "translate-x-5" : "translate-x-1"}
                   `}
                 />
               </button>
             </div>
             
-            {remindersEnabled && (
+            {remindersEnabled && sendTiming !== "scheduled" && (
               <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs mb-1 block">Frequency</Label>

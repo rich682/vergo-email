@@ -46,9 +46,10 @@ import {
 interface SchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
   required: boolean
   order: number
+  dropdownOptions?: string[]
 }
 
 interface DatabaseSchema {
@@ -152,6 +153,7 @@ export default function DatabaseDetailPage() {
   const [savingSchema, setSavingSchema] = useState(false)
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([])
+  const [editingDropdownColumn, setEditingDropdownColumn] = useState<string | null>(null)
 
   // ----------------------------------------
   // Data Fetching
@@ -940,19 +942,45 @@ export default function DatabaseDetailPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize">
                         {schemaEditMode ? (
-                          <select
-                            value={column.dataType}
-                            onChange={(e) => updateColumnField(column.key, "dataType", e.target.value)}
-                            className="h-8 px-2 border border-gray-300 rounded-md text-sm"
-                          >
-                            <option value="text">Text</option>
-                            <option value="number">Number</option>
-                            <option value="currency">Currency</option>
-                            <option value="date">Date</option>
-                            <option value="boolean">Boolean</option>
-                          </select>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={column.dataType}
+                              onChange={(e) => {
+                                const newType = e.target.value
+                                updateColumnField(column.key, "dataType", newType)
+                                // Initialize dropdownOptions if switching to dropdown
+                                if (newType === "dropdown" && !column.dropdownOptions) {
+                                  updateColumnField(column.key, "dropdownOptions", [])
+                                }
+                              }}
+                              className="h-8 px-2 border border-gray-300 rounded-md text-sm"
+                            >
+                              <option value="text">Text</option>
+                              <option value="number">Number</option>
+                              <option value="currency">Currency</option>
+                              <option value="date">Date</option>
+                              <option value="boolean">Boolean</option>
+                              <option value="dropdown">Dropdown</option>
+                            </select>
+                            {column.dataType === "dropdown" && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingDropdownColumn(column.key)}
+                                className="text-xs text-orange-600 hover:text-orange-700 hover:underline whitespace-nowrap"
+                              >
+                                {(column.dropdownOptions?.length || 0)} options
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          column.dataType
+                          <span>
+                            {column.dataType}
+                            {column.dataType === "dropdown" && column.dropdownOptions && (
+                              <span className="ml-1 text-gray-400">
+                                ({column.dropdownOptions.length})
+                              </span>
+                            )}
+                          </span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm">
@@ -1290,6 +1318,46 @@ export default function DatabaseDetailPage() {
                   })()}
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dropdown Options Dialog */}
+      <Dialog 
+        open={editingDropdownColumn !== null} 
+        onOpenChange={(open) => !open && setEditingDropdownColumn(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dropdown Options</DialogTitle>
+            <DialogDescription>
+              Enter the allowed values for this dropdown field, one per line.
+            </DialogDescription>
+          </DialogHeader>
+          {editingDropdownColumn && (
+            <div className="py-4">
+              <textarea
+                value={(editingColumns.find(c => c.key === editingDropdownColumn)?.dropdownOptions || []).join("\n")}
+                onChange={(e) => {
+                  const options = e.target.value
+                    .split("\n")
+                    .map(o => o.trim())
+                    .filter(o => o.length > 0)
+                  updateColumnField(editingDropdownColumn, "dropdownOptions", options)
+                }}
+                placeholder="Option 1&#10;Option 2&#10;Option 3"
+                rows={8}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                {(editingColumns.find(c => c.key === editingDropdownColumn)?.dropdownOptions || []).length} options defined
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setEditingDropdownColumn(null)}>
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

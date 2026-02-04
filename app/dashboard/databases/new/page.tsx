@@ -35,9 +35,10 @@ import {
 interface SchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
   required: boolean
   order: number
+  dropdownOptions?: string[]
 }
 
 type CreateMethod = "manual" | "upload"
@@ -52,6 +53,7 @@ const DATA_TYPE_OPTIONS = [
   { value: "date", label: "Date" },
   { value: "boolean", label: "Yes/No" },
   { value: "currency", label: "Currency" },
+  { value: "dropdown", label: "Dropdown" },
 ]
 
 const MAX_SAMPLE_ROWS = 20
@@ -494,55 +496,83 @@ export default function NewDatabasePage() {
 
                 {/* Column rows */}
                 {columns.map((column, index) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-[auto,1fr,140px,80px,40px] gap-3 items-center p-2 bg-gray-50 rounded-lg"
-                  >
-                    <div className="w-6 flex justify-center">
-                      <GripVertical className="w-4 h-4 text-gray-400" />
-                    </div>
-                    
-                    <Input
-                      value={column.label}
-                      onChange={(e) => updateColumn(index, { label: e.target.value })}
-                      placeholder="Column label"
-                      className="h-9"
-                    />
-                    
-                    <Select
-                      value={column.dataType}
-                      onValueChange={(value) => updateColumn(index, { dataType: value as SchemaColumn["dataType"] })}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DATA_TYPE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    
-                    <div className="flex justify-center">
-                      <input
-                        type="checkbox"
-                        checked={column.required}
-                        onChange={(e) => updateColumn(index, { required: e.target.checked })}
-                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                  <div key={index} className="bg-gray-50 rounded-lg">
+                    <div className="grid grid-cols-[auto,1fr,140px,80px,40px] gap-3 items-center p-2">
+                      <div className="w-6 flex justify-center">
+                        <GripVertical className="w-4 h-4 text-gray-400" />
+                      </div>
+                      
+                      <Input
+                        value={column.label}
+                        onChange={(e) => updateColumn(index, { label: e.target.value })}
+                        placeholder="Column label"
+                        className="h-9"
                       />
+                      
+                      <Select
+                        value={column.dataType}
+                        onValueChange={(value) => {
+                          const updates: Partial<SchemaColumn> = { dataType: value as SchemaColumn["dataType"] }
+                          // Initialize dropdownOptions when switching to dropdown type
+                          if (value === "dropdown" && !column.dropdownOptions) {
+                            updates.dropdownOptions = []
+                          }
+                          updateColumn(index, updates)
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DATA_TYPE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      <div className="flex justify-center">
+                        <input
+                          type="checkbox"
+                          checked={column.required}
+                          onChange={(e) => updateColumn(index, { required: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                      </div>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeColumn(index)}
+                        disabled={columns.length <= 1}
+                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                     
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeColumn(index)}
-                      disabled={columns.length <= 1}
-                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {/* Dropdown options editor */}
+                    {column.dataType === "dropdown" && (
+                      <div className="px-2 pb-2 ml-9">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Options (one per line)
+                        </label>
+                        <textarea
+                          value={(column.dropdownOptions || []).join("\n")}
+                          onChange={(e) => {
+                            const options = e.target.value
+                              .split("\n")
+                              .map(o => o.trim())
+                              .filter(o => o.length > 0)
+                            updateColumn(index, { dropdownOptions: options })
+                          }}
+                          placeholder="Option 1&#10;Option 2&#10;Option 3"
+                          rows={3}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -664,40 +694,67 @@ export default function NewDatabasePage() {
 
                       {/* Column rows */}
                       {inferredColumns.map((column, index) => (
-                        <div
-                          key={index}
-                          className="grid grid-cols-[1fr,140px,80px] gap-3 items-center p-2 bg-gray-50 rounded-lg"
-                        >
-                          <Input
-                            value={column.label}
-                            onChange={(e) => updateInferredColumn(index, { label: e.target.value })}
-                            className="h-9"
-                          />
-                          
-                          <Select
-                            value={column.dataType}
-                            onValueChange={(value) => updateInferredColumn(index, { dataType: value as SchemaColumn["dataType"] })}
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DATA_TYPE_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          
-                          <div className="flex justify-center">
-                            <input
-                              type="checkbox"
-                              checked={column.required}
-                              onChange={(e) => updateInferredColumn(index, { required: e.target.checked })}
-                              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        <div key={index} className="bg-gray-50 rounded-lg">
+                          <div className="grid grid-cols-[1fr,140px,80px] gap-3 items-center p-2">
+                            <Input
+                              value={column.label}
+                              onChange={(e) => updateInferredColumn(index, { label: e.target.value })}
+                              className="h-9"
                             />
+                            
+                            <Select
+                              value={column.dataType}
+                              onValueChange={(value) => {
+                                const updates: Partial<SchemaColumn> = { dataType: value as SchemaColumn["dataType"] }
+                                if (value === "dropdown" && !column.dropdownOptions) {
+                                  updates.dropdownOptions = []
+                                }
+                                updateInferredColumn(index, updates)
+                              }}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DATA_TYPE_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            
+                            <div className="flex justify-center">
+                              <input
+                                type="checkbox"
+                                checked={column.required}
+                                onChange={(e) => updateInferredColumn(index, { required: e.target.checked })}
+                                className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              />
+                            </div>
                           </div>
+                          
+                          {/* Dropdown options editor */}
+                          {column.dataType === "dropdown" && (
+                            <div className="px-2 pb-2">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Options (one per line)
+                              </label>
+                              <textarea
+                                value={(column.dropdownOptions || []).join("\n")}
+                                onChange={(e) => {
+                                  const options = e.target.value
+                                    .split("\n")
+                                    .map(o => o.trim())
+                                    .filter(o => o.length > 0)
+                                  updateInferredColumn(index, { dropdownOptions: options })
+                                }}
+                                placeholder="Option 1&#10;Option 2&#10;Option 3"
+                                rows={3}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                              />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

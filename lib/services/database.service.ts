@@ -19,9 +19,10 @@ import { prisma } from "@/lib/prisma"
 export interface DatabaseSchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
   required: boolean
   order: number
+  dropdownOptions?: string[]  // Only for dropdown type - list of allowed values
 }
 
 export interface DatabaseSchema {
@@ -188,10 +189,23 @@ export function validateSchema(schema: DatabaseSchema, _identifierKeys?: string[
   // Note: identifierKeys no longer required - uniqueness determined by all columns
 
   // Validate data types
-  const validTypes = ["text", "number", "date", "boolean", "currency"]
+  const validTypes = ["text", "number", "date", "boolean", "currency", "dropdown"]
   for (const col of schema.columns) {
     if (!validTypes.includes(col.dataType)) {
       return `Invalid data type "${col.dataType}" for column "${col.label}"`
+    }
+    
+    // Dropdown columns must have at least one option
+    if (col.dataType === "dropdown") {
+      if (!col.dropdownOptions || col.dropdownOptions.length === 0) {
+        return `Dropdown column "${col.label}" must have at least one option`
+      }
+      // Validate options are non-empty strings
+      for (const option of col.dropdownOptions) {
+        if (!option || option.trim() === "") {
+          return `Dropdown column "${col.label}" has empty options`
+        }
+      }
     }
   }
 

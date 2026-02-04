@@ -21,6 +21,10 @@ import {
   CheckCircle,
   AlertCircle,
   Lock,
+  Upload,
+  FileText,
+  X,
+  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +38,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { FormField } from "@/lib/types/form"
+
+interface FormAttachment {
+  id: string
+  filename: string
+  url: string
+  mimeType: string
+  sizeBytes: number
+  fieldKey: string
+}
 
 interface FormRequestData {
   id: string
@@ -81,6 +94,10 @@ export default function FormFillPage({
   const [formValues, setFormValues] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  
+  // Attachment state
+  const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({})
+  const [uploadedAttachments, setUploadedAttachments] = useState<Record<string, FormAttachment[]>>({})
 
   useEffect(() => {
     fetchFormRequest()
@@ -123,6 +140,26 @@ export default function FormFillPage({
         initialValues[field.key] = data.formRequest.responseData?.[field.key] ?? field.defaultValue ?? ""
       }
       setFormValues(initialValues)
+      
+      // Load existing attachments
+      try {
+        const attachmentsResponse = await fetch(`/api/form-requests/${requestId}/attachments`, {
+          credentials: "include",
+        })
+        if (attachmentsResponse.ok) {
+          const attachmentsData = await attachmentsResponse.json()
+          const grouped: Record<string, FormAttachment[]> = {}
+          for (const attachment of attachmentsData.attachments || []) {
+            if (!grouped[attachment.fieldKey]) {
+              grouped[attachment.fieldKey] = []
+            }
+            grouped[attachment.fieldKey].push(attachment)
+          }
+          setUploadedAttachments(grouped)
+        }
+      } catch (attachErr) {
+        console.error("Error loading attachments:", attachErr)
+      }
 
       // Check status
       if (data.formRequest.status === "SUBMITTED") {
@@ -161,7 +198,14 @@ export default function FormFillPage({
     for (const field of fields) {
       if (field.required) {
         const value = formValues[field.key]
-        if (value === undefined || value === null || value === "") {
+        
+        // File fields: check if there are any uploaded attachments
+        if (field.type === "file") {
+          const attachments = uploadedAttachments[field.key] || []
+          if (attachments.length === 0) {
+            errors[field.key] = `${field.label} is required - please upload a file`
+          }
+        } else if (value === undefined || value === null || value === "") {
           errors[field.key] = `${field.label} is required`
         }
       }
@@ -202,11 +246,22 @@ export default function FormFillPage({
     setError(null)
 
     try {
+      // Build response data with attachment filenames for database sync
+      const responseData = { ...formValues }
+      const fields = formRequest?.formDefinition.fields || []
+      for (const field of fields) {
+        if (field.type === "file") {
+          // Store filenames (comma-separated) for database sync instead of IDs
+          const attachments = uploadedAttachments[field.key] || []
+          responseData[field.key] = attachments.map((a) => a.filename).join(", ") || ""
+        }
+      }
+      
       const response = await fetch(`/api/form-requests/${requestId}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ responseData: formValues }),
+        body: JSON.stringify({ responseData }),
       })
 
       if (!response.ok) {
@@ -232,6 +287,80 @@ export default function FormFillPage({
         return updated
       })
     }
+  }
+
+  const handleFileUpload = async (fieldKey: string, file: File) => {
+    setUploadingFields((prev) => ({ ...prev, [fieldKey]: true }))
+    
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("fieldKey", fieldKey)
+      
+      const response = await fetch(`/api/form-requests/${requestId}/attachments`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to upload file")
+      }
+      
+      const { attachment } = await response.json()
+      
+      // Add to uploaded attachments
+      setUploadedAttachments((prev) => ({
+        ...prev,
+        [fieldKey]: [...(prev[fieldKey] || []), attachment],
+      }))
+      
+      // Store attachment ID in form values (for validation and submission)
+      const currentIds = (formValues[fieldKey] as string[] | undefined) || []
+      updateField(fieldKey, [...currentIds, attachment.id])
+    } catch (err: any) {
+      console.error("Error uploading file:", err)
+      setError(err.message)
+    } finally {
+      setUploadingFields((prev) => ({ ...prev, [fieldKey]: false }))
+    }
+  }
+  
+  const handleFileDelete = async (fieldKey: string, attachmentId: string) => {
+    try {
+      const response = await fetch(
+        `/api/form-requests/${requestId}/attachments?attachmentId=${attachmentId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      )
+      
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to delete file")
+      }
+      
+      // Remove from uploaded attachments
+      setUploadedAttachments((prev) => ({
+        ...prev,
+        [fieldKey]: (prev[fieldKey] || []).filter((a) => a.id !== attachmentId),
+      }))
+      
+      // Remove from form values
+      const currentIds = (formValues[fieldKey] as string[] | undefined) || []
+      updateField(fieldKey, currentIds.filter((id) => id !== attachmentId))
+    } catch (err: any) {
+      console.error("Error deleting file:", err)
+      setError(err.message)
+    }
+  }
+  
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   // Loading state
@@ -491,17 +620,89 @@ export default function FormFillPage({
                     </div>
                   )}
                   {field.type === "file" && (
-                    <Input
-                      id={field.key}
-                      type="file"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          updateField(field.key, file.name)
-                        }
-                      }}
-                      className={validationErrors[field.key] ? "border-red-500" : ""}
-                    />
+                    <div className="space-y-3">
+                      {/* Uploaded files */}
+                      {(uploadedAttachments[field.key] || []).length > 0 && (
+                        <div className="space-y-2">
+                          {uploadedAttachments[field.key].map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
+                            >
+                              <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {attachment.filename}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatFileSize(attachment.sizeBytes)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded"
+                                  title="Download"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleFileDelete(field.key, attachment.id)}
+                                  className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                  title="Remove"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Upload area */}
+                      <div
+                        className={`relative border-2 border-dashed rounded-lg p-6 transition-colors ${
+                          validationErrors[field.key]
+                            ? "border-red-300 bg-red-50"
+                            : "border-gray-300 hover:border-orange-400 hover:bg-orange-50"
+                        }`}
+                      >
+                        <input
+                          id={field.key}
+                          type="file"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleFileUpload(field.key, file)
+                              e.target.value = "" // Reset input
+                            }
+                          }}
+                          disabled={uploadingFields[field.key]}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <div className="flex flex-col items-center text-center">
+                          {uploadingFields[field.key] ? (
+                            <>
+                              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                              <p className="mt-2 text-sm text-gray-600">Uploading...</p>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-8 h-8 text-gray-400" />
+                              <p className="mt-2 text-sm text-gray-600">
+                                <span className="font-medium text-orange-600">Click to upload</span> or drag and drop
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                PDF, Word, Excel, CSV, or images (max 10MB)
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
                 {validationErrors[field.key] && (
