@@ -1,6 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
+import * as fs from 'fs'
 
 const authFile = 'playwright/.auth/user.json'
+
+// Check if auth file exists at config load time
+const authFileExists = fs.existsSync(authFile)
 
 /**
  * Playwright E2E Test Configuration
@@ -59,13 +63,13 @@ export default defineConfig({
       timeout: 120000, // 2 min timeout for auth
     },
     
-    /* Main tests with Chromium */
+    /* Main tests with Chromium - don't require auth file, tests handle it */
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        /* Use prepared auth state */
-        storageState: authFile,
+        /* Only use auth state if file exists, otherwise tests will auth inline */
+        ...(authFileExists ? { storageState: authFile } : {}),
       },
       dependencies: ['setup'],
     },
