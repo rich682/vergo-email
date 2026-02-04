@@ -213,8 +213,10 @@ export default function FormBuilderPage() {
     fetchForm()
   }, [fetchForm])
 
-  // Ref to track if currently saving (to prevent duplicate saves)
+  // Refs for debounced auto-save
   const savingRef = useRef(false)
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastChangeRef = useRef<number>(0)
 
   // Save form function using ref to always get latest data
   const saveForm = useCallback(async () => {
@@ -259,20 +261,35 @@ export default function FormBuilderPage() {
     }
   }, [id])
 
-  // Auto-save with debounce
-  useEffect(() => {
-    if (!hasChanges || !form) return
-
-    const timer = setTimeout(() => {
+  // Schedule auto-save (called when form changes)
+  const scheduleAutoSave = useCallback(() => {
+    // Update last change time
+    lastChangeRef.current = Date.now()
+    
+    // Clear any existing timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+    }
+    
+    // Set new timer - save 1.5s after last change
+    saveTimerRef.current = setTimeout(() => {
       saveForm()
-    }, 1000)
+    }, 1500)
+  }, [saveForm])
 
-    return () => clearTimeout(timer)
-  }, [form, hasChanges, saveForm])
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+      }
+    }
+  }, [])
 
   const updateForm = (updates: Partial<FormData>) => {
     setForm((prev) => (prev ? { ...prev, ...updates } : null))
     setHasChanges(true)
+    scheduleAutoSave()
   }
 
   // Get available database columns that haven't been added as fields yet
@@ -431,12 +448,7 @@ export default function FormBuilderPage() {
                 </span>
               )}
               {!saving && hasChanges && (
-                <button
-                  onClick={() => saveForm()}
-                  className="text-sm text-orange-500 hover:text-orange-600 hover:underline cursor-pointer"
-                >
-                  Unsaved changes - click to save
-                </button>
+                <span className="text-sm text-orange-500">Saving soon...</span>
               )}
               {!saving && !hasChanges && (
                 <span className="text-sm text-green-600">Saved</span>
