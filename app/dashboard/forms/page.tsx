@@ -56,12 +56,30 @@ export default function FormsPage() {
       const response = await fetch("/api/forms", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        // Ensure fields is always an array for safe rendering
-        const forms = (data.forms || []).map((form: any) => ({
-          ...form,
-          fields: Array.isArray(form.fields) ? form.fields : 
-                  typeof form.fields === 'string' ? (() => { try { return JSON.parse(form.fields) } catch { return [] } })() : [],
-        }))
+        // Explicitly extract only needed fields - don't spread to avoid unknown properties
+        const forms = (data.forms || []).map((form: any) => {
+          // Safely parse fields
+          let fields = form.fields || []
+          if (typeof fields === 'string') {
+            try { fields = JSON.parse(fields) } catch { fields = [] }
+          }
+          
+          return {
+            id: String(form.id || ''),
+            name: String(form.name || ''),
+            description: form.description ? String(form.description) : null,
+            fields: Array.isArray(fields) ? fields : [],
+            database: form.database ? {
+              id: String(form.database.id || ''),
+              name: String(form.database.name || ''),
+            } : null,
+            _count: {
+              formRequests: typeof form._count?.formRequests === 'number' ? form._count.formRequests : 0,
+            },
+            createdAt: form.createdAt,
+            updatedAt: form.updatedAt,
+          }
+        })
         setForms(forms)
       } else if (response.status === 401) {
         window.location.href = "/auth/signin?callbackUrl=/dashboard/forms"
@@ -224,8 +242,8 @@ export default function FormsPage() {
                     </DropdownMenu>
                   </div>
                   <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
-                    <span>{form.fields?.length || 0} fields</span>
-                    <span>{form._count?.formRequests || 0} responses</span>
+                    <span>{Array.isArray(form.fields) ? form.fields.length : 0} fields</span>
+                    <span>{typeof form._count?.formRequests === 'number' ? form._count.formRequests : 0} responses</span>
                     {form.database && (
                       <span className="flex items-center gap-1">
                         <Database className="w-3 h-3" />

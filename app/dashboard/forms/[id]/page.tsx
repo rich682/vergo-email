@@ -144,12 +144,27 @@ export default function FormBuilderPage({
         const safeDescription = typeof data.form.description === 'string' ? data.form.description : 
                                 data.form.description ? String(data.form.description) : null
         
+        // Explicitly extract only needed fields - don't spread data.form to avoid unknown properties
         setForm({
-          ...data.form,
+          id: String(data.form.id || ''),
           name: safeName,
           description: safeDescription,
           fields: safeFields,
           settings: safeSettings,
+          databaseId: data.form.databaseId || null,
+          database: data.form.database ? {
+            id: String(data.form.database.id || ''),
+            name: String(data.form.database.name || ''),
+            schema: {
+              columns: Array.isArray(data.form.database.schema?.columns)
+                ? data.form.database.schema.columns.map((col: any) => ({
+                    key: String(col.key || ''),
+                    label: String(col.label || ''),
+                    dataType: String(col.dataType || 'text'),
+                  }))
+                : [],
+            },
+          } : null,
         })
       } else if (response.status === 404) {
         router.push("/dashboard/forms")

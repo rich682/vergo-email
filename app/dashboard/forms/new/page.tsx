@@ -16,6 +16,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// Helper to safely render any value as a string (prevents React error #438)
+function safeString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    try { return JSON.stringify(value) } catch { return '[object]' }
+  }
+  return String(value)
+}
+
 interface DatabaseOption {
   id: string
   name: string
@@ -243,8 +254,8 @@ export default function NewFormPage() {
                       <SelectContent>
                         <SelectItem value="none">No database</SelectItem>
                         {databases.map((db) => (
-                          <SelectItem key={db.id} value={db.id}>
-                            {db.name}
+                          <SelectItem key={safeString(db.id)} value={safeString(db.id)}>
+                            {safeString(db.name)}
                             {db.schema?.columns && (
                               <span className="text-gray-400 ml-2">
                                 ({db.schema.columns.length} columns)
@@ -269,10 +280,10 @@ export default function NewFormPage() {
                           .find((db) => db.id === selectedDatabaseId)
                           ?.schema?.columns?.map((col) => (
                             <span
-                              key={col.key}
+                              key={safeString(col.key)}
                               className="px-2 py-1 bg-white rounded border text-xs text-gray-600"
                             >
-                              {col.label}
+                              {safeString(col.label)}
                             </span>
                           ))}
                       </div>
