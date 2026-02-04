@@ -961,6 +961,7 @@ export default function DatabaseDetailPage() {
                               <option value="date">Date</option>
                               <option value="boolean">Boolean</option>
                               <option value="dropdown">Dropdown</option>
+                              <option value="file">File Attachment</option>
                             </select>
                             {column.dataType === "dropdown" && (
                               <button

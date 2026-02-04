@@ -54,6 +54,7 @@ const DATA_TYPE_OPTIONS = [
   { value: "boolean", label: "Yes/No" },
   { value: "currency", label: "Currency" },
   { value: "dropdown", label: "Dropdown" },
+  { value: "file", label: "File Attachment" },
 ]
 
 const MAX_SAMPLE_ROWS = 20

@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma"
 export interface DatabaseSchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown" | "file"
   required: boolean
   order: number
   dropdownOptions?: string[]  // Only for dropdown type - list of allowed values
@@ -189,7 +189,7 @@ export function validateSchema(schema: DatabaseSchema, _identifierKeys?: string[
   // Note: identifierKeys no longer required - uniqueness determined by all columns
 
   // Validate data types
-  const validTypes = ["text", "number", "date", "boolean", "currency", "dropdown"]
+  const validTypes = ["text", "number", "date", "boolean", "currency", "dropdown", "file"]
   for (const col of schema.columns) {
     if (!validTypes.includes(col.dataType)) {
       return `Invalid data type "${col.dataType}" for column "${col.label}"`
