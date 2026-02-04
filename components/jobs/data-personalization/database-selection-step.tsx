@@ -303,7 +303,8 @@ export function DatabaseSelectionStep({
         throw new Error("Failed to fetch database data")
       }
       const data = await response.json()
-      const allRows = (data.rows || []) as DatabaseRow[]
+      // API returns { database: { rows, schema, ... } }
+      const allRows = (data.database?.rows || []) as DatabaseRow[]
       setRows(allRows)
       
       // Filter by period if board has a period and database has period column
