@@ -135,6 +135,15 @@ setup('authenticate', async ({ page }) => {
     const content = await page.content()
     console.error(`Page content (first 1000 chars): ${content.substring(0, 1000)}`)
     
+    // IMPORTANT: Save whatever state we have, even if auth failed
+    // This prevents cascading ENOENT errors in dependent tests
+    try {
+      await page.context().storageState({ path: authFile })
+      console.log('Saved unauthenticated state to prevent cascading failures')
+    } catch (saveError) {
+      console.error('Failed to save state:', saveError)
+    }
+    
     throw error
   }
 })

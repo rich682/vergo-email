@@ -1,16 +1,14 @@
 import { test as base, expect, Page } from '@playwright/test'
-import * as fs from 'fs'
-
-const authFile = 'playwright/.auth/user.json'
 
 /**
  * Extended Test Fixture
  * 
- * Provides authenticated context and global error capture for all tests.
- * - Automatically uses saved auth state OR performs inline auth
+ * Provides global error capture for all tests.
  * - Fails tests on console errors
  * - Fails tests on uncaught page errors
  * - Fails tests on 5xx server responses
+ * 
+ * Authentication is handled by the setup project (auth.setup.ts)
  */
 
 // Track errors during test execution
@@ -20,51 +18,8 @@ interface TestErrors {
   serverErrors: string[]
 }
 
-/**
- * Perform inline authentication if needed
- */
-async function ensureAuthenticated(page: Page): Promise<void> {
-  // Navigate to dashboard to check auth status
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded', timeout: 30000 })
-  
-  // Check if we're on the sign in page (not authenticated)
-  const currentUrl = page.url()
-  if (currentUrl.includes('/auth/signin') || currentUrl.includes('/login')) {
-    console.log('Not authenticated, performing inline login...')
-    
-    const email = process.env.TEST_USER_EMAIL
-    const password = process.env.TEST_USER_PASSWORD
-    
-    if (!email || !password) {
-      throw new Error('Missing TEST_USER_EMAIL or TEST_USER_PASSWORD environment variables')
-    }
-    
-    // Fill login form
-    await page.fill('input[name="email"], input[type="email"]', email)
-    await page.fill('input[name="password"], input[type="password"]', password)
-    await page.click('button[type="submit"]')
-    
-    // Wait for redirect to dashboard
-    await page.waitForURL(/\/dashboard/, { timeout: 30000 })
-    
-    // Save auth state for subsequent tests
-    const authDir = 'playwright/.auth'
-    if (!fs.existsSync(authDir)) {
-      fs.mkdirSync(authDir, { recursive: true })
-    }
-    await page.context().storageState({ path: authFile })
-    console.log('Inline auth successful, state saved')
-  }
-}
-
-// Extend the base test with error tracking and auto-auth
+// Extend the base test with error tracking
 export const test = base.extend<{ testErrors: TestErrors }>({
-  // Override the page fixture to ensure authentication
-  page: async ({ page }, use) => {
-    // Ensure we're authenticated before each test
-    await ensureAuthenticated(page)
-    await use(page)
-  },
   
   testErrors: async ({ page }, use) => {
     const errors: TestErrors = {
