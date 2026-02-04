@@ -122,6 +122,9 @@ export default function FormBuilderPage() {
   const [showFieldDialog, setShowFieldDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showColumnPicker, setShowColumnPicker] = useState(false)
+  // Track selected columns and their required status for bulk add
+  const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>({})
+  const [columnRequired, setColumnRequired] = useState<Record<string, boolean>>({})
 
   // Fetch form data
   const fetchForm = useCallback(async () => {
@@ -257,20 +260,6 @@ export default function FormBuilderPage() {
     return form.database.schema.columns.filter(col => !usedKeys.has(col.key))
   }
 
-  const addFieldFromColumn = (column: { key: string; label: string; dataType: string }) => {
-    const fieldType = DB_TYPE_TO_FIELD_TYPE[column.dataType] || "text"
-    const newField: FormField = {
-      key: column.key,
-      label: column.label,
-      type: fieldType,
-      required: false,
-      order: form?.fields.length || 0,
-    }
-    setEditingField(newField)
-    setIsNewField(true)
-    setShowFieldDialog(true)
-  }
-
   const addCustomField = () => {
     const newField: FormField = {
       key: `field_${Date.now()}`,
@@ -284,11 +273,32 @@ export default function FormBuilderPage() {
     setShowFieldDialog(true)
   }
 
+  const addSelectedColumns = () => {
+    if (!form) return
+    const columnsToAdd = getAvailableColumns().filter(col => selectedColumns[col.key])
+    if (columnsToAdd.length === 0) return
+
+    const newFields: FormField[] = columnsToAdd.map((col, index) => ({
+      key: col.key,
+      label: col.label,
+      type: DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text",
+      required: columnRequired[col.key] || false,
+      order: form.fields.length + index,
+    }))
+
+    updateForm({ fields: [...form.fields, ...newFields] })
+    setShowColumnPicker(false)
+    setSelectedColumns({})
+    setColumnRequired({})
+  }
+
   const addField = () => {
     // If database is linked and has available columns, show column picker
     // Otherwise, add a custom field directly
     const availableCols = getAvailableColumns()
     if (availableCols.length > 0) {
+      setSelectedColumns({})
+      setColumnRequired({})
       setShowColumnPicker(true)
     } else {
       addCustomField()
@@ -779,38 +789,64 @@ export default function FormBuilderPage() {
 
       {/* Column Picker Dialog - shown when database is linked */}
       <Dialog open={showColumnPicker} onOpenChange={setShowColumnPicker}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Field from Database</DialogTitle>
+            <DialogTitle>Add Fields from Database</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-gray-500 mb-4">
-              Select a column from your linked database to add as a form field.
-              The field type will be inherited from the database schema.
+              Select which database columns to add as form fields.
             </p>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500">
+                <div className="w-6" />
+                <div className="flex-1">Field</div>
+                <div className="w-20 text-center">Required</div>
+              </div>
+              {/* Columns */}
               {getAvailableColumns().map((col) => {
                 const fieldType = DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text"
-                const TypeIcon = FIELD_TYPE_CONFIG[fieldType]?.icon || Type
+                const isSelected = selectedColumns[col.key] || false
+                const isRequired = columnRequired[col.key] || false
                 return (
-                  <button
+                  <div
                     key={col.key}
-                    onClick={() => {
-                      addFieldFromColumn(col)
-                      setShowColumnPicker(false)
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
+                    className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                      isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+                    }`}
                   >
-                    <div className="p-2 bg-gray-100 rounded">
-                      <TypeIcon className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{safeString(col.label)}</p>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) =>
+                        setSelectedColumns(prev => ({
+                          ...prev,
+                          [col.key]: e.target.checked
+                        }))
+                      }
+                      className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{safeString(col.label)}</p>
                       <p className="text-xs text-gray-500">
-                        {FIELD_TYPE_CONFIG[fieldType]?.label || "Text"} • {col.key}
+                        {FIELD_TYPE_CONFIG[fieldType]?.label || "Text"}
                       </p>
                     </div>
-                  </button>
+                    <div className="w-20 flex justify-center">
+                      <Switch
+                        checked={isRequired}
+                        onCheckedChange={(checked) =>
+                          setColumnRequired(prev => ({
+                            ...prev,
+                            [col.key]: checked
+                          }))
+                        }
+                        disabled={!isSelected}
+                        className={!isSelected ? "opacity-40" : ""}
+                      />
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -827,15 +863,15 @@ export default function FormBuilderPage() {
                 setShowColumnPicker(false)
                 addCustomField()
               }}
-              className="w-full sm:w-auto"
             >
               Create Custom Field
             </Button>
             <Button
-              variant="outline"
-              onClick={() => setShowColumnPicker(false)}
+              onClick={addSelectedColumns}
+              disabled={Object.values(selectedColumns).filter(Boolean).length === 0}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
             >
-              Cancel
+              Add {Object.values(selectedColumns).filter(Boolean).length || ""} Field{Object.values(selectedColumns).filter(Boolean).length !== 1 ? "s" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>
