@@ -71,6 +71,25 @@ const FIELD_TYPE_CONFIG: Record<
   file: { label: "File Upload", icon: FileUp },
 }
 
+// Map database data types to form field types
+const DB_TYPE_TO_FIELD_TYPE: Record<string, FormFieldType> = {
+  text: "text",
+  longText: "longText",
+  number: "number",
+  currency: "currency",
+  date: "date",
+  select: "dropdown",
+  boolean: "checkbox",
+  file: "file",
+  // Fallbacks for common variations
+  string: "text",
+  integer: "number",
+  float: "number",
+  decimal: "currency",
+  datetime: "date",
+  bool: "checkbox",
+}
+
 interface FormData {
   id: string
   name: string
@@ -102,6 +121,7 @@ export default function FormBuilderPage() {
   const [isNewField, setIsNewField] = useState(false)
   const [showFieldDialog, setShowFieldDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [showColumnPicker, setShowColumnPicker] = useState(false)
 
   // Fetch form data
   const fetchForm = useCallback(async () => {
@@ -230,7 +250,28 @@ export default function FormBuilderPage() {
     setHasChanges(true)
   }
 
-  const addField = () => {
+  // Get available database columns that haven't been added as fields yet
+  const getAvailableColumns = () => {
+    if (!form?.database?.schema?.columns) return []
+    const usedKeys = new Set(form.fields.map(f => f.key))
+    return form.database.schema.columns.filter(col => !usedKeys.has(col.key))
+  }
+
+  const addFieldFromColumn = (column: { key: string; label: string; dataType: string }) => {
+    const fieldType = DB_TYPE_TO_FIELD_TYPE[column.dataType] || "text"
+    const newField: FormField = {
+      key: column.key,
+      label: column.label,
+      type: fieldType,
+      required: false,
+      order: form?.fields.length || 0,
+    }
+    setEditingField(newField)
+    setIsNewField(true)
+    setShowFieldDialog(true)
+  }
+
+  const addCustomField = () => {
     const newField: FormField = {
       key: `field_${Date.now()}`,
       label: "New Field",
@@ -241,6 +282,17 @@ export default function FormBuilderPage() {
     setEditingField(newField)
     setIsNewField(true)
     setShowFieldDialog(true)
+  }
+
+  const addField = () => {
+    // If database is linked and has available columns, show column picker
+    // Otherwise, add a custom field directly
+    const availableCols = getAvailableColumns()
+    if (availableCols.length > 0) {
+      setShowColumnPicker(true)
+    } else {
+      addCustomField()
+    }
   }
 
   const editField = (field: FormField) => {
@@ -720,6 +772,70 @@ export default function FormBuilderPage() {
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Column Picker Dialog - shown when database is linked */}
+      <Dialog open={showColumnPicker} onOpenChange={setShowColumnPicker}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Field from Database</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-500 mb-4">
+              Select a column from your linked database to add as a form field.
+              The field type will be inherited from the database schema.
+            </p>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {getAvailableColumns().map((col) => {
+                const fieldType = DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text"
+                const TypeIcon = FIELD_TYPE_CONFIG[fieldType]?.icon || Type
+                return (
+                  <button
+                    key={col.key}
+                    onClick={() => {
+                      addFieldFromColumn(col)
+                      setShowColumnPicker(false)
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
+                  >
+                    <div className="p-2 bg-gray-100 rounded">
+                      <TypeIcon className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{safeString(col.label)}</p>
+                      <p className="text-xs text-gray-500">
+                        {FIELD_TYPE_CONFIG[fieldType]?.label || "Text"} • {col.key}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            {getAvailableColumns().length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">
+                All database columns have been added as fields.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowColumnPicker(false)
+                addCustomField()
+              }}
+              className="w-full sm:w-auto"
+            >
+              Create Custom Field
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowColumnPicker(false)}
+            >
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
