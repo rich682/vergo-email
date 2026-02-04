@@ -18,6 +18,7 @@ on:
           - contacts
           - databases
           - reports
+          - email-flow
 
 jobs:
   test:
