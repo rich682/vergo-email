@@ -158,6 +158,8 @@ model Organization {
   databases               Database[]
   reportDefinitions       ReportDefinition[]
   generatedReports        GeneratedReport[]
+  formDefinitions         FormDefinition[]
+  formRequests            FormRequest[]
 
   @@index([slug])
 }
@@ -234,6 +236,8 @@ model User {
   importedDatabases          Database[]                 @relation("DatabaseImporter")
   createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
   reportViewerPermissions    GeneratedReportViewer[]
+  createdFormDefinitions     FormDefinition[]           @relation("FormDefinitionCreator")
+  formRequests               FormRequest[]              @relation("FormRequestRecipient")
 
   @@index([organizationId])
   @@index([email])
@@ -370,6 +374,7 @@ model TaskInstance {
   attachments     Attachment[] // Direct file attachments on this job
   reconciliations Reconciliation[] // Document reconciliation workflows
   generatedReports GeneratedReport[] // Reports generated for this task
+  formRequests     FormRequest[] // Form requests sent for this task
 
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
 
@@ -1187,9 +1192,89 @@ model Database {
   createdBy          User               @relation("DatabaseCreator", fields: [createdById], references: [id])
   lastImportedBy     User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
   reportDefinitions  ReportDefinition[]
+  formDefinitions    FormDefinition[]
   
   @@index([organizationId])
   @@index([organizationId, name])
+}
+
+// FormDefinition represents a form template for collecting structured data from users
+// Forms are linked to a Database where responses are stored as rows
+model FormDefinition {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  organizationId  String
+  
+  // Form field definitions (JSON array)
+  // Array of: { key, label, type, required, helpText?, defaultValue?, options?, validation?, order }
+  fields          Json     @default("[]")
+  
+  // Form settings
+  // { allowEdit: boolean, enforceDeadline: boolean }
+  settings        Json     @default("{}")
+  
+  // Target database for storing responses
+  databaseId      String?
+  // Mapping from form field keys to database column keys
+  // { formFieldKey: databaseColumnKey }
+  columnMapping   Json     @default("{}")
+  
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+  
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  database        Database?     @relation(fields: [databaseId], references: [id], onDelete: SetNull)
+  createdBy       User          @relation("FormDefinitionCreator", fields: [createdById], references: [id])
+  formRequests    FormRequest[]
+  
+  @@index([organizationId])
+  @@index([databaseId])
+}
+
+// FormRequest represents a form sent to a specific user for completion
+// Each request tracks submission status and links to the database row created/updated
+model FormRequest {
+  id                String    @id @default(cuid())
+  organizationId    String
+  taskInstanceId    String
+  formDefinitionId  String
+  recipientUserId   String
+  
+  // Status: PENDING (awaiting response), SUBMITTED (completed), EXPIRED (past deadline)
+  status            String    @default("PENDING")
+  submittedAt       DateTime?
+  
+  // Response data (JSON object of form field values)
+  responseData      Json?
+  // Index into database.rows array for the row created for this request
+  databaseRowIndex  Int?
+  
+  // Deadline and reminders
+  deadlineDate      DateTime?
+  remindersEnabled  Boolean   @default(false)
+  remindersSent     Int       @default(0)
+  remindersMaxCount Int       @default(3)
+  reminderFrequencyHours Int  @default(72) // 3 days default
+  nextReminderAt    DateTime?
+  
+  // Metadata
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstance      TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  formDefinition    FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
+  recipientUser     User           @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
+  
+  @@unique([formDefinitionId, taskInstanceId, recipientUserId])
+  @@index([organizationId])
+  @@index([taskInstanceId])
+  @@index([recipientUserId])
+  @@index([status])
+  @@index([nextReminderAt])
 }
 
 // ReportDefinition represents an Excel-like report template

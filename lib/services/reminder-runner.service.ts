@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { ReminderTemplateService } from "@/lib/services/reminder-template.service"
 import { renderTemplate } from "@/lib/utils/template-renderer"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { FormNotificationService } from "@/lib/services/form-notification.service"
 
 export type ReminderRunResult = {
   remindersChecked: number
@@ -180,6 +181,146 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
 
   return {
     remindersChecked: dueReminders.length,
+    remindersSent,
+    remindersSkipped,
+    errors: errors.length > 0 ? errors : undefined
+  }
+}
+
+/**
+ * Executes the form reminder logic once.
+ * Sends reminders for pending form requests.
+ */
+export async function runDueFormRemindersOnce(): Promise<ReminderRunResult> {
+  const now = new Date()
+
+  // Find form requests due for reminders
+  const dueFormRequests = await prisma.formRequest.findMany({
+    where: {
+      status: "PENDING",
+      remindersEnabled: true,
+      nextReminderAt: {
+        lte: now
+      },
+      // Only send if we haven't hit max reminders
+      AND: [
+        {
+          remindersSent: {
+            lt: prisma.raw("reminders_max_count")
+          }
+        }
+      ]
+    },
+    include: {
+      recipientUser: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      },
+      formDefinition: {
+        select: {
+          name: true
+        }
+      },
+      taskInstance: {
+        select: {
+          name: true,
+          owner: {
+            select: {
+              name: true,
+              email: true
+            }
+          }
+        }
+      }
+    }
+  })
+
+  if (dueFormRequests.length === 0) {
+    console.log(JSON.stringify({ event: "form_reminder_due_none", timestampMs: Date.now() }))
+    return {
+      remindersChecked: 0,
+      remindersSent: 0,
+      remindersSkipped: 0
+    }
+  }
+
+  console.log(JSON.stringify({ event: "form_reminder_due_found", count: dueFormRequests.length, timestampMs: Date.now() }))
+
+  let remindersSent = 0
+  let remindersSkipped = 0
+  const errors: string[] = []
+
+  for (const formRequest of dueFormRequests) {
+    try {
+      // Double-check we're still under max
+      if (formRequest.remindersSent >= formRequest.remindersMaxCount) {
+        await prisma.formRequest.update({
+          where: { id: formRequest.id },
+          data: { nextReminderAt: null }
+        })
+        remindersSkipped++
+        continue
+      }
+
+      const reminderNumber = formRequest.remindersSent + 1
+
+      // Send reminder email
+      const success = await FormNotificationService.sendFormReminderEmail({
+        formRequestId: formRequest.id,
+        recipientEmail: formRequest.recipientUser.email,
+        recipientName: formRequest.recipientUser.name,
+        formName: formRequest.formDefinition.name,
+        taskName: formRequest.taskInstance.name,
+        senderName: formRequest.taskInstance.owner?.name || null,
+        senderEmail: formRequest.taskInstance.owner?.email || "",
+        deadlineDate: formRequest.deadlineDate,
+        boardPeriod: null, // Could be enhanced to include period
+        reminderNumber,
+        maxReminders: formRequest.remindersMaxCount,
+        organizationId: formRequest.organizationId
+      })
+
+      if (!success) {
+        errors.push(`FormRequest ${formRequest.id}: Failed to send email`)
+        continue
+      }
+
+      // Update reminder state
+      const newSentCount = formRequest.remindersSent + 1
+      const shouldContinue = newSentCount < formRequest.remindersMaxCount
+      const nextReminderAt = shouldContinue
+        ? new Date(now.getTime() + formRequest.reminderFrequencyHours * 60 * 60 * 1000)
+        : null
+
+      await prisma.formRequest.update({
+        where: { id: formRequest.id },
+        data: {
+          remindersSent: newSentCount,
+          nextReminderAt
+        }
+      })
+
+      remindersSent++
+      console.log(JSON.stringify({ 
+        event: "form_reminder_sent", 
+        formRequestId: formRequest.id, 
+        reminderNumber 
+      }))
+    } catch (error: any) {
+      console.error(JSON.stringify({ 
+        event: "form_reminder_send_failed", 
+        formRequestId: formRequest.id, 
+        error: error?.message 
+      }))
+      errors.push(`FormRequest ${formRequest.id}: ${error.message}`)
+    }
+  }
+
+  return {
+    remindersChecked: dueFormRequests.length,
     remindersSent,
     remindersSkipped,
     errors: errors.length > 0 ? errors : undefined

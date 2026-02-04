@@ -60,6 +60,9 @@ import { formatPeriodDisplay } from "@/lib/utils/timezone"
 // Data Personalization Flow
 import { DataPersonalizationFlow } from "./data-personalization-flow"
 
+// Form Request Flow
+import { FormRequestFlow } from "./form-request-flow"
+
 // Types
 interface JobLabel {
   id: string
@@ -127,7 +130,7 @@ type ModalState =
   | "success"
   | "error"
 
-type RequestMode = "standard" | "data_personalization"
+type RequestMode = "standard" | "data_personalization" | "form_request"
 
 type SendTiming = "immediate" | "scheduled"
 
@@ -408,6 +411,8 @@ export function SendRequestModal({
       setState("idle") // This will trigger fetchDraft
     } else if (selectedMode === "data_personalization") {
       setState("idle") // Move past mode_selection to show the flow component
+    } else if (selectedMode === "form_request") {
+      setState("idle") // Move past mode_selection to show the form request flow
     }
   }
 
@@ -992,14 +997,11 @@ export function SendRequestModal({
                 </span>
               </button>
 
-              {/* Form Completion Mode (Demo) */}
+              {/* Form Request Mode */}
               <button
-                onClick={() => {/* Demo only - no action */}}
+                onClick={() => handleModeSelect("form_request")}
                 className="flex flex-col items-center p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition-all group relative"
               >
-                <div className="absolute top-2 right-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full">
-                  Coming Soon
-                </div>
                 <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4 group-hover:bg-green-200 transition-colors">
                   <ClipboardList className="w-7 h-7 text-green-600" />
                 </div>
@@ -1030,6 +1032,33 @@ export function SendRequestModal({
                   )
                 : null
             }
+            onSuccess={() => {
+              onOpenChange(false)
+              onSuccess()
+            }}
+            onCancel={() => {
+              setMode(null)
+              setState("mode_selection")
+            }}
+          />
+        )}
+
+        {/* Form Request Flow */}
+        {mode === "form_request" && state !== "mode_selection" && (
+          <FormRequestFlow
+            jobId={job.id}
+            jobName={job.name}
+            boardPeriod={
+              job.board?.periodStart && job.board?.cadence
+                ? formatPeriodDisplay(
+                    job.board.periodStart,
+                    job.board.periodEnd,
+                    job.board.cadence as any,
+                    "UTC"
+                  )
+                : null
+            }
+            deadlineDate={job.dueDate}
             onSuccess={() => {
               onOpenChange(false)
               onSuccess()

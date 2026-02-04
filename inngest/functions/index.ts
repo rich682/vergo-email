@@ -1,6 +1,6 @@
 import { inngest } from "../client"
 import { prisma } from "@/lib/prisma"
-import { runDueRemindersOnce } from "@/lib/services/reminder-runner.service"
+import { runDueRemindersOnce, runDueFormRemindersOnce } from "@/lib/services/reminder-runner.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 import { ReminderStateService } from "@/lib/services/reminder-state.service"
@@ -602,7 +602,7 @@ Use plain language. Be concise.`
       }
     }
   ),
-  // Scheduled function to send due reminders
+  // Scheduled function to send due reminders (requests and forms)
   inngest.createFunction(
     {
       id: "reminder/send-due",
@@ -613,8 +613,17 @@ Use plain language. Be concise.`
     },
     async () => {
       try {
-        const result = await runDueRemindersOnce()
-        return { success: true, ...result }
+        // Run both request reminders and form reminders
+        const [requestResult, formResult] = await Promise.all([
+          runDueRemindersOnce(),
+          runDueFormRemindersOnce()
+        ])
+        
+        return { 
+          success: true, 
+          requests: requestResult,
+          forms: formResult
+        }
       } catch (error: any) {
         console.error("[Inngest Reminder] Error in reminder cron job:", error)
         // Don't throw - allow retry on next schedule

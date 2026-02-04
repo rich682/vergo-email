@@ -104,6 +104,19 @@ function ReportsIcon({ className }: { className?: string }) {
   )
 }
 
+function FormsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <path d="M9 12h6" />
+      <path d="M9 16h6" />
+      <circle cx="7" cy="12" r="0.5" fill="currentColor" />
+      <circle cx="7" cy="16" r="0.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 
 interface NavItem {
   href: string
@@ -126,6 +139,11 @@ const postCollectionNavItems: NavItem[] = [
     href: "/dashboard/reports",
     label: "Reports",
     icon: ReportsIcon
+  },
+  {
+    href: "/dashboard/forms",
+    label: "Forms",
+    icon: FormsIcon
   },
   {
     href: "/dashboard/databases",
