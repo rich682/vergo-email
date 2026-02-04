@@ -271,10 +271,10 @@ export default function FormBuilderPage() {
       clearTimeout(saveTimerRef.current)
     }
     
-    // Set new timer - save 1.5s after last change
+    // Set new timer - save 500ms after last change
     saveTimerRef.current = setTimeout(() => {
       saveForm()
-    }, 1500)
+    }, 500)
   }, [saveForm])
 
   // Cleanup timer on unmount
