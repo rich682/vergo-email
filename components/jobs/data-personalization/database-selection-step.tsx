@@ -313,7 +313,12 @@ export function DatabaseSelectionStep({
         setFilteredRows(filtered)
         
         if (filtered.length === 0) {
-          setError(`No rows found matching period "${boardPeriod}". Make sure the database has data for this period.`)
+          // Show sample of what period values look like for debugging
+          const samplePeriods = allRows.slice(0, 3).map(r => r[periodKey]).filter(Boolean)
+          const sampleStr = samplePeriods.length > 0 
+            ? ` Found values like: ${samplePeriods.map(p => `"${p}"`).join(", ")}`
+            : ""
+          setError(`No rows found matching period "${boardPeriod}".${sampleStr}`)
         }
       } else {
         // No period filtering needed
