@@ -10,7 +10,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormRequestService } from "@/lib/services/form-request.service"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
+import { FormNotificationService } from "@/lib/services/form-notification.service"
 import { UserRole } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 
 export async function GET(
   request: NextRequest,
@@ -96,6 +98,37 @@ export async function POST(
         reminderConfig,
       }
     )
+
+    // Get form definition and sender info for email
+    const formDefinition = await prisma.formDefinition.findFirst({
+      where: { id: formDefinitionId, organizationId: session.user.organizationId },
+    })
+    
+    const sender = await prisma.user.findFirst({
+      where: { id: session.user.id },
+      select: { name: true, email: true },
+    })
+
+    // Get board period info
+    const boardPeriod = task.board?.periodStart 
+      ? new Date(task.board.periodStart).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+      : null
+
+    // Send email notifications to all recipients
+    if (formDefinition && result.formRequests.length > 0) {
+      const emailResult = await FormNotificationService.sendBulkFormRequestEmails(
+        result.formRequests,
+        formDefinition.name,
+        task.name,
+        sender?.name || null,
+        sender?.email || session.user.email || "",
+        deadlineDate ? new Date(deadlineDate) : null,
+        boardPeriod,
+        session.user.organizationId
+      )
+      
+      console.log(`[FormRequests] Sent ${emailResult.sent} emails, ${emailResult.failed} failed`)
+    }
 
     return NextResponse.json(result, { status: 201 })
   } catch (error: any) {
