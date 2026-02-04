@@ -149,36 +149,52 @@ INSTRUCTIONS:
 Refine the email according to the user's request.`
     } else {
       // Initial generation mode
-      prompt = `Generate a professional email for a business request. Use the merge fields from the database.
+      // Infer the topic from database name (e.g., "Outstanding Invoices" -> invoices/payments)
+      const topicHint = databaseName.toLowerCase()
+      
+      prompt = `Generate a professional email requesting action from recipients. You MUST use the merge fields provided.
 
 TASK CONTEXT:
 - Task Name: ${job.name}
 - Description: ${job.description || "Not provided"}
 - Due Date: ${job.dueDate ? job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Not set"}
-- Labels: ${jobLabels.length > 0 ? jobLabels.join(', ') : "None"}
 
-DATABASE CONTEXT:
-- Database Name: ${databaseName}
-- This database likely contains ${databaseName.toLowerCase()} data
+DATA CONTEXT (use this to understand what the email is about):
+- Topic: ${databaseName}
+- This email is likely about: ${topicHint}
 
-AVAILABLE MERGE FIELDS FROM DATABASE:
+MERGE FIELDS YOU MUST USE (these will be replaced with actual recipient data):
 ${columns.map(col => {
   const samples = columnSamples[col.key]
-  return `- {{${col.key}}} (${col.label}, ${col.dataType})${samples.length > 0 ? ` - Examples: ${samples.slice(0, 2).join(', ')}` : ''}`
+  return `- {{${col.key}}} (${col.label})${samples.length > 0 ? ` - Example: ${samples[0]}` : ''}`
 }).join('\n')}
 
 ${userGoal ? `USER'S SPECIFIC GOAL: ${userGoal}` : ''}
 
 CRITICAL REQUIREMENTS:
-1. Use relevant merge fields from the database in the email body
-2. Use {{column_key}} syntax exactly as shown above
-3. ${nameColumn ? `Start with "Dear {{${nameColumn.key}}}," for personalization` : 'Start with an appropriate professional greeting'}
-4. Reference the task name "${job.name}" and database context "${databaseName}" to create a contextually relevant email
-5. For data fields like amounts, dates, or numbers, write sentences that naturally incorporate them
-6. Be professional and include a clear call-to-action
-7. Keep the email concise but complete
+1. YOU MUST include the merge fields in the email body using {{column_key}} syntax exactly
+2. ${nameColumn ? `Start with "Dear {{${nameColumn.key}}}," for personalization` : 'Start with "Dear" followed by an appropriate greeting'}
+3. For EACH data field, write a sentence that incorporates it naturally:
+   - Invoice amount: "The outstanding amount is {{invoice_amount}}."
+   - Due date: "Payment is due by {{due_date}}."
+   - Invoice number: "This is regarding invoice #{{invoice_number}}."
+4. DO NOT literally say "database" or "${databaseName}" in the email text
+5. Reference the task "${job.name}" in the subject line
+6. Include a clear call-to-action (e.g., "Please review and confirm..." or "Please remit payment by...")
+7. ${job.dueDate ? `Mention the deadline: ${job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : 'Ask for a timely response'}
 
-Generate an email that makes effective use of the available merge fields.`
+Example structure for an invoice email:
+Subject: ${job.name} - Action Required
+
+Dear {{first_name}},
+
+I am reaching out regarding invoice #{{invoice_number}} for {{invoice_amount}}.
+
+The payment is due by {{due_date}}. Please review and let us know if you have any questions.
+
+[signature]
+
+Generate an email using ALL the merge fields listed above.`
     }
 
     // Generate draft using AI
