@@ -1,7 +1,7 @@
 /**
  * Manual Form Reminder API Endpoint
  * 
- * POST /api/forms/[requestId]/remind - Manually send a reminder for a pending form
+ * POST /api/form-requests/[id]/remind - Manually send a reminder for a pending form
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -12,7 +12,7 @@ import { FormNotificationService } from "@/lib/services/form-notification.servic
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ requestId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -20,12 +20,12 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { requestId } = await params
+    const { id } = await params
 
     // Get the form request
     const formRequest = await prisma.formRequest.findFirst({
       where: {
-        id: requestId,
+        id,
         organizationId: session.user.organizationId,
       },
       include: {
@@ -106,7 +106,7 @@ export async function POST(
       : null
 
     await prisma.formRequest.update({
-      where: { id: requestId },
+      where: { id },
       data: {
         remindersSent: newSentCount,
         nextReminderAt,

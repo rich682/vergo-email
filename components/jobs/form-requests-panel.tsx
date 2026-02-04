@@ -91,7 +91,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
   const handleSendReminder = async (formRequestId: string) => {
     setSendingReminder(formRequestId)
     try {
-      const response = await fetch(`/api/forms/${formRequestId}/remind`, {
+      const response = await fetch(`/api/form-requests/${formRequestId}/remind`, {
         method: "POST",
         credentials: "include",
       })

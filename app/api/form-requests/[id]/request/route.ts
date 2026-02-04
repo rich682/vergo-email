@@ -1,7 +1,7 @@
 /**
  * Form Request Details API Endpoint
  * 
- * GET /api/forms/[requestId]/request - Get form request details for filling
+ * GET /api/form-requests/[id]/request - Get form request details for filling
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -11,7 +11,7 @@ import { FormRequestService } from "@/lib/services/form-request.service"
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ requestId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,10 +19,10 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { requestId } = await params
+    const { id } = await params
 
     const formRequest = await FormRequestService.findById(
-      requestId,
+      id,
       session.user.organizationId
     )
 

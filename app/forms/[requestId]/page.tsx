@@ -89,7 +89,7 @@ export default function FormFillPage({
   const fetchFormRequest = async () => {
     try {
       setPageState("loading")
-      const response = await fetch(`/api/forms/${requestId}/request`, {
+      const response = await fetch(`/api/form-requests/${requestId}/request`, {
         credentials: "include",
       })
 
@@ -202,7 +202,7 @@ export default function FormFillPage({
     setError(null)
 
     try {
-      const response = await fetch(`/api/forms/${requestId}/submit`, {
+      const response = await fetch(`/api/form-requests/${requestId}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

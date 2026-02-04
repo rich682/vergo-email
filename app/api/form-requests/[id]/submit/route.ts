@@ -1,7 +1,7 @@
 /**
  * Form Submission API Endpoint
  * 
- * POST /api/forms/[requestId]/submit - Submit form response
+ * POST /api/form-requests/[id]/submit - Submit form response
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -11,7 +11,7 @@ import { FormRequestService } from "@/lib/services/form-request.service"
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ requestId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,7 +19,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { requestId } = await params
+    const { id } = await params
     const body = await request.json()
     const { responseData } = body
 
@@ -31,7 +31,7 @@ export async function POST(
     }
 
     const updated = await FormRequestService.submit(
-      requestId,
+      id,
       session.user.id,
       responseData
     )
