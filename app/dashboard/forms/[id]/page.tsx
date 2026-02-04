@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -116,6 +116,10 @@ export default function FormBuilderPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  
+  // Ref to track latest form data for auto-save
+  const formRef = useRef<FormData | null>(null)
+  formRef.current = form
 
   // Field editor state
   const [editingField, setEditingField] = useState<FormField | null>(null)
@@ -209,19 +213,10 @@ export default function FormBuilderPage() {
     fetchForm()
   }, [fetchForm])
 
-  // Auto-save with debounce
-  useEffect(() => {
-    if (!hasChanges || !form) return
-
-    const timer = setTimeout(() => {
-      saveForm()
-    }, 1000)
-
-    return () => clearTimeout(timer)
-  }, [form, hasChanges])
-
-  const saveForm = async () => {
-    if (!form) return
+  // Save form function using ref to always get latest data
+  const saveForm = useCallback(async () => {
+    const currentForm = formRef.current
+    if (!currentForm) return
 
     try {
       setSaving(true)
@@ -230,10 +225,10 @@ export default function FormBuilderPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          fields: form.fields,
-          settings: form.settings,
+          name: currentForm.name,
+          description: currentForm.description,
+          fields: currentForm.fields,
+          settings: currentForm.settings,
         }),
       })
 
@@ -247,7 +242,18 @@ export default function FormBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }
+  }, [id])
+
+  // Auto-save with debounce
+  useEffect(() => {
+    if (!hasChanges || !form) return
+
+    const timer = setTimeout(() => {
+      saveForm()
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [form, hasChanges, saveForm])
 
   const updateForm = (updates: Partial<FormData>) => {
     setForm((prev) => (prev ? { ...prev, ...updates } : null))
