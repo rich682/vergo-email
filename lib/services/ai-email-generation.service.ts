@@ -148,11 +148,6 @@ export class AIEmailGenerationService {
       let bodyText = data.prompt
       let subjectText = `Request: ${subject}`
       
-      // Build deadline text if available
-      const deadlineText = formattedDeadline 
-        ? `\n\nThe deadline for this request is ${formattedDeadline}.`
-        : ''
-      
       if (data.availableTags && data.availableTags.length > 0) {
         // Create a simple template that incorporates variables naturally
         // This is a fallback, so keep it simple but useful
@@ -187,45 +182,45 @@ export class AIEmailGenerationService {
             }
           }
           
-          bodyText += `.${deadlineText}\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
+          bodyText += `.\n\nCould you please provide an update on the payment status? If you have already sent payment, please let us know and we will update our records.\n\nThank you for your prompt attention.\n\nBest regards,`
         } else if (lowerPrompt.includes('document') || lowerPrompt.includes('deadline') || lowerPrompt.includes('submit')) {
           // Document request template
-          bodyText = `${greeting}\n\nI am writing to request the required documents at your earliest convenience.${deadlineText}\n\nPlease reply to this email with the documents attached, or let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = formattedDeadline ? `Document Request - Due ${formattedDeadline}` : `Document Request`
+          bodyText = `${greeting}\n\nI am writing to request the required documents at your earliest convenience.\n\nPlease reply to this email with the documents attached, or let me know if you have any questions.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = `Document Request`
         } else if (lowerPrompt.includes('timesheet') || lowerPrompt.includes('time sheet')) {
           // Timesheet request template
-          bodyText = `${greeting}\n\nThis is a friendly reminder to submit your timesheets.${deadlineText}\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
-          subjectText = formattedDeadline ? `Timesheet Reminder - Due ${formattedDeadline}` : `Timesheet Submission Reminder`
+          bodyText = `${greeting}\n\nThis is a friendly reminder to submit your timesheets.\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
+          subjectText = `Timesheet Submission Reminder`
         } else if (lowerPrompt.includes('employee')) {
           // Employee communication template
           const actionMatch = lowerPrompt.match(/about\s+(.+?)(?:\s+due|\s+by|$)/i)
           const action = actionMatch ? actionMatch[1].trim() : 'the following matter'
-          bodyText = `${greeting}\n\nI am writing to you regarding ${action}.${deadlineText}\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
-          subjectText = formattedDeadline ? `Action Required: ${action} - Due ${formattedDeadline}` : `Action Required: ${action}`
+          bodyText = `${greeting}\n\nI am writing to you regarding ${action}.\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
+          subjectText = `Action Required: ${action}`
         } else {
           // Generic professional template - extract the intent from the prompt
           const intentMatch = lowerPrompt.match(/(?:email|send|request|ask|remind)(?:\s+(?:all|my|the))?\s+(?:\w+\s+)?(?:about|regarding|for|to)?\s*(.+?)(?:\s+due|\s+by|$)/i)
           const intent = intentMatch ? intentMatch[1].trim() : 'the following matter'
-          bodyText = `${greeting}\n\nI am writing to you regarding ${intent}.${deadlineText}\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = formattedDeadline ? `${intent.charAt(0).toUpperCase() + intent.slice(1)} - Due ${formattedDeadline}` : intent.charAt(0).toUpperCase() + intent.slice(1)
+          bodyText = `${greeting}\n\nI am writing to you regarding ${intent}.\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = intent.charAt(0).toUpperCase() + intent.slice(1)
         }
       } else {
         // No tags available - still use personalized greeting
         // Extract intent from prompt for better email
         const lowerPrompt = data.prompt.toLowerCase()
         if (lowerPrompt.includes('timesheet') || lowerPrompt.includes('time sheet')) {
-          bodyText = `Dear {{First Name}},\n\nThis is a friendly reminder to submit your timesheets.${deadlineText}\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
-          subjectText = formattedDeadline ? `Timesheet Reminder - Due ${formattedDeadline}` : `Timesheet Submission Reminder`
+          bodyText = `Dear {{First Name}},\n\nThis is a friendly reminder to submit your timesheets.\n\nPlease ensure all hours are accurately recorded and submitted promptly.\n\nThank you for your cooperation.\n\nBest regards,`
+          subjectText = `Timesheet Submission Reminder`
         } else if (lowerPrompt.includes('employee')) {
           const actionMatch = lowerPrompt.match(/about\s+(.+?)(?:\s+due|\s+by|$)/i)
           const action = actionMatch ? actionMatch[1].trim() : 'the following matter'
-          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${action}.${deadlineText}\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
-          subjectText = formattedDeadline ? `Action Required: ${action} - Due ${formattedDeadline}` : `Action Required: ${action}`
+          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${action}.\n\nPlease take the necessary action and let me know if you have any questions.\n\nThank you for your attention to this matter.\n\nBest regards,`
+          subjectText = `Action Required: ${action}`
         } else {
           const intentMatch = lowerPrompt.match(/(?:email|send|request|ask|remind)(?:\s+(?:all|my|the))?\s+(?:\w+\s+)?(?:about|regarding|for|to)?\s*(.+?)(?:\s+due|\s+by|$)/i)
           const intent = intentMatch ? intentMatch[1].trim() : 'the following matter'
-          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${intent}.${deadlineText}\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
-          subjectText = formattedDeadline ? `${intent.charAt(0).toUpperCase() + intent.slice(1)} - Due ${formattedDeadline}` : intent.charAt(0).toUpperCase() + intent.slice(1)
+          bodyText = `Dear {{First Name}},\n\nI am writing to you regarding ${intent}.\n\nPlease let me know if you have any questions or need any clarification.\n\nThank you for your prompt attention.\n\nBest regards,`
+          subjectText = intent.charAt(0).toUpperCase() + intent.slice(1)
         }
       }
       
@@ -396,7 +391,6 @@ USER'S ORIGINAL REQUEST (you MUST address this EXACTLY - use the same terminolog
 "${data.prompt}"
 
 IMPORTANT: Your email MUST be about "${data.prompt.split(' ').slice(0, 10).join(' ')}..." - do NOT substitute with generic terms.
-${formattedDeadline ? `\nREQUEST DEADLINE: ${formattedDeadline} - This is the deadline for the request. Include this deadline in the email body (e.g., "The deadline for this request is ${formattedDeadline}." or "Please respond by ${formattedDeadline}."). Do NOT use this deadline in the subject line unless it's the most relevant piece of information.` : ''}
 ${data.availableTags && data.availableTags.length > 0 ? `
 
 CRITICAL - INTELLIGENT VARIABLE USAGE:
