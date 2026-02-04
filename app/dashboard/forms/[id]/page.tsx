@@ -90,7 +90,12 @@ export default function FormBuilderPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = use(params)
+  // Debug: Log params resolution
+  const resolvedParams = use(params)
+  console.log('[FormBuilder] Params resolved:', typeof resolvedParams, resolvedParams)
+  const id = typeof resolvedParams?.id === 'string' ? resolvedParams.id : String(resolvedParams?.id || '')
+  console.log('[FormBuilder] ID extracted:', typeof id, id)
+  
   const router = useRouter()
   const [form, setForm] = useState<FormData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -110,6 +115,7 @@ export default function FormBuilderPage({
       const response = await fetch(`/api/forms/${id}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
+        console.log('[FormBuilder] API response:', JSON.stringify(data, null, 2))
         // Safely parse JSON fields in case they come as strings
         let fields = data.form.fields || []
         let settings = data.form.settings || {}
@@ -145,7 +151,7 @@ export default function FormBuilderPage({
                                 data.form.description ? String(data.form.description) : null
         
         // Explicitly extract only needed fields - don't spread data.form to avoid unknown properties
-        setForm({
+        const formState = {
           id: String(data.form.id || ''),
           name: safeName,
           description: safeDescription,
@@ -165,7 +171,9 @@ export default function FormBuilderPage({
                 : [],
             },
           } : null,
-        })
+        }
+        console.log('[FormBuilder] Setting form state:', JSON.stringify(formState, null, 2))
+        setForm(formState)
       } else if (response.status === 404) {
         router.push("/dashboard/forms")
       } else if (response.status === 401) {
