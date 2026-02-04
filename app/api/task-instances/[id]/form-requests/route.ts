@@ -78,13 +78,13 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { formDefinitionId, recipientUserIds, deadlineDate, reminderConfig } = body
+    const { formDefinitionId, recipientEntityIds, deadlineDate, reminderConfig } = body
 
     // Validate required fields
     if (!formDefinitionId) {
       return NextResponse.json({ error: "formDefinitionId is required" }, { status: 400 })
     }
-    if (!recipientUserIds || !Array.isArray(recipientUserIds) || recipientUserIds.length === 0) {
+    if (!recipientEntityIds || !Array.isArray(recipientEntityIds) || recipientEntityIds.length === 0) {
       return NextResponse.json({ error: "At least one recipient is required" }, { status: 400 })
     }
 
@@ -92,16 +92,16 @@ export async function POST(
       organizationId: session.user.organizationId,
       taskInstanceId,
       formDefinitionId,
-      recipientCount: recipientUserIds?.length,
+      recipientCount: recipientEntityIds?.length,
       deadlineDate,
     })
 
-    const result = await FormRequestService.createBulk(
+    const result = await FormRequestService.createBulkForEntities(
       session.user.organizationId,
       taskInstanceId,
       {
         formDefinitionId,
-        recipientUserIds,
+        recipientEntityIds,
         deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
         reminderConfig,
       }
@@ -126,7 +126,7 @@ export async function POST(
         : null
 
       if (formDefinition && result.formRequests.length > 0) {
-        const emailResult = await FormNotificationService.sendBulkFormRequestEmails(
+        const emailResult = await FormNotificationService.sendBulkFormRequestEmailsForEntities(
           result.formRequests,
           formDefinition.name,
           task.name,

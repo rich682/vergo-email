@@ -38,6 +38,7 @@ interface FormRequestEmailData {
   deadlineDate: Date | null
   boardPeriod: string | null
   organizationId: string
+  accessToken?: string | null // For external stakeholder access
 }
 
 interface FormReminderEmailData extends FormRequestEmailData {
@@ -61,9 +62,13 @@ export class FormNotificationService {
       deadlineDate,
       boardPeriod,
       organizationId,
+      accessToken,
     } = data
 
-    const formUrl = `${getBaseUrl()}/forms/${formRequestId}`
+    // Include access token in URL for external stakeholder access
+    const formUrl = accessToken 
+      ? `${getBaseUrl()}/forms/${formRequestId}?token=${accessToken}`
+      : `${getBaseUrl()}/forms/${formRequestId}`
     const greeting = recipientName ? `Hi ${recipientName.split(" ")[0]},` : "Hello,"
     
     const deadlineText = deadlineDate
@@ -168,9 +173,13 @@ ${senderName || "The Team"}`
       reminderNumber,
       maxReminders,
       organizationId,
+      accessToken,
     } = data
 
-    const formUrl = `${getBaseUrl()}/forms/${formRequestId}`
+    // Include access token in URL for external stakeholder access
+    const formUrl = accessToken 
+      ? `${getBaseUrl()}/forms/${formRequestId}?token=${accessToken}`
+      : `${getBaseUrl()}/forms/${formRequestId}`
     const greeting = recipientName ? `Hi ${recipientName.split(" ")[0]},` : "Hello,"
     
     const isLastReminder = reminderNumber >= maxReminders
@@ -296,11 +305,12 @@ The Team`
   }
 
   /**
-   * Send form request emails to all recipients in a batch
+   * Send form request emails to all recipients in a batch (internal users)
    */
   static async sendBulkFormRequestEmails(
     formRequests: Array<{
       id: string
+      accessToken?: string | null
       recipientUser: { email: string; name: string | null }
     }>,
     formName: string,
@@ -326,6 +336,65 @@ The Team`
         deadlineDate,
         boardPeriod,
         organizationId,
+        accessToken: request.accessToken,
+      })
+
+      if (success) {
+        sent++
+      } else {
+        failed++
+      }
+    }
+
+    return { sent, failed }
+  }
+
+  /**
+   * Send form request emails to entity recipients (external stakeholders)
+   */
+  static async sendBulkFormRequestEmailsForEntities(
+    formRequests: Array<{
+      id: string
+      accessToken?: string | null
+      recipientEntity: { 
+        email: string | null
+        firstName: string
+        lastName: string | null
+      } | null
+    }>,
+    formName: string,
+    taskName: string,
+    senderName: string | null,
+    senderEmail: string,
+    deadlineDate: Date | null,
+    boardPeriod: string | null,
+    organizationId: string
+  ): Promise<{ sent: number; failed: number }> {
+    let sent = 0
+    let failed = 0
+
+    for (const request of formRequests) {
+      // Skip if no entity or no email
+      if (!request.recipientEntity?.email) {
+        failed++
+        continue
+      }
+
+      const recipientName = request.recipientEntity.firstName + 
+        (request.recipientEntity.lastName ? ` ${request.recipientEntity.lastName}` : "")
+
+      const success = await this.sendFormRequestEmail({
+        formRequestId: request.id,
+        recipientEmail: request.recipientEntity.email,
+        recipientName,
+        formName,
+        taskName,
+        senderName,
+        senderEmail,
+        deadlineDate,
+        boardPeriod,
+        organizationId,
+        accessToken: request.accessToken,
       })
 
       if (success) {

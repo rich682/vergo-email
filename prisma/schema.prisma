@@ -266,6 +266,7 @@ model Entity {
   reminderStates      ReminderState[]
   clientTaskInstances TaskInstance[]             @relation("TaskInstanceClient") // Task instances where this entity is the primary client
   taskInstanceLabels  TaskInstanceContactLabel[] // Item-scoped labels applied to this contact
+  formRequests        FormRequest[]              @relation("FormRequestEntity") // Form requests sent to this entity
 
   @@index([organizationId])
   @@index([email])
@@ -1242,7 +1243,13 @@ model FormRequest {
   organizationId    String
   taskInstanceId    String
   formDefinitionId  String
-  recipientUserId   String
+  
+  // Recipient can be either an internal user OR an external entity (stakeholder)
+  recipientUserId   String?   // Internal user (has login account)
+  recipientEntityId String?   // External stakeholder (no login account)
+  
+  // Access token for external stakeholders to access form without login
+  accessToken       String?   @unique
   
   // Status: PENDING (awaiting response), SUBMITTED (completed), EXPIRED (past deadline)
   status            String    @default("PENDING")
@@ -1268,15 +1275,17 @@ model FormRequest {
   organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   taskInstance      TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
   formDefinition    FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
-  recipientUser     User           @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
+  recipientUser     User?          @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
+  recipientEntity   Entity?        @relation("FormRequestEntity", fields: [recipientEntityId], references: [id])
   attachments       FormAttachment[]
   
-  @@unique([formDefinitionId, taskInstanceId, recipientUserId])
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([recipientUserId])
+  @@index([recipientEntityId])
   @@index([status])
   @@index([nextReminderAt])
+  @@index([accessToken])
 }
 
 // FormAttachment stores files uploaded via form submissions

@@ -3,15 +3,14 @@
 /**
  * Form Fill Page
  * 
- * Authenticated page where users complete form requests.
- * - Requires login
- * - Verifies user is the intended recipient
- * - Displays form fields based on FormDefinition
- * - Handles submission
+ * Page where users complete form requests.
+ * Supports two access modes:
+ * - Token-based: External stakeholders access via ?token=xxx (no login required)
+ * - Login-based: Internal users access after authentication
  */
 
 import { useState, useEffect, use } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   ClipboardList,
   Send,
@@ -89,6 +88,9 @@ export default function FormFillPage({
 }) {
   const { requestId } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const accessToken = searchParams.get("token") // Token for external stakeholder access
+  
   const [pageState, setPageState] = useState<PageState>("loading")
   const [formRequest, setFormRequest] = useState<FormRequestData | null>(null)
   const [formValues, setFormValues] = useState<Record<string, unknown>>({})
@@ -101,18 +103,29 @@ export default function FormFillPage({
 
   useEffect(() => {
     fetchFormRequest()
-  }, [requestId])
+  }, [requestId, accessToken])
 
   const fetchFormRequest = async () => {
     try {
       setPageState("loading")
-      const response = await fetch(`/api/form-requests/${requestId}/request`, {
+      
+      // Use token-based endpoint if token is present (external stakeholder access)
+      // Otherwise use login-based endpoint (internal user access)
+      const apiUrl = accessToken 
+        ? `/api/form-requests/token/${accessToken}`
+        : `/api/form-requests/${requestId}/request`
+      
+      const response = await fetch(apiUrl, {
         credentials: "include",
       })
 
       if (response.status === 401) {
-        // Redirect to login
-        window.location.href = `/auth/signin?callbackUrl=/forms/${requestId}`
+        // Redirect to login only for non-token access
+        if (!accessToken) {
+          window.location.href = `/auth/signin?callbackUrl=/forms/${requestId}`
+          return
+        }
+        setPageState("unauthorized")
         return
       }
 
@@ -257,7 +270,13 @@ export default function FormFillPage({
         }
       }
       
-      const response = await fetch(`/api/form-requests/${requestId}/submit`, {
+      // Use token-based endpoint if token is present (external stakeholder access)
+      // Otherwise use login-based endpoint (internal user access)
+      const submitUrl = accessToken 
+        ? `/api/form-requests/token/${accessToken}`
+        : `/api/form-requests/${requestId}/submit`
+      
+      const response = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

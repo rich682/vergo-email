@@ -1059,6 +1059,7 @@ export function SendRequestModal({
                 : null
             }
             deadlineDate={job.dueDate}
+            stakeholderContacts={stakeholderContacts}
             onSuccess={() => {
               onOpenChange(false)
               onSuccess()

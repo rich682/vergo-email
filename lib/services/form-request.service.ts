@@ -1,11 +1,12 @@
 /**
  * Form Request Service
  * 
- * Business logic for managing form requests sent to users.
+ * Business logic for managing form requests sent to users or external stakeholders.
  * Handles creating requests, tracking submissions, and updating database rows.
  */
 
 import { prisma } from "@/lib/prisma"
+import { randomBytes } from "crypto"
 import type { 
   FormField, 
   FormRequestStatus, 
@@ -22,9 +23,170 @@ const defaultReminderConfig = {
   maxCount: 3,
 }
 
+// Normalized recipient type for both users and entities
+interface FormRecipient {
+  id: string
+  name: string | null
+  email: string
+  isEntity: boolean // true = external stakeholder (Entity), false = internal user (User)
+}
+
+// Generate a secure access token
+function generateAccessToken(): string {
+  return randomBytes(32).toString("hex")
+}
+
 export class FormRequestService {
   /**
-   * Create form requests for multiple recipients
+   * Create form requests for multiple entity recipients (stakeholders)
+   * Pre-creates database rows if the form is linked to a database
+   */
+  static async createBulkForEntities(
+    organizationId: string,
+    taskInstanceId: string,
+    input: {
+      formDefinitionId: string
+      recipientEntityIds: string[]
+      deadlineDate?: Date
+      reminderConfig?: {
+        enabled: boolean
+        frequencyHours?: number
+        maxCount?: number
+      }
+    }
+  ) {
+    const { formDefinitionId, recipientEntityIds, deadlineDate, reminderConfig } = input
+
+    // Get the form definition
+    const formDefinition = await prisma.formDefinition.findFirst({
+      where: {
+        id: formDefinitionId,
+        organizationId,
+      },
+      include: {
+        database: true,
+      },
+    })
+
+    if (!formDefinition) {
+      throw new Error("Form not found or access denied")
+    }
+
+    // Verify all entity recipients exist and belong to the organization
+    const entities = await prisma.entity.findMany({
+      where: {
+        id: { in: recipientEntityIds },
+        organizationId,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+      },
+    })
+
+    if (entities.length !== recipientEntityIds.length) {
+      throw new Error("One or more recipients not found or access denied")
+    }
+
+    // Filter entities that have email addresses
+    const validEntities = entities.filter(e => e.email)
+    if (validEntities.length === 0) {
+      throw new Error("No recipients have valid email addresses")
+    }
+
+    // Get task instance for period information
+    const taskInstance = await prisma.taskInstance.findFirst({
+      where: {
+        id: taskInstanceId,
+        organizationId,
+      },
+      include: {
+        board: true,
+      },
+    })
+
+    if (!taskInstance) {
+      throw new Error("Task not found")
+    }
+
+    // Calculate next reminder time if reminders are enabled
+    const config = { ...defaultReminderConfig, ...reminderConfig }
+    const nextReminderAt = config.enabled && deadlineDate
+      ? new Date(Date.now() + config.frequencyHours * 60 * 60 * 1000)
+      : null
+
+    // Normalize entities to recipients format
+    const recipients: FormRecipient[] = validEntities.map(e => ({
+      id: e.id,
+      name: e.firstName + (e.lastName ? ` ${e.lastName}` : ""),
+      email: e.email!,
+      isEntity: true,
+    }))
+
+    // Pre-create database rows if form is linked to a database
+    let databaseRowIndices: Map<string, number> | null = null
+    if (formDefinition.database) {
+      databaseRowIndices = await this.preCreateDatabaseRows(
+        formDefinition.database.id,
+        formDefinition.fields as FormField[],
+        formDefinition.columnMapping as Record<string, string>,
+        recipients,
+        taskInstance.board,
+        organizationId
+      )
+    }
+
+    // Create form requests for each entity recipient
+    const formRequests = await Promise.all(
+      recipients.map(async (recipient) => {
+        const databaseRowIndex = databaseRowIndices?.get(recipient.id) ?? null
+        const accessToken = generateAccessToken()
+
+        return prisma.formRequest.create({
+          data: {
+            organizationId,
+            taskInstanceId,
+            formDefinitionId,
+            recipientEntityId: recipient.id,
+            accessToken,
+            status: "PENDING",
+            deadlineDate: deadlineDate || null,
+            remindersEnabled: config.enabled,
+            remindersMaxCount: config.maxCount,
+            reminderFrequencyHours: config.frequencyHours,
+            nextReminderAt,
+            databaseRowIndex,
+          },
+          include: {
+            recipientEntity: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            formDefinition: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        })
+      })
+    )
+
+    return {
+      formRequests,
+      count: formRequests.length,
+    }
+  }
+
+  /**
+   * Create form requests for multiple recipients (legacy method for internal users)
    * Pre-creates database rows if the form is linked to a database
    */
   static async createBulk(
@@ -50,7 +212,7 @@ export class FormRequestService {
     }
 
     // Verify all recipients exist and belong to the organization
-    const recipients = await prisma.user.findMany({
+    const users = await prisma.user.findMany({
       where: {
         id: { in: recipientUserIds },
         organizationId,
@@ -62,7 +224,7 @@ export class FormRequestService {
       },
     })
 
-    if (recipients.length !== recipientUserIds.length) {
+    if (users.length !== recipientUserIds.length) {
       throw new Error("One or more recipients not found or access denied")
     }
 
@@ -87,6 +249,14 @@ export class FormRequestService {
       ? new Date(Date.now() + config.frequencyHours * 60 * 60 * 1000)
       : null
 
+    // Normalize users to recipients format
+    const recipients: FormRecipient[] = users.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      isEntity: false,
+    }))
+
     // Pre-create database rows if form is linked to a database
     let databaseRowIndices: Map<string, number> | null = null
     if (formDefinition.database) {
@@ -104,6 +274,7 @@ export class FormRequestService {
     const formRequests = await Promise.all(
       recipients.map(async (recipient) => {
         const databaseRowIndex = databaseRowIndices?.get(recipient.id) ?? null
+        const accessToken = generateAccessToken()
 
         return prisma.formRequest.create({
           data: {
@@ -111,6 +282,7 @@ export class FormRequestService {
             taskInstanceId,
             formDefinitionId,
             recipientUserId: recipient.id,
+            accessToken,
             status: "PENDING",
             deadlineDate: deadlineDate || null,
             remindersEnabled: config.enabled,
@@ -274,6 +446,67 @@ export class FormRequestService {
             email: true,
           },
         },
+        recipientEntity: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        taskInstance: {
+          select: {
+            id: true,
+            name: true,
+            board: {
+              select: {
+                periodStart: true,
+                periodEnd: true,
+                cadence: true,
+              },
+            },
+          },
+        },
+      },
+    })
+  }
+
+  /**
+   * Find form request by access token (for external stakeholder access)
+   */
+  static async findByToken(accessToken: string) {
+    return prisma.formRequest.findFirst({
+      where: {
+        accessToken,
+      },
+      include: {
+        formDefinition: {
+          include: {
+            database: {
+              select: {
+                id: true,
+                name: true,
+                schema: true,
+                rows: true,
+              },
+            },
+          },
+        },
+        recipientUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        recipientEntity: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
         taskInstance: {
           select: {
             id: true,
@@ -311,6 +544,14 @@ export class FormRequestService {
           select: {
             id: true,
             name: true,
+            email: true,
+          },
+        },
+        recipientEntity: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
             email: true,
           },
         },
@@ -355,7 +596,7 @@ export class FormRequestService {
   }
 
   /**
-   * Submit a form response
+   * Submit a form response (for internal users with login)
    */
   static async submit(
     formRequestId: string,
@@ -381,6 +622,57 @@ export class FormRequestService {
       throw new Error("Form request not found or access denied")
     }
 
+    return this.processSubmission(formRequest, responseData)
+  }
+
+  /**
+   * Submit a form response using access token (for external stakeholders)
+   */
+  static async submitByToken(
+    accessToken: string,
+    responseData: Record<string, unknown>
+  ) {
+    // Get the form request by token
+    const formRequest = await prisma.formRequest.findFirst({
+      where: {
+        accessToken,
+      },
+      include: {
+        formDefinition: {
+          include: {
+            database: true,
+          },
+        },
+      },
+    })
+
+    if (!formRequest) {
+      throw new Error("Form request not found or invalid token")
+    }
+
+    return this.processSubmission(formRequest, responseData)
+  }
+
+  /**
+   * Process form submission (shared logic for both user and token-based submissions)
+   */
+  private static async processSubmission(
+    formRequest: {
+      id: string
+      status: string
+      organizationId: string
+      databaseRowIndex: number | null
+      formDefinition: {
+        id: string
+        name: string
+        fields: any
+        settings: any
+        columnMapping: any
+        database: { id: string } | null
+      }
+    },
+    responseData: Record<string, unknown>
+  ) {
     if (formRequest.status === "SUBMITTED" && !formRequest.formDefinition.settings) {
       throw new Error("Form has already been submitted")
     }
@@ -414,7 +706,7 @@ export class FormRequestService {
 
     // Update form request
     const updated = await prisma.formRequest.update({
-      where: { id: formRequestId },
+      where: { id: formRequest.id },
       data: {
         status: "SUBMITTED",
         submittedAt: new Date(),
@@ -432,6 +724,14 @@ export class FormRequestService {
           select: {
             id: true,
             name: true,
+            email: true,
+          },
+        },
+        recipientEntity: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
             email: true,
           },
         },
@@ -555,6 +855,9 @@ export class FormRequestService {
         recipientUser: {
           select: { id: true, name: true, email: true },
         },
+        recipientEntity: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
         formDefinition: {
           select: { name: true },
         },
@@ -602,6 +905,9 @@ export class FormRequestService {
       include: {
         recipientUser: {
           select: { id: true, name: true, email: true },
+        },
+        recipientEntity: {
+          select: { id: true, firstName: true, lastName: true, email: true },
         },
         formDefinition: {
           select: { name: true },
