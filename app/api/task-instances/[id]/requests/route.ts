@@ -146,7 +146,10 @@ export async function GET(
       }
     })
 
-    // Match requests to emailDrafts by creation time proximity
+    // Track which requests have been matched to drafts
+    const matchedRequestIds = new Set<string>()
+    
+    // Match requests to emailDrafts by creation time proximity (expanded to 30 minutes)
     const enrichedRequests = emailDrafts.map(draft => {
       let matchedRequests: typeof requests = []
 
@@ -154,8 +157,11 @@ export async function GET(
         const sentTime = new Date(draft.sentAt).getTime()
         matchedRequests = requests.filter(req => {
           const reqTime = new Date(req.createdAt).getTime()
-          return Math.abs(reqTime - sentTime) < 5 * 60 * 1000
+          // Expanded window to 30 minutes to handle batch sends
+          return Math.abs(reqTime - sentTime) < 30 * 60 * 1000
         })
+        // Track matched requests
+        matchedRequests.forEach(req => matchedRequestIds.add(req.id))
       }
 
       const firstReq = matchedRequests[0]
@@ -185,11 +191,70 @@ export async function GET(
         }))
       }
     })
+    
+    // Find requests that weren't matched to any EmailDraft (standalone requests)
+    const unmatchedRequests = requests.filter(req => !matchedRequestIds.has(req.id))
+    
+    // Group unmatched requests by campaignName to create synthetic "request groups"
+    const unmatchedGroups = new Map<string, typeof requests>()
+    for (const req of unmatchedRequests) {
+      const key = req.messages[0]?.subject || 'Request'
+      if (!unmatchedGroups.has(key)) {
+        unmatchedGroups.set(key, [])
+      }
+      unmatchedGroups.get(key)!.push(req)
+    }
+    
+    // Convert unmatched groups to enriched request format
+    const unmatchedEnriched = Array.from(unmatchedGroups.entries()).map(([subject, reqs]) => {
+      const firstReq = reqs[0]
+      const reminderConfig = firstReq ? {
+        enabled: firstReq.remindersEnabled,
+        frequencyHours: firstReq.remindersFrequencyHours,
+        maxCount: firstReq.remindersMaxCount
+      } : null
+      
+      return {
+        id: `unmatched-${firstReq.id}`,
+        prompt: '',
+        generatedSubject: subject,
+        generatedBody: firstReq.messages[0]?.body || '',
+        generatedHtmlBody: null,
+        subjectTemplate: null,
+        bodyTemplate: null,
+        htmlBodyTemplate: null,
+        status: 'SENT',
+        sentAt: firstReq.createdAt,
+        createdAt: firstReq.createdAt,
+        updatedAt: firstReq.createdAt,
+        deadlineDate: null,
+        user: { id: '', name: 'System', email: '' },
+        taskCount: reqs.length,
+        reminderConfig,
+        recipients: reqs.map(req => ({
+          id: req.id,
+          entityId: req.entity?.id,
+          name: req.entity ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}` : 'Unknown',
+          email: req.entity?.email || 'Unknown',
+          status: req.status,
+          readStatus: req.readStatus,
+          hasReplied: req.readStatus === 'replied',
+          sentMessage: req.messages[0] ? {
+            subject: req.messages[0].subject,
+            body: req.messages[0].body,
+            sentAt: req.messages[0].createdAt
+          } : null
+        }))
+      }
+    })
+    
+    // Combine matched EmailDraft requests with unmatched direct requests
+    const allRequests = [...enrichedRequests, ...unmatchedEnriched]
 
     // Build response
     const response: any = {
       success: true,
-      requests: enrichedRequests
+      requests: allRequests
     }
 
     // Include draft requests if requested
