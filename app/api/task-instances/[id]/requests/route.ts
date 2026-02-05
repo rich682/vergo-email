@@ -177,15 +177,17 @@ export async function GET(
         reminderConfig,
         recipients: matchedRequests.map(req => ({
           id: req.id,
-          entityId: req.entity?.id,
-          name: req.entity ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}` : 'Unknown',
+          entityId: req.entity?.id || null,
+          name: req.entity?.firstName 
+            ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
+            : 'Unknown',
           email: req.entity?.email || 'Unknown',
-          status: req.status,
-          readStatus: req.readStatus,
+          status: req.status || 'NO_REPLY',
+          readStatus: req.readStatus || 'unread',
           hasReplied: req.readStatus === 'replied',
           sentMessage: req.messages[0] ? {
-            subject: req.messages[0].subject,
-            body: req.messages[0].body,
+            subject: req.messages[0].subject || '',
+            body: req.messages[0].body || '',
             sentAt: req.messages[0].createdAt
           } : null
         }))
@@ -233,15 +235,17 @@ export async function GET(
         reminderConfig,
         recipients: reqs.map(req => ({
           id: req.id,
-          entityId: req.entity?.id,
-          name: req.entity ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}` : 'Unknown',
+          entityId: req.entity?.id || null,
+          name: req.entity?.firstName 
+            ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
+            : 'Unknown',
           email: req.entity?.email || 'Unknown',
-          status: req.status,
-          readStatus: req.readStatus,
+          status: req.status || 'NO_REPLY',
+          readStatus: req.readStatus || 'unread',
           hasReplied: req.readStatus === 'replied',
           sentMessage: req.messages[0] ? {
-            subject: req.messages[0].subject,
-            body: req.messages[0].body,
+            subject: req.messages[0].subject || '',
+            body: req.messages[0].body || '',
             sentAt: req.messages[0].createdAt
           } : null
         }))

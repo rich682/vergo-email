@@ -307,7 +307,8 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
   // Mark requests as read when expanded
   useEffect(() => {
     const markRequestsAsRead = async () => {
-      for (const recipient of request.recipients) {
+      const recipients = (request.recipients || []).filter(r => r != null)
+      for (const recipient of recipients) {
         try {
           await fetch(`/api/requests/detail/${recipient.id}/mark-read`, {
             method: "POST",
@@ -328,7 +329,8 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
   // Fetch latest inbound message IDs for recipients who have replied
   useEffect(() => {
     const fetchReplyMessageIds = async () => {
-      const repliedRecipients = request.recipients.filter(r => hasReplied(r.status))
+      const recipients = (request.recipients || []).filter(r => r != null)
+      const repliedRecipients = recipients.filter(r => hasReplied(r.status))
       if (repliedRecipients.length === 0) return
 
       // Fetch messages for each replied recipient's task
@@ -365,7 +367,8 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
     const fetchReminderInfoForRecipients = async () => {
       if (!request.reminderConfig?.enabled) return
       
-      for (const recipient of request.recipients) {
+      const recipients = (request.recipients || []).filter(r => r != null)
+      for (const recipient of recipients) {
         try {
           const response = await fetch(`/api/requests/detail/${recipient.id}/reminders`, {
             credentials: "include"
@@ -498,8 +501,9 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
     : format(new Date(request.createdAt), "MMM d, yyyy 'at' h:mm a")
 
   // Count recipients by reply status
-  const repliedCount = request.recipients.filter(r => hasReplied(r.status)).length
-  const awaitingCount = request.recipients.length - repliedCount
+  const safeRecipients = (request.recipients || []).filter(r => r != null)
+  const repliedCount = safeRecipients.filter(r => hasReplied(r.status)).length
+  const awaitingCount = safeRecipients.length - repliedCount
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -606,7 +610,7 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
       {/* Expanded content - Recipients grid */}
       {expanded && (
         <div className="border-t border-gray-200">
-          {request.recipients.length === 0 ? (
+          {safeRecipients.length === 0 ? (
             <div className="p-4 text-center text-sm text-gray-500">
               No recipients found
             </div>
@@ -626,23 +630,23 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {request.recipients.map((recipient) => (
+                  {safeRecipients.map((recipient) => (
                     <tr key={recipient.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                            {recipient.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                            {(recipient.name || 'U').split(' ').map(n => n[0] || '').join('').toUpperCase().slice(0, 2) || 'U'}
                           </div>
-                          <span className="font-medium text-gray-900">{recipient.name}</span>
+                          <span className="font-medium text-gray-900">{recipient.name || 'Unknown'}</span>
                         </div>
                       </td>
                       <td className="px-4 py-2 text-gray-600">
-                        {recipient.email}
+                        {recipient.email || 'Unknown'}
                       </td>
                       <td className="px-4 py-2">
                         <RecipientStatusDropdown
                           recipientId={recipient.id}
-                          currentStatus={recipient.status}
+                          currentStatus={recipient.status || 'NO_REPLY'}
                           onStatusChange={onRefresh}
                         />
                       </td>

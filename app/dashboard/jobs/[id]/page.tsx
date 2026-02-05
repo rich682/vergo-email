@@ -1096,12 +1096,12 @@ export default function JobDetailPage() {
                       status: r.status,
                       sentAt: r.sentAt,
                       taskCount: r.taskCount,
-                      recipients: r.recipients.map(rec => ({
-                        name: rec.name,
-                        email: rec.email,
-                        status: rec.status,
-                        readStatus: rec.readStatus,
-                        hasReplied: rec.hasReplied
+                      recipients: (r.recipients || []).filter(rec => rec != null).map(rec => ({
+                        name: rec.name || 'Unknown',
+                        email: rec.email || 'Unknown',
+                        status: rec.status || 'NO_REPLY',
+                        readStatus: rec.readStatus || 'unread',
+                        hasReplied: rec.hasReplied || false
                       })),
                       reminderConfig: r.reminderConfig
                     }))}
