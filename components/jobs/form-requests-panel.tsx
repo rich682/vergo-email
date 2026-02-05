@@ -130,10 +130,11 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
 
   // Group by form definition
   const groupedByForm = formRequests.reduce((acc, req) => {
+    if (!req || !req.formDefinition) return acc
     const formId = req.formDefinition.id
     if (!acc[formId]) {
       acc[formId] = {
-        formName: req.formDefinition.name,
+        formName: req.formDefinition.name || 'Unnamed Form',
         requests: [],
       }
     }
@@ -193,7 +194,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
 
               {/* Recipients list */}
               <div className="divide-y divide-gray-100">
-                {group.requests.map((req) => (
+                {(group.requests || []).filter(req => req != null).map((req) => (
                   <div
                     key={req.id}
                     className="px-4 py-3 flex items-center justify-between"
@@ -217,11 +218,11 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                       {/* Recipient info */}
                       <div>
                         <p className="text-sm font-medium text-gray-900">
-                          {req.recipientUser.name || req.recipientUser.email}
+                          {req.recipientUser?.name || req.recipientUser?.email || 'Unknown'}
                         </p>
-                        {req.recipientUser.name && (
+                        {req.recipientUser?.name && (
                           <p className="text-xs text-gray-500">
-                            {req.recipientUser.email}
+                            {req.recipientUser?.email || ''}
                           </p>
                         )}
                       </div>

@@ -587,8 +587,8 @@ export function FormRequestFlow({
                       {isSelected && <Check className="w-3 h-3 text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">{recipient.name}</p>
-                      <p className="text-sm text-gray-500">{recipient.email}</p>
+                      <p className="font-medium text-gray-900">{recipient.name || 'Unknown'}</p>
+                      <p className="text-sm text-gray-500">{recipient.email || ''}</p>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
