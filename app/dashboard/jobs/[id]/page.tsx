@@ -1119,7 +1119,7 @@ export default function JobDetailPage() {
                       <div className="mt-3">
                         <div className="flex gap-3 mb-4">
                           <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                            {getInitials(job.owner.name, job.owner.email)}
+                            {getInitials(job.owner?.name || null, job.owner?.email || '')}
                           </div>
                           <div className="flex-1 relative">
                             <Textarea placeholder="Add a comment..." value={newComment} onChange={handleCommentChange} className="min-h-[80px] resize-none text-sm" />
@@ -1136,10 +1136,10 @@ export default function JobDetailPage() {
                           <div className="space-y-3">
                             {comments.map(comment => (
                               <div key={comment.id} className="flex gap-3">
-                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">{getInitials(comment.author.name, comment.author.email)}</div>
+                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">{getInitials(comment.author?.name || null, comment.author?.email || '')}</div>
                                 <div className="flex-1 bg-gray-50 rounded-lg p-3">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium text-xs text-gray-900">{comment.author.name || comment.author.email.split("@")[0]}</span>
+                                    <span className="font-medium text-xs text-gray-900">{comment.author?.name || comment.author?.email?.split("@")[0] || 'Unknown'}</span>
                                     <span className="text-[10px] text-gray-500">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
                                   </div>
                                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
@@ -1260,10 +1260,10 @@ export default function JobDetailPage() {
                 <CardContent className="p-4">
                   <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Owner</h4>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">{getInitials(job.owner.name, job.owner.email)}</div>
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">{getInitials(job.owner?.name || null, job.owner?.email || '')}</div>
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{job.owner.name || job.owner.email.split("@")[0]}</div>
-                      <div className="text-[10px] text-gray-500">{job.owner.email}</div>
+                      <div className="text-sm font-medium text-gray-900">{job.owner?.name || job.owner?.email?.split("@")[0] || 'Unknown'}</div>
+                      <div className="text-[10px] text-gray-500">{job.owner?.email || ''}</div>
                     </div>
                   </div>
                 </CardContent>
@@ -1310,8 +1310,8 @@ export default function JobDetailPage() {
                       {collaborators.map(c => (
                         <div key={c.id} className="flex items-center justify-between p-2 rounded bg-gray-50 text-xs">
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user.name, c.user.email)}</div>
-                            <span>{c.user.name || c.user.email.split("@")[0]}</span>
+                            <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">{getInitials(c.user?.name || null, c.user?.email || '')}</div>
+                            <span>{c.user?.name || c.user?.email?.split("@")[0] || 'Unknown'}</span>
                           </div>
                           {permissions?.canManageCollaborators && <button onClick={() => handleRemoveCollaborator(c.userId)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>}
                         </div>
