@@ -459,7 +459,7 @@ export default function JobDetailPage() {
       const response = await fetch("/api/org/users", { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
-        setTeamMembers((data.users || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email })))
+        setTeamMembers((data.users || []).filter((u: any) => u != null).map((u: any) => ({ id: u.id, name: u.name || null, email: u.email || '' })))
       }
     } catch (error) {
       console.error("Error fetching team members:", error)
@@ -722,9 +722,10 @@ export default function JobDetailPage() {
   }
 
   const filteredTeamMembers = teamMembers.filter(m => {
+    if (!m) return false
     if (!mentionFilter) return true
     const name = (m.name || "").toLowerCase()
-    const email = m.email.toLowerCase()
+    const email = (m.email || "").toLowerCase()
     return name.includes(mentionFilter) || email.includes(mentionFilter)
   })
 
@@ -759,7 +760,7 @@ export default function JobDetailPage() {
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">
-              {job?.board ? `Back to ${job.board.name}` : "Back to Boards"}
+              {job?.board ? `Back to ${job.board.name || 'Board'}` : "Back to Boards"}
             </span>
           </Link>
           <div className="flex items-center gap-3">
@@ -1292,9 +1293,9 @@ export default function JobDetailPage() {
                                   className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left text-sm disabled:opacity-50"
                                 >
                                   <div className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-white text-[10px]">
-                                    {getInitials(member.name, member.email)}
+                                    {getInitials(member?.name || null, member?.email || '')}
                                   </div>
-                                  <span>{member.name || member.email.split("@")[0]}</span>
+                                  <span>{member?.name || member?.email?.split("@")[0] || 'Unknown'}</span>
                                 </button>
                               ))}
                             {teamMembers.filter(m => m.id !== job?.ownerId && !collaborators.some(c => c.userId === m.id)).length === 0 && (
