@@ -43,6 +43,30 @@ export async function GET(
         }
       : null
 
+    // Helper to safely parse JSON fields that might be strings
+    const safeParseJson = (value: unknown, fallback: unknown = null) => {
+      if (value === null || value === undefined) return fallback
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value)
+        } catch {
+          return fallback
+        }
+      }
+      return value
+    }
+    
+    // Normalize JSON fields
+    const normalizedFormDefinition = {
+      id: formRequest.formDefinition.id,
+      name: formRequest.formDefinition.name,
+      description: formRequest.formDefinition.description,
+      fields: safeParseJson(formRequest.formDefinition.fields, []),
+      settings: safeParseJson(formRequest.formDefinition.settings, {}),
+      columnMapping: safeParseJson(formRequest.formDefinition.columnMapping, {}),
+      databaseId: formRequest.formDefinition.databaseId,
+    }
+
     // Return form request data in a normalized format
     return NextResponse.json({ 
       formRequest: {
@@ -50,9 +74,12 @@ export async function GET(
         status: formRequest.status,
         submittedAt: formRequest.submittedAt,
         deadlineDate: formRequest.deadlineDate,
-        responseData: formRequest.responseData,
-        formDefinition: formRequest.formDefinition,
-        taskInstance: formRequest.taskInstance,
+        responseData: safeParseJson(formRequest.responseData, {}),
+        formDefinition: normalizedFormDefinition,
+        taskInstance: {
+          id: formRequest.taskInstance.id,
+          name: formRequest.taskInstance.name,
+        },
         recipientUser: recipient, // Normalized to same format
       }
     })

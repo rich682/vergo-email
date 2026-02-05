@@ -9,8 +9,8 @@
  * - Login-based: Internal users access after authentication
  */
 
-import { useState, useEffect, use } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams, useParams } from "next/navigation"
 import {
   ClipboardList,
   Send,
@@ -37,6 +37,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { FormField } from "@/lib/types/form"
+
+// Helper to safely convert any value to string for rendering
+const safeString = (value: unknown): string => {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return "[Object]"
+    }
+  }
+  return String(value)
+}
 
 interface FormAttachment {
   id: string
@@ -81,12 +96,9 @@ interface FormRequestData {
 
 type PageState = "loading" | "unauthorized" | "not_found" | "expired" | "submitted" | "ready" | "submitting" | "success" | "error"
 
-export default function FormFillPage({
-  params,
-}: {
-  params: Promise<{ requestId: string }>
-}) {
-  const { requestId } = use(params)
+export default function FormFillPage() {
+  const params = useParams()
+  const requestId = params.requestId as string
   const router = useRouter()
   const searchParams = useSearchParams()
   const accessToken = searchParams.get("token") // Token for external stakeholder access
@@ -144,13 +156,37 @@ export default function FormFillPage({
       }
 
       const data = await response.json()
-      setFormRequest(data.formRequest)
+      
+      // Safely parse JSON fields that might be returned as strings
+      const rawFormRequest = data.formRequest
+      const safeFields = typeof rawFormRequest.formDefinition?.fields === "string"
+        ? JSON.parse(rawFormRequest.formDefinition.fields)
+        : rawFormRequest.formDefinition?.fields || []
+      const safeSettings = typeof rawFormRequest.formDefinition?.settings === "string"
+        ? JSON.parse(rawFormRequest.formDefinition.settings)
+        : rawFormRequest.formDefinition?.settings || {}
+      const safeResponseData = typeof rawFormRequest.responseData === "string"
+        ? JSON.parse(rawFormRequest.responseData)
+        : rawFormRequest.responseData || {}
+      
+      // Normalize the form request data
+      const normalizedFormRequest = {
+        ...rawFormRequest,
+        responseData: safeResponseData,
+        formDefinition: {
+          ...rawFormRequest.formDefinition,
+          fields: safeFields,
+          settings: safeSettings,
+        },
+      }
+      
+      setFormRequest(normalizedFormRequest)
 
       // Initialize form values from existing response data
       const initialValues: Record<string, unknown> = {}
-      const fields = data.formRequest.formDefinition.fields as FormField[]
+      const fields = safeFields as FormField[]
       for (const field of fields) {
-        initialValues[field.key] = data.formRequest.responseData?.[field.key] ?? field.defaultValue ?? ""
+        initialValues[field.key] = safeResponseData?.[field.key] ?? field.defaultValue ?? ""
       }
       setFormValues(initialValues)
       
@@ -175,23 +211,21 @@ export default function FormFillPage({
       }
 
       // Check status
-      if (data.formRequest.status === "SUBMITTED") {
-        const settings = data.formRequest.formDefinition.settings || {}
-        if (!settings.allowEdit) {
+      if (normalizedFormRequest.status === "SUBMITTED") {
+        if (!safeSettings.allowEdit) {
           setPageState("submitted")
           return
         }
       }
 
-      if (data.formRequest.status === "EXPIRED") {
+      if (normalizedFormRequest.status === "EXPIRED") {
         setPageState("expired")
         return
       }
 
       // Check deadline
-      const deadline = data.formRequest.deadlineDate
-      const settings = data.formRequest.formDefinition.settings || {}
-      if (deadline && settings.enforceDeadline && new Date(deadline) < new Date()) {
+      const deadline = normalizedFormRequest.deadlineDate
+      if (deadline && safeSettings.enforceDeadline && new Date(deadline) < new Date()) {
         setPageState("expired")
         return
       }
@@ -500,7 +534,7 @@ export default function FormFillPage({
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
           <h1 className="mt-4 text-xl font-semibold text-gray-900">Error</h1>
-          <p className="mt-2 text-gray-600">{error || "Something went wrong"}</p>
+          <p className="mt-2 text-gray-600">{safeString(error) || "Something went wrong"}</p>
           <Button onClick={fetchFormRequest} className="mt-4">
             Try Again
           </Button>
@@ -525,15 +559,15 @@ export default function FormFillPage({
             </div>
             <div className="flex-1">
               <h1 className="text-xl font-semibold text-gray-900">
-                {formRequest.formDefinition.name}
+                {safeString(formRequest.formDefinition.name)}
               </h1>
               {formRequest.formDefinition.description && (
                 <p className="mt-1 text-gray-600">
-                  {formRequest.formDefinition.description}
+                  {safeString(formRequest.formDefinition.description)}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-500">
-                <span>For: {formRequest.taskInstance.name}</span>
+                <span>For: {safeString(formRequest.taskInstance.name)}</span>
                 {formRequest.deadlineDate && (
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
@@ -550,7 +584,7 @@ export default function FormFillPage({
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
             <div className="flex items-center gap-2 text-red-700">
               <AlertCircle className="w-5 h-5" />
-              <p>{error}</p>
+              <p>{safeString(error)}</p>
             </div>
           </div>
         )}
@@ -561,11 +595,11 @@ export default function FormFillPage({
             {sortedFields.map((field) => (
               <div key={field.key}>
                 <Label htmlFor={field.key}>
-                  {field.label}
+                  {safeString(field.label)}
                   {field.required && <span className="text-red-500 ml-1">*</span>}
                 </Label>
                 {field.helpText && (
-                  <p className="text-xs text-gray-500 mt-0.5">{field.helpText}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{safeString(field.helpText)}</p>
                 )}
                 <div className="mt-1.5">
                   {field.type === "text" && (
@@ -573,7 +607,7 @@ export default function FormFillPage({
                       id={field.key}
                       value={(formValues[field.key] as string) || ""}
                       onChange={(e) => updateField(field.key, e.target.value)}
-                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                      placeholder={`Enter ${safeString(field.label).toLowerCase()}`}
                       className={validationErrors[field.key] ? "border-red-500" : ""}
                     />
                   )}
@@ -582,7 +616,7 @@ export default function FormFillPage({
                       id={field.key}
                       value={(formValues[field.key] as string) || ""}
                       onChange={(e) => updateField(field.key, e.target.value)}
-                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                      placeholder={`Enter ${safeString(field.label).toLowerCase()}`}
                       rows={4}
                       className={validationErrors[field.key] ? "border-red-500" : ""}
                     />
@@ -616,11 +650,20 @@ export default function FormFillPage({
                         <SelectValue placeholder="Select an option" />
                       </SelectTrigger>
                       <SelectContent>
-                        {field.options?.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
+                        {field.options?.map((option, idx) => {
+                          // Handle both string options and object options (e.g., { value, label })
+                          const optionValue = typeof option === "object" && option !== null 
+                            ? (option as any).value || String(option) 
+                            : String(option)
+                          const optionLabel = typeof option === "object" && option !== null 
+                            ? (option as any).label || (option as any).value || String(option)
+                            : String(option)
+                          return (
+                            <SelectItem key={`${optionValue}-${idx}`} value={optionValue}>
+                              {optionLabel}
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                   )}
@@ -725,7 +768,7 @@ export default function FormFillPage({
                   )}
                 </div>
                 {validationErrors[field.key] && (
-                  <p className="text-sm text-red-500 mt-1">{validationErrors[field.key]}</p>
+                  <p className="text-sm text-red-500 mt-1">{safeString(validationErrors[field.key])}</p>
                 )}
               </div>
             ))}

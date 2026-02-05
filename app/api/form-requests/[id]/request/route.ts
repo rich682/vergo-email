@@ -38,7 +38,32 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ formRequest })
+    // Helper to safely parse JSON fields that might be strings
+    const safeParseJson = (value: unknown, fallback: unknown = null) => {
+      if (value === null || value === undefined) return fallback
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value)
+        } catch {
+          return fallback
+        }
+      }
+      return value
+    }
+    
+    // Normalize JSON fields to prevent React rendering errors
+    const normalizedFormRequest = {
+      ...formRequest,
+      responseData: safeParseJson(formRequest.responseData, {}),
+      formDefinition: formRequest.formDefinition ? {
+        ...formRequest.formDefinition,
+        fields: safeParseJson(formRequest.formDefinition.fields, []),
+        settings: safeParseJson(formRequest.formDefinition.settings, {}),
+        columnMapping: safeParseJson(formRequest.formDefinition.columnMapping, {}),
+      } : null,
+    }
+
+    return NextResponse.json({ formRequest: normalizedFormRequest })
   } catch (error: any) {
     console.error("Error fetching form request:", error)
     return NextResponse.json(

@@ -211,9 +211,8 @@ export async function PATCH(
       labels: updatedLabels,
       notes: notes !== undefined ? notes : undefined,
       customFields: customFields !== undefined ? customFields : undefined,
-      type: type || undefined,
       lineageId: lineageId || undefined,
-      // Report configuration (for REPORTS type tasks)
+      // Report configuration
       reportDefinitionId: reportDefinitionId !== undefined ? reportDefinitionId : undefined,
       reportFilterBindings: reportFilterBindings !== undefined ? reportFilterBindings : undefined,
     })

@@ -57,9 +57,8 @@ export interface UpdateTaskInstanceInput {
   customFields?: Record<string, any>
   structuredData?: any
   isSnapshot?: boolean
-  type?: TaskType  // For promoting to recurring
   lineageId?: string | null  // For linking to lineage
-  // Report configuration (for REPORTS type tasks)
+  // Report configuration
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null  // Dynamic filters { columnKey: [values] }
 }
@@ -87,7 +86,6 @@ export interface TaskInstanceWithStats {
   id: string
   organizationId: string
   lineageId: string | null
-  type: TaskType
   ownerId: string
   name: string
   description: string | null
