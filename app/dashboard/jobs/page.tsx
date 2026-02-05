@@ -64,24 +64,16 @@ interface JobOwner {
   email: string
 }
 
-interface JobStakeholder {
-  type: "contact_type" | "group" | "individual"
-  id: string
-  name: string
-}
-
 interface JobLabels {
   tags?: string[]
   period?: string
   workType?: string
-  stakeholders?: JobStakeholder[]
 }
 
 interface Job {
   id: string
   name: string
   description: string | null
-  type?: "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS"
   ownerId: string
   status: string
   dueDate: string | null
@@ -94,7 +86,6 @@ interface Job {
   respondedCount: number
   completedCount: number
   lineageId?: string | null
-  stakeholderCount?: number
   notes?: string | null
   customFields?: Record<string, any>
   collectedItemCount?: number
@@ -153,29 +144,14 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
-  const [newJobType, setNewJobType] = useState<"GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS">("GENERIC")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
-  const [newJobStakeholders, setNewJobStakeholders] = useState<JobStakeholder[]>([])
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   
-  // Stakeholder scope (task category)
-  const [stakeholderScope, setStakeholderScope] = useState<"accounting" | "employee" | "external">("accounting")
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [filteredContacts, setFilteredContacts] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null; isInternal: boolean }[]>([])
-  const [loadingContacts, setLoadingContacts] = useState(false)
-  
   // Team members for owner selection
   const [teamMembers, setTeamMembers] = useState<{ id: string; name: string | null; email: string; isCurrentUser: boolean }[]>([])
-  
-  // Stakeholder options (tags/groups)
-  const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
-  const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
-  const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
-  const [stakeholderSearchResults, setStakeholderSearchResults] = useState<{ id: string; firstName: string; lastName: string | null; email: string | null }[]>([])
-  const [stakeholderType, setStakeholderType] = useState<"contact_type" | "group" | "individual">("contact_type")
   
   // Bulk upload modal
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false)
@@ -351,71 +327,6 @@ export default function JobsPage() {
     }
     fetchOrgSettings()
   }, [])
-
-  // Search stakeholders (contacts/entities)
-  useEffect(() => {
-    if (!stakeholderSearchQuery.trim()) {
-      setStakeholderSearchResults([])
-      return
-    }
-    const searchContacts = async () => {
-      try {
-        const response = await fetch(`/api/entities?search=${encodeURIComponent(stakeholderSearchQuery)}`, { credentials: "include" })
-        if (response.ok) {
-          const data = await response.json()
-          // The entities endpoint returns an array directly
-          const entities = Array.isArray(data) ? data : (data.entities || [])
-          setStakeholderSearchResults(entities.slice(0, 5).map((e: any) => ({
-            id: e.id,
-            firstName: e.firstName,
-            lastName: e.lastName,
-            email: e.email
-          })))
-        }
-      } catch (error) {
-        console.error("Error searching contacts:", error)
-      }
-    }
-    const timer = setTimeout(searchContacts, 300)
-    return () => clearTimeout(timer)
-  }, [stakeholderSearchQuery])
-  
-  // Fetch filtered contacts when tags are selected for employee/external scope
-  useEffect(() => {
-    if (stakeholderScope === "accounting" || selectedTagIds.length === 0) {
-      setFilteredContacts([])
-      return
-    }
-    
-    const fetchFilteredContacts = async () => {
-      setLoadingContacts(true)
-      try {
-        const isInternal = stakeholderScope === "employee"
-        const params = new URLSearchParams()
-        params.set("tagIds", selectedTagIds.join(","))
-        params.set("isInternal", String(isInternal))
-        
-        const response = await fetch(`/api/entities?${params.toString()}`, { credentials: "include" })
-        if (response.ok) {
-          const data = await response.json()
-          const entities = Array.isArray(data) ? data : (data.entities || [])
-          setFilteredContacts(entities.map((e: any) => ({
-            id: e.id,
-            firstName: e.firstName,
-            lastName: e.lastName,
-            email: e.email,
-            isInternal: e.isInternal ?? false
-          })))
-        }
-      } catch (error) {
-        console.error("Error fetching filtered contacts:", error)
-      } finally {
-        setLoadingContacts(false)
-      }
-    }
-    
-    fetchFilteredContacts()
-  }, [stakeholderScope, selectedTagIds])
 
   // ============================================
   // Handlers
@@ -667,15 +578,11 @@ export default function JobsPage() {
 
   const handleCreateJob = async () => {
     // Validation: name, owner, due date required
-    // For employee/external scope, must select tags first
     if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate) return
-    if (stakeholderScope !== "accounting" && selectedTagIds.length === 0) return
     
     setCreating(true)
     setCreateError(null)
     try {
-      const isRecurring = currentBoard && currentBoard.cadence && currentBoard.cadence !== "AD_HOC"
-      
       const response = await fetch("/api/task-instances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -685,11 +592,7 @@ export default function JobsPage() {
           description: newJobDescription.trim() || undefined,
           dueDate: newJobDueDate,
           ownerId: newJobOwnerId,
-          stakeholders: newJobStakeholders.length > 0 ? newJobStakeholders : undefined,
-          boardId: boardId || undefined,
-          type: newJobType,
-          stakeholderScope,
-          createLineage: isRecurring
+          boardId: boardId || undefined
         })
       })
       
@@ -714,28 +617,10 @@ export default function JobsPage() {
 
   const resetCreateForm = () => {
     setNewJobName("")
-    setNewJobType("GENERIC")
     setNewJobDescription("")
     setNewJobDueDate("")
     setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
-    setNewJobStakeholders([])
-    setStakeholderSearchQuery("")
-    setStakeholderSearchResults([])
-    setStakeholderScope("accounting")
-    setSelectedTagIds([])
-    setFilteredContacts([])
     setCreateError(null)
-  }
-
-  const handleAddStakeholder = (type: "contact_type" | "group" | "individual", id: string, name: string) => {
-    if (newJobStakeholders.some(s => s.type === type && s.id === id)) return
-    setNewJobStakeholders(prev => [...prev, { type, id, name }])
-    setStakeholderSearchQuery("")
-    setStakeholderSearchResults([])
-  }
-
-  const handleRemoveStakeholder = (type: string, id: string) => {
-    setNewJobStakeholders(prev => prev.filter(s => !(s.type === type && s.id === id)))
   }
 
   // ============================================
@@ -1044,85 +929,16 @@ export default function JobsPage() {
               )}
               
               <div className="space-y-4 pt-2">
-                {/* Task Category Selection */}
+                {/* Task Name */}
                 <div>
-                  <Label className="text-sm font-medium">Task Category <span className="text-red-500">*</span></Label>
-                  <div className="grid grid-cols-3 gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStakeholderScope("accounting")
-                        setSelectedTagIds([])
-                        setNewJobStakeholders([])
-                      }}
-                      className={`p-3 border rounded-lg text-left transition-colors ${
-                        stakeholderScope === "accounting" 
-                          ? "border-blue-500 bg-blue-50" 
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="font-medium text-sm">Accounting</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Internal team task</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStakeholderScope("employee")
-                        setSelectedTagIds([])
-                        setNewJobStakeholders([])
-                      }}
-                      className={`p-3 border rounded-lg text-left transition-colors ${
-                        stakeholderScope === "employee" 
-                          ? "border-blue-500 bg-blue-50" 
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="font-medium text-sm">Employee Request</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Internal stakeholders</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStakeholderScope("external")
-                        setSelectedTagIds([])
-                        setNewJobStakeholders([])
-                      }}
-                      className={`p-3 border rounded-lg text-left transition-colors ${
-                        stakeholderScope === "external" 
-                          ? "border-blue-500 bg-blue-50" 
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="font-medium text-sm">External Request</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Clients, vendors, etc.</div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Task Name & Type - Side by side */}
-                <div className="grid grid-cols-[1fr,140px] gap-3">
-                  <div>
-                    <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="taskName"
-                      value={newJobName}
-                      onChange={(e) => setNewJobName(e.target.value)}
-                      placeholder="e.g., Collect W-9 forms"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="taskType" className="text-sm">Type</Label>
-                    <select
-                      id="taskType"
-                      value={newJobType}
-                      onChange={(e) => setNewJobType(e.target.value as any)}
-                      className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
-                    >
-                      <option value="GENERIC">Standard</option>
-                      <option value="REPORTS">Report</option>
-                    </select>
-                  </div>
+                  <Label htmlFor="taskName" className="text-sm">Task Name <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="taskName"
+                    value={newJobName}
+                    onChange={(e) => setNewJobName(e.target.value)}
+                    placeholder="e.g., Collect W-9 forms"
+                    className="mt-1"
+                  />
                 </div>
 
                 {/* Owner & Due Date - Side by side */}
@@ -1155,233 +971,7 @@ export default function JobsPage() {
                   </div>
                 </div>
 
-                {/* Stakeholder Selection - Different UI based on scope */}
-                {stakeholderScope === "accounting" ? (
-                  /* Accounting: Optional stakeholder selection */
-                  <div>
-                    <Label className="text-sm">Stakeholders <span className="text-gray-400">(optional)</span></Label>
-                    
-                    {/* Selected stakeholders */}
-                    {newJobStakeholders.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1 mb-2">
-                        {newJobStakeholders.map((s) => (
-                          <span
-                            key={`${s.type}-${s.id}`}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
-                          >
-                            {s.name}
-                            <button onClick={() => handleRemoveStakeholder(s.type, s.id)} className="hover:text-blue-600">×</button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Compact stakeholder selection */}
-                    <div className="flex gap-2 mt-1">
-                      <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                        <SelectTrigger className="w-32 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="contact_type">Type</SelectItem>
-                          <SelectItem value="group">Tag</SelectItem>
-                          <SelectItem value="individual">Person</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      
-                      <div className="flex-1">
-                        {stakeholderType === "contact_type" && (
-                          <Select onValueChange={(v) => {
-                            const type = availableContactTypes.find(t => t.value === v)
-                            if (type && !newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)) {
-                              handleAddStakeholder("contact_type", type.value, type.label)
-                            }
-                          }}>
-                            <SelectTrigger className="text-xs">
-                              <SelectValue placeholder="Select type..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableContactTypes.map(type => (
-                                <SelectItem key={type.value} value={type.value} disabled={newJobStakeholders.some(s => s.type === "contact_type" && s.id === type.value)}>
-                                  {type.label} ({type.count})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        
-                        {stakeholderType === "group" && (
-                          <Select onValueChange={(v) => {
-                            const group = availableGroups.find(g => g.id === v)
-                            if (group && !newJobStakeholders.some(s => s.type === "group" && s.id === group.id)) {
-                              handleAddStakeholder("group", group.id, group.name)
-                            }
-                          }}>
-                            <SelectTrigger className="text-xs">
-                              <SelectValue placeholder="Select tag..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableGroups.map(group => (
-                                <SelectItem key={group.id} value={group.id} disabled={newJobStakeholders.some(s => s.type === "group" && s.id === group.id)}>
-                                  {group.name} ({group.memberCount})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        
-                        {stakeholderType === "individual" && (
-                          <div className="relative">
-                            <Input
-                              placeholder="Search contacts..."
-                              value={stakeholderSearchQuery}
-                              onChange={(e) => setStakeholderSearchQuery(e.target.value)}
-                              className="text-xs"
-                            />
-                            {stakeholderSearchQuery.length >= 2 && stakeholderSearchResults.length > 0 && (
-                              <div className="absolute z-10 w-full mt-1 max-h-32 overflow-y-auto border rounded-md bg-white shadow-lg">
-                                {stakeholderSearchResults.map((contact) => (
-                                  <button
-                                    key={contact.id}
-                                    onClick={() => handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
-                                    disabled={newJobStakeholders.some(s => s.type === "individual" && s.id === contact.id)}
-                                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
-                                  >
-                                    {contact.firstName} {contact.lastName} <span className="text-gray-400">{contact.email}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Employee/External: Tag-first selection */
-                  <div className="space-y-3">
-                    {/* Step 1: Select Tags */}
-                    <div>
-                      <Label className="text-sm">
-                        Select Tags <span className="text-red-500">*</span>
-                        <span className="text-xs text-gray-500 ml-2">
-                          (Filter {stakeholderScope === "employee" ? "internal" : "external"} contacts by tag)
-                        </span>
-                      </Label>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {availableGroups.map(group => (
-                          <button
-                            key={group.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedTagIds(prev => 
-                                prev.includes(group.id) 
-                                  ? prev.filter(id => id !== group.id)
-                                  : [...prev, group.id]
-                              )
-                              // Clear individual stakeholders when changing tags
-                              setNewJobStakeholders([])
-                            }}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                              selectedTagIds.includes(group.id)
-                                ? "bg-blue-100 border-blue-300 text-blue-800"
-                                : "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300"
-                            }`}
-                          >
-                            {group.name} ({group.memberCount})
-                          </button>
-                        ))}
-                        {availableGroups.length === 0 && (
-                          <p className="text-sm text-gray-500">No tags available. Create tags in Contacts first.</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Step 2: Show filtered contacts (only after tags selected) */}
-                    {selectedTagIds.length > 0 && (
-                      <div>
-                        <Label className="text-sm">
-                          Stakeholders
-                          <span className="text-xs text-gray-500 ml-2">
-                            ({filteredContacts.length} {stakeholderScope === "employee" ? "internal" : "external"} contacts in selected tags)
-                          </span>
-                        </Label>
-                        
-                        {/* Selected stakeholders */}
-                        {newJobStakeholders.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2 mb-2">
-                            {newJobStakeholders.map((s) => (
-                              <span
-                                key={`${s.type}-${s.id}`}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
-                              >
-                                {s.name}
-                                <button onClick={() => handleRemoveStakeholder(s.type, s.id)} className="hover:text-blue-600">×</button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {loadingContacts ? (
-                          <div className="text-sm text-gray-500 py-2">Loading contacts...</div>
-                        ) : filteredContacts.length === 0 ? (
-                          <div className="text-sm text-gray-500 py-2">
-                            No {stakeholderScope === "employee" ? "internal" : "external"} contacts found in selected tags.
-                          </div>
-                        ) : (
-                          <div className="mt-2 border rounded-md max-h-40 overflow-y-auto">
-                            <div className="p-2 border-b bg-gray-50 flex items-center justify-between">
-                              <span className="text-xs text-gray-600">Select all</span>
-                              <input
-                                type="checkbox"
-                                checked={filteredContacts.length > 0 && newJobStakeholders.length === filteredContacts.length}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setNewJobStakeholders(filteredContacts.map(c => ({
-                                      type: "individual" as const,
-                                      id: c.id,
-                                      name: `${c.firstName} ${c.lastName || ""}`.trim()
-                                    })))
-                                  } else {
-                                    setNewJobStakeholders([])
-                                  }
-                                }}
-                                className="rounded"
-                              />
-                            </div>
-                            {filteredContacts.map(contact => (
-                              <label
-                                key={contact.id}
-                                className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                              >
-                                <div>
-                                  <span className="text-sm">{contact.firstName} {contact.lastName}</span>
-                                  {contact.email && (
-                                    <span className="text-xs text-gray-400 ml-2">{contact.email}</span>
-                                  )}
-                                </div>
-                                <input
-                                  type="checkbox"
-                                  checked={newJobStakeholders.some(s => s.type === "individual" && s.id === contact.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      handleAddStakeholder("individual", contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())
-                                    } else {
-                                      handleRemoveStakeholder("individual", contact.id)
-                                    }
-                                  }}
-                                  className="rounded"
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Description - Collapsible/optional */}
+                {/* Description - Optional */}
                 <div>
                   <Label htmlFor="description" className="text-sm text-gray-500">Description (optional)</Label>
                   <Input
@@ -1405,7 +995,6 @@ export default function JobsPage() {
                       !newJobName.trim() || 
                       !newJobOwnerId || 
                       !newJobDueDate || 
-                      (stakeholderScope !== "accounting" && selectedTagIds.length === 0) ||
                       creating
                     }
                   >

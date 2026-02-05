@@ -60,11 +60,7 @@ async function wipeUserBoardData(email: string) {
     if (hasJobTables) {
       // Using old Job schema
       
-      // 1. Delete reconciliations
-      const recon = await prisma.$executeRaw`DELETE FROM "Reconciliation" WHERE "organizationId" = ${orgId}`
-      console.log(`  ✓ Deleted ${recon} reconciliations`)
-
-      // 2. Delete collected items
+      // 1. Delete collected items
       const collected = await prisma.$executeRaw`DELETE FROM "CollectedItem" WHERE "organizationId" = ${orgId}`
       console.log(`  ✓ Deleted ${collected} collected items`)
 

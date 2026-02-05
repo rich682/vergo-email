@@ -33,11 +33,11 @@ Manual verification checklist for the Requests RAG (Risk Assessment Grade) pipel
 ## 5-Step Manual Verification Flow
 
 ### 1. Send Request to Yourself
-- Navigate to Checklist (`/dashboard/jobs`)
-- Open an item with stakeholders
+- Navigate to Jobs (`/dashboard/jobs`)
+- Open a job
 - Click "Send Request" to open the modal
-- Send the request to your own email address
-- Verify the email is received
+- Select your own email address as recipient
+- Send the request and verify the email is received
 
 **Expected:** Email sent successfully, request appears under the Item
 

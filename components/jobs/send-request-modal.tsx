@@ -116,7 +116,7 @@ interface SendRequestModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   job: Job
-  stakeholderContacts: StakeholderContact[]
+  stakeholderContacts?: StakeholderContact[] // Optional, no longer used - recipients fetched at request time
   onSuccess: () => void
 }
 
@@ -197,7 +197,7 @@ export function SendRequestModal({
   open,
   onOpenChange,
   job,
-  stakeholderContacts,
+  stakeholderContacts = [], // Optional, no longer used - recipients fetched at request time
   onSuccess,
 }: SendRequestModalProps) {
   const router = useRouter()
@@ -376,25 +376,16 @@ export function SendRequestModal({
     } catch (err: any) {
       console.error("Draft fetch error:", err)
       setError(err.message || "Failed to generate draft")
-      // Still allow editing with fallback
+      // Still allow editing with fallback - start with empty recipients
       setSubject(`Request: ${job.name}`)
       setBody(`Hi {{First Name}},\n\nI'm reaching out regarding ${job.name}.\n\nPlease let me know if you have any questions.\n\nBest regards`)
       setUsedFallback(true)
       
-      // Fetch contact labels for fallback
-      const contactLabelsMap = await fetchContactLabels()
-      setRecipients(
-        stakeholderContacts
-          .filter(c => c.email)
-          .map(r => ({ 
-            ...r, 
-            included: true,
-            labels: contactLabelsMap.get(r.id) || [],
-          }))
-      )
+      // Start with empty recipients - users can search and add
+      setRecipients([])
       setState("ready")
     }
-  }, [job.id, job.name, stakeholderContacts, fetchContactLabels])
+  }, [job.id, job.name, fetchContactLabels])
 
   // Fetch draft and labels when standard mode is selected
   useEffect(() => {
@@ -971,13 +962,11 @@ export function SendRequestModal({
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2">Standard Request</h3>
                 <p className="text-sm text-gray-500 text-center">
-                  Send to stakeholders already assigned to this item. AI will draft the email using item context.
+                  Send an AI-drafted email to selected recipients. Choose from your contacts and team members.
                 </p>
-                {stakeholderContacts.length > 0 && (
-                  <span className="mt-3 text-xs text-blue-600 font-medium">
-                    {stakeholderContacts.length} stakeholder{stakeholderContacts.length !== 1 ? "s" : ""} available
-                  </span>
-                )}
+                <span className="mt-3 text-xs text-blue-600 font-medium">
+                  Select recipients at send time
+                </span>
               </button>
 
               {/* Data Personalization Mode */}
@@ -1059,7 +1048,6 @@ export function SendRequestModal({
                 : null
             }
             deadlineDate={job.dueDate}
-            stakeholderContacts={stakeholderContacts}
             onSuccess={() => {
               onOpenChange(false)
               onSuccess()

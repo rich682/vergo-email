@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDefinition, JobRow, TeamMember } from "./types"
-import { TextCell, StatusCell, PersonCell, DateCell, NotesCell, FilesCell, ResponsesCell, TaskTypeCell } from "./cell-types"
+import { TextCell, StatusCell, PersonCell, DateCell, NotesCell, FilesCell, ResponsesCell } from "./cell-types"
 
 interface EditableCellProps {
   column: ColumnDefinition
@@ -83,13 +83,6 @@ export function EditableCell({ column, job, teamMembers, onUpdate }: EditableCel
           jobId={job.id}
           respondedCount={job.respondedCount || 0}
           totalCount={job.taskCount || 0}
-        />
-      )
-
-    case "taskType":
-      return (
-        <TaskTypeCell
-          value={job.type}
         />
       )
 

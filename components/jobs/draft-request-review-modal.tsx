@@ -77,7 +77,7 @@ interface DraftRequestReviewModalProps {
   onOpenChange: (open: boolean) => void
   taskInstanceId: string
   draft: DraftRequest | null
-  availableContacts: Contact[]
+  availableContacts?: Contact[] // Optional, will fetch if not provided
   onSuccess: () => void
 }
 
@@ -86,7 +86,7 @@ export function DraftRequestReviewModal({
   onOpenChange,
   taskInstanceId,
   draft,
-  availableContacts,
+  availableContacts: propContacts = [],
   onSuccess
 }: DraftRequestReviewModalProps) {
   const [isEditing, setIsEditing] = useState(false)
@@ -94,12 +94,39 @@ export function DraftRequestReviewModal({
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Contacts state - will use prop if provided, otherwise fetch
+  const [contacts, setContacts] = useState<Contact[]>(propContacts)
+  const [loadingContacts, setLoadingContacts] = useState(false)
 
   // Edit form state
   const [editSubject, setEditSubject] = useState("")
   const [editBody, setEditBody] = useState("")
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
   const [remindersApproved, setRemindersApproved] = useState(false)
+
+  // Fetch contacts if none provided
+  useEffect(() => {
+    if (open && propContacts.length === 0 && contacts.length === 0 && !loadingContacts) {
+      setLoadingContacts(true)
+      fetch("/api/recipients/all", { credentials: "include" })
+        .then(res => res.ok ? res.json() : { recipients: [] })
+        .then(data => {
+          const allContacts = (data.recipients || []).map((r: any) => ({
+            id: r.id,
+            firstName: r.firstName || r.name?.split(" ")[0] || "Unknown",
+            lastName: r.lastName || r.name?.split(" ").slice(1).join(" ") || null,
+            email: r.email,
+            companyName: r.companyName || null
+          }))
+          setContacts(allContacts)
+        })
+        .catch(err => console.error("Error fetching contacts:", err))
+        .finally(() => setLoadingContacts(false))
+    } else if (propContacts.length > 0) {
+      setContacts(propContacts)
+    }
+  }, [open, propContacts, contacts.length, loadingContacts])
 
   // Reset form when draft changes
   useEffect(() => {
@@ -220,7 +247,7 @@ export function DraftRequestReviewModal({
 
   if (!draft) return null
 
-  const selectedContact = availableContacts.find(c => c.id === selectedEntityId) || draft.entity
+  const selectedContact = contacts.find(c => c.id === selectedEntityId) || draft.entity
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -293,12 +320,18 @@ export function DraftRequestReviewModal({
                   <SelectValue placeholder="Select recipient..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableContacts.map(contact => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {contact.firstName} {contact.lastName || ""}{" "}
-                      {contact.email && <span className="text-gray-500">({contact.email})</span>}
-                    </SelectItem>
-                  ))}
+                  {loadingContacts ? (
+                    <div className="p-2 text-sm text-gray-500">Loading contacts...</div>
+                  ) : contacts.length === 0 ? (
+                    <div className="p-2 text-sm text-gray-500">No contacts found</div>
+                  ) : (
+                    contacts.map(contact => (
+                      <SelectItem key={contact.id} value={contact.id}>
+                        {contact.firstName} {contact.lastName || ""}{" "}
+                        {contact.email && <span className="text-gray-500">({contact.email})</span>}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             ) : (

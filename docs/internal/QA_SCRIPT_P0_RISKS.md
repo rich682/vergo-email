@@ -11,8 +11,8 @@
 ## 1. Per-Recipient Rate Limiting Test
 
 ### Test 1.1: Verify rate limit blocks duplicate sends
-1. Navigate to a Task with a stakeholder
-2. Click "Send Request" and send to the stakeholder
+1. Navigate to a Task
+2. Click "Send Request" and select a recipient
 3. **Expected**: Email sends successfully
 4. Immediately try to send another request to the same recipient
 5. **Expected**: Error message "Cannot send to [email] - already emailed within the last 24 hours"
@@ -35,8 +35,8 @@
 ## 2. Send Confirmation Dialog Test
 
 ### Test 2.1: Verify confirmation appears
-1. Navigate to a Task with stakeholders
-2. Click "Send Request"
+1. Navigate to a Task
+2. Click "Send Request" and select recipients
 3. Fill in subject/body
 4. Click "Send"
 5. **Expected**: Confirmation dialog appears showing recipient count

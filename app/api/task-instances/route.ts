@@ -118,12 +118,8 @@ export async function POST(request: NextRequest) {
       labels, 
       tags, 
       ownerId, 
-      stakeholders, 
       boardId, 
-      type, 
-      lineageId,
-      createLineage,
-      stakeholderScope // "accounting" | "employee" | "external"
+      lineageId
     } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -133,31 +129,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Build labels object, merging stakeholders if provided
-    let finalLabels = labels || {}
-    if (stakeholders && Array.isArray(stakeholders)) {
-      const hasNoStakeholdersFlag = stakeholders.some(
-        (s: any) => s.type === "contact_type" && s.id === "NONE"
-      )
-      const validStakeholders = stakeholders.filter(
-        (s: any) => !(s.type === "contact_type" && s.id === "NONE")
-      )
-      finalLabels = {
-        ...finalLabels,
-        stakeholders: validStakeholders,
-        noStakeholdersNeeded: hasNoStakeholdersFlag
-      }
-    }
-
-    let finalLineageId = lineageId
-
-    // Skip TaskLineage creation - migration history out of sync
-    // Tasks work fine without lineage (it's optional)
-    if (createLineage && !lineageId) {
-      console.log("[TaskInstance] Skipping lineage creation - migration pending")
-    }
-
-    // 2. Create the TaskInstance
+    // Create the TaskInstance
     const taskInstance = await TaskInstanceService.create({
       organizationId,
       ownerId: ownerId || userId,
@@ -166,11 +138,9 @@ export async function POST(request: NextRequest) {
       clientId: clientId || undefined,
       boardId: boardId || undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
-      labels: Object.keys(finalLabels).length > 0 ? finalLabels : undefined,
+      labels: labels || undefined,
       tags: tags || undefined,
-      type: type || undefined,
-      lineageId: finalLineageId || undefined,
-      stakeholderScope: stakeholderScope || undefined
+      lineageId: lineageId || undefined
     })
 
     return NextResponse.json({

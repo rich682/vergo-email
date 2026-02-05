@@ -44,13 +44,13 @@
 | WF-03 | WF-01c | Password Reset | Direct mapping |
 | WF-04 | WF-02a, WF-02b, WF-02g, WF-02h | Board CRUD operations | Split into granular sub-workflows |
 | WF-05 | WF-02c | View Board with Jobs | Direct mapping |
-| WF-06 | WF-03a | Create Generic Job | Direct mapping |
+| WF-06 | WF-03a | Create Job | Direct mapping |
 | WF-07 | WF-05a, WF-05b, WF-05c | Send Request + Config | Split into granular sub-workflows |
 | WF-08 | WF-05e | Track Request Status | Direct mapping |
-| WF-09 | WF-03b | Create Table Job | Direct mapping |
-| WF-10 | WF-03d | Import / Edit Table Data | Direct mapping |
-| WF-11 | WF-03e | Compare Periods / Variance | Direct mapping |
-| WF-12 | WF-03c | Create Reconciliation Job | Direct mapping |
+| WF-09 | - | ~~Create Table Job~~ | REMOVED |
+| WF-10 | - | ~~Import / Edit Table Data~~ | REMOVED |
+| WF-11 | - | ~~Compare Periods / Variance~~ | REMOVED |
+| WF-12 | - | ~~Create Reconciliation Job~~ | REMOVED |
 | WF-13 | WF-06a, WF-06b, WF-06c, WF-06d | Evidence Collection | Split into granular sub-workflows |
 | WF-14 | WF-05h | Reply Review | Direct mapping |
 | WF-15 | WF-07a, WF-07b, WF-07c | Contact Management | Split into granular sub-workflows |
@@ -102,14 +102,12 @@
 
 **Description**: Creation, configuration, and management of jobs (task instances).
 
+> **Note**: Jobs are now type-agnostic. The `TaskType` enum has been removed. All jobs support all features.
+
 **Sub-Workflows**:
 | Sub-ID | Name | User Goal | Status |
 |--------|------|-----------|--------|
-| WF-03a | Create Generic Job | User creates a standard job for tracking requests | GREEN |
-| WF-03b | Create Table Job | User creates a table-type job with schema | YELLOW |
-| WF-03c | Create Reconciliation Job | User creates a reconciliation job | YELLOW |
-| WF-03d | Import / Edit Table Data | User imports CSV data and edits cells | GREEN |
-| WF-03e | Compare Periods / Variance | User compares current vs prior period data | GREEN |
+| WF-03a | Create Job | User creates a job for tracking work | GREEN |
 | WF-03f | Archive / Restore Job | User archives completed jobs or restores them | GREEN |
 | WF-03g | Delete Job | User permanently removes a job | GREEN |
 
@@ -119,10 +117,11 @@
 
 **Description**: Team collaboration, ownership, and governance controls on jobs.
 
+> **Note**: Stakeholder linking to jobs has been removed. Recipients are now selected at request time.
+
 **Sub-Workflows**:
 | Sub-ID | Name | User Goal | Status |
 |--------|------|-----------|--------|
-| WF-04a | Manage Job Stakeholders | User assigns external contacts as stakeholders | GREEN |
 | WF-04b | Manage Job Collaborators | User adds internal team members to a job | GREEN |
 | WF-04c | Assign / Change Job Owner | User transfers job ownership | GREEN |
 | WF-04d | Set / Manage Job Deadlines | User sets or updates job due dates | GREEN |
@@ -293,14 +292,9 @@
 | WF-02f | PWF-02 | Mark Board Complete | - | `/dashboard/boards` | `PATCH /api/boards/[id]` (status=COMPLETE) |
 | WF-02g | PWF-02 | Archive / Restore Board | WF-04 | `/dashboard/boards` | `PATCH /api/boards/[id]` (archived flag) |
 | WF-02h | PWF-02 | Delete Board | WF-04 | `/dashboard/boards` | `DELETE /api/boards/[id]` |
-| WF-03a | PWF-03 | Create Generic Job | WF-06 | `/dashboard/jobs` | `POST /api/task-instances` |
-| WF-03b | PWF-03 | Create Table Job | WF-09 | `/dashboard/jobs` | `POST /api/task-instances`, `PATCH /api/task-lineages/[id]/schema` |
-| WF-03c | PWF-03 | Create Reconciliation Job | WF-12 | `/dashboard/jobs` | `POST /api/task-instances`, `POST /api/task-instances/[id]/reconciliations` |
-| WF-03d | PWF-03 | Import / Edit Table Data | WF-10 | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/table/import`, `PATCH /api/task-instances/[id]/table/cell` |
-| WF-03e | PWF-03 | Compare Periods / Variance | WF-11 | `/dashboard/jobs/[id]` | `GET /api/task-instances/[id]/table/compare` |
+| WF-03a | PWF-03 | Create Job | WF-06 | `/dashboard/jobs` | `POST /api/task-instances` |
 | WF-03f | PWF-03 | Archive / Restore Job | - | `/dashboard/jobs` | `PATCH /api/task-instances/[id]` (archived flag) |
 | WF-03g | PWF-03 | Delete Job | - | `/dashboard/jobs` | `DELETE /api/task-instances/[id]` |
-| WF-04a | PWF-04 | Manage Job Stakeholders | - | `/dashboard/jobs/[id]` | `GET/POST /api/task-instances/[id]/stakeholders` |
 | WF-04b | PWF-04 | Manage Job Collaborators | - | `/dashboard/jobs/[id]` | `GET/POST/DELETE /api/task-instances/[id]/collaborators` |
 | WF-04c | PWF-04 | Assign / Change Job Owner | - | `/dashboard/jobs/[id]` | `PATCH /api/task-instances/[id]` (ownerId) |
 | WF-04d | PWF-04 | Set / Manage Job Deadlines | - | `/dashboard/jobs/[id]` | `PATCH /api/task-instances/[id]` (deadline) |
@@ -328,8 +322,7 @@
 | WF-07b | PWF-07 | Import Contacts | WF-15 | `/dashboard/contacts` | `POST /api/entities/import`, `POST /api/entities/bulk` |
 | WF-07c | PWF-07 | Group Contacts | WF-15 | `/dashboard/contacts` | `POST /api/groups`, `POST /api/groups/[id]/members` |
 | WF-07d | PWF-07 | Manage Contact Types / Labels | - | `/dashboard/contacts` | `GET/POST /api/contact-types` |
-| WF-07e | PWF-07 | Link Contacts to Jobs | - | `/dashboard/jobs/[id]` | `POST /api/task-instances/[id]/stakeholders` |
-| WF-07f | PWF-07 | Search / Select Contacts for Requests | - | `/dashboard/jobs/[id]` | `GET /api/recipients/search` |
+| WF-07f | PWF-07 | Search / Select Contacts for Requests | - | `/dashboard/jobs/[id]` | `GET /api/recipients/search`, `GET /api/recipients/all` |
 | WF-08a | PWF-08 | Connect Email Account - Gmail | WF-20 | `/dashboard/settings/team` | `GET /api/oauth/gmail`, `GET /api/oauth/gmail/callback` |
 | WF-08b | PWF-08 | Connect Email Account - Microsoft | WF-20 | `/dashboard/settings/team` | `GET /api/oauth/microsoft`, `GET /api/oauth/microsoft/callback` |
 | WF-08c | PWF-08 | Manage Email Senders | - | `/dashboard/settings/team` | `GET /api/email-accounts`, `PATCH /api/email-accounts/[id]` |
@@ -378,9 +371,22 @@
 | Metric | Count |
 |--------|-------|
 | Parent Workflows | 12 |
-| Sub-Workflows | 84 |
-| GREEN Status | 76 |
-| YELLOW Status | 8 |
+| Sub-Workflows | 77 |
+| GREEN Status | 70 |
+| YELLOW Status | 7 |
 | RED Status | 0 |
 | System Automation | 4 |
-| User-Initiated | 79 |
+| User-Initiated | 72 |
+
+## Removed Features (February 2026)
+
+The following features and workflows have been removed:
+
+| Removed | Reason |
+|---------|--------|
+| WF-03b: Create Table Job | Table feature removed |
+| WF-03c: Create Reconciliation Job | Reconciliation feature removed |
+| WF-03d: Import / Edit Table Data | Table feature removed |
+| WF-03e: Compare Periods / Variance | Table feature removed |
+| WF-04a: Manage Job Stakeholders | Stakeholder linking removed - recipients selected at request time |
+| WF-07e: Link Contacts to Jobs | Stakeholder linking removed |

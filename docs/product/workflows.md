@@ -1,7 +1,7 @@
 # Workflows Reference
 
-**Version**: 1.1  
-**Last Updated**: January 22, 2026  
+**Version**: 1.2  
+**Last Updated**: February 2, 2026  
 **Purpose**: User-facing guide to all application workflows
 
 ---
@@ -12,7 +12,7 @@
 |------|-----------------|-------------|
 | **Authentication** | Sign up, sign in, reset password, accept invites | `/signup`, `/auth/*` |
 | **Boards** | Create periods, organize jobs, mark complete | `/dashboard/boards` |
-| **Jobs** | Create tasks, import data, track progress | `/dashboard/jobs` |
+| **Jobs** | Create tasks, track progress, send requests | `/dashboard/jobs` |
 | **Requests** | Send emails, track responses, review replies | `/dashboard/jobs/[id]`, `/dashboard/requests` |
 | **Evidence** | Collect, review, approve, export files | `/dashboard/jobs/[id]` (Collection tab) |
 | **Contacts** | Manage contacts, create groups, import CSV | `/dashboard/contacts` |
@@ -144,16 +144,13 @@ To sign out: Click your avatar in the header, select "Sign Out"
 
 ### WF-02f: Mark Board Complete
 
-**Goal**: Finalize a board and create snapshots for comparison
+**Goal**: Finalize a board period
 
 **Steps**:
 1. Navigate to `/dashboard/boards`
 2. Click on the board you want to complete
 3. Click "Mark Complete" button
 4. Confirm the action
-5. All jobs are snapshotted for period comparison
-
-**Important**: This enables the Compare Periods feature for table jobs
 
 **APIs Used**: `PATCH /api/boards/[id]` (status=COMPLETE)
 
@@ -179,110 +176,23 @@ To Restore:
 
 ## PWF-03: Job Lifecycle
 
-### WF-03a: Create Generic Job
+### WF-03a: Create Job
 
-**Goal**: Create a standard job for tracking requests
+**Goal**: Create a job for tracking work and requests
 
 **Steps**:
 1. Navigate to `/dashboard/jobs`
 2. Click "New Job" button
-3. Select "Generic" type
-4. Enter job name and description
-5. Assign to a board
+3. Enter job name and description
+4. Select owner and due date
+5. Assign to a board (optional)
 6. Click "Create"
 
 **APIs Used**: `POST /api/task-instances`
 
 ---
 
-### WF-03b: Create Table Job
-
-**Goal**: Create a table-type job with structured data
-
-**Status**: YELLOW (Schema wizard not fully integrated)
-
-**Steps**:
-1. Navigate to `/dashboard/jobs`
-2. Click "New Job" button
-3. Select "Table" type
-4. Enter job name
-5. Assign to a board
-6. Click "Create"
-7. Go to job detail, Data tab
-8. Define your schema columns
-9. Import data via CSV
-
-**APIs Used**: `POST /api/task-instances`, `PATCH /api/task-lineages/[id]/schema`
-
----
-
-### WF-03c: Create Reconciliation Job
-
-**Goal**: Create a reconciliation job for matching data sets
-
-**Status**: YELLOW (Matching logic not automated)
-
-**Steps**:
-1. Navigate to `/dashboard/jobs`
-2. Click "New Job" button
-3. Select "Reconciliation" type
-4. Enter job name
-5. Upload reconciliation files
-6. Review matching results
-
-**APIs Used**: `POST /api/task-instances`, `POST /api/task-instances/[id]/reconciliations`
-
----
-
-### WF-03d: Import / Edit Table Data
-
-**Goal**: Import CSV data and edit table cells
-
-**Steps**:
-1. Navigate to `/dashboard/jobs/[id]` (Table job)
-2. Click "Data" tab
-3. Click "Import" button
-4. Select your CSV file
-5. Preview the import, confirm column mapping
-6. Click "Confirm Import"
-7. Edit cells directly in the table
-
-**APIs Used**: `POST /api/task-instances/[id]/table/import`, `PATCH /api/task-instances/[id]/table/cell`
-
----
-
-### WF-03e: Compare Periods / Variance
-
-**Goal**: Compare current period with prior snapshots
-
-**Prerequisite**: Prior board must be marked Complete
-
-**Steps**:
-1. Navigate to `/dashboard/jobs/[id]` (Table job)
-2. Click "Compare" tab
-3. If no prior snapshot: You'll see guidance to mark prior board complete
-4. If snapshot exists: View variance with ADDED/CHANGED/REMOVED indicators
-
-**APIs Used**: `GET /api/task-instances/[id]/table/compare`
-
----
-
 ## PWF-04: Job Collaboration & Governance
-
-### WF-04a: Manage Job Stakeholders
-
-**Goal**: Assign external contacts as stakeholders
-
-**Steps**:
-1. Navigate to `/dashboard/jobs/[id]`
-2. Go to "Stakeholders" section
-3. Click "Add Stakeholder"
-4. Search and select contacts
-5. Save
-
-**APIs Used**: `POST /api/task-instances/[id]/stakeholders`
-
----
 
 ### WF-04b: Manage Job Collaborators
 
@@ -322,13 +232,14 @@ To Restore:
 **Steps**:
 1. Navigate to `/dashboard/jobs/[id]`
 2. Click "Send Request" button
-3. Select recipients from stakeholders
-4. Generate or write email draft
-5. Review the preview
-6. Configure reminders (optional)
-7. Click "Send"
+3. Choose request type (Standard, Data Personalization, or Form)
+4. Search and select recipients
+5. Generate or write email draft
+6. Review the preview
+7. Configure reminders (optional)
+8. Click "Send"
 
-**APIs Used**: `POST /api/task-instances/[id]/request/draft`, `POST /api/quests/[id]/execute`
+**APIs Used**: `POST /api/task-instances/[id]/request/draft`, `POST /api/quests/[id]/execute`, `GET /api/recipients/search`
 
 ---
 

@@ -36,7 +36,6 @@ async function main() {
   const boardCount = await prisma.board.count({ where: { organizationId } })
   const jobCount = await prisma.taskInstance.count({ where: { organizationId } })
   const taskCount = await prisma.request.count({ where: { organizationId } })
-  const reconciliationCount = await prisma.reconciliation.count({ where: { organizationId } })
   const collectedItemCount = await prisma.collectedItem.count({ where: { organizationId } })
   const attachmentCount = await prisma.attachment.count({ where: { organizationId } })
   const emailDraftCount = await prisma.emailDraft.count({ where: { organizationId } })
@@ -45,7 +44,6 @@ async function main() {
   console.log(`   - Boards: ${boardCount}`)
   console.log(`   - Jobs (Tasks): ${jobCount}`)
   console.log(`   - Requests (Tasks): ${taskCount}`)
-  console.log(`   - Reconciliations: ${reconciliationCount}`)
   console.log(`   - Collected Items: ${collectedItemCount}`)
   console.log(`   - Attachments: ${attachmentCount}`)
   console.log(`   - Email Drafts: ${emailDraftCount}`)
@@ -63,13 +61,7 @@ async function main() {
   console.log(`\n🗑️  Starting deletion...`)
 
   // Delete in order to respect foreign keys
-  // 1. Delete reconciliations
-  const deletedReconciliations = await prisma.reconciliation.deleteMany({
-    where: { organizationId }
-  })
-  console.log(`   ✓ Deleted ${deletedReconciliations.count} reconciliations`)
-
-  // 2. Delete collected items
+  // 1. Delete collected items
   const deletedCollectedItems = await prisma.collectedItem.deleteMany({
     where: { organizationId }
   })

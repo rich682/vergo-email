@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { Board, BoardStatus, BoardCadence, JobStatus, TaskType } from "@prisma/client"
+import { Board, BoardStatus, BoardCadence, JobStatus } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 import { formatInTimeZone } from "date-fns-tz"
 import { TaskInstanceService } from "./task-instance.service"
@@ -612,27 +612,24 @@ export class BoardService {
     })
 
     for (const prev of previousInstances) {
-      // Create new instance - use type assertion for report fields until Prisma types are regenerated
+      // Create new instance for next period
       const createData: any = {
         organizationId,
         boardId: nextBoardId,
         lineageId: prev.lineageId,
-        type: prev.type,
         name: prev.name,
         description: prev.description,
         ownerId: prev.ownerId,
         clientId: prev.clientId,
         status: "NOT_STARTED",
-        // Carry forward structured data for TABLE tasks as beginning balance
-        structuredData: prev.type === TaskType.TABLE ? prev.structuredData : undefined,
         customFields: prev.customFields,
         labels: prev.labels,
       }
       
-      // Carry forward report configuration for REPORTS tasks
-      // Note: TaskType.REPORTS is added via migration, using string comparison until types regenerate
-      if ((prev.type as string) === "REPORTS") {
-        createData.reportDefinitionId = (prev as any).reportDefinitionId
+      // Carry forward report configuration if task has a report linked
+      const prevAnyReport = prev as any
+      if (prevAnyReport.reportDefinitionId) {
+        createData.reportDefinitionId = prevAnyReport.reportDefinitionId
       }
       
       const newInstance = await prisma.taskInstance.create({ data: createData })
@@ -668,11 +665,9 @@ export class BoardService {
         }
       }
 
-      // Generate report for REPORTS tasks (snapshot the completed period)
-      // Use type assertion for report fields until Prisma types are regenerated after migration
-      // Note: TaskType.REPORTS is added via migration, using string comparison until types regenerate
+      // Generate report for tasks with a report linked (snapshot the completed period)
       const prevAny = prev as any
-      if ((prev.type as string) === "REPORTS" && prevAny.reportDefinitionId && previousBoard?.periodStart) {
+      if (prevAny.reportDefinitionId && previousBoard?.periodStart) {
         try {
           // Derive period key from board's period start date
           const periodKey = periodKeyFromDate(previousBoard.periodStart, previousBoard.cadence as any || "monthly")

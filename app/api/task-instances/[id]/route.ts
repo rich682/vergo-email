@@ -69,31 +69,13 @@ export async function GET(
     
     const effectiveStatus = customStatus || taskInstance.status
 
-    // Check for prior snapshot if TABLE task and in a recurring board
-    let priorSnapshotExists = false
-    const boardWithPeriod = taskInstance.board as { id: string; name: string; periodStart?: Date | null } | null
-    if (taskInstance.type === 'TABLE' && taskInstance.lineageId && boardWithPeriod?.periodStart) {
-      const prior = await prisma.taskInstance.findFirst({
-        where: {
-          lineageId: taskInstance.lineageId,
-          organizationId,
-          isSnapshot: true,
-          board: {
-            periodStart: { lt: boardWithPeriod.periodStart }
-          }
-        }
-      })
-      priorSnapshotExists = !!prior
-    }
-
     return NextResponse.json({
       success: true,
       taskInstance: {
         ...taskInstance,
         status: effectiveStatus,
         stakeholders,
-        noStakeholdersNeeded,
-        priorSnapshotExists
+        noStakeholdersNeeded
       },
       permissions: {
         canEdit,
@@ -158,9 +140,9 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, type, createLineage, reportDefinitionId, reportFilterBindings } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings } = body
 
-    // 1. Handle TaskLineage promotion if requested
+    // Handle TaskLineage promotion if requested
     let lineageId = existingInstance.lineageId
     if (createLineage && !lineageId) {
       const lineage = await prisma.taskLineage.create({
@@ -168,7 +150,6 @@ export async function PATCH(
           organizationId,
           name: name?.trim() || existingInstance.name,
           description: description?.trim() || existingInstance.description,
-          type: type || existingInstance.type,
           config: {}
         }
       })

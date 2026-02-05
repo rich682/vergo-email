@@ -6,13 +6,12 @@ import { prisma } from "@/lib/prisma"
 // Default column configuration
 const DEFAULT_COLUMNS = [
   { id: "name", type: "text", label: "Task", width: 280, visible: true, order: 0, field: "name", isSystem: true },
-  { id: "type", type: "taskType", label: "Type", width: 120, visible: true, order: 1, field: "type", isSystem: true },
-  { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 2, field: "status", isSystem: true },
-  { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 3, field: "ownerId", isSystem: true },
-  { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 4, field: "dueDate", isSystem: true },
-  { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 5, field: "responses", isSystem: true },
-  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 6, field: "notes", isSystem: false },
-  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 7, field: "collectedItemCount", isSystem: false },
+  { id: "status", type: "status", label: "Status", width: 130, visible: true, order: 1, field: "status", isSystem: true },
+  { id: "owner", type: "person", label: "Owner", width: 100, visible: true, order: 2, field: "ownerId", isSystem: true },
+  { id: "dueDate", type: "date", label: "Due Date", width: 120, visible: true, order: 3, field: "dueDate", isSystem: true },
+  { id: "responses", type: "responses", label: "Responses", width: 100, visible: true, order: 4, field: "responses", isSystem: true },
+  { id: "notes", type: "notes", label: "Notes", width: 180, visible: true, order: 5, field: "notes", isSystem: false },
+  { id: "files", type: "files", label: "Files", width: 100, visible: true, order: 6, field: "collectedItemCount", isSystem: false },
 ]
 
 // Filter out deprecated columns from saved configs

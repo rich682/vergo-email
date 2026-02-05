@@ -78,13 +78,17 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { formDefinitionId, recipientEntityIds, deadlineDate, reminderConfig } = body
+    const { formDefinitionId, recipientUserIds, recipientEntityIds, deadlineDate, reminderConfig } = body
 
     // Validate required fields
     if (!formDefinitionId) {
       return NextResponse.json({ error: "formDefinitionId is required" }, { status: 400 })
     }
-    if (!recipientEntityIds || !Array.isArray(recipientEntityIds) || recipientEntityIds.length === 0) {
+    
+    const hasUserIds = recipientUserIds && Array.isArray(recipientUserIds) && recipientUserIds.length > 0
+    const hasEntityIds = recipientEntityIds && Array.isArray(recipientEntityIds) && recipientEntityIds.length > 0
+    
+    if (!hasUserIds && !hasEntityIds) {
       return NextResponse.json({ error: "At least one recipient is required" }, { status: 400 })
     }
 
@@ -92,22 +96,50 @@ export async function POST(
       organizationId: session.user.organizationId,
       taskInstanceId,
       formDefinitionId,
-      recipientCount: recipientEntityIds?.length,
+      userCount: recipientUserIds?.length || 0,
+      entityCount: recipientEntityIds?.length || 0,
       deadlineDate,
     })
 
-    const result = await FormRequestService.createBulkForEntities(
-      session.user.organizationId,
-      taskInstanceId,
-      {
-        formDefinitionId,
-        recipientEntityIds,
-        deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
-        reminderConfig,
-      }
-    )
+    // Track all created form requests
+    const allFormRequests: any[] = []
+    let totalCount = 0
+
+    // Create form requests for internal users
+    if (hasUserIds) {
+      const userResult = await FormRequestService.createBulk(
+        session.user.organizationId,
+        taskInstanceId,
+        {
+          formDefinitionId,
+          recipientUserIds,
+          deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
+          reminderConfig,
+        }
+      )
+      allFormRequests.push(...userResult.formRequests)
+      totalCount += userResult.count
+      console.log(`[FormRequests] Created ${userResult.count} form requests for users`)
+    }
+
+    // Create form requests for external entities
+    if (hasEntityIds) {
+      const entityResult = await FormRequestService.createBulkForEntities(
+        session.user.organizationId,
+        taskInstanceId,
+        {
+          formDefinitionId,
+          recipientEntityIds,
+          deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
+          reminderConfig,
+        }
+      )
+      allFormRequests.push(...entityResult.formRequests)
+      totalCount += entityResult.count
+      console.log(`[FormRequests] Created ${entityResult.count} form requests for entities`)
+    }
     
-    console.log(`[FormRequests] Created ${result.count} form requests successfully`)
+    console.log(`[FormRequests] Created ${totalCount} total form requests successfully`)
 
     // Send email notifications (non-blocking - don't fail the request if emails fail)
     try {
@@ -125,26 +157,45 @@ export async function POST(
         ? new Date(task.board.periodStart).toLocaleDateString("en-US", { month: "long", year: "numeric" })
         : null
 
-      if (formDefinition && result.formRequests.length > 0) {
-        const emailResult = await FormNotificationService.sendBulkFormRequestEmailsForEntities(
-          result.formRequests,
-          formDefinition.name,
-          task.name,
-          sender?.name || null,
-          sender?.email || "",
-          deadlineDate ? new Date(deadlineDate) : null,
-          boardPeriod,
-          session.user.organizationId
-        )
-        
-        console.log(`[FormRequests] Sent ${emailResult.sent} emails, ${emailResult.failed} failed`)
+      if (formDefinition && allFormRequests.length > 0) {
+        // Send emails for user form requests
+        const userRequests = allFormRequests.filter(fr => fr.recipientUser)
+        if (userRequests.length > 0) {
+          const emailResult = await FormNotificationService.sendBulkFormRequestEmails(
+            userRequests,
+            formDefinition.name,
+            task.name,
+            sender?.name || null,
+            sender?.email || "",
+            deadlineDate ? new Date(deadlineDate) : null,
+            boardPeriod,
+            session.user.organizationId
+          )
+          console.log(`[FormRequests] Sent ${emailResult.sent} emails to users, ${emailResult.failed} failed`)
+        }
+
+        // Send emails for entity form requests
+        const entityRequests = allFormRequests.filter(fr => fr.recipientEntity)
+        if (entityRequests.length > 0) {
+          const emailResult = await FormNotificationService.sendBulkFormRequestEmailsForEntities(
+            entityRequests,
+            formDefinition.name,
+            task.name,
+            sender?.name || null,
+            sender?.email || "",
+            deadlineDate ? new Date(deadlineDate) : null,
+            boardPeriod,
+            session.user.organizationId
+          )
+          console.log(`[FormRequests] Sent ${emailResult.sent} emails to entities, ${emailResult.failed} failed`)
+        }
       }
     } catch (emailError: any) {
       // Log but don't fail the request - form requests were created successfully
       console.error("[FormRequests] Email sending failed:", emailError.message)
     }
 
-    return NextResponse.json(result, { status: 201 })
+    return NextResponse.json({ count: totalCount, formRequests: allFormRequests }, { status: 201 })
   } catch (error: any) {
     console.error("Error creating form requests:", error.message, error.stack)
     return NextResponse.json(

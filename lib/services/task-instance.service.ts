@@ -14,7 +14,7 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import { JobStatus, TaskStatus, UserRole, TaskType } from "@prisma/client"
+import { JobStatus, TaskStatus, UserRole } from "@prisma/client"
 
 export interface TaskInstanceStakeholder {
   type: "contact_type" | "group" | "individual"
@@ -32,7 +32,6 @@ export interface TaskInstanceLabels {
 export interface CreateTaskInstanceInput {
   organizationId: string
   lineageId?: string
-  type?: TaskType
   ownerId: string  // Required: accountable user
   name: string
   description?: string
@@ -41,7 +40,6 @@ export interface CreateTaskInstanceInput {
   dueDate?: Date
   labels?: TaskInstanceLabels
   tags?: string[]
-  stakeholderScope?: "accounting" | "employee" | "external" // Task category for stakeholder workflows
 }
 
 export interface UpdateTaskInstanceInput {
@@ -220,7 +218,6 @@ export class TaskInstanceService {
       data: {
         organizationId: input.organizationId,
         lineageId: input.lineageId,
-        type: input.type || TaskType.GENERIC,
         ownerId: input.ownerId,
         name: input.name,
         description: input.description,
@@ -228,8 +225,7 @@ export class TaskInstanceService {
         boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels as any,
-        status: JobStatus.NOT_STARTED,
-        stakeholderScope: input.stakeholderScope || null
+        status: JobStatus.NOT_STARTED
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },

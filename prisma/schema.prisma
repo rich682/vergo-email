@@ -19,12 +19,8 @@ enum UserRole {
   VIEWER
 }
 
-enum TaskType {
-  GENERIC
-  RECONCILIATION
-  TABLE
-  REPORTS
-}
+// TaskType enum removed - tasks are now type-agnostic
+// Reports are available on any task via reportDefinitionId
 
 enum TaskStatus {
   // Current active statuses
@@ -153,8 +149,6 @@ model Organization {
   subtasks                Subtask[]
   attachments             Attachment[]
   emailQueue              EmailQueue[]
-  reconciliations         Reconciliation[]
-  reconciliationTemplates ReconciliationTemplate[]
   databases               Database[]
   reportDefinitions       ReportDefinition[]
   generatedReports        GeneratedReport[]
@@ -170,8 +164,7 @@ model TaskLineage {
   organizationId String
   name           String
   description    String?
-  type           TaskType
-  config         Json? // Schema for TABLE, Match rules for RECONCILIATION
+  config         Json? // Optional configuration for lineage templates
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -231,7 +224,6 @@ model User {
   uploadedAttachments        Attachment[]               @relation("AttachmentUploader")
   reviewedMessages           Message[]                  @relation("MessageReviewer")
   reviewAuditLogs            ReviewAuditLog[]           @relation("ReviewAuditAuthor")
-  reconciliations            Reconciliation[]           @relation("ReconciliationCreator")
   connectedEmailAccounts     ConnectedEmailAccount[]
   createdDatabases           Database[]                 @relation("DatabaseCreator")
   importedDatabases          Database[]                 @relation("DatabaseImporter")
@@ -336,7 +328,6 @@ model TaskInstance {
   id             String    @id @default(cuid())
   organizationId String
   lineageId      String? // Link to parent lineage (template)
-  type           TaskType  @default(GENERIC)
   name           String // Human-readable job name (e.g., "Tax Planning - Year End 2024")
   description    String? // Optional detailed description
   clientId       String? // Optional: primary client (Entity) for this job
@@ -348,15 +339,12 @@ model TaskInstance {
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
   notes          String? // User notes for this task
   customFields   Json? // Custom column data for configurable table
-  structuredData Json? // Row-level data for TABLE tasks or results for RECONCILIATION
+  structuredData Json? // Structured data storage
   isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
   
-  // Report configuration (for REPORTS type tasks)
+  // Report configuration - any task can have a report linked
   reportDefinitionId     String?
   reportFilterBindings   Json?    // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
-  
-  // Stakeholder scope for task type categorization
-  stakeholderScope   String?  // "accounting" | "employee" | "external"
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -374,7 +362,6 @@ model TaskInstance {
   collectedItems  CollectedItem[] // Evidence/attachments collected for this job
   subtasks        Subtask[] // Checklist subitems within this job
   attachments     Attachment[] // Direct file attachments on this job
-  reconciliations Reconciliation[] // Document reconciliation workflows
   generatedReports GeneratedReport[] // Reports generated for this task
   formRequests     FormRequest[] // Form requests sent for this task
 
@@ -1069,101 +1056,6 @@ model AIRecommendation {
   @@index([organizationId, createdAt])
   @@index([messageId])
   @@index([organizationId, campaignType, agreedWithAI])
-}
-
-// Reconciliation status for the LLM-powered document comparison workflow
-enum ReconciliationStatus {
-  PENDING // Documents uploaded, waiting for processing
-  PROCESSING // LLM is analyzing the documents
-  COMPLETED // Analysis complete with results
-  FAILED // Processing failed
-}
-
-// Reconciliation represents a comparison between two documents (e.g., Excel spreadsheets)
-// Used for AI-powered document reconciliation workflows in accounting
-model Reconciliation {
-  id             String @id @default(cuid())
-  organizationId String
-  taskInstanceId String @map("jobId") // Parent task instance (TaskInstance)
-
-  // ANCHOR Document (Source of Truth) - stored in document1 for backwards compatibility
-  document1Key      String // Storage key (blob)
-  document1Name     String // Original filename
-  document1Url      String? // Cached URL for preview
-  document1Size     Int? // File size in bytes
-  document1MimeType String? // MIME type (application/pdf, image/png, etc.)
-
-  // FIRST Supporting Document - stored in document2 for backwards compatibility
-  document2Key      String // Storage key (blob)
-  document2Name     String // Original filename
-  document2Url      String? // Cached URL for preview
-  document2Size     Int? // File size in bytes
-  document2MimeType String? // MIME type (application/pdf, image/png, etc.)
-
-  // Additional supporting documents (beyond document2)
-  // Array of { key, name, url, size, uploadOrder, mimeType }
-  supportingDocuments Json?
-
-  // Accounting context
-  anchorRole      String? // "General Ledger", "Control Account", "AP Balance"
-  boardPeriodName String? // Cached board name + period for context
-
-  // Processing status
-  status       ReconciliationStatus @default(PENDING)
-  errorMessage String? // Error details if failed
-
-  // Results (populated after processing)
-  summary        String? // Human-readable summary
-  matchedCount   Int? // Number of matched items
-  unmatchedCount Int? // Number of unmatched items
-  totalRows      Int? // Total rows analyzed
-  result         Json? // Detailed reconciliation result (includes reconciliationIntent)
-  discrepancies  Json? // List of discrepancies found
-
-  // V1 Enhanced AI output
-  confidenceScore    Int? // 0-100 accounting confidence
-  keyFindings        Json? // Bulleted findings array
-  suggestedNextSteps Json? // Bulleted next steps array
-
-  // Recurring template reference
-  templateId String? // Links to ReconciliationTemplate
-
-  // Metadata
-  createdById String
-  processedAt DateTime? // When processing completed
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskInstance TaskInstance            @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  createdBy    User                    @relation("ReconciliationCreator", fields: [createdById], references: [id])
-  template     ReconciliationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  @@index([organizationId])
-  @@index([taskInstanceId])
-  @@index([status])
-  @@index([organizationId, taskInstanceId])
-  @@index([templateId])
-}
-
-// ReconciliationTemplate - stores configuration for recurring reconciliations
-model ReconciliationTemplate {
-  id               String   @id @default(cuid())
-  organizationId   String
-  name             String // "Monthly Bank Recon", derived from task name
-  anchorRole       String // "General Ledger", "Control Account"
-  supportingRoles  Json // ["Bank Statement", "Credit Card Statement"]
-  defaultIntent    String? // "ROW_LEVEL", "TOTALS_ONLY", etc.
-  priorExplanation String? // Reference explanation from last successful run
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reconciliations Reconciliation[]
-
-  @@unique([organizationId, name])
-  @@index([organizationId])
 }
 
 // Database represents a structured data store with schema and rows

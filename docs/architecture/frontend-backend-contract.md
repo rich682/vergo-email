@@ -19,60 +19,53 @@
 
 ---
 
-## Job Capabilities (Non-Schema Concept)
+## Job Model (Simplified)
 
-> **This is a documentation-only concept.** No schema changes are required. All existing code continues to work unchanged.
+> **Updated February 2026**: Task types and stakeholder linking have been removed for a cleaner, more flexible model.
 
 ### Core Principle
 
-**Jobs are containers; capabilities define behavior.**
+**Jobs are simple containers. Features are selected at request time.**
 
-A Job (TaskInstance) is the atomic unit in the system. Rather than having different "types" of jobs, we think of jobs as containers that have one or more **capabilities** enabled.
+A Job (TaskInstance) is a simple unit of work. There are no "types" of jobs - all jobs have access to the same features:
+- Requests (email communication)
+- Evidence collection
+- Reports
+- Forms
 
-### Capability Definitions
+Recipients are selected when sending requests, not pre-assigned to jobs.
 
-| Capability | Description | API Route Patterns | Workflows |
-|------------|-------------|-------------------|-----------|
-| **Core** | Basic job operations available to all jobs | `/api/task-instances/[id]`, `/api/task-instances/[id]/collaborators`, `/api/task-instances/[id]/comments` | WF-03a, WF-03f, WF-03g, WF-04a-h |
-| **Table** | Structured data, schema, import, variance | `/api/task-instances/[id]/table/*`, `/api/task-lineages/[id]/schema` | WF-03b, WF-03d, WF-03e |
-| **Reconciliation** | Document comparison, anchor/supporting model | `/api/task-instances/[id]/reconciliations/*` | WF-03c, WF-03h, WF-03i |
+### Available Features
+
+| Feature | Description | API Route Patterns | Workflows |
+|---------|-------------|-------------------|-----------|
+| **Core** | Basic job operations | `/api/task-instances/[id]`, `/api/task-instances/[id]/collaborators`, `/api/task-instances/[id]/comments` | WF-03a, WF-03f, WF-03g, WF-04b-h |
 | **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-r |
 | **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
+| **Report** | Attach report definitions to jobs | `/api/reports/*`, `/api/generated-reports/*` | WF-12a-k |
+| **Form** | Send form requests for data collection | `/api/task-instances/[id]/form-requests/*`, `/api/forms/*` | WF-13a-f |
 
-### UI Terminology Mapping
+### Removed Concepts
 
-Some internal terms differ from user-facing labels to reflect accounting workflows:
+The following have been removed from the system:
 
-| Internal Term | User-Facing Label | Notes |
-|--------------|-------------------|-------|
-| `TaskType.DATABASE` | **Variance** | Displays as "Variance" in badges, dropdowns, and UI. Internal enum remains `DATABASE`. |
-| `TaskType.TABLE` | **Table / Variance Task** | Combined option in job creation. |
-
-> **Important**: This is a **language change only**. Backend enums, API payloads, and service logic remain unchanged.
-
-### Why This Model
-
-1. **No new "Job types"**: Don't create `ReconciliationJob`, `TableJob`, etc. Use capabilities instead.
-2. **Capabilities are independent**: Request capability doesn't depend on Table capability.
-3. **Safe refactoring**: Target a capability without affecting the Job container.
-4. **Cursor safety**: Reduces AI hallucination of new abstractions.
-
-### What Is NOT a Capability
-
-- **Approval workflows**: OUT OF SCOPE for this taxonomy. Will be layered separately in a future phase.
-- **Board operations**: Boards contain Jobs but are not Job capabilities.
-- **Authentication/Contacts**: System-level concerns, not Job behavior.
+| Removed | Reason |
+|---------|--------|
+| `TaskType` enum | All jobs are now type-agnostic |
+| `stakeholderScope` field | Stakeholders are not linked to tasks |
+| `stakeholders` on jobs | Recipients selected at request time |
+| Table/Variance feature | Removed (use Databases instead) |
+| Reconciliation feature | Removed |
 
 ### Developer Guardrails
 
 ```
 CRITICAL: Job Stability Rules
 
-1. Do NOT introduce new Job types. Extend via capabilities.
+1. Jobs are simple containers - do NOT add "type" concepts back.
 2. Do NOT rename Job, Board, TaskInstance, or Organization.
-3. Do NOT refactor the Job container itself. Target capabilities.
-4. Capabilities may evolve independently.
-5. Approval logic is OUT OF SCOPE for this version.
+3. Recipients are selected at request time, NOT pre-assigned to jobs.
+4. Features are opt-in per request, not per job.
 ```
 
 ---
@@ -134,7 +127,7 @@ Draft requests are surfaced in the **Job Detail Header** (not in table cells):
 
 1. **Drafts are NOT auto-sent**: User must explicitly send each draft
 2. **Copy-on-write content**: Source request content is referenced until user edits
-3. **Recipients must be reviewed**: Stakeholders may change between periods
+3. **Recipients must be reviewed**: Recipients may need to change between periods
 4. **Reminders require re-approval**: User must opt-in to reminders for each draft
 
 ### Related Workflows
@@ -302,8 +295,8 @@ Column keys starting with `_` are **not allowed** in schema definitions. This re
 
 | Page | URL | Parent Workflow | Sub-Workflows | Key APIs |
 |------|-----|-----------------|---------------|----------|
-| Jobs List | `/dashboard/jobs` | PWF-03: Job Lifecycle | WF-02c, WF-03a, WF-03b, WF-03c, WF-03f, WF-03g | `/api/task-instances`, `/api/boards/*`, `/api/org/team` |
-| Job Detail | `/dashboard/jobs/[id]` | PWF-03, PWF-04, PWF-05, PWF-06 | WF-03d, WF-03e, WF-04a-h, WF-05a-c, WF-06a-d | `/api/task-instances/[id]/*`, `/api/requests/*` |
+| Jobs List | `/dashboard/jobs` | PWF-03: Job Lifecycle | WF-02c, WF-03a, WF-03f, WF-03g | `/api/task-instances`, `/api/boards/*`, `/api/org/team` |
+| Job Detail | `/dashboard/jobs/[id]` | PWF-03, PWF-04, PWF-05, PWF-06 | WF-04b-h, WF-05a-c, WF-06a-d | `/api/task-instances/[id]/*`, `/api/requests/*` |
 | Boards | `/dashboard/boards` | PWF-02: Board Management | WF-02a, WF-02b, WF-02d, WF-02e, WF-02f, WF-02g, WF-02h | `/api/boards`, `/api/boards/[id]`, `/api/boards/team-members` |
 | Contacts | `/dashboard/contacts` | PWF-07: Contact Management | WF-07a, WF-07b, WF-07c, WF-07d | `/api/entities/*`, `/api/groups/*`, `/api/contacts/*` |
 | Requests | `/dashboard/requests` | PWF-05: Requests & Communication | WF-05d, WF-05e, WF-05f, WF-05g | `/api/requests/detail/*`, `/api/boards` |
@@ -425,7 +418,6 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-instances/[id]/comments` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:421,755` |
 | `/api/task-instances/[id]/contact-labels` | GET, POST, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/contact-labels-table.tsx:28` |
 | `/api/task-instances/[id]/labels` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:246` |
-| `/api/task-instances/[id]/reconciliations` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:433` |
 | `/api/task-instances/[id]/request/dataset` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:283,326` |
 | `/api/task-instances/[id]/request/dataset/draft` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:161,203` |
 | `/api/task-instances/[id]/request/dataset/send` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:366` |
@@ -434,19 +426,12 @@ Routes with verified `fetch()` calls from `app/` or `components/`.
 | `/api/task-instances/[id]/request/refine` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:434` |
 | `/api/task-instances/[id]/request/reminder-preview` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:397` |
 | `/api/task-instances/[id]/requests` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:407`, `components/jobs/draft-request-review-modal.tsx:122,154,181` (GET supports `?includeDrafts=true`, POST handles draft send/update, DELETE for draft deletion) |
-| `/api/task-instances/[id]/table/cell` | PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:135` |
-| `/api/task-instances/[id]/table/compare` | GET | FRONTEND | DIRECT_FETCH | `components/jobs/table/compare-view.tsx:81` |
-| `/api/task-instances/[id]/table/import` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/table/import-modal.tsx:328` |
-| `/api/task-instances/[id]/table/preview-import` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/table/import-modal.tsx:297` |
-| `/api/task-instances/[id]/table/rows` | GET | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:67` |
-| `/api/task-instances/[id]/table/signoff` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:126,137` |
 | `/api/task-instances/[id]/timeline` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:445` |
 | `/api/task-instances/ai-generate` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-bulk-upload-modal.tsx:79` |
 | `/api/task-instances/ai-summary` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-summary-panel.tsx:41` |
 | `/api/task-instances/bulk-import` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-bulk-upload-modal.tsx:217` |
 | `/api/task-instances/column-config` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/configurable-table/configurable-table.tsx:186,209` |
 | `/api/task-instances/template` | GET | FRONTEND | URL_GENERATION | `components/jobs/ai-bulk-upload-modal.tsx:310` (window.open) |
-| `/api/task-lineages/[id]/schema` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/table/data-tab.tsx:93,116` |
 | `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
 | `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
 | `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
@@ -585,7 +570,6 @@ These routes support Quest functionality behind feature flags:
 | `/api/requests/detail/[id]/reminders` | WF-05e | `request-card-expandable.tsx:214,229` | Reminder info fetch + cancel |
 | `/api/task-instances/[id]/collection/bulk` | WF-06c | `collection-tab.tsx:168` | Bulk approve/reject/delete actions |
 | `/api/task-instances/[id]/collection/export` | WF-06d | `collection-tab.tsx:324` | Export All button |
-| `/api/task-instances/[id]/table/signoff` | WF-03d | `data-tab.tsx:126,137` | Dataset signoff UI |
 #### Duplicate/Legacy (2)
 
 | Route | Issue | Recommendation |
@@ -613,7 +597,6 @@ Only items with workflow justification and verified no current frontend caller.
 | `/api/requests/detail/[id]/reminders` | WF-05e | WIRED | `components/jobs/request-card-expandable.tsx:214,229` |
 | `/api/task-instances/[id]/collection/export` | WF-06d | WIRED | `components/jobs/collection/collection-tab.tsx:324` |
 | `/api/task-instances/[id]/collection/bulk` | WF-06c | WIRED | `components/jobs/collection/collection-tab.tsx:168` |
-| `/api/task-instances/[id]/table/signoff` | WF-03d | WIRED | `components/jobs/table/data-tab.tsx:126,137` |
 
 ### Remaining
 

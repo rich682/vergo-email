@@ -1,12 +1,11 @@
 import { prisma } from "@/lib/prisma"
-import { TaskType, TaskLineage } from "@prisma/client"
+import { TaskLineage } from "@prisma/client"
 
 export interface CreateTaskLineageInput {
   organizationId: string
   name: string
   description?: string
-  type: TaskType
-  config?: any // Schema for TABLE, match rules for RECONCILIATION
+  config?: any // Optional configuration for lineage templates
 }
 
 export class TaskLineageService {
@@ -19,7 +18,6 @@ export class TaskLineageService {
         organizationId: input.organizationId,
         name: input.name,
         description: input.description,
-        type: input.type,
         config: input.config || {}
       }
     })

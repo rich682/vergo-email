@@ -55,9 +55,6 @@ import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 // Collection components
 import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 
-// Reconciliation components
-import { ReconciliationUploadModal } from "@/components/jobs/reconciliation-upload-modal"
-import { ReconciliationResultCard } from "@/components/jobs/reconciliation-result-card"
 
 // Request card with expandable recipient grid
 import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
@@ -106,11 +103,6 @@ interface JobComment {
   author: { id: string; name: string | null; email: string }
 }
 
-interface JobStakeholder {
-  type: "contact_type" | "group" | "individual"
-  id: string
-  name: string
-}
 
 interface Job {
   id: string
@@ -118,14 +110,11 @@ interface Job {
   description: string | null
   ownerId: string
   status: string
-  type: "GENERIC" | "RECONCILIATION" | "TABLE" | "REPORTS"
   lineageId: string | null
   dueDate: string | null
   labels: any | null
   boardId: string | null
   board?: { id: string; name: string; cadence: string | null; periodStart: string | null; periodEnd: string | null } | null
-  stakeholders?: JobStakeholder[]
-  noStakeholdersNeeded?: boolean
   createdAt: string
   updatedAt: string
   owner: JobOwner
@@ -221,16 +210,6 @@ interface ContactType { value: string; label: string; count: number }
 interface Group { id: string; name: string; memberCount: number }
 interface Entity { id: string; firstName: string; lastName: string | null; email: string | null; companyName: string | null }
 
-interface StakeholderContact {
-  id: string
-  firstName: string
-  lastName: string | null
-  email: string | null
-  companyName: string | null
-  stakeholderType: "contact_type" | "group" | "individual"
-  stakeholderName: string
-}
-
 // ============================================
 // Item Mode Detection
 // ============================================
@@ -277,15 +256,14 @@ export default function JobDetailPage() {
   const jobId = params.id as string
 
   // Get initial tab from URL query parameter
-  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "reconciliation" | "compare" | "report" | null
+  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "report" | null
 
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "reconciliation" | "compare" | "report">(initialTab || "overview")
-  const [priorSnapshotExists, setPriorSnapshotExists] = useState(false)
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report">(initialTab || "overview")
   
   // Inline editing states
   const [editingName, setEditingName] = useState(false)
@@ -298,9 +276,6 @@ export default function JobDetailPage() {
   const [draftRequests, setDraftRequests] = useState<any[]>([])
   const [comments, setComments] = useState<JobComment[]>([])
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
-  const [stakeholders, setStakeholders] = useState<JobStakeholder[]>([])
-  const [stakeholderContacts, setStakeholderContacts] = useState<StakeholderContact[]>([])
-  const [noStakeholdersNeeded, setNoStakeholdersNeeded] = useState(false)
 
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -322,20 +297,8 @@ export default function JobDetailPage() {
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
   const [collectionExpanded, setCollectionExpanded] = useState(false)
-  const [reconciliationsExpanded, setReconciliationsExpanded] = useState(false)
-  const [isReconciliationModalOpen, setIsReconciliationModalOpen] = useState(false)
-  const [reconciliations, setReconciliations] = useState<any[]>([])
   
 
-  // Stakeholder dialog
-  const [isAddStakeholderOpen, setIsAddStakeholderOpen] = useState(false)
-  const [stakeholderType, setStakeholderType] = useState<"contact_type" | "group" | "individual">("contact_type")
-  const [availableTypes, setAvailableTypes] = useState<ContactType[]>([])
-  const [availableGroups, setAvailableGroups] = useState<Group[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<Entity[]>([])
-  const [searchingEntities, setSearchingEntities] = useState(false)
-  const [stakeholderContactsLoading, setStakeholderContactsLoading] = useState(false)
 
   // Status dropdown
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
@@ -403,8 +366,6 @@ export default function JobDetailPage() {
         } else {
           setEditLabels([])
         }
-        setStakeholders(taskInstance.stakeholders || [])
-        setNoStakeholdersNeeded(taskInstance.noStakeholdersNeeded || jobLabels?.noStakeholdersNeeded || false)
       } else if (response.status === 404) {
         router.push("/dashboard/jobs")
       } else if (response.status === 401) {
@@ -472,18 +433,6 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
-  const fetchReconciliations = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/task-instances/${jobId}/reconciliations`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setReconciliations(data.reconciliations || [])
-      }
-    } catch (error) {
-      console.error("Error fetching reconciliations:", error)
-    }
-  }, [jobId])
-
   const fetchTimeline = useCallback(async () => {
     try {
       const response = await fetch(`/api/task-instances/${jobId}/timeline`, { credentials: "include" })
@@ -496,107 +445,6 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
-  const fetchStakeholderContacts = useCallback(async (currentStakeholders: JobStakeholder[]) => {
-    if (currentStakeholders.length === 0) {
-      setStakeholderContacts([])
-      return
-    }
-    setStakeholderContactsLoading(true)
-    try {
-      const allContacts: StakeholderContact[] = []
-      for (const stakeholder of currentStakeholders) {
-        if (stakeholder.type === "individual") {
-          allContacts.push({
-            id: stakeholder.id,
-            firstName: stakeholder.name.split(" ")[0] || stakeholder.name,
-            lastName: stakeholder.name.split(" ").slice(1).join(" ") || null,
-            email: null,
-            companyName: null,
-            stakeholderType: "individual",
-            stakeholderName: stakeholder.name
-          })
-        } else if (stakeholder.type === "group") {
-          const response = await fetch(`/api/entities?groupId=${stakeholder.id}`, { credentials: "include" })
-          if (response.ok) {
-            const entities = await response.json()
-            const contacts = Array.isArray(entities) ? entities : []
-            contacts.forEach((c: any) => {
-              allContacts.push({
-                id: c.id,
-                firstName: c.firstName,
-                lastName: c.lastName || null,
-                email: c.email,
-                companyName: c.companyName || null,
-                stakeholderType: "group",
-                stakeholderName: stakeholder.name
-              })
-            })
-          }
-        } else if (stakeholder.type === "contact_type") {
-          const response = await fetch(`/api/entities?contactType=${encodeURIComponent(stakeholder.id)}`, { credentials: "include" })
-          if (response.ok) {
-            const entities = await response.json()
-            const contacts = Array.isArray(entities) ? entities : []
-            contacts.forEach((c: any) => {
-              allContacts.push({
-                id: c.id,
-                firstName: c.firstName,
-                lastName: c.lastName || null,
-                email: c.email,
-                companyName: c.companyName || null,
-                stakeholderType: "contact_type",
-                stakeholderName: stakeholder.name
-              })
-            })
-          }
-        }
-      }
-      const uniqueContacts = allContacts.filter((contact, index, self) =>
-        index === self.findIndex(c => c.id === contact.id)
-      )
-      setStakeholderContacts(uniqueContacts)
-    } catch (error) {
-      console.error("Error fetching stakeholder contacts:", error)
-    } finally {
-      setStakeholderContactsLoading(false)
-    }
-  }, [])
-
-  const fetchStakeholderOptions = useCallback(async () => {
-    try {
-      const typesRes = await fetch("/api/contacts/type-counts", { credentials: "include" })
-      if (typesRes.ok) {
-        const typesData = await typesRes.json()
-        const types: ContactType[] = []
-        const builtInCounts = typesData.builtInCounts || {}
-        const builtInLabels: Record<string, string> = {
-          EMPLOYEE: "Employee", VENDOR: "Vendor", CLIENT: "Client", PARTNER: "Partner", OTHER: "Other"
-        }
-        for (const [value, label] of Object.entries(builtInLabels)) {
-          if (builtInCounts[value] && builtInCounts[value] > 0) {
-            types.push({ value, label, count: builtInCounts[value] })
-          }
-        }
-        const customTypes = typesData.customTypes || []
-        for (const ct of customTypes) {
-          types.push({ value: `CUSTOM:${ct.label}`, label: ct.label, count: ct.count })
-        }
-        setAvailableTypes(types)
-      }
-      const groupsRes = await fetch("/api/groups", { credentials: "include" })
-      if (groupsRes.ok) {
-        const groupsData = await groupsRes.json()
-        const groups: Group[] = (Array.isArray(groupsData) ? groupsData : []).map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          memberCount: g.entityCount || g._count?.entities || 0
-        }))
-        setAvailableGroups(groups)
-      }
-    } catch (error) {
-      console.error("Error fetching stakeholder options:", error)
-    }
-  }, [])
 
   const fetchCollaborators = useCallback(async () => {
     try {
@@ -622,36 +470,6 @@ export default function JobDetailPage() {
     }
   }, [])
 
-  // Search entities
-  const searchEntities = useCallback(async (query: string) => {
-    if (query.length < 2) {
-      setSearchResults([])
-      return
-    }
-    setSearchingEntities(true)
-    try {
-      const response = await fetch(`/api/entities?search=${encodeURIComponent(query)}`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        const entities = Array.isArray(data) ? data : []
-        setSearchResults(entities.slice(0, 10))
-      }
-    } catch (error) {
-      console.error("Error searching entities:", error)
-    } finally {
-      setSearchingEntities(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    const debounce = setTimeout(() => {
-      if (stakeholderType === "individual" && searchQuery) {
-        searchEntities(searchQuery)
-      }
-    }, 300)
-    return () => clearTimeout(debounce)
-  }, [searchQuery, stakeholderType, searchEntities])
-
   useEffect(() => {
     fetchJob()
     fetchTasks()
@@ -659,19 +477,9 @@ export default function JobDetailPage() {
     fetchDraftRequests()
     fetchComments()
     fetchTimeline()
-    fetchStakeholderOptions()
     fetchCollaborators()
     fetchTeamMembers()
-    fetchReconciliations()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchComments, fetchTimeline, fetchStakeholderOptions, fetchCollaborators, fetchTeamMembers, fetchReconciliations])
-
-  useEffect(() => {
-    if (stakeholders.length > 0) {
-      fetchStakeholderContacts(stakeholders)
-    } else {
-      setStakeholderContacts([])
-    }
-  }, [stakeholders, fetchStakeholderContacts])
+  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchComments, fetchTimeline, fetchCollaborators, fetchTeamMembers])
 
   // ============================================
   // Handlers
@@ -753,43 +561,6 @@ export default function JobDetailPage() {
       fetchJob()
     } catch (error) {
       console.error("Error removing label:", error)
-    }
-  }
-
-  const handleAddStakeholder = async (type: "contact_type" | "group" | "individual", id: string, name: string) => {
-    const exists = stakeholders.some(s => s.type === type && s.id === id)
-    if (exists) return
-    const newStakeholders = [...stakeholders, { type, id, name }]
-    setStakeholders(newStakeholders)
-    setIsAddStakeholderOpen(false)
-    setSearchQuery("")
-    setSearchResults([])
-    try {
-      await fetch(`/api/task-instances/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ stakeholders: newStakeholders })
-      })
-      fetchJob()
-    } catch (error) {
-      console.error("Error adding stakeholder:", error)
-    }
-  }
-
-  const handleRemoveStakeholder = async (type: string, id: string) => {
-    const newStakeholders = stakeholders.filter(s => !(s.type === type && s.id === id))
-    setStakeholders(newStakeholders)
-    try {
-      await fetch(`/api/task-instances/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ stakeholders: newStakeholders })
-      })
-      fetchJob()
-    } catch (error) {
-      console.error("Error removing stakeholder:", error)
     }
   }
 
@@ -1083,14 +854,6 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {false && job?.type === "RECONCILIATION" && (
-            <button
-              onClick={() => setActiveTab("reconciliation")}
-              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              Reconciliation
-            </button>
-          )}
         </div>
 
         <div className="grid grid-cols-12 gap-8">
@@ -1335,133 +1098,6 @@ export default function JobDetailPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Users className="w-4 h-4 text-gray-400" />
-                    {stakeholders.map((s) => (
-                      <Chip
-                        key={`${s.type}-${s.id}`}
-                        label={s.name}
-                        color={s.type === "contact_type" ? "purple" : s.type === "group" ? "green" : "gray"}
-                        removable={permissions?.canEdit}
-                        onRemove={() => handleRemoveStakeholder(s.type, s.id)}
-                        size="sm"
-                      />
-                    ))}
-                    {permissions?.canEdit && (
-                      <Dialog open={isAddStakeholderOpen} onOpenChange={setIsAddStakeholderOpen}>
-                        <DialogTrigger asChild>
-                          <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full border border-dashed border-gray-300">
-                            <Plus className="w-3 h-3" />
-                            Add
-                          </button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Add Stakeholder</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4 pt-4">
-                            <div>
-                              <Label>Step 1: Select Type</Label>
-                              <Select value={stakeholderType} onValueChange={(v) => setStakeholderType(v as any)}>
-                                <SelectTrigger className="mt-1">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="contact_type">Contact Type</SelectItem>
-                                  <SelectItem value="group">Group</SelectItem>
-                                  <SelectItem value="individual">Individual</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            
-                            <div>
-                              <Label>
-                                Step 2: Select {stakeholderType === "contact_type" ? "Contact Type" : stakeholderType === "group" ? "Group" : "Individual"}
-                              </Label>
-                              
-                              {stakeholderType === "contact_type" && (
-                                <div className="mt-2">
-                                  {availableTypes.length > 0 ? (
-                                    <Select onValueChange={(v) => {
-                                      const type = availableTypes.find(t => t.value === v)
-                                      if (type) handleAddStakeholder("contact_type", type.value, type.label)
-                                    }}>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select a contact type..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {availableTypes.map(type => (
-                                          <SelectItem key={type.value} value={type.value}>
-                                            {type.label} ({type.count} contacts)
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
-                                      <p className="text-sm text-gray-600 mb-2">No contact types found.</p>
-                                      <a href="/dashboard/contacts" className="text-sm font-medium text-blue-600 hover:text-blue-800">Go to Contacts →</a>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {stakeholderType === "group" && (
-                                <div className="mt-2">
-                                  {availableGroups.length > 0 ? (
-                                    <Select onValueChange={(v) => {
-                                      const group = availableGroups.find(g => g.id === v)
-                                      if (group) handleAddStakeholder("group", group.id, group.name)
-                                    }}>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select a group..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {availableGroups.map(group => (
-                                          <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center mt-2">
-                                      <p className="text-sm text-gray-600 mb-2">No groups found.</p>
-                                      <a href="/dashboard/contacts" className="text-sm font-medium text-blue-600 hover:text-blue-800">Go to Contacts →</a>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {stakeholderType === "individual" && (
-                                <div className="mt-2">
-                                  <Input
-                                    placeholder="Search by name or email..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                  />
-                                  <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
-                                    {searchingEntities ? (
-                                      <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400" /></div>
-                                    ) : searchResults.length > 0 ? (
-                                      searchResults.map(entity => (
-                                        <button
-                                          key={entity.id}
-                                          onClick={() => handleAddStakeholder("individual", entity.id, `${entity.firstName} ${entity.lastName || ""}`.trim())}
-                                          className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 border text-sm"
-                                        >
-                                          <div className="font-medium">{entity.firstName} {entity.lastName || ""}</div>
-                                          {entity.email && <div className="text-xs text-gray-500">{entity.email}</div>}
-                                        </button>
-                                      ))
-                                    ) : <p className="text-sm text-gray-500 text-center py-4">No contacts found</p>}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    )}
-                  </div>
                 </div>
 
                 {requests.length > 0 && (
@@ -1484,7 +1120,7 @@ export default function JobDetailPage() {
                       })),
                       reminderConfig: r.reminderConfig
                     }))}
-                    stakeholderCount={stakeholders.length}
+                    stakeholderCount={0}
                     taskCount={job.taskCount}
                     respondedCount={job.respondedCount}
                     completedCount={job.completedCount}
@@ -1632,34 +1268,6 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {false && activeTab === "reconciliation" && (
-              <div className="space-y-4">
-                <SectionHeader title="Reconciliations" icon={<FileSpreadsheet className="w-4 h-4 text-green-600" />} action={<Button size="sm" variant="outline" onClick={() => setIsReconciliationModalOpen(true)}><Plus className="w-4 h-4 mr-1" /> Add</Button>} />
-                <div className="space-y-3">
-                  {reconciliations.length === 0 ? (
-                    <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                      <FileSpreadsheet className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-sm text-gray-500 mb-2">No reconciliations yet</p>
-                      <p className="text-xs text-gray-400">Upload two Excel or CSV files to compare and reconcile</p>
-                    </div>
-                  ) : (
-                    reconciliations.map(r => (
-                      <ReconciliationResultCard
-                        key={r.id}
-                        reconciliation={r}
-                        jobId={jobId}
-                        onUpdate={(updated) => {
-                          setReconciliations(prev => 
-                            prev.map(rec => rec.id === updated.id ? updated : rec)
-                          )
-                        }}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
             {activeTab === "compare" && (
               <CompareView
                 taskInstanceId={jobId}
@@ -1735,14 +1343,6 @@ export default function JobDetailPage() {
                 </CardContent>
               </Card>
 
-              {stakeholders.length > 0 && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Stakeholders ({stakeholderContacts.length})</h4>
-                    <ContactLabelsTable jobId={jobId} canEdit={permissions?.canEdit} />
-                  </CardContent>
-                </Card>
-              )}
 
               {permissions?.isOwner && (
                 <Card>
@@ -1777,24 +1377,16 @@ export default function JobDetailPage() {
             periodEnd: job.board.periodEnd
           } : null
         }}
-        stakeholderContacts={stakeholderContacts.filter(c => c.email).map(c => ({ id: c.id, email: c.email!, firstName: c.firstName, lastName: c.lastName, contactType: c.stakeholderType === "contact_type" ? c.stakeholderName : undefined }))}
+        stakeholderContacts={[]}
         onSuccess={() => { fetchJob(); fetchRequests(); fetchTasks(); fetchTimeline(); fetchDraftRequests(); }}
       />
-
-      <ReconciliationUploadModal open={isReconciliationModalOpen} onOpenChange={setIsReconciliationModalOpen} jobId={jobId} jobName={job?.name || ""} onReconciliationCreated={(r) => setReconciliations(prev => [r, ...prev])} />
 
       <DraftRequestReviewModal
         open={isDraftReviewOpen}
         onOpenChange={setIsDraftReviewOpen}
         taskInstanceId={jobId}
         draft={selectedDraft}
-        availableContacts={stakeholderContacts.filter(c => c.email).map(c => ({ 
-          id: c.id, 
-          email: c.email!, 
-          firstName: c.firstName, 
-          lastName: c.lastName, 
-          companyName: c.companyName 
-        }))}
+        availableContacts={[]}
         onSuccess={() => { 
           fetchDraftRequests()
           fetchRequests()

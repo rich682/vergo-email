@@ -43,13 +43,30 @@ interface FormDefinitionOption {
   } | null
 }
 
-// Stakeholder contact type (same as SendRequestModal)
-interface StakeholderContact {
+// Internal user type
+interface UserOption {
   id: string
-  email: string | null
+  name: string | null
+  email: string
+  role: string
+}
+
+// External stakeholder/entity type
+interface EntityOption {
+  id: string
   firstName: string
   lastName: string | null
+  email: string | null
   contactType?: string
+}
+
+// Combined recipient type for display
+interface RecipientOption {
+  id: string
+  name: string
+  email: string
+  type: "user" | "entity"
+  subLabel?: string // role for users, contactType for entities
 }
 
 type FlowStep = "select_form" | "select_recipients" | "configure" | "sending" | "success" | "error"
@@ -59,7 +76,6 @@ interface FormRequestFlowProps {
   jobName: string
   boardPeriod: string | null
   deadlineDate: string | null
-  stakeholderContacts: StakeholderContact[] // Stakeholders assigned to this task
   onSuccess: () => void
   onCancel: () => void
 }
@@ -69,7 +85,6 @@ export function FormRequestFlow({
   jobName,
   boardPeriod,
   deadlineDate,
-  stakeholderContacts,
   onSuccess,
   onCancel,
 }: FormRequestFlowProps) {
@@ -82,10 +97,12 @@ export function FormRequestFlow({
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null)
   const [formSearchQuery, setFormSearchQuery] = useState("")
 
-  // Recipient selection - use stakeholder contacts with valid emails
-  const stakeholders = stakeholderContacts.filter(s => s.email)
-  const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set())
-  const [stakeholderSearchQuery, setStakeholderSearchQuery] = useState("")
+  // Recipient selection - all users and entities
+  const [recipients, setRecipients] = useState<RecipientOption[]>([])
+  const [loadingRecipients, setLoadingRecipients] = useState(false)
+  const [selectedRecipients, setSelectedRecipients] = useState<Map<string, "user" | "entity">>(new Map())
+  const [recipientSearchQuery, setRecipientSearchQuery] = useState("")
+  const [recipientFilter, setRecipientFilter] = useState<"all" | "users" | "entities">("all")
 
   // Configuration
   const [deadline, setDeadline] = useState<string>(deadlineDate || "")
@@ -102,6 +119,13 @@ export function FormRequestFlow({
     fetchForms()
   }, [])
 
+  // Load recipients when moving to recipient step
+  useEffect(() => {
+    if (step === "select_recipients" && recipients.length === 0) {
+      fetchRecipients()
+    }
+  }, [step])
+
   const fetchForms = async () => {
     try {
       setLoadingForms(true)
@@ -117,8 +141,57 @@ export function FormRequestFlow({
     }
   }
 
+  const fetchRecipients = async () => {
+    try {
+      setLoadingRecipients(true)
+      const allRecipients: RecipientOption[] = []
+
+      // Fetch internal users
+      const usersResponse = await fetch("/api/users", { credentials: "include" })
+      if (usersResponse.ok) {
+        const usersData = await usersResponse.json()
+        const users: UserOption[] = usersData.users || []
+        for (const user of users) {
+          if (user.email) {
+            allRecipients.push({
+              id: user.id,
+              name: user.name || user.email,
+              email: user.email,
+              type: "user",
+              subLabel: user.role?.toLowerCase(),
+            })
+          }
+        }
+      }
+
+      // Fetch all entities/contacts (API returns array directly)
+      const entitiesResponse = await fetch("/api/entities", { credentials: "include" })
+      if (entitiesResponse.ok) {
+        const entities: EntityOption[] = await entitiesResponse.json()
+        for (const entity of entities) {
+          if (entity.email) {
+            const fullName = entity.firstName + (entity.lastName ? ` ${entity.lastName}` : "")
+            allRecipients.push({
+              id: entity.id,
+              name: fullName || entity.email,
+              email: entity.email,
+              type: "entity",
+              subLabel: entity.contactType?.toLowerCase(),
+            })
+          }
+        }
+      }
+
+      setRecipients(allRecipients)
+    } catch (err) {
+      console.error("Error fetching recipients:", err)
+    } finally {
+      setLoadingRecipients(false)
+    }
+  }
+
   const handleSend = async () => {
-    if (!selectedFormId || selectedEntityIds.size === 0) {
+    if (!selectedFormId || selectedRecipients.size === 0) {
       setError("Please select a form and at least one recipient")
       return
     }
@@ -127,13 +200,26 @@ export function FormRequestFlow({
     setError(null)
 
     try {
+      // Separate user IDs and entity IDs
+      const recipientUserIds: string[] = []
+      const recipientEntityIds: string[] = []
+      
+      for (const [id, type] of selectedRecipients.entries()) {
+        if (type === "user") {
+          recipientUserIds.push(id)
+        } else {
+          recipientEntityIds.push(id)
+        }
+      }
+
       const response = await fetch(`/api/task-instances/${jobId}/form-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           formDefinitionId: selectedFormId,
-          recipientEntityIds: Array.from(selectedEntityIds),
+          recipientUserIds: recipientUserIds.length > 0 ? recipientUserIds : undefined,
+          recipientEntityIds: recipientEntityIds.length > 0 ? recipientEntityIds : undefined,
           deadlineDate: deadline || undefined,
           sendTiming,
           scheduleOffsetDays: sendTiming === "scheduled" ? scheduleOffsetDays : undefined,
@@ -172,33 +258,46 @@ export function FormRequestFlow({
     )
   })
 
-  const filteredStakeholders = stakeholders.filter((s) => {
-    if (!stakeholderSearchQuery) return true
-    const query = stakeholderSearchQuery.toLowerCase()
-    const fullName = s.firstName + (s.lastName ? ` ${s.lastName}` : "")
+  // Filter recipients by search query and type filter
+  const filteredRecipients = recipients.filter((r) => {
+    // Filter by type
+    if (recipientFilter === "users" && r.type !== "user") return false
+    if (recipientFilter === "entities" && r.type !== "entity") return false
+    
+    // Filter by search query
+    if (!recipientSearchQuery) return true
+    const query = recipientSearchQuery.toLowerCase()
     return (
-      fullName.toLowerCase().includes(query) ||
-      (s.email?.toLowerCase().includes(query) ?? false)
+      r.name.toLowerCase().includes(query) ||
+      r.email.toLowerCase().includes(query)
     )
   })
 
-  const toggleStakeholder = (entityId: string) => {
-    const newSet = new Set(selectedEntityIds)
-    if (newSet.has(entityId)) {
-      newSet.delete(entityId)
+  const toggleRecipient = (id: string, type: "user" | "entity") => {
+    const newMap = new Map(selectedRecipients)
+    if (newMap.has(id)) {
+      newMap.delete(id)
     } else {
-      newSet.add(entityId)
+      newMap.set(id, type)
     }
-    setSelectedEntityIds(newSet)
+    setSelectedRecipients(newMap)
   }
 
-  const toggleAllStakeholders = () => {
-    if (selectedEntityIds.size === filteredStakeholders.length) {
-      setSelectedEntityIds(new Set())
+  const toggleAllRecipients = () => {
+    if (selectedRecipients.size === filteredRecipients.length) {
+      setSelectedRecipients(new Map())
     } else {
-      setSelectedEntityIds(new Set(filteredStakeholders.map((s) => s.id)))
+      const newMap = new Map<string, "user" | "entity">()
+      for (const r of filteredRecipients) {
+        newMap.set(r.id, r.type)
+      }
+      setSelectedRecipients(newMap)
     }
   }
+  
+  // Count recipients by type
+  const userCount = recipients.filter(r => r.type === "user").length
+  const entityCount = recipients.filter(r => r.type === "entity").length
 
   // Sending state
   if (step === "sending") {
@@ -219,8 +318,8 @@ export function FormRequestFlow({
         </h3>
         <p className="text-sm text-gray-500 mt-1">
           {sendTiming === "scheduled" 
-            ? `Scheduling for ${selectedEntityIds.size} recipient${selectedEntityIds.size !== 1 ? "s" : ""}`
-            : `Sending to ${selectedEntityIds.size} recipient${selectedEntityIds.size !== 1 ? "s" : ""}`
+            ? `Scheduling for ${selectedRecipients.size} recipient${selectedRecipients.size !== 1 ? "s" : ""}`
+            : `Sending to ${selectedRecipients.size} recipient${selectedRecipients.size !== 1 ? "s" : ""}`
           }
         </p>
       </div>
@@ -385,8 +484,42 @@ export function FormRequestFlow({
           <div className="text-center">
             <h3 className="font-medium text-gray-900">Select Recipients</h3>
             <p className="text-sm text-gray-500">
-              Choose stakeholders to send "{selectedForm?.name}" to
+              Choose who to send "{selectedForm?.name}" to
             </p>
+          </div>
+
+          {/* Filter tabs */}
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+            <button
+              onClick={() => setRecipientFilter("all")}
+              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
+                recipientFilter === "all"
+                  ? "bg-white shadow text-gray-900 font-medium"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              All ({recipients.length})
+            </button>
+            <button
+              onClick={() => setRecipientFilter("users")}
+              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
+                recipientFilter === "users"
+                  ? "bg-white shadow text-gray-900 font-medium"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Team ({userCount})
+            </button>
+            <button
+              onClick={() => setRecipientFilter("entities")}
+              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
+                recipientFilter === "entities"
+                  ? "bg-white shadow text-gray-900 font-medium"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Contacts ({entityCount})
+            </button>
           </div>
 
           {/* Search */}
@@ -394,9 +527,9 @@ export function FormRequestFlow({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search stakeholders..."
-              value={stakeholderSearchQuery}
-              onChange={(e) => setStakeholderSearchQuery(e.target.value)}
+              placeholder="Search by name or email..."
+              value={recipientSearchQuery}
+              onChange={(e) => setRecipientSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
@@ -404,37 +537,40 @@ export function FormRequestFlow({
           {/* Select all */}
           <div className="flex items-center justify-between px-1">
             <button
-              onClick={toggleAllStakeholders}
+              onClick={toggleAllRecipients}
               className="text-sm text-orange-600 hover:underline"
             >
-              {selectedEntityIds.size === filteredStakeholders.length
+              {selectedRecipients.size === filteredRecipients.length && filteredRecipients.length > 0
                 ? "Deselect all"
                 : "Select all"}
             </button>
             <span className="text-sm text-gray-500">
-              {selectedEntityIds.size} selected
+              {selectedRecipients.size} selected
             </span>
           </div>
 
-          {/* Stakeholders list */}
-          {filteredStakeholders.length === 0 ? (
+          {/* Recipients list */}
+          {loadingRecipients ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+            </div>
+          ) : filteredRecipients.length === 0 ? (
             <div className="text-center py-8">
               <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-500">
-                {stakeholders.length === 0
-                  ? "No stakeholders with email addresses assigned to this task"
-                  : "No stakeholders match your search"}
+                {recipients.length === 0
+                  ? "No recipients found"
+                  : "No recipients match your search"}
               </p>
             </div>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {filteredStakeholders.map((stakeholder) => {
-                const isSelected = selectedEntityIds.has(stakeholder.id)
-                const fullName = stakeholder.firstName + (stakeholder.lastName ? ` ${stakeholder.lastName}` : "")
+              {filteredRecipients.map((recipient) => {
+                const isSelected = selectedRecipients.has(recipient.id)
                 return (
                   <button
-                    key={stakeholder.id}
-                    onClick={() => toggleStakeholder(stakeholder.id)}
+                    key={`${recipient.type}-${recipient.id}`}
+                    onClick={() => toggleRecipient(recipient.id, recipient.type)}
                     className={`w-full text-left p-3 rounded-lg border transition-all flex items-center gap-3 ${
                       isSelected
                         ? "border-orange-500 bg-orange-50"
@@ -451,18 +587,23 @@ export function FormRequestFlow({
                       {isSelected && <Check className="w-3 h-3 text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">
-                        {fullName || stakeholder.email}
-                      </p>
-                      {fullName && (
-                        <p className="text-sm text-gray-500">{stakeholder.email}</p>
+                      <p className="font-medium text-gray-900">{recipient.name}</p>
+                      <p className="text-sm text-gray-500">{recipient.email}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        recipient.type === "user" 
+                          ? "bg-blue-100 text-blue-700" 
+                          : "bg-purple-100 text-purple-700"
+                      }`}>
+                        {recipient.type === "user" ? "Team" : "Contact"}
+                      </span>
+                      {recipient.subLabel && (
+                        <span className="text-xs text-gray-400 capitalize">
+                          {recipient.subLabel}
+                        </span>
                       )}
                     </div>
-                    {stakeholder.contactType && (
-                      <span className="text-xs text-gray-400 capitalize">
-                        {stakeholder.contactType.toLowerCase()}
-                      </span>
-                    )}
                   </button>
                 )
               })}
@@ -489,7 +630,7 @@ export function FormRequestFlow({
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Users className="w-4 h-4 text-gray-500" />
-              <span>{selectedEntityIds.size} recipients</span>
+              <span>{selectedRecipients.size} recipients</span>
             </div>
             {boardPeriod && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -688,7 +829,7 @@ export function FormRequestFlow({
         {step === "select_recipients" && (
           <Button
             onClick={() => setStep("configure")}
-            disabled={selectedEntityIds.size === 0}
+            disabled={selectedRecipients.size === 0}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             Next
@@ -704,12 +845,12 @@ export function FormRequestFlow({
             {sendTiming === "scheduled" ? (
               <>
                 <CalendarClock className="w-4 h-4 mr-2" />
-                Schedule for {selectedEntityIds.size} Recipient{selectedEntityIds.size !== 1 ? "s" : ""}
+                Schedule for {selectedRecipients.size} Recipient{selectedRecipients.size !== 1 ? "s" : ""}
               </>
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Send to {selectedEntityIds.size} Recipient{selectedEntityIds.size !== 1 ? "s" : ""}
+                Send to {selectedRecipients.size} Recipient{selectedRecipients.size !== 1 ? "s" : ""}
               </>
             )}
           </Button>
