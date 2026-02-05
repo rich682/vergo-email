@@ -316,6 +316,7 @@ export async function POST(
           htmlBody,
           campaignName,
           campaignType: CampaignType.CUSTOM,
+          requestType: "data",  // Mark as data personalization request
           deadlineDate: instance.dueDate || undefined,
           remindersConfig: reminderConfig?.enabled ? {
             enabled: true,

@@ -19,10 +19,20 @@ import {
   Database,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
+  Download,
+  Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+
+interface FormAttachment {
+  id: string
+  filename: string
+  url: string
+  mimeType: string | null
+  sizeBytes: number | null
+  fieldKey: string
+}
 
 interface FormRequestItem {
   id: string
@@ -39,7 +49,14 @@ interface FormRequestItem {
     id: string
     name: string | null
     email: string
-  }
+  } | null
+  recipientEntity: {
+    id: string
+    firstName: string
+    lastName: string | null
+    email: string | null
+  } | null
+  attachments?: FormAttachment[]
 }
 
 interface FormRequestProgress {
@@ -179,96 +196,115 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
           {Object.entries(groupedByForm).map(([formId, group]) => (
             <div key={formId} className="border-b border-gray-100 last:border-b-0">
               {/* Form header */}
-              <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
+              <div className="px-4 py-2 bg-gray-50">
                 <span className="text-sm font-medium text-gray-700">
                   {group.formName}
                 </span>
-                <Link
-                  href={`/dashboard/forms/${formId}`}
-                  className="text-xs text-orange-600 hover:underline flex items-center gap-1"
-                >
-                  Edit Form
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
               </div>
 
               {/* Recipients list */}
               <div className="divide-y divide-gray-100">
-                {(group.requests || []).filter(req => req != null).map((req) => (
-                  <div
-                    key={req.id}
-                    className="px-4 py-3 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Status icon */}
-                      {req.status === "SUBMITTED" ? (
-                        <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
-                          <Check className="w-3.5 h-3.5 text-green-600" />
-                        </div>
-                      ) : req.status === "EXPIRED" ? (
-                        <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center">
-                          <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                        </div>
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
-                          <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        </div>
-                      )}
+                {(group.requests || []).filter(req => req != null).map((req) => {
+                  // Get recipient name and email from either user or entity
+                  const recipientName = req.recipientUser?.name || 
+                    (req.recipientEntity ? `${req.recipientEntity.firstName}${req.recipientEntity.lastName ? ` ${req.recipientEntity.lastName}` : ''}` : null)
+                  const recipientEmail = req.recipientUser?.email || req.recipientEntity?.email
 
-                      {/* Recipient info */}
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {req.recipientUser?.name || req.recipientUser?.email || 'Unknown'}
-                        </p>
-                        {req.recipientUser?.name && (
-                          <p className="text-xs text-gray-500">
-                            {req.recipientUser?.email || ''}
+                  return (
+                  <div key={req.id} className="px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {/* Status icon */}
+                        {req.status === "SUBMITTED" ? (
+                          <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
+                            <Check className="w-3.5 h-3.5 text-green-600" />
+                          </div>
+                        ) : req.status === "EXPIRED" ? (
+                          <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center">
+                            <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
+                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          </div>
+                        )}
+
+                        {/* Recipient info */}
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {recipientName || recipientEmail || 'Unknown'}
                           </p>
+                          {recipientName && recipientEmail && (
+                            <p className="text-xs text-gray-500">
+                              {recipientEmail}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Status/action */}
+                      <div className="flex items-center gap-2">
+                        {req.status === "SUBMITTED" ? (
+                          <span className="text-xs text-gray-500">
+                            Submitted{" "}
+                            {req.submittedAt &&
+                              new Date(req.submittedAt).toLocaleDateString()}
+                          </span>
+                        ) : req.status === "PENDING" ? (
+                          <>
+                            {req.remindersSent > 0 && (
+                              <span className="text-xs text-gray-400">
+                                {req.remindersSent}/{req.remindersMaxCount} reminders
+                              </span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSendReminder(req.id)}
+                              disabled={
+                                sendingReminder === req.id ||
+                                req.remindersSent >= req.remindersMaxCount
+                              }
+                              className="h-7 text-xs"
+                            >
+                              {sendingReminder === req.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <>
+                                  <Bell className="w-3 h-3 mr-1" />
+                                  Remind
+                                </>
+                              )}
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-red-500">Expired</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Status/action */}
-                    <div className="flex items-center gap-2">
-                      {req.status === "SUBMITTED" ? (
-                        <span className="text-xs text-gray-500">
-                          Submitted{" "}
-                          {req.submittedAt &&
-                            new Date(req.submittedAt).toLocaleDateString()}
-                        </span>
-                      ) : req.status === "PENDING" ? (
-                        <>
-                          {req.remindersSent > 0 && (
-                            <span className="text-xs text-gray-400">
-                              {req.remindersSent}/{req.remindersMaxCount} reminders
-                            </span>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleSendReminder(req.id)}
-                            disabled={
-                              sendingReminder === req.id ||
-                              req.remindersSent >= req.remindersMaxCount
-                            }
-                            className="h-7 text-xs"
+                    {/* Attachments for submitted forms */}
+                    {req.status === "SUBMITTED" && req.attachments && req.attachments.length > 0 && (
+                      <div className="mt-2 ml-9 flex flex-wrap gap-2">
+                        {req.attachments.map((attachment) => (
+                          <a
+                            key={attachment.id}
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs text-gray-700 transition-colors"
+                            title={`Download ${attachment.filename}`}
                           >
-                            {sendingReminder === req.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <>
-                                <Bell className="w-3 h-3 mr-1" />
-                                Remind
-                              </>
-                            )}
-                          </Button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-red-500">Expired</span>
-                      )}
-                    </div>
+                            <Paperclip className="w-3 h-3" />
+                            <span className="max-w-[120px] truncate">{attachment.filename}</span>
+                            <Download className="w-3 h-3 text-gray-400" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}

@@ -29,6 +29,7 @@ interface BoardOption {
 interface RequestTask {
   id: string
   campaignName: string | null
+  requestType: string | null // "standard" | "data" | "form"
   status: string
   createdAt: string
   updatedAt: string
@@ -662,6 +663,7 @@ export default function RequestsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
@@ -692,6 +694,21 @@ export default function RequestsPage() {
                     <div className="text-sm text-gray-900 truncate max-w-[200px]">
                       {request.campaignName || "Untitled"}
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      request.requestType === 'data' 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : request.requestType === 'form'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {request.requestType === 'data' 
+                        ? 'Data' 
+                        : request.requestType === 'form' 
+                          ? 'Form' 
+                          : 'Standard'}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     {request.entity ? (

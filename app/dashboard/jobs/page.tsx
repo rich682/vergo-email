@@ -826,58 +826,78 @@ export default function JobsPage() {
                         </div>
                       </PopoverContent>
                     </Popover>
+                  </div>
                     
-                    {/* Collaborators */}
-                    {currentBoard.collaborators && currentBoard.collaborators.length > 0 && (
-                      <div className="flex items-center gap-1 ml-2">
-                        {currentBoard.collaborators.slice(0, 3).map(collab => (
-                          <Avatar key={collab.id} className="h-5 w-5 border-2 border-white -ml-1 first:ml-0">
-                            <AvatarFallback className="text-[10px] bg-gray-100 text-gray-700">
-                              {getInitials(collab.user.name, collab.user.email)}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                        {currentBoard.collaborators.length > 3 && (
-                          <span className="text-xs text-gray-500 ml-1">+{currentBoard.collaborators.length - 3}</span>
-                        )}
-                      </div>
-                    )}
-                    
-                    <Popover open={isCollaboratorPopoverOpen} onOpenChange={setIsCollaboratorPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded border border-dashed border-gray-300 ml-1">
-                          <Plus className="w-3 h-3" />
-                          Add
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-2" align="start">
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
-                          {teamMembers
-                            .filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id))
-                            .map(member => (
-                              <button
-                                key={member.id}
-                                onClick={() => {
-                                  const newCollaboratorIds = [...(currentBoard.collaborators?.map(c => c.userId) || []), member.id]
-                                  handleUpdateBoard({ collaboratorIds: newCollaboratorIds } as any)
-                                  setIsCollaboratorPopoverOpen(false)
-                                }}
-                                className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100"
-                              >
-                                <Avatar className="h-5 w-5">
-                                  <AvatarFallback className="text-[10px] bg-gray-100 text-gray-700">
-                                    {getInitials(member.name, member.email)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span>{member.name || member.email}</span>
-                              </button>
-                            ))}
-                          {teamMembers.filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id)).length === 0 && (
-                            <p className="text-sm text-gray-500 py-2 text-center">No more team members</p>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                  {/* Collaborators Row - Separate Line */}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-700">Collaborators:</span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {currentBoard.collaborators && currentBoard.collaborators.length > 0 ? (
+                        currentBoard.collaborators.map(collab => (
+                          <div 
+                            key={collab.id} 
+                            className="group inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded-full text-xs"
+                          >
+                            <Avatar className="h-4 w-4">
+                              <AvatarFallback className="text-[8px] bg-gray-200 text-gray-700">
+                                {getInitials(collab.user.name, collab.user.email)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-gray-700">{collab.user.name || collab.user.email?.split('@')[0]}</span>
+                            <button 
+                              onClick={() => {
+                                const newCollaboratorIds = currentBoard.collaborators
+                                  ?.filter(c => c.userId !== collab.userId)
+                                  .map(c => c.userId) || []
+                                handleUpdateBoard({ collaboratorIds: newCollaboratorIds } as any)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity ml-0.5"
+                              title="Remove collaborator"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-gray-400 italic text-xs">None</span>
+                      )}
+                      <Popover open={isCollaboratorPopoverOpen} onOpenChange={setIsCollaboratorPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <button className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full border border-dashed border-gray-300">
+                            <Plus className="w-3 h-3" />
+                            Add
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-2" align="start">
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {teamMembers
+                              .filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id))
+                              .map(member => (
+                                <button
+                                  key={member.id}
+                                  onClick={() => {
+                                    const newCollaboratorIds = [...(currentBoard.collaborators?.map(c => c.userId) || []), member.id]
+                                    handleUpdateBoard({ collaboratorIds: newCollaboratorIds } as any)
+                                    setIsCollaboratorPopoverOpen(false)
+                                  }}
+                                  className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100"
+                                >
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarFallback className="text-[10px] bg-gray-100 text-gray-700">
+                                      {getInitials(member.name, member.email)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span>{member.name || member.email}</span>
+                                </button>
+                              ))}
+                            {teamMembers.filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id)).length === 0 && (
+                              <p className="text-sm text-gray-500 py-2 text-center">No more team members</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                   
                   {/* Automation Row */}

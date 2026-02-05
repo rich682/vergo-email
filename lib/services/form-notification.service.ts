@@ -147,6 +147,7 @@ ${senderName || "The Team"}`
         htmlBody,
         campaignName: formName,
         campaignType: "form_request",
+        requestType: "form",  // Mark as form request
         deadlineDate: deadlineDate || undefined,
       })
 
@@ -257,6 +258,7 @@ ${senderName || "The Team"}`
         htmlBody,
         campaignName: formName,
         campaignType: "form_reminder",
+        requestType: "form",  // Mark as form request
         skipRateLimit: true, // Reminders bypass rate limit
       })
       

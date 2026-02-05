@@ -10,6 +10,7 @@ export class RequestCreationService {
     entityName?: string
     campaignName?: string
     campaignType?: string
+    requestType?: string  // "standard" | "data" | "form"
     threadId: string
     replyToEmail: string
     subject?: string
@@ -37,6 +38,7 @@ export class RequestCreationService {
         entityId: entity.id,
         campaignName: data.campaignName || null,
         campaignType: data.campaignType as any || null,
+        requestType: data.requestType || "standard",  // Default to standard if not specified
         status: "NO_REPLY",
         threadId: data.threadId,
         replyToEmail: data.replyToEmail,

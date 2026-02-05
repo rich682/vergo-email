@@ -161,6 +161,14 @@ export async function GET(request: NextRequest) {
       items = items.filter(item => item.taskInstance?.ownerId === ownerId)
     }
 
+    // Transform items to match frontend interface (taskInstance -> job, request -> task)
+    const transformedItems = items.map(item => ({
+      ...item,
+      jobId: item.taskInstanceId,
+      job: item.taskInstance,
+      task: item.request,
+    }))
+
     // Get total count (without filters for summary)
     const total = await prisma.collectedItem.count({
       where: { organizationId }
@@ -192,7 +200,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      items,
+      items: transformedItems,
       total,
       filteredTotal: ownerId ? items.length : filteredCount,
       page,

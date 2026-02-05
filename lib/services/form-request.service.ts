@@ -125,23 +125,10 @@ export class FormRequestService {
       isEntity: true,
     }))
 
-    // Pre-create database rows if form is linked to a database
-    let databaseRowIndices: Map<string, number> | null = null
-    if (formDefinition.database) {
-      databaseRowIndices = await this.preCreateDatabaseRows(
-        formDefinition.database.id,
-        formDefinition.fields as FormField[],
-        formDefinition.columnMapping as Record<string, string>,
-        recipients,
-        taskInstance.board,
-        organizationId
-      )
-    }
-
     // Create form requests for each entity recipient
+    // Note: Database rows are created when the form is submitted, not when sent
     const formRequests = await Promise.all(
       recipients.map(async (recipient) => {
-        const databaseRowIndex = databaseRowIndices?.get(recipient.id) ?? null
         const accessToken = generateAccessToken()
 
         return prisma.formRequest.create({
@@ -157,7 +144,7 @@ export class FormRequestService {
             remindersMaxCount: config.maxCount,
             reminderFrequencyHours: config.frequencyHours,
             nextReminderAt,
-            databaseRowIndex,
+            databaseRowIndex: null, // Row created on submission, not on send
           },
           include: {
             recipientEntity: {
@@ -257,23 +244,10 @@ export class FormRequestService {
       isEntity: false,
     }))
 
-    // Pre-create database rows if form is linked to a database
-    let databaseRowIndices: Map<string, number> | null = null
-    if (formDefinition.database) {
-      databaseRowIndices = await this.preCreateDatabaseRows(
-        formDefinition.database.id,
-        formDefinition.fields as FormField[],
-        formDefinition.columnMapping as Record<string, string>,
-        recipients,
-        taskInstance.board,
-        organizationId
-      )
-    }
-
     // Create form requests for each recipient
+    // Note: Database rows are created when the form is submitted, not when sent
     const formRequests = await Promise.all(
       recipients.map(async (recipient) => {
-        const databaseRowIndex = databaseRowIndices?.get(recipient.id) ?? null
         const accessToken = generateAccessToken()
 
         return prisma.formRequest.create({
@@ -289,7 +263,7 @@ export class FormRequestService {
             remindersMaxCount: config.maxCount,
             reminderFrequencyHours: config.frequencyHours,
             nextReminderAt,
-            databaseRowIndex,
+            databaseRowIndex: null, // Row created on submission, not on send
           },
           include: {
             recipientUser: {
@@ -314,107 +288,6 @@ export class FormRequestService {
       formRequests,
       count: formRequests.length,
     }
-  }
-
-  /**
-   * Pre-create database rows for form recipients
-   * Returns a map of userId -> rowIndex
-   */
-  private static async preCreateDatabaseRows(
-    databaseId: string,
-    fields: FormField[],
-    columnMapping: Record<string, string>,
-    recipients: Array<{ id: string; name: string | null; email: string }>,
-    board: { periodStart: Date | null; periodEnd: Date | null; cadence: string } | null,
-    organizationId: string
-  ): Promise<Map<string, number>> {
-    const database = await prisma.database.findFirst({
-      where: { id: databaseId, organizationId },
-    })
-
-    if (!database) {
-      throw new Error("Database not found")
-    }
-
-    const schema = database.schema as DatabaseSchema
-    const existingRows = (database.rows || []) as DatabaseRow[]
-    const rowIndexMap = new Map<string, number>()
-
-    // Determine email and name columns from mapping or schema
-    const emailColumnKey = Object.entries(columnMapping).find(([fieldKey]) => 
-      fieldKey.toLowerCase().includes("email")
-    )?.[1] || schema.columns.find(c => 
-      c.key.toLowerCase().includes("email")
-    )?.key
-
-    const nameColumnKey = Object.entries(columnMapping).find(([fieldKey]) => 
-      fieldKey.toLowerCase().includes("first") || fieldKey.toLowerCase().includes("name")
-    )?.[1] || schema.columns.find(c => 
-      c.key.toLowerCase().includes("first") || c.key.toLowerCase() === "name"
-    )?.key
-
-    // Determine period column
-    const periodColumnKey = schema.columns.find(c => 
-      c.key.toLowerCase().includes("period")
-    )?.key
-
-    // Format period value
-    let periodValue: string | null = null
-    if (board?.periodStart && periodColumnKey) {
-      const date = new Date(board.periodStart)
-      periodValue = date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
-    }
-
-    // Create rows for each recipient
-    const newRows: DatabaseRow[] = []
-    for (const recipient of recipients) {
-      const row: DatabaseRow = {}
-
-      // Set email
-      if (emailColumnKey) {
-        row[emailColumnKey] = recipient.email
-      }
-
-      // Set name
-      if (nameColumnKey && recipient.name) {
-        row[nameColumnKey] = recipient.name.split(" ")[0] // First name
-      }
-
-      // Set period
-      if (periodColumnKey && periodValue) {
-        row[periodColumnKey] = periodValue
-      }
-
-      // Add a status column if it exists
-      const statusColumnKey = schema.columns.find(c => 
-        c.key.toLowerCase() === "status" || c.key.toLowerCase() === "form_status"
-      )?.key
-      if (statusColumnKey) {
-        row[statusColumnKey] = "PENDING"
-      }
-
-      // Initialize other columns to empty/null based on type
-      for (const col of schema.columns) {
-        if (!(col.key in row)) {
-          row[col.key] = null
-        }
-      }
-
-      newRows.push(row)
-      rowIndexMap.set(recipient.id, existingRows.length + newRows.length - 1)
-    }
-
-    // Update database with new rows
-    const allRows = [...existingRows, ...newRows]
-    await prisma.database.update({
-      where: { id: databaseId },
-      data: {
-        rows: allRows,
-        rowCount: allRows.length,
-      },
-    })
-
-    return rowIndexMap
   }
 
   /**
@@ -555,6 +428,16 @@ export class FormRequestService {
             email: true,
           },
         },
+        attachments: {
+          select: {
+            id: true,
+            filename: true,
+            url: true,
+            mimeType: true,
+            sizeBytes: true,
+            fieldKey: true,
+          },
+        },
       },
       orderBy: [
         { status: "asc" },
@@ -615,6 +498,15 @@ export class FormRequestService {
             database: true,
           },
         },
+        recipientUser: {
+          select: { id: true, name: true, email: true },
+        },
+        taskInstance: {
+          select: { id: true, board: { select: { periodStart: true, periodEnd: true, cadence: true } } },
+        },
+        attachments: {
+          select: { id: true, filename: true, url: true, mimeType: true, sizeBytes: true, fieldKey: true },
+        },
       },
     })
 
@@ -643,6 +535,15 @@ export class FormRequestService {
             database: true,
           },
         },
+        recipientEntity: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        taskInstance: {
+          select: { id: true, board: { select: { periodStart: true, periodEnd: true, cadence: true } } },
+        },
+        attachments: {
+          select: { id: true, filename: true, url: true, mimeType: true, sizeBytes: true, fieldKey: true },
+        },
       },
     })
 
@@ -670,6 +571,10 @@ export class FormRequestService {
         columnMapping: any
         database: { id: string } | null
       }
+      recipientUser?: { id: string; name: string | null; email: string } | null
+      recipientEntity?: { id: string; firstName: string; lastName: string | null; email: string | null } | null
+      taskInstance?: { id: string; board: { periodStart: Date | null; periodEnd: Date | null; cadence: string } | null } | null
+      attachments?: Array<{ id: string; filename: string; url: string; mimeType: string | null; sizeBytes: number | null; fieldKey: string }>
     },
     responseData: Record<string, unknown>
   ) {
@@ -693,15 +598,33 @@ export class FormRequestService {
       }
     }
 
-    // Update database row if linked
-    if (formRequest.formDefinition.database && formRequest.databaseRowIndex !== null) {
-      await this.updateDatabaseRow(
-        formRequest.formDefinition.database.id,
-        formRequest.databaseRowIndex,
-        formRequest.formDefinition.columnMapping as Record<string, string>,
-        responseData,
-        formRequest.organizationId
-      )
+    // Create or update database row if linked
+    let newDatabaseRowIndex = formRequest.databaseRowIndex
+    if (formRequest.formDefinition.database) {
+      if (formRequest.databaseRowIndex === null) {
+        // Create a new row on first submission
+        const recipientName = formRequest.recipientUser?.name || 
+          (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
+        const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
+
+        newDatabaseRowIndex = await this.createDatabaseRow(
+          formRequest.formDefinition.database.id,
+          formRequest.formDefinition.columnMapping as Record<string, string>,
+          responseData,
+          { name: recipientName, email: recipientEmail },
+          formRequest.taskInstance?.board || null,
+          formRequest.organizationId
+        )
+      } else {
+        // Update existing row
+        await this.updateDatabaseRow(
+          formRequest.formDefinition.database.id,
+          formRequest.databaseRowIndex,
+          formRequest.formDefinition.columnMapping as Record<string, string>,
+          responseData,
+          formRequest.organizationId
+        )
+      }
     }
 
     // Update form request
@@ -711,6 +634,7 @@ export class FormRequestService {
         status: "SUBMITTED",
         submittedAt: new Date(),
         responseData,
+        databaseRowIndex: newDatabaseRowIndex,
         nextReminderAt: null, // Stop reminders
       },
       include: {
@@ -738,7 +662,134 @@ export class FormRequestService {
       },
     })
 
+    // Create CollectedItem records for form attachments
+    if (formRequest.attachments && formRequest.attachments.length > 0 && formRequest.taskInstance?.id) {
+      const recipientName = formRequest.recipientUser?.name || 
+        (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
+      const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
+
+      await Promise.all(
+        formRequest.attachments.map(attachment =>
+          prisma.collectedItem.create({
+            data: {
+              organizationId: formRequest.organizationId,
+              taskInstanceId: formRequest.taskInstance!.id,
+              filename: attachment.filename,
+              fileKey: attachment.url, // Use URL as file key for form attachments
+              fileUrl: attachment.url,
+              fileSize: attachment.sizeBytes,
+              mimeType: attachment.mimeType,
+              source: "FORM_SUBMISSION",
+              submittedBy: recipientEmail,
+              submittedByName: recipientName,
+              receivedAt: new Date(),
+              metadata: {
+                formRequestId: formRequest.id,
+                formDefinitionId: formRequest.formDefinition.id,
+                formName: formRequest.formDefinition.name,
+                fieldKey: attachment.fieldKey,
+              },
+            },
+          })
+        )
+      )
+    }
+
     return updated
+  }
+
+  /**
+   * Create a database row with form response data (called on submission)
+   * Returns the index of the newly created row
+   */
+  private static async createDatabaseRow(
+    databaseId: string,
+    columnMapping: Record<string, string>,
+    responseData: Record<string, unknown>,
+    recipient: { name: string | null; email: string | null },
+    board: { periodStart: Date | null; periodEnd: Date | null; cadence: string } | null,
+    organizationId: string
+  ): Promise<number> {
+    const database = await prisma.database.findFirst({
+      where: { id: databaseId, organizationId },
+    })
+
+    if (!database) {
+      throw new Error("Database not found")
+    }
+
+    const schema = database.schema as DatabaseSchema
+    const existingRows = (database.rows || []) as DatabaseRow[]
+
+    // Create new row with response data
+    const row: DatabaseRow = {}
+
+    // Map form field values to database columns
+    for (const [fieldKey, value] of Object.entries(responseData)) {
+      const columnKey = columnMapping[fieldKey] || fieldKey
+      row[columnKey] = value
+    }
+
+    // Add recipient info if columns exist
+    const emailColumnKey = schema.columns.find(c => 
+      c.key.toLowerCase().includes("email")
+    )?.key
+    if (emailColumnKey && recipient.email && !row[emailColumnKey]) {
+      row[emailColumnKey] = recipient.email
+    }
+
+    const nameColumnKey = schema.columns.find(c => 
+      c.key.toLowerCase().includes("first") || c.key.toLowerCase() === "name"
+    )?.key
+    if (nameColumnKey && recipient.name && !row[nameColumnKey]) {
+      row[nameColumnKey] = recipient.name.split(" ")[0] // First name
+    }
+
+    // Add period if column exists
+    const periodColumnKey = schema.columns.find(c => 
+      c.key.toLowerCase().includes("period")
+    )?.key
+    if (periodColumnKey && board?.periodStart && !row[periodColumnKey]) {
+      const date = new Date(board.periodStart)
+      row[periodColumnKey] = date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    }
+
+    // Add status column
+    const statusColumnKey = schema.columns.find(c => 
+      c.key.toLowerCase() === "status" || c.key.toLowerCase() === "form_status"
+    )?.key
+    if (statusColumnKey) {
+      row[statusColumnKey] = "SUBMITTED"
+    }
+
+    // Add submitted_at if column exists
+    const submittedAtKey = schema.columns.find(c => 
+      c.key.toLowerCase() === "submitted_at" || c.key.toLowerCase() === "submittedat"
+    )?.key
+    if (submittedAtKey) {
+      row[submittedAtKey] = new Date().toISOString()
+    }
+
+    // Initialize any missing columns to null
+    for (const col of schema.columns) {
+      if (!(col.key in row)) {
+        row[col.key] = null
+      }
+    }
+
+    // Add the new row
+    const newRowIndex = existingRows.length
+    const allRows = [...existingRows, row]
+
+    await prisma.database.update({
+      where: { id: databaseId },
+      data: {
+        rows: allRows,
+        rowCount: allRows.length,
+      },
+    })
+
+    return newRowIndex
   }
 
   /**

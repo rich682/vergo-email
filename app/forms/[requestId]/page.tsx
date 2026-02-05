@@ -621,16 +621,33 @@ export default function FormFillPage() {
                       className={validationErrors[field.key] ? "border-red-500" : ""}
                     />
                   )}
-                  {(field.type === "number" || field.type === "currency") && (
+                  {field.type === "number" && (
                     <Input
                       id={field.key}
                       type="number"
-                      step={field.type === "currency" ? "0.01" : "1"}
+                      step="1"
+                      inputMode="numeric"
                       value={(formValues[field.key] as number) || ""}
                       onChange={(e) => updateField(field.key, e.target.value ? Number(e.target.value) : "")}
-                      placeholder={field.type === "currency" ? "0.00" : "0"}
+                      placeholder="0"
                       className={validationErrors[field.key] ? "border-red-500" : ""}
                     />
+                  )}
+                  {field.type === "currency" && (
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <Input
+                        id={field.key}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        inputMode="decimal"
+                        value={(formValues[field.key] as number) || ""}
+                        onChange={(e) => updateField(field.key, e.target.value ? Number(e.target.value) : "")}
+                        placeholder="0.00"
+                        className={`pl-7 ${validationErrors[field.key] ? "border-red-500" : ""}`}
+                      />
+                    </div>
                   )}
                   {field.type === "date" && (
                     <Input

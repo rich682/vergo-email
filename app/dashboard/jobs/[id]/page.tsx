@@ -270,6 +270,7 @@ export default function JobDetailPage() {
   // Data state
   const [tasks, setTasks] = useState<JobTask[]>([])
   const [requests, setRequests] = useState<JobRequest[]>([])
+  const [formRequestCount, setFormRequestCount] = useState(0)
   const [draftRequests, setDraftRequests] = useState<any[]>([])
   const [comments, setComments] = useState<JobComment[]>([])
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
@@ -417,6 +418,18 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
+  const fetchFormRequestCount = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/task-instances/${jobId}/form-requests`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setFormRequestCount(data.formRequests?.length || 0)
+      }
+    } catch (error) {
+      console.error("Error fetching form request count:", error)
+    }
+  }, [jobId])
+
   const fetchComments = useCallback(async () => {
     try {
       const response = await fetch(`/api/task-instances/${jobId}/comments`, { credentials: "include" })
@@ -471,11 +484,12 @@ export default function JobDetailPage() {
     fetchTasks()
     fetchRequests()
     fetchDraftRequests()
+    fetchFormRequestCount()
     fetchComments()
     fetchTimeline()
     fetchCollaborators()
     fetchTeamMembers()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchComments, fetchTimeline, fetchCollaborators, fetchTeamMembers])
+  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchFormRequestCount, fetchComments, fetchTimeline, fetchCollaborators, fetchTeamMembers])
 
   // ============================================
   // Handlers
@@ -812,7 +826,7 @@ export default function JobDetailPage() {
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              Requests ({requests.length})
+              Requests ({requests.length + formRequestCount})
               {draftRequests.length > 0 && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
                   {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''}
@@ -1357,7 +1371,7 @@ export default function JobDetailPage() {
           } : null
         }}
         stakeholderContacts={[]}
-        onSuccess={() => { fetchJob(); fetchRequests(); fetchTasks(); fetchTimeline(); fetchDraftRequests(); }}
+        onSuccess={() => { fetchJob(); fetchRequests(); fetchFormRequestCount(); fetchTasks(); fetchTimeline(); fetchDraftRequests(); }}
       />
 
       <DraftRequestReviewModal
@@ -1369,6 +1383,7 @@ export default function JobDetailPage() {
         onSuccess={() => { 
           fetchDraftRequests()
           fetchRequests()
+          fetchFormRequestCount()
           setSelectedDraft(null)
         }}
       />

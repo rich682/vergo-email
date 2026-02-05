@@ -267,6 +267,7 @@ export class EmailSendingService {
     htmlBody?: string
     campaignName?: string
     campaignType?: string
+    requestType?: string    // "standard" | "data" | "form"
     accountId?: string      // Explicit account to use (overrides user's account)
     deadlineDate?: Date | null
     skipRateLimit?: boolean  // Allow bypassing rate limit for reminders
@@ -447,6 +448,7 @@ export class EmailSendingService {
       entityName: data.toName,
       campaignName: data.campaignName,
       campaignType: data.campaignType,
+      requestType: data.requestType,
       threadId,
       replyToEmail: replyTo,
       subject: data.subject,

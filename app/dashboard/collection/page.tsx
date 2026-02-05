@@ -33,7 +33,7 @@ interface CollectedItem {
   fileUrl: string | null
   fileSize: number | null
   mimeType: string | null
-  source: "EMAIL_REPLY" | "MANUAL_UPLOAD"
+  source: "EMAIL_REPLY" | "MANUAL_UPLOAD" | "FORM_SUBMISSION"
   submittedBy: string | null
   submittedByName: string | null
   receivedAt: string
@@ -384,6 +384,7 @@ export default function CollectionPage() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                 <th className="w-16 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">View</th>
@@ -431,6 +432,21 @@ export default function CollectionPage() {
                         </div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      item.source === 'EMAIL_REPLY' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : item.source === 'FORM_SUBMISSION'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {item.source === 'EMAIL_REPLY' 
+                        ? 'Email Reply' 
+                        : item.source === 'FORM_SUBMISSION' 
+                          ? 'Form' 
+                          : 'Manual'}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     {item.job?.board ? (

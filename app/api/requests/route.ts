@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         campaignName: true,
+        requestType: true,
         status: true,
         createdAt: true,
         updatedAt: true,

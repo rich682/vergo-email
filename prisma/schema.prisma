@@ -88,6 +88,7 @@ enum ReviewStatus {
 enum CollectedItemSource {
   EMAIL_REPLY
   MANUAL_UPLOAD
+  FORM_SUBMISSION
 }
 
 // Board represents a period-based checklist (e.g., "January 2025 Book Close")
@@ -460,6 +461,7 @@ model Request {
   entityId                 String? // Optional: contact may be deleted but request history preserved
   campaignName             String?
   campaignType             CampaignType?
+  requestType              String?       // "standard" | "data" | "form" - source of the request
   status                   TaskStatus    @default(AWAITING_RESPONSE)
   threadId                 String        @unique
   replyToEmail             String?
