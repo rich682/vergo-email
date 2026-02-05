@@ -1027,7 +1027,7 @@ export function SendRequestModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-orange-500" />
@@ -1705,7 +1705,7 @@ export function SendRequestModal({
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     placeholder="Email body..."
-                    rows={10}
+                    rows={14}
                     className="mt-1 resize-none"
                     style={{ fontFamily: "Arial, sans-serif", fontSize: "14px" }}
                   />

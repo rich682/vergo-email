@@ -570,7 +570,7 @@ export function ComposeSendStep({
                   onChange={(e) => setBody(e.target.value)}
                   onFocus={() => setActiveField("body")}
                   placeholder="Email body..."
-                  className="min-h-[200px] text-sm"
+                  className="min-h-[300px] text-sm"
                   style={{ fontFamily: "Arial, sans-serif" }}
                 />
               </div>
