@@ -166,7 +166,7 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
   // Loading state
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-[calc(100vh-4rem)] flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
           <p className="text-sm text-gray-500">Loading review...</p>
@@ -193,7 +193,7 @@ export function ReplyReviewLayout({ messageId }: ReplyReviewLayoutProps) {
     : `Request sent to ${recipientName}`
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">

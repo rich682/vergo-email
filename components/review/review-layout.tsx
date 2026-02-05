@@ -132,7 +132,7 @@ export function ReviewLayout({ data, onRefresh, onClose }: ReviewLayoutProps) {
   }, [isDragging])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
       <ReviewHeader
         data={data}
