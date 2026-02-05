@@ -245,7 +245,7 @@ export function FindingsTab({ data }: FindingsTabProps) {
                       {finding.evidenceRef && (
                         <div className="ml-8 p-3 bg-white/70 rounded-md border border-gray-200">
                           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                            Evidence
+                            Source
                           </p>
                           {finding.evidenceRef.content && (
                             <p className="text-sm text-gray-600 italic">

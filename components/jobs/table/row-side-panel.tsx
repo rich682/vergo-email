@@ -274,11 +274,11 @@ export function RowSidePanel({
           </div>
         </section>
 
-        {/* Evidence Section */}
+        {/* Documents Section */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Evidence ({evidence.length})
+              Documents ({evidence.length})
             </h4>
             {!isSnapshot && (
               <Button variant="ghost" size="sm" className="h-7 text-xs">
@@ -295,7 +295,7 @@ export function RowSidePanel({
           ) : evidence.length === 0 ? (
             <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
               <Paperclip className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-xs text-gray-500">No evidence linked to this row</p>
+              <p className="text-xs text-gray-500">No documents linked to this row</p>
             </div>
           ) : (
             <div className="space-y-2">

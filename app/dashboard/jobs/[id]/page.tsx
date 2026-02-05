@@ -835,13 +835,13 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {/* Evidence tab - only visible to owners/admins */}
+          {/* Documents tab - only visible to owners/admins */}
           {permissions?.canEdit && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              Evidence ({job.collectedItemCount || 0})
+              Documents ({job.collectedItemCount || 0})
             </button>
           )}
 
@@ -1241,7 +1241,7 @@ export default function JobDetailPage() {
 
             {activeTab === "collection" && permissions?.canEdit && (
               <div className="space-y-4">
-                <SectionHeader title="Evidence Collection" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
+                <SectionHeader title="Documents" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
                 <CollectionTab jobId={jobId} />
               </div>
             )}
