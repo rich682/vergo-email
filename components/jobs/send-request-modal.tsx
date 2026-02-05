@@ -53,6 +53,8 @@ import {
   Upload,
   File,
   Trash2,
+  Search,
+  Check,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatPeriodDisplay } from "@/lib/utils/timezone"
@@ -123,6 +125,7 @@ interface SendRequestModalProps {
 type ModalState = 
   | "idle"
   | "mode_selection"
+  | "selecting_recipients"
   | "drafting"
   | "ready"
   | "refining"
@@ -251,6 +254,25 @@ export function SendRequestModal({
   const [recipientSearchLoading, setRecipientSearchLoading] = useState(false)
   const [searchTimeoutRef, setSearchTimeoutRef] = useState<NodeJS.Timeout | null>(null)
   
+  // All available recipients for selection
+  const [allAvailableRecipients, setAllAvailableRecipients] = useState<Array<{
+    id: string
+    name: string
+    email: string
+    type: "user" | "entity"
+    subLabel?: string
+  }>>([])
+  const [loadingAllRecipients, setLoadingAllRecipients] = useState(false)
+  const [recipientSelectionSearch, setRecipientSelectionSearch] = useState("")
+  
+  // Selected recipients for draft generation (used in selecting_recipients step)
+  const [selectedRecipientsForDraft, setSelectedRecipientsForDraft] = useState<Map<string, {
+    id: string
+    name: string
+    email: string
+    type: "user" | "entity"
+  }>>(new Map())
+  
   // Send confirmation state
   const [showSendConfirmation, setShowSendConfirmation] = useState(false)
   
@@ -295,6 +317,80 @@ export function SendRequestModal({
     }
   }, [open, hasEmailAccount, checkEmailAccounts])
 
+  // Fetch all available recipients (users and entities)
+  const fetchAllRecipients = useCallback(async () => {
+    try {
+      setLoadingAllRecipients(true)
+      const allRecipients: Array<{
+        id: string
+        name: string
+        email: string
+        type: "user" | "entity"
+        subLabel?: string
+      }> = []
+
+      // Fetch internal users
+      const usersResponse = await fetch("/api/users", { credentials: "include" })
+      if (usersResponse.ok) {
+        const usersData = await usersResponse.json()
+        const users = usersData.users || []
+        for (const user of users) {
+          if (user.email) {
+            allRecipients.push({
+              id: user.id,
+              name: user.name || user.email,
+              email: user.email,
+              type: "user",
+              subLabel: user.role?.toLowerCase(),
+            })
+          }
+        }
+      }
+
+      // Fetch all entities/contacts
+      const entitiesResponse = await fetch("/api/entities", { credentials: "include" })
+      if (entitiesResponse.ok) {
+        const entities = await entitiesResponse.json()
+        for (const entity of entities) {
+          if (entity.email) {
+            const fullName = entity.firstName + (entity.lastName ? ` ${entity.lastName}` : "")
+            allRecipients.push({
+              id: entity.id,
+              name: fullName || entity.email,
+              email: entity.email,
+              type: "entity",
+              subLabel: entity.contactType?.toLowerCase(),
+            })
+          }
+        }
+      }
+
+      setAllAvailableRecipients(allRecipients)
+    } catch (err) {
+      console.error("Error fetching all recipients:", err)
+    } finally {
+      setLoadingAllRecipients(false)
+    }
+  }, [])
+
+  // Toggle recipient selection
+  const toggleRecipientSelection = useCallback((recipient: {
+    id: string
+    name: string
+    email: string
+    type: "user" | "entity"
+  }) => {
+    setSelectedRecipientsForDraft(prev => {
+      const newMap = new Map(prev)
+      if (newMap.has(recipient.id)) {
+        newMap.delete(recipient.id)
+      } else {
+        newMap.set(recipient.id, recipient)
+      }
+      return newMap
+    })
+  }, [])
+
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
     try {
@@ -335,8 +431,13 @@ export function SendRequestModal({
     return labelMap
   }, [job.id])
 
-  // Fetch draft when modal opens
-  const fetchDraft = useCallback(async () => {
+  // Fetch draft with selected recipients
+  const fetchDraft = useCallback(async (selectedRecipientsList?: Array<{
+    id: string
+    name: string
+    email: string
+    type: "user" | "entity"
+  }>) => {
     setState("drafting")
     setError(null)
     
@@ -347,6 +448,9 @@ export function SendRequestModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({
+            recipients: selectedRecipientsList || []
+          })
         }),
         fetchContactLabels(),
       ])
@@ -376,36 +480,67 @@ export function SendRequestModal({
     } catch (err: any) {
       console.error("Draft fetch error:", err)
       setError(err.message || "Failed to generate draft")
-      // Still allow editing with fallback - start with empty recipients
+      // Still allow editing with fallback - use selected recipients
       setSubject(`Request: ${job.name}`)
       setBody(`Hi {{First Name}},\n\nI'm reaching out regarding ${job.name}.\n\nPlease let me know if you have any questions.\n\nBest regards`)
       setUsedFallback(true)
       
-      // Start with empty recipients - users can search and add
-      setRecipients([])
+      // Use selected recipients if available
+      if (selectedRecipientsList && selectedRecipientsList.length > 0) {
+        setRecipients(selectedRecipientsList.map(r => {
+          const nameParts = r.name.split(' ')
+          return {
+            id: r.id,
+            email: r.email,
+            firstName: nameParts[0] || r.name,
+            lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+            included: true,
+            labels: []
+          }
+        }))
+      } else {
+        setRecipients([])
+      }
       setState("ready")
     }
   }, [job.id, job.name, fetchContactLabels])
 
-  // Fetch draft and labels when standard mode is selected
+  // Handle proceeding from recipient selection to AI draft generation
+  const handleProceedToDraft = useCallback(() => {
+    const selectedList = Array.from(selectedRecipientsForDraft.values())
+    if (selectedList.length === 0) {
+      setError("Please select at least one recipient")
+      return
+    }
+    // Generate draft with selected recipients
+    fetchDraft(selectedList)
+  }, [selectedRecipientsForDraft, fetchDraft])
+
+  // Fetch labels when standard mode is selected (but not draft - that comes after recipient selection)
   useEffect(() => {
-    if (open && mode === "standard" && state === "idle") {
-      fetchDraft()
+    if (open && mode === "standard" && (state === "idle" || state === "selecting_recipients")) {
       fetchLabels()
     }
-  }, [open, mode, state, fetchDraft, fetchLabels])
+  }, [open, mode, state, fetchLabels])
 
   // Handle mode selection
   const handleModeSelect = (selectedMode: RequestMode) => {
     setMode(selectedMode)
     if (selectedMode === "standard") {
-      setState("idle") // This will trigger fetchDraft
+      setState("selecting_recipients") // Go to recipient selection first
     } else if (selectedMode === "data_personalization") {
       setState("idle") // Move past mode_selection to show the flow component
     } else if (selectedMode === "form_request") {
       setState("idle") // Move past mode_selection to show the form request flow
     }
   }
+
+  // Load all recipients when entering selecting_recipients state
+  useEffect(() => {
+    if (state === "selecting_recipients" && allAvailableRecipients.length === 0) {
+      fetchAllRecipients()
+    }
+  }, [state, allAvailableRecipients.length, fetchAllRecipients])
 
   // Debounced recipient search
   const handleRecipientSearch = useCallback((query: string) => {
@@ -497,6 +632,10 @@ export function SendRequestModal({
       setRecipientSearchQuery("")
       setRecipientSearchResults(null)
       if (searchTimeoutRef) clearTimeout(searchTimeoutRef)
+      // Reset recipient selection state
+      setSelectedRecipientsForDraft(new Map())
+      setRecipientSelectionSearch("")
+      setAllAvailableRecipients([])
     }
   }, [open, searchTimeoutRef])
 
@@ -895,7 +1034,7 @@ export function SendRequestModal({
             Send Request
           </DialogTitle>
           <DialogDescription>
-            Send an email request to stakeholders for: <strong>{job.name}</strong>
+            Send a request for: <strong>{job.name}</strong>
           </DialogDescription>
         </DialogHeader>
 
@@ -1059,6 +1198,188 @@ export function SendRequestModal({
           />
         )}
 
+        {/* Recipient Selection for Standard Request */}
+        {mode === "standard" && state === "selecting_recipients" && (
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setMode(null)
+                  setState("mode_selection")
+                  setSelectedRecipientsForDraft(new Map())
+                  setRecipientSelectionSearch("")
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h3 className="font-medium text-gray-900">Select Recipients</h3>
+                <p className="text-sm text-gray-500">
+                  Choose who should receive this request
+                </p>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search by name or email..."
+                value={recipientSelectionSearch}
+                onChange={(e) => setRecipientSelectionSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Selected Count */}
+            {selectedRecipientsForDraft.size > 0 && (
+              <div className="flex items-center gap-2 text-sm text-gray-600 bg-orange-50 px-3 py-2 rounded-lg">
+                <Users className="w-4 h-4 text-orange-500" />
+                <span>{selectedRecipientsForDraft.size} recipient{selectedRecipientsForDraft.size !== 1 ? 's' : ''} selected</span>
+              </div>
+            )}
+
+            {/* Recipient List */}
+            <div className="border rounded-lg max-h-[400px] overflow-y-auto">
+              {loadingAllRecipients ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500">Loading contacts...</span>
+                </div>
+              ) : allAvailableRecipients.length === 0 ? (
+                <div className="py-8 text-center text-gray-500">
+                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">No contacts found</p>
+                  <p className="text-xs mt-1">Add team members or stakeholders to your organization first.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Team Members Section */}
+                  {allAvailableRecipients.filter(r => r.type === "user").length > 0 && (
+                    <div>
+                      <div className="px-3 py-2 bg-gray-50 border-b sticky top-0">
+                        <span className="text-xs font-medium text-gray-500 uppercase">Team Members</span>
+                      </div>
+                      {allAvailableRecipients
+                        .filter(r => r.type === "user")
+                        .filter(r => 
+                          recipientSelectionSearch === "" ||
+                          r.name.toLowerCase().includes(recipientSelectionSearch.toLowerCase()) ||
+                          r.email.toLowerCase().includes(recipientSelectionSearch.toLowerCase())
+                        )
+                        .map(recipient => (
+                          <button
+                            key={`user-${recipient.id}`}
+                            onClick={() => toggleRecipientSelection(recipient)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
+                              selectedRecipientsForDraft.has(recipient.id) ? 'bg-orange-50' : ''
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                              selectedRecipientsForDraft.has(recipient.id)
+                                ? 'bg-orange-500 border-orange-500'
+                                : 'border-gray-300'
+                            }`}>
+                              {selectedRecipientsForDraft.has(recipient.id) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 text-left">
+                              <div className="text-sm font-medium text-gray-900">{recipient.name}</div>
+                              <div className="text-xs text-gray-500">{recipient.email}</div>
+                            </div>
+                            {recipient.subLabel && (
+                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                {recipient.subLabel}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Stakeholders Section */}
+                  {allAvailableRecipients.filter(r => r.type === "entity").length > 0 && (
+                    <div>
+                      <div className="px-3 py-2 bg-gray-50 border-b border-t sticky top-0">
+                        <span className="text-xs font-medium text-gray-500 uppercase">Stakeholders</span>
+                      </div>
+                      {allAvailableRecipients
+                        .filter(r => r.type === "entity")
+                        .filter(r => 
+                          recipientSelectionSearch === "" ||
+                          r.name.toLowerCase().includes(recipientSelectionSearch.toLowerCase()) ||
+                          r.email.toLowerCase().includes(recipientSelectionSearch.toLowerCase())
+                        )
+                        .map(recipient => (
+                          <button
+                            key={`entity-${recipient.id}`}
+                            onClick={() => toggleRecipientSelection(recipient)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
+                              selectedRecipientsForDraft.has(recipient.id) ? 'bg-orange-50' : ''
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                              selectedRecipientsForDraft.has(recipient.id)
+                                ? 'bg-orange-500 border-orange-500'
+                                : 'border-gray-300'
+                            }`}>
+                              {selectedRecipientsForDraft.has(recipient.id) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 text-left">
+                              <div className="text-sm font-medium text-gray-900">{recipient.name}</div>
+                              <div className="text-xs text-gray-500">{recipient.email}</div>
+                            </div>
+                            {recipient.subLabel && (
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                {recipient.subLabel}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMode(null)
+                  setState("mode_selection")
+                  setSelectedRecipientsForDraft(new Map())
+                  setRecipientSelectionSearch("")
+                  setError(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleProceedToDraft}
+                disabled={selectedRecipientsForDraft.size === 0}
+                className="bg-orange-500 hover:bg-orange-600"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Drafting State */}
         {mode === "standard" && state === "drafting" && (
           <div className="flex flex-col items-center justify-center py-12">
@@ -1117,21 +1438,8 @@ export function SendRequestModal({
               </div>
             )}
 
-            {/* No Recipients Warning */}
-            {noRecipients && !error && (
-              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-amber-800">No stakeholders assigned</p>
-                  <p className="text-sm text-amber-700">
-                    Add stakeholders to this task before sending a request.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Fallback Warning (only show if not due to no recipients) */}
-            {usedFallback && !noRecipients && !error && (
+            {/* Fallback Warning */}
+            {usedFallback && !error && (
               <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div>

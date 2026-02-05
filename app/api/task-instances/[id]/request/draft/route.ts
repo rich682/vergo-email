@@ -149,6 +149,15 @@ Best regards`
   return { subject, body }
 }
 
+interface RequestBody {
+  recipients?: Array<{
+    id: string
+    name: string
+    email: string
+    type: "user" | "entity"
+  }>
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -168,6 +177,14 @@ export async function POST(
     const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
     const { id: jobId } = await params
 
+    // Parse request body
+    let body: RequestBody = {}
+    try {
+      body = await request.json()
+    } catch {
+      // Body is optional, continue with empty
+    }
+
     // Fetch task instance with full context
     const job = await TaskInstanceService.findById(jobId, organizationId)
     if (!job) {
@@ -186,15 +203,40 @@ export async function POST(
       )
     }
 
-    // Extract stakeholders from task instance labels
     const labels = job.labels as any
-    const stakeholders: TaskInstanceStakeholder[] = labels?.stakeholders || []
 
-    // Resolve stakeholder contacts
-    const recipients = await resolveStakeholderContacts(stakeholders, organizationId)
+    // Determine recipients - either from request body (new flow) or from stakeholders (legacy)
+    let recipientsWithEmail: Array<{
+      id: string
+      email: string | null
+      firstName: string
+      lastName: string | null
+      contactType?: string
+      stakeholderType?: "contact_type" | "group" | "individual"
+      stakeholderName?: string
+    }> = []
 
-    // Filter to only contacts with email addresses
-    const recipientsWithEmail = recipients.filter(r => r.email)
+    if (body.recipients && body.recipients.length > 0) {
+      // New flow: recipients selected by user
+      recipientsWithEmail = body.recipients.map(r => {
+        // Parse first name from full name
+        const nameParts = r.name.split(' ')
+        return {
+          id: r.id,
+          email: r.email,
+          firstName: nameParts[0] || r.name,
+          lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+          contactType: undefined,
+          stakeholderType: undefined,
+          stakeholderName: undefined
+        }
+      })
+    } else {
+      // Legacy flow: resolve from task stakeholders (for backwards compatibility)
+      const stakeholders: TaskInstanceStakeholder[] = labels?.stakeholders || []
+      const resolvedRecipients = await resolveStakeholderContacts(stakeholders, organizationId)
+      recipientsWithEmail = resolvedRecipients.filter(r => r.email)
+    }
 
     // Build item context for response
     const itemContext = {
@@ -241,11 +283,16 @@ export async function POST(
     }
 
     // Build prompt from Item context
-    const stakeholderSummary = stakeholders
-      .map(s => `${s.name} (${s.type})`)
+    // Build recipient summary for prompt
+    const recipientSummary = recipientsWithEmail
+      .map(r => `${r.firstName}${r.lastName ? ` ${r.lastName}` : ''} (${r.email})`)
+      .slice(0, 5) // Limit to first 5 for brevity
       .join(', ')
+    const moreRecipients = recipientsWithEmail.length > 5 
+      ? ` and ${recipientsWithEmail.length - 5} more` 
+      : ''
 
-    let prompt = `Email the following stakeholders to request what's needed for this item.
+    let prompt = `Email the following recipients to request what's needed for this item.
 
 Item: ${job.name}`
 
@@ -254,23 +301,13 @@ Item: ${job.name}`
 Description: ${job.description}`
     }
 
-    if (job.dueDate) {
-      const formattedDate = job.dueDate.toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
-      })
-      prompt += `
-Due Date: ${formattedDate}`
-    }
-
     if (labels?.tags && labels.tags.length > 0) {
       prompt += `
 Labels: ${labels.tags.join(', ')}`
     }
 
     prompt += `
-Stakeholders: ${stakeholderSummary}
+Recipients: ${recipientSummary}${moreRecipients}
 Number of recipients: ${recipientsWithEmail.length}`
 
     // Try AI generation
