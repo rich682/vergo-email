@@ -68,10 +68,7 @@ import { DraftRequestReviewModal } from "@/components/jobs/draft-request-review-
 // Task AI Summary
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 
-// Table components for TABLE type tasks
-import { CompareView } from "@/components/jobs/table"
-
-// Report tab for REPORTS type tasks
+// Report tab
 import { ReportTab } from "@/components/jobs/report-tab"
 
 
@@ -353,7 +350,6 @@ export default function JobDetailPage() {
         const data = await response.json()
         const taskInstance = data.taskInstance
         setJob(taskInstance)
-        setPriorSnapshotExists(taskInstance.priorSnapshotExists || false)
         setPermissions(data.permissions)
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")
@@ -753,8 +749,6 @@ export default function JobDetailPage() {
     )
   }
 
-  const isAdHoc = !job.board?.cadence || job.board?.cadence === "AD_HOC"
-
   return (
     <div className="bg-white">
       <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
@@ -768,25 +762,37 @@ export default function JobDetailPage() {
               {job?.board ? `Back to ${job.board.name}` : "Back to Boards"}
             </span>
           </Link>
-          {permissions?.canEdit && (
-            <button 
-              onClick={handleDelete}
-              className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1.5"
-              title={(job?.taskCount || 0) > 0 ? "Archive task (has requests)" : "Delete task permanently"}
-            >
-              {(job?.taskCount || 0) > 0 ? (
-                <>
-                  <Archive className="w-4 h-4" />
-                  <span className="text-xs">Archive</span>
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4" />
-                  <span className="text-xs">Delete</span>
-                </>
-              )}
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {permissions?.canEdit && (
+              <Button 
+                onClick={() => setIsSendRequestOpen(true)}
+                size="sm"
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Send Request
+              </Button>
+            )}
+            {permissions?.canEdit && (
+              <button 
+                onClick={handleDelete}
+                className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1.5"
+                title={(job?.taskCount || 0) > 0 ? "Archive task (has requests)" : "Delete task permanently"}
+              >
+                {(job?.taskCount || 0) > 0 ? (
+                  <>
+                    <Archive className="w-4 h-4" />
+                    <span className="text-xs">Archive</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span className="text-xs">Delete</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -798,27 +804,6 @@ export default function JobDetailPage() {
           >
             Overview
           </button>
-          
-          {job.type === "TABLE" && (
-            <div className="relative group">
-              <button
-                onClick={() => {
-                  if (priorSnapshotExists) {
-                    setActiveTab("compare")
-                  }
-                }}
-                disabled={!priorSnapshotExists}
-                className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "compare" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700 disabled:opacity-50"}`}
-              >
-                Compare
-              </button>
-              {!priorSnapshotExists && (
-                <div className="absolute left-0 top-full mt-1 bg-gray-900 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
-                  {isAdHoc ? "Comparisons unlock on recurring boards" : "No prior completed period found"}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Requests tab - only visible to owners/admins */}
           {permissions?.canEdit && (
@@ -845,7 +830,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {job.type === "REPORTS" && (
+          {(job.reportDefinitionId || permissions?.isAdmin) && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -1246,7 +1231,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "report" && job.type === "REPORTS" && (
+            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1266,13 +1251,6 @@ export default function JobDetailPage() {
                   }}
                 />
               </div>
-            )}
-
-            {activeTab === "compare" && (
-              <CompareView
-                taskInstanceId={jobId}
-                onRefresh={fetchJob}
-              />
             )}
           </div>
 
