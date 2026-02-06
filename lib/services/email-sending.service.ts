@@ -9,8 +9,10 @@ import { v4 as uuidv4 } from "uuid"
 import { decrypt } from "@/lib/encryption"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
+import { ResendProvider } from "@/lib/providers/email/resend-provider"
 import { ReminderStateService } from "./reminder-state.service"
 import { EmailQueueService } from "./email-queue.service"
+import { validateEmailForSend } from "@/lib/utils/email-validation"
 import { prisma } from "@/lib/prisma"
 import { logger } from "@/lib/logger"
 
@@ -21,6 +23,9 @@ const log = logger.child({ service: "EmailSendingService" })
 // Rate-limited emails are automatically queued for later sending
 const RATE_LIMIT_HOURS = 24
 const RATE_LIMIT_MAX_EMAILS = 5  // Max emails to same recipient within RATE_LIMIT_HOURS
+
+// Delay between sends in bulk operations to avoid triggering recipient server rate limits
+const BULK_SEND_DELAY_MS = 2000 // 2 seconds between each email
 
 /**
  * Log an email send to the audit table
@@ -245,7 +250,11 @@ export class EmailSendingService {
       subject: data.subject,
       text: data.body,
       html: data.htmlBody,
-      replyTo: data.replyTo
+      replyTo: data.replyTo,
+      headers: {
+        "List-Unsubscribe": `<mailto:${data.replyTo}?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
     }
 
     const info = await transporter.sendMail(mailOptions)
@@ -381,6 +390,27 @@ export class EmailSendingService {
       jobId: data.jobId
     }, { organizationId: data.organizationId, operation: "sendEmail" })
 
+    // Pre-send email validation: check format and MX records
+    try {
+      const validation = await validateEmailForSend(data.to)
+      if (!validation.valid) {
+        throw new Error(validation.reason || `Invalid recipient email: ${data.to}`)
+      }
+    } catch (validationError: any) {
+      // If the error is from our validation (not DNS infrastructure), throw immediately
+      if (validationError.message?.includes("does not exist") ||
+          validationError.message?.includes("no mail server") ||
+          validationError.message?.includes("Invalid email format") ||
+          validationError.message?.includes("did you mean")) {
+        throw validationError
+      }
+      // DNS infrastructure errors (timeout, etc.) - allow the send to proceed
+      log.warn("Email validation check failed, proceeding with send", {
+        to: data.to,
+        error: validationError.message
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
+    }
+
     // Generate thread ID for internal tracking
     const threadId = this.generateThreadId()
     // Use actual sender email as Reply-To so replies come back to connected inbox
@@ -395,8 +425,9 @@ export class EmailSendingService {
       htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(data.htmlBody, trackingUrl)
     }
 
-    // Send email based on provider
+    // Send email based on provider, with Resend as fallback
     let sendResult: { messageId: string; providerData: any }
+    let usedFallback = false
     
     // Convert attachments to Buffer format for providers
     const providerAttachments = data.attachments?.map(a => ({
@@ -405,39 +436,88 @@ export class EmailSendingService {
       contentType: a.contentType
     }))
 
-    if (account.provider === EmailProvider.GMAIL) {
-      const provider = new GmailProvider()
-      sendResult = await provider.sendEmail({
-        account,
+    try {
+      // Primary send: Gmail / Microsoft / SMTP
+      if (account.provider === EmailProvider.GMAIL) {
+        const provider = new GmailProvider()
+        sendResult = await provider.sendEmail({
+          account,
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          htmlBody: htmlBodyWithTracking,
+          replyTo,
+          attachments: providerAttachments
+        })
+      } else if (account.provider === EmailProvider.MICROSOFT) {
+        const provider = new MicrosoftProvider()
+        sendResult = await provider.sendEmail({
+          account,
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          htmlBody: htmlBodyWithTracking,
+          replyTo,
+          attachments: providerAttachments
+        })
+      } else {
+        // GENERIC_SMTP or fallback
+        sendResult = await this.sendViaSMTP({
+          account,
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          htmlBody: htmlBodyWithTracking,
+          replyTo,
+          attachments: providerAttachments
+        })
+      }
+    } catch (primaryError: any) {
+      // Primary send failed — try Resend as fallback
+      log.warn("Primary email send failed, attempting Resend fallback", {
+        to: data.to,
+        primaryError: primaryError.message,
+        provider: account.provider
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
+
+      if (!ResendProvider.isAvailable()) {
+        // No Resend configured — re-throw original error
+        throw primaryError
+      }
+
+      // Get sender name for the "via Vergo" From header
+      let senderName: string | undefined
+      try {
+        const sender = await prisma.user.findFirst({
+          where: { id: data.userId || undefined },
+          select: { name: true }
+        })
+        senderName = sender?.name || undefined
+      } catch {
+        // Non-critical — proceed without name
+      }
+
+      const resendResult = await ResendProvider.sendEmail({
         to: data.to,
         subject: data.subject,
         body: data.body,
         htmlBody: htmlBodyWithTracking,
         replyTo,
-        attachments: providerAttachments
+        senderName,
+        attachments: providerAttachments,
       })
-    } else if (account.provider === EmailProvider.MICROSOFT) {
-      const provider = new MicrosoftProvider()
-      sendResult = await provider.sendEmail({
-        account,
+
+      if (!resendResult) {
+        // Resend returned null (shouldn't happen since we checked isAvailable)
+        throw primaryError
+      }
+
+      sendResult = resendResult
+      usedFallback = true
+      log.info("Email sent successfully via Resend fallback", {
         to: data.to,
-        subject: data.subject,
-        body: data.body,
-        htmlBody: htmlBodyWithTracking,
-        replyTo,
-        attachments: providerAttachments
-      })
-    } else {
-      // GENERIC_SMTP or fallback
-      sendResult = await this.sendViaSMTP({
-        account,
-        to: data.to,
-        subject: data.subject,
-        body: data.body,
-        htmlBody: htmlBodyWithTracking,
-        replyTo,
-        attachments: providerAttachments
-      })
+        resendId: resendResult.providerData.resendId
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
     }
 
     // Create request with taskInstanceId for direct association
@@ -482,16 +562,17 @@ export class EmailSendingService {
       organizationId: data.organizationId,
       jobId: data.jobId,
       taskId: task.id,
-      fromEmail: account.email,
+      fromEmail: usedFallback ? (process.env.RESEND_FROM_EMAIL || "resend-fallback") : account.email,
       toEmail: data.to,
       subject: data.subject,
       result: "SUCCESS",
-      provider: account.provider,
+      provider: usedFallback ? null : account.provider,
       providerId: sendResult.messageId,
       metadata: {
         campaignName: data.campaignName,
         campaignType: data.campaignType,
-        hasReminders: data.remindersConfig?.enabled || false
+        hasReminders: data.remindersConfig?.enabled || false,
+        usedResendFallback: usedFallback
       }
     })
 
@@ -666,7 +747,14 @@ export class EmailSendingService {
     // Use deadlineDate directly from data (set by user via date picker)
     const deadlineDate = data.deadlineDate || null
 
-    for (const recipient of data.recipients) {
+    for (let i = 0; i < data.recipients.length; i++) {
+      const recipient = data.recipients[i]
+
+      // Stagger sends: wait between emails to avoid triggering recipient server rate limits
+      if (i > 0 && BULK_SEND_DELAY_MS > 0) {
+        await new Promise(resolve => setTimeout(resolve, BULK_SEND_DELAY_MS))
+      }
+
       try {
         // Use per-recipient email if provided, otherwise use default
         const perRecipientEmail = data.perRecipientEmails?.find(e => e.email === recipient.email)
@@ -701,9 +789,39 @@ export class EmailSendingService {
           campaignName: data.campaignName
         }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
         
+        // Create a Request record with SEND_FAILED status so the failure is visible in the UI
+        let failedTaskId = ""
+        try {
+          const failedRequest = await RequestCreationService.createRequestFromEmail({
+            organizationId: data.organizationId,
+            taskInstanceId: data.jobId || null,
+            entityEmail: recipient.email,
+            entityName: recipient.name,
+            campaignName: data.campaignName,
+            campaignType: data.campaignType,
+            requestType: "standard",
+            threadId: `failed-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            replyToEmail: "failed@send",
+            subject: data.perRecipientEmails?.find(e => e.email === recipient.email)?.subject || data.subject,
+          })
+          // Update to SEND_FAILED status
+          await prisma.request.update({
+            where: { id: failedRequest.id },
+            data: {
+              status: "SEND_FAILED",
+              aiReasoning: { error: error.message, failedAt: new Date().toISOString() }
+            }
+          })
+          failedTaskId = failedRequest.id
+        } catch (createErr: any) {
+          log.error("Failed to create failed request record", createErr, {
+            email: recipient.email
+          }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
+        }
+        
         results.push({
           email: recipient.email,
-          taskId: "",
+          taskId: failedTaskId,
           threadId: "",
           messageId: "",
           error: error.message

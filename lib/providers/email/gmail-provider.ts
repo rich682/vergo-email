@@ -68,6 +68,9 @@ export class GmailProvider implements EmailProviderDriver {
       `Message-ID: ${messageIdHeader}`,
       `Subject: ${params.subject}`,
       "MIME-Version: 1.0",
+      // List-Unsubscribe for deliverability (signals to inbox providers this is a legitimate sender)
+      `List-Unsubscribe: <mailto:${params.replyTo}?subject=Unsubscribe>`,
+      `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
     ]
 
     // Add In-Reply-To header for threading (critical for email clients to group as thread)

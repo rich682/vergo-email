@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, Users, Clock, Bell, 
   MessageSquare, CheckCircle, AlertCircle, Pause, 
   PlayCircle, Mail, Paperclip, Eye, AlertTriangle,
-  Shield, ShieldAlert, ShieldCheck, ShieldQuestion, X
+  Shield, ShieldAlert, ShieldCheck, ShieldQuestion, X, RotateCcw
 } from "lucide-react"
 import { format } from "date-fns"
 import {
@@ -92,6 +92,7 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  SEND_FAILED: { label: "Failed", icon: AlertTriangle, bgColor: "bg-red-100", textColor: "text-red-700" },
   // Legacy statuses (mapped to new display)
   AWAITING_RESPONSE: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   IN_PROGRESS: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
@@ -102,6 +103,44 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   MANUAL_REVIEW: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+}
+
+// Retry button for failed requests
+function RetryRequestButton({ requestId, onRetry }: { requestId: string; onRetry: () => void }) {
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetry = async () => {
+    setRetrying(true)
+    try {
+      const response = await fetch(`/api/requests/detail/${requestId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        onRetry()
+      } else {
+        alert(`Retry failed: ${data.message || data.error || "Unknown error"}`)
+        onRetry()
+      }
+    } catch (err) {
+      console.error("Retry error:", err)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRetry}
+      disabled={retrying}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded border border-orange-200 transition-colors disabled:opacity-50"
+      title="Retry sending this email"
+    >
+      <RotateCcw className={`w-2.5 h-2.5 ${retrying ? "animate-spin" : ""}`} />
+      {retrying ? "..." : "Retry"}
+    </button>
+  )
 }
 
 // Risk level options for dropdown
@@ -644,11 +683,16 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
                         {recipient.email || 'Unknown'}
                       </td>
                       <td className="px-4 py-2">
-                        <RecipientStatusDropdown
-                          recipientId={recipient.id}
-                          currentStatus={recipient.status || 'NO_REPLY'}
-                          onStatusChange={onRefresh}
-                        />
+                        <div className="flex items-center gap-1">
+                          <RecipientStatusDropdown
+                            recipientId={recipient.id}
+                            currentStatus={recipient.status || 'NO_REPLY'}
+                            onStatusChange={onRefresh}
+                          />
+                          {(recipient.status === 'SEND_FAILED') && (
+                            <RetryRequestButton requestId={recipient.id} onRetry={onRefresh} />
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2">
                         <RiskDropdown

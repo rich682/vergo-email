@@ -39,6 +39,14 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
+        // Track login timestamp (fire-and-forget, don't block auth)
+        prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() }
+        }).catch((err) => {
+          console.error("[Auth] Failed to update lastLoginAt:", err)
+        })
+
         return {
           id: user.id,
           email: user.email,

@@ -125,6 +125,7 @@ export function ComposeSendStep({
     sent: number
     failed: number
     skipped: number
+    failedRecipients?: Array<{ email: string; error?: string }>
   } | null>(null)
   
   // Filter out name columns from insertable fields
@@ -482,10 +483,16 @@ export function ComposeSendStep({
 
       const data = await response.json()
       
+      // Extract failed recipient details from results
+      const failedRecipients = (data.results || [])
+        .filter((r: any) => !r.success)
+        .map((r: any) => ({ email: r.email, error: r.error }))
+      
       setSendResults({
         sent: data.summary.sent,
         failed: data.summary.failed,
         skipped: data.summary.skipped,
+        failedRecipients: failedRecipients.length > 0 ? failedRecipients : undefined,
       })
       setState("success")
       
@@ -524,23 +531,44 @@ export function ComposeSendStep({
       {/* Success State */}
       {state === "success" && sendResults && (
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${sendResults.failed > 0 ? "bg-amber-100" : "bg-green-100"}`}>
+            <CheckCircle className={`w-8 h-8 ${sendResults.failed > 0 ? "text-amber-600" : "text-green-600"}`} />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Emails Sent!</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {sendResults.failed > 0 ? "Emails Partially Sent" : "Emails Sent!"}
+          </h3>
           <p className="text-gray-600 text-center">
             Successfully sent {sendResults.sent} email{sendResults.sent !== 1 ? "s" : ""}.
             {sendResults.failed > 0 && (
-              <span className="text-red-600 block">
+              <span className="text-red-600 block mt-1">
                 {sendResults.failed} failed to send.
               </span>
             )}
             {sendResults.skipped > 0 && (
-              <span className="text-amber-600 block">
+              <span className="text-amber-600 block mt-1">
                 {sendResults.skipped} skipped (invalid email).
               </span>
             )}
           </p>
+          {/* Show failed recipient details */}
+          {sendResults.failedRecipients && sendResults.failedRecipients.length > 0 && (
+            <div className="mt-4 w-full max-w-md">
+              <p className="text-sm font-medium text-red-700 mb-2">Failed recipients:</p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+                {sendResults.failedRecipients.map((r, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="font-medium text-red-800">{r.email}</span>
+                    {r.error && (
+                      <p className="text-red-600 text-xs mt-0.5">{r.error}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Failed sends are tracked in Requests with a &quot;Failed&quot; status. You can retry by sending a new request to these recipients.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

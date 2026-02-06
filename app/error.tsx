@@ -49,6 +49,22 @@ export default function Error({
       stack: error?.stack,
       digest: error?.digest,
     })
+
+    // Report error to admin dashboard
+    try {
+      fetch('/api/errors/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          errorMessage,
+          errorStack: typeof error?.stack === 'string' ? error.stack : null,
+          componentName: 'ErrorBoundary',
+          pageUrl: typeof window !== 'undefined' ? window.location.href : null,
+          severity: 'error',
+          metadata: { digest: error?.digest },
+        }),
+      }).catch(() => {}) // Silently ignore report failures
+    } catch {}
   }, [error, errorMessage])
 
   return (

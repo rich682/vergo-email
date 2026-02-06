@@ -33,6 +33,48 @@ export class EmailReceptionService {
     return undefined
   }
 
+  /**
+   * Detect bounce/delivery failure notifications
+   * These are more specific than general auto-replies and indicate the email was not delivered
+   */
+  static isBounceNotification(data: InboundEmailData): boolean {
+    const fromLower = data.from.toLowerCase()
+    const subjectLower = (data.subject || "").toLowerCase()
+    const bodyLower = (data.body || "").toLowerCase().substring(0, 2000)
+
+    // Bounce-specific senders
+    const bounceSenders = [
+      "mailer-daemon@", "postmaster@", "mail-daemon@", "daemon@", "bounce@", "bounces@",
+    ]
+    const fromIsBounce = bounceSenders.some(s => fromLower.includes(s))
+
+    // Bounce-specific subjects
+    const bounceSubjects = [
+      "undeliverable", "undelivered", "delivery status notification",
+      "delivery failure", "mail delivery failed", "returned mail",
+      "failure notice", "message not delivered", "delivery problem",
+      "delivery has failed", "could not be delivered", "was not delivered",
+    ]
+    const subjectIsBounce = bounceSubjects.some(s => subjectLower.includes(s))
+
+    // Bounce-specific body content
+    const bounceBodyPatterns = [
+      "your message was not delivered", "the following message could not be delivered",
+      "delivery has failed", "message delivery failed", "undeliverable message",
+      "550 ", "553 ", "554 ", "mailbox not found", "mailbox unavailable",
+      "address rejected", "user unknown", "no such user",
+      "message was blocked", "message has been blocked",
+    ]
+    const bodyIsBounce = bounceBodyPatterns.some(p => bodyLower.includes(p))
+
+    // If sender is a bounce daemon AND (subject or body matches), it's a bounce
+    if (fromIsBounce && (subjectIsBounce || bodyIsBounce)) return true
+    // Even without bounce sender, clear delivery failure subjects + body
+    if (subjectIsBounce && bodyIsBounce) return true
+
+    return false
+  }
+
   static isAutoReply(data: InboundEmailData): boolean {
     const fromLower = data.from.toLowerCase()
     const subjectLower = (data.subject || "").toLowerCase()
@@ -278,11 +320,24 @@ export class EmailReceptionService {
     }
 
     const isAutoReply = this.isAutoReply(data)
+    const isBounce = this.isBounceNotification(data)
     if (isAutoReply) {
       console.log(`[Email Reception] Detected auto-reply from ${data.from}: "${data.subject?.substring(0, 50)}"`)
     }
+    if (isBounce) {
+      console.log(`[Email Reception] Detected BOUNCE from ${data.from}: "${data.subject?.substring(0, 80)}"`)
+    }
 
-    const shouldUpdateStatus = !isAutoReply && request.status !== "COMPLETE" && request.status !== "FULFILLED"
+    // Determine status update:
+    // - Bounce → SEND_FAILED (delivery failed permanently)
+    // - Auto-reply (not bounce) → don't change status
+    // - Real reply → REPLIED
+    let newStatus: string | undefined
+    if (isBounce && request.status !== "COMPLETE" && request.status !== "FULFILLED") {
+      newStatus = "SEND_FAILED"
+    } else if (!isAutoReply && !isBounce && request.status !== "COMPLETE" && request.status !== "FULFILLED") {
+      newStatus = "REPLIED"
+    }
 
     const updatedRequest = await prisma.request.update({
       where: { id: request.id },
@@ -291,8 +346,17 @@ export class EmailReceptionService {
         documentKey: attachmentKeys.length > 0
           ? attachmentKeys[0]
           : request.documentKey,
-        readStatus: "replied",
-        ...(shouldUpdateStatus && { status: "REPLIED" })
+        readStatus: isBounce ? "bounced" : "replied",
+        ...(newStatus && { status: newStatus }),
+        // Store bounce details in aiReasoning for visibility
+        ...(isBounce && {
+          aiReasoning: {
+            bounceDetected: true,
+            bounceFrom: data.from,
+            bounceSubject: data.subject?.substring(0, 200),
+            bounceAt: new Date().toISOString(),
+          }
+        })
       }
     })
 

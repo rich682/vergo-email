@@ -25,9 +25,10 @@ const statusStyles: Record<string, { bg: string; text: string; label: string }> 
   COMPLETED: { bg: 'bg-green-50', text: 'text-green-700', label: 'Completed' },
   ARCHIVED: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Archived' },
   
-  // Task/Request statuses - No reply, Replied, Complete (new values)
+  // Task/Request statuses - No reply, Replied, Complete, Failed (new values)
   NO_REPLY: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'No reply' },
   REPLIED: { bg: 'bg-blue-50', text: 'text-blue-700', label: 'Replied' },
+  SEND_FAILED: { bg: 'bg-red-50', text: 'text-red-700', label: 'Failed' },
   // Note: COMPLETE is already defined above in Job statuses
   
   // Legacy Task/Request statuses (mapped to new display)

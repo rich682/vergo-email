@@ -14,6 +14,22 @@ export default function GlobalError({
     digest: error.digest,
   })
 
+  // Report error to admin dashboard
+  try {
+    fetch('/api/errors/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        errorMessage: error.message || 'Unknown global error',
+        errorStack: typeof error.stack === 'string' ? error.stack : null,
+        componentName: 'GlobalErrorBoundary',
+        pageUrl: typeof window !== 'undefined' ? window.location.href : null,
+        severity: 'fatal',
+        metadata: { digest: error.digest },
+      }),
+    }).catch(() => {})
+  } catch {}
+
   return (
     <html>
       <body>

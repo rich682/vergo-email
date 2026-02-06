@@ -22,13 +22,13 @@ export default function SignInPage() {
         email,
         password,
         redirect: false,
-        callbackUrl: "/dashboard/jobs"
+        callbackUrl: "/dashboard/boards"
       })
 
       if (result?.error) {
         setError("Invalid email or password")
       } else if (result?.ok) {
-        window.location.href = "/dashboard/jobs"
+        window.location.href = "/dashboard/boards"
       }
     } catch (error) {
       console.error("Sign in error:", error)

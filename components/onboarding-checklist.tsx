@@ -55,7 +55,7 @@ const STEPS: OnboardingStep[] = [
     label: "Create a board", 
     description: "Organize tasks by project or time period",
     icon: Layout,
-    href: "/dashboard/jobs",
+    href: "/dashboard/boards",
     actionLabel: "Create board"
   },
   { 
@@ -63,7 +63,7 @@ const STEPS: OnboardingStep[] = [
     label: "Create a task", 
     description: "Tasks represent items you need to collect",
     icon: ListTodo,
-    href: "/dashboard/jobs",
+    href: "/dashboard/boards",
     actionLabel: "Create task"
   },
   { 

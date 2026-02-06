@@ -133,6 +133,15 @@ export default function JobsPage() {
   
   // Board context from URL
   const boardId = searchParams.get("boardId")
+  
+  // Redirect to boards page if no board is selected
+  // (Boards is the home page - no "All Tasks" view)
+  useEffect(() => {
+    if (!boardId) {
+      router.replace("/dashboard/boards")
+    }
+  }, [boardId, router])
+  
   const [currentBoard, setCurrentBoard] = useState<Board | null>(null)
   const [organizationTimezone, setOrganizationTimezone] = useState<string | null>(null)
   

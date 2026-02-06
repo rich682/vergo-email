@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { RequestCreationService } from "@/lib/services/request-creation.service"
 
 /**
  * Get the base URL for form links
@@ -152,8 +153,35 @@ ${senderName || "The Team"}`
       })
 
       return true
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[FormNotification] Failed to send form request email:`, error)
+      
+      // Create a failed Request record so it shows up in the UI with SEND_FAILED status
+      try {
+        const failedRequest = await RequestCreationService.createRequestFromEmail({
+          organizationId,
+          entityEmail: recipientEmail,
+          entityName: recipientName || undefined,
+          campaignName: formName,
+          campaignType: "form_request",
+          requestType: "form",
+          threadId: `failed-form-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          replyToEmail: "failed@send",
+          subject,
+          deadlineDate,
+        })
+        await prisma.request.update({
+          where: { id: failedRequest.id },
+          data: {
+            status: "SEND_FAILED",
+            aiReasoning: { error: error?.message || "Unknown error", failedAt: new Date().toISOString(), type: "form_request" }
+          }
+        })
+        console.log(`[FormNotification] Created SEND_FAILED request record for ${recipientEmail}`)
+      } catch (createErr: any) {
+        console.error(`[FormNotification] Failed to create failed request record:`, createErr)
+      }
+      
       return false
     }
   }

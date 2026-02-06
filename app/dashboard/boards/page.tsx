@@ -539,23 +539,33 @@ export default function BoardsPage() {
           <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
         </div>
       ) : filteredBoards.length === 0 ? (
-        <div className="text-center py-12 border rounded-lg bg-gray-50">
-          <p className="text-gray-500">
-            {searchQuery || statusFilter !== "ALL" || cadenceFilter !== "ALL"
-              ? "No boards match your filters" 
-              : "No boards yet. Create your first board to get started."}
-          </p>
-          {!searchQuery && statusFilter === "ALL" && cadenceFilter === "ALL" && (
+        searchQuery || statusFilter !== "ALL" || cadenceFilter !== "ALL" ? (
+          <div className="text-center py-12 border rounded-lg bg-gray-50">
+            <p className="text-gray-500">No boards match your filters</p>
+          </div>
+        ) : (
+          <div className="text-center py-20 border rounded-xl bg-gray-50">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-orange-400" />
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Welcome to Vergo</h2>
+            <p className="text-gray-500 mb-1 max-w-md mx-auto">
+              Boards help you organize tasks by project or time period.
+            </p>
+            <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto">
+              Create your first board to start tracking tasks, sending requests, and collecting documents.
+            </p>
             <Button 
-              variant="outline" 
-              className="mt-4"
+              size="lg"
               onClick={() => setIsCreateBoardOpen(true)}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Create Board
+              Create Your First Board
             </Button>
-          )}
-        </div>
+          </div>
+        )
       ) : (
         <div className="space-y-6">
           {/* Recurring Boards Section */}

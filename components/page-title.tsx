@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 
 const PAGE_TITLES: Record<string, string> = {
+  "/dashboard/boards": "Boards",
   "/dashboard/jobs": UI_LABELS.jobsPageTitle,
   "/dashboard/contacts": "Contacts",
   "/dashboard/requests": "Requests",

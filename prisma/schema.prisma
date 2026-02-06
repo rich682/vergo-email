@@ -27,6 +27,7 @@ enum TaskStatus {
   NO_REPLY // No reply received yet (default for new requests)
   REPLIED // Reply received from contact
   COMPLETE // Task marked as complete (manual action)
+  SEND_FAILED // Email delivery failed (bounce, rejection, provider error)
   // Legacy statuses (kept for backward compatibility with existing data)
   IN_PROGRESS // @deprecated - maps to NO_REPLY
   FULFILLED // @deprecated - maps to COMPLETE
@@ -202,6 +203,7 @@ model User {
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  lastLoginAt    DateTime? // Tracks most recent login time
 
   // Auth token fields for verification, password reset, and invites
   emailVerified     Boolean   @default(false)
@@ -1310,5 +1312,25 @@ model GeneratedReportViewer {
   
   @@unique([generatedReportId, userId])
   @@index([userId])
+}
+
+// AppError - Frontend error tracking for admin dashboard
+model AppError {
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  errorMessage   String
+  errorStack     String?  @db.Text
+  componentName  String?
+  pageUrl        String?
+  userAgent      String?
+  metadata       Json?
+  severity       String   @default("error") // "error" | "warning" | "fatal"
+  resolved       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([createdAt])
+  @@index([severity])
 }
 

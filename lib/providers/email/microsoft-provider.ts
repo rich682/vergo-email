@@ -55,8 +55,12 @@ export class MicrosoftProvider implements EmailProviderDriver {
     const domain = refreshedAccount.email.split('@')[1] || 'outlook.com'
     const generatedMessageId = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${domain}>`
     
-    // Build internet message headers for threading
-    const internetMessageHeaders: Array<{ name: string; value: string }> = []
+    // Build internet message headers for threading and deliverability
+    const internetMessageHeaders: Array<{ name: string; value: string }> = [
+      // List-Unsubscribe for deliverability (signals to inbox providers this is a legitimate sender)
+      { name: "List-Unsubscribe", value: `<mailto:${params.replyTo}?subject=Unsubscribe>` },
+      { name: "List-Unsubscribe-Post", value: "List-Unsubscribe=One-Click" },
+    ]
     
     // Add In-Reply-To header for threading (critical for email clients to group as thread)
     if (params.inReplyTo) {
@@ -89,10 +93,8 @@ export class MicrosoftProvider implements EmailProviderDriver {
       saveToSentItems: true,
     }
     
-    // Add threading headers if we're replying
-    if (internetMessageHeaders.length > 0) {
-      body.message.internetMessageHeaders = internetMessageHeaders
-    }
+    // Always include internet message headers (at minimum for List-Unsubscribe)
+    body.message.internetMessageHeaders = internetMessageHeaders
 
     // Add attachments if provided
     if (params.attachments && params.attachments.length > 0) {

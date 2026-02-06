@@ -14,7 +14,7 @@ import {
 import { 
   Filter, RefreshCw, Mail, Clock, 
   CheckCircle, MessageSquare,
-  Search, X, Calendar, Tag, Paperclip
+  Search, X, Calendar, Tag, Paperclip, AlertTriangle, RotateCcw
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
@@ -99,6 +99,7 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  SEND_FAILED: { label: "Failed", icon: AlertTriangle, bgColor: "bg-red-100", textColor: "text-red-700" },
   // Legacy statuses (mapped to new display)
   AWAITING_RESPONSE: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   IN_PROGRESS: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
@@ -190,6 +191,45 @@ function StatusDropdown({
         })}
       </SelectContent>
     </Select>
+  )
+}
+
+// Retry button for failed requests
+function RetryButton({ requestId, onRetry }: { requestId: string; onRetry: () => void }) {
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetry = async () => {
+    setRetrying(true)
+    try {
+      const response = await fetch(`/api/requests/detail/${requestId}/retry`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        onRetry() // Refresh the list
+      } else {
+        console.error("Retry failed:", data.error || data.message)
+        alert(`Retry failed: ${data.message || data.error || "Unknown error"}`)
+        onRetry() // Refresh anyway to show updated error
+      }
+    } catch (err) {
+      console.error("Retry error:", err)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRetry}
+      disabled={retrying}
+      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-full border border-orange-200 transition-colors disabled:opacity-50"
+      title="Retry sending this email"
+    >
+      <RotateCcw className={`w-3 h-3 ${retrying ? "animate-spin" : ""}`} />
+      {retrying ? "Retrying..." : "Retry"}
+    </button>
   )
 }
 
@@ -739,11 +779,16 @@ export default function RequestsPage() {
                     )}
                   </td>
                   <td className="px-3 py-1.5">
-                    <StatusDropdown 
-                      taskId={request.id}
-                      currentStatus={request.status}
-                      onStatusChange={fetchRequests}
-                    />
+                    <div className="flex items-center gap-2">
+                      <StatusDropdown 
+                        taskId={request.id}
+                        currentStatus={request.status}
+                        onStatusChange={fetchRequests}
+                      />
+                      {request.status === "SEND_FAILED" && (
+                        <RetryButton requestId={request.id} onRetry={fetchRequests} />
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-1.5">
                     {request.hasAttachments ? (

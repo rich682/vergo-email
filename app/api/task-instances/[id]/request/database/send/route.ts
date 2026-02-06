@@ -11,9 +11,73 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { RequestCreationService } from "@/lib/services/request-creation.service"
 import { DatabaseService, DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
 import { UserRole, CampaignType } from "@prisma/client"
 import { renderTemplate } from "@/lib/utils/template-renderer"
+
+/**
+ * Categorize email send errors into user-friendly descriptions
+ */
+function categorizeError(errorMessage: string): string {
+  const msg = errorMessage.toLowerCase()
+  
+  // Authentication/permission errors
+  if (msg.includes("unauthorized") || msg.includes("authentication") || msg.includes("auth") || msg.includes("token")) {
+    return "Email account authentication error - reconnect your email in Settings"
+  }
+  
+  // Recipient rejection / policy errors
+  if (msg.includes("550") || msg.includes("rejected") || msg.includes("refused") || msg.includes("blocked") || msg.includes("policy")) {
+    return "Recipient's email server rejected the message (strict email policy)"
+  }
+  
+  // Invalid/non-existent mailbox
+  if (msg.includes("mailbox") || msg.includes("user unknown") || msg.includes("does not exist") || msg.includes("invalid") || msg.includes("not found")) {
+    return "Email address does not exist or mailbox is unavailable"
+  }
+  
+  // Rate limiting
+  if (msg.includes("rate") || msg.includes("limit") || msg.includes("throttle") || msg.includes("too many")) {
+    return "Rate limited - too many emails sent recently, will retry"
+  }
+  
+  // Network/timeout
+  if (msg.includes("timeout") || msg.includes("network") || msg.includes("econnrefused") || msg.includes("enotfound")) {
+    return "Network error - email server temporarily unreachable"
+  }
+  
+  // Bounce
+  if (msg.includes("bounce") || msg.includes("undeliverable")) {
+    return "Email bounced - address may be invalid"
+  }
+  
+  // Generic
+  return `Send failed: ${errorMessage.substring(0, 100)}`
+}
+
+/**
+ * Determine if an error is transient and worth retrying
+ */
+function isTransientError(errorMessage: string): boolean {
+  const msg = errorMessage.toLowerCase()
+  return (
+    msg.includes("timeout") ||
+    msg.includes("network") ||
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("rate") ||
+    msg.includes("limit") ||
+    msg.includes("throttle") ||
+    msg.includes("too many") ||
+    msg.includes("temporary") ||
+    msg.includes("try again") ||
+    msg.includes("service unavailable") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
+    msg.includes("429")
+  )
+}
 
 interface ReminderConfig {
   enabled: boolean
@@ -283,13 +347,22 @@ export async function POST(
     // Campaign name
     const campaignName = `Database Request: ${instance.name} - ${database.name} - ${new Date().toISOString().split('T')[0]}`
 
-    // Send emails
+    // Send emails with retry for transient failures
     const results: SendResult[] = []
     let successCount = 0
     let failCount = 0
     const newContacts: { email: string; firstName: string | null; lastName: string | null }[] = []
+    const MAX_RETRIES = 2
+    const RETRY_DELAY_MS = 1500
+    const STAGGER_DELAY_MS = 2000 // 2 seconds between each email to avoid rate limits
 
-    for (const row of validRows) {
+    for (let rowIndex = 0; rowIndex < validRows.length; rowIndex++) {
+      const row = validRows[rowIndex]
+
+      // Stagger sends: wait between emails to avoid triggering recipient server rate limits
+      if (rowIndex > 0 && STAGGER_DELAY_MS > 0) {
+        await new Promise(resolve => setTimeout(resolve, STAGGER_DELAY_MS))
+      }
       const email = String(row[emailColumnKey])
       const firstName = row[firstNameColumnKey] ? String(row[firstNameColumnKey]) : null
 
@@ -300,47 +373,96 @@ export async function POST(
         renderData[col.key] = value != null ? String(value) : ""
       }
 
-      try {
-        const subjectResult = renderTemplate(subjectTemplate, renderData)
-        const bodyResult = renderTemplate(bodyTemplate, renderData)
-        const htmlBody = bodyResult.rendered.replace(/\n/g, '<br>')
+      const subjectResult = renderTemplate(subjectTemplate, renderData)
+      const bodyResult = renderTemplate(bodyTemplate, renderData)
+      const htmlBody = bodyResult.rendered.replace(/\n/g, '<br>')
 
-        const sendResult = await EmailSendingService.sendEmail({
-          organizationId,
-          userId,
-          jobId: taskInstanceId,
-          to: email,
-          toName: firstName || undefined,
-          subject: subjectResult.rendered,
-          body: bodyResult.rendered,
-          htmlBody,
-          campaignName,
-          campaignType: CampaignType.CUSTOM,
-          requestType: "data",  // Mark as data personalization request
-          deadlineDate: instance.dueDate || undefined,
-          remindersConfig: reminderConfig?.enabled ? {
-            enabled: true,
-            startDelayHours: 24,
-            frequencyHours: reminderConfig.frequencyDays ? reminderConfig.frequencyDays * 24 : 168,
-            maxCount: reminderConfig.maxCount || 3,
-            approved: true
-          } : undefined
-        })
+      let sent = false
+      let lastError: string = ""
+      let retriesUsed = 0
 
-        results.push({ email, success: true, requestId: sendResult.taskId })
-        successCount++
-
-        // Track new contacts
-        if (!existingEmailsSet.has(email.toLowerCase())) {
-          newContacts.push({
-            email,
-            firstName,
-            lastName: null, // Could be extracted if schema has last_name column
+      // Retry loop for transient failures (network, rate limit, temporary provider issues)
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const sendResult = await EmailSendingService.sendEmail({
+            organizationId,
+            userId,
+            jobId: taskInstanceId,
+            to: email,
+            toName: firstName || undefined,
+            subject: subjectResult.rendered,
+            body: bodyResult.rendered,
+            htmlBody,
+            campaignName,
+            campaignType: CampaignType.CUSTOM,
+            requestType: "data",
+            deadlineDate: instance.dueDate || undefined,
+            remindersConfig: reminderConfig?.enabled ? {
+              enabled: true,
+              startDelayHours: 24,
+              frequencyHours: reminderConfig.frequencyDays ? reminderConfig.frequencyDays * 24 : 168,
+              maxCount: reminderConfig.maxCount || 3,
+              approved: true
+            } : undefined
           })
+
+          results.push({ email, success: true, requestId: sendResult.taskId })
+          successCount++
+          sent = true
+
+          // Track new contacts
+          if (!existingEmailsSet.has(email.toLowerCase())) {
+            newContacts.push({ email, firstName, lastName: null })
+          }
+          break // Success - exit retry loop
+        } catch (error: any) {
+          lastError = error.message || "Unknown error"
+          retriesUsed = attempt
+
+          // Categorize the error to decide if retry is worthwhile
+          const isTransient = isTransientError(lastError)
+          if (isTransient && attempt < MAX_RETRIES) {
+            console.warn(`[Database Send] Transient error sending to ${email} (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError}`)
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)))
+            continue // Retry
+          }
+          break // Permanent failure or max retries exhausted
         }
-      } catch (error: any) {
-        console.error(`Failed to send to ${email}:`, error.message)
-        results.push({ email, success: false, error: error.message })
+      }
+
+      // If send failed after all retries, create a Request record with SEND_FAILED status
+      if (!sent) {
+        console.error(`[Database Send] Failed to send to ${email} after ${retriesUsed + 1} attempt(s): ${lastError}`)
+        
+        try {
+          // Create the request record so it shows up in the UI
+          const failedRequest = await RequestCreationService.createRequestFromEmail({
+            organizationId,
+            taskInstanceId,
+            entityEmail: email,
+            entityName: firstName || undefined,
+            campaignName,
+            campaignType: CampaignType.CUSTOM as any,
+            requestType: "data",
+            threadId: `failed-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            replyToEmail: "failed@send",
+            subject: subjectResult.rendered,
+          })
+
+          // Update the status to SEND_FAILED
+          await prisma.request.update({
+            where: { id: failedRequest.id },
+            data: {
+              status: "SEND_FAILED",
+              aiReasoning: { error: lastError, retries: retriesUsed, failedAt: new Date().toISOString() }
+            }
+          })
+
+          results.push({ email, success: false, requestId: failedRequest.id, error: categorizeError(lastError) })
+        } catch (createError: any) {
+          console.error(`[Database Send] Failed to create failed request record for ${email}:`, createError.message)
+          results.push({ email, success: false, error: categorizeError(lastError) })
+        }
         failCount++
       }
     }

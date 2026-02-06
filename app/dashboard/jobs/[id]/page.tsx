@@ -364,9 +364,9 @@ export default function JobDetailPage() {
           setEditLabels([])
         }
       } else if (response.status === 404) {
-        router.push("/dashboard/jobs")
+        router.push("/dashboard/boards")
       } else if (response.status === 401) {
-        window.location.href = "/auth/signin?callbackUrl=/dashboard/jobs"
+        window.location.href = "/auth/signin?callbackUrl=/dashboard/boards"
       }
     } catch (error) {
       console.error("Error fetching job:", error)
@@ -617,7 +617,7 @@ export default function JobDetailPage() {
       })
       
       if (response.ok) {
-        router.push("/dashboard/jobs")
+        router.push("/dashboard/boards")
       } else {
         const data = await response.json()
         if (data.code === "HAS_REQUESTS") {
@@ -626,7 +626,7 @@ export default function JobDetailPage() {
             credentials: "include"
           })
           if (archiveResponse.ok) {
-            router.push("/dashboard/jobs")
+            router.push("/dashboard/boards")
           }
         } else {
           alert(data.error || "Failed to delete task")

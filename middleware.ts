@@ -64,8 +64,8 @@ export default withAuth(
             { status: 403 }
           )
         }
-        // For dashboard routes, redirect to jobs page
-        return NextResponse.redirect(new URL("/dashboard/jobs", req.url))
+        // For dashboard routes, redirect to boards page
+        return NextResponse.redirect(new URL("/dashboard/boards", req.url))
       }
     }
 
