@@ -73,16 +73,6 @@ const nextConfig = {
         permanent: false, // Use 307 to allow rollback if needed
       },
       {
-        source: '/dashboard/inbox',
-        destination: '/dashboard/jobs',
-        permanent: false,
-      },
-      {
-        source: '/dashboard/inbox/:id',
-        destination: '/dashboard/jobs',
-        permanent: false,
-      },
-      {
         source: '/dashboard/tasks',
         destination: '/dashboard/jobs',
         permanent: false,
