@@ -178,6 +178,8 @@ export type QuestStatus =
 export type QuestConfirmedSelection = {
   contactTypes?: string[]
   groupIds?: string[]           // Resolved from groupNames by server
+  entityIds?: string[]          // Direct entity IDs selected by user
+  userIds?: string[]            // Direct user IDs selected by user
   stateFilter?: RecipientFilter
 }
 

@@ -807,16 +807,22 @@ export function SendRequestModal({
 
     try {
       // Build interpretation matching existing Quest structure
-      // Extract unique contact types and entity IDs from included recipients
-      const contactTypes = [...new Set(includedRecipients.map(r => r.contactType).filter(Boolean))] as string[]
-      const entityIds = includedRecipients.map(r => r.id)
+      // Separate entity IDs and user IDs based on selected recipient types
+      const selectedRecipientTypes = Array.from(selectedRecipientsForDraft.values())
+      const entityIds = selectedRecipientTypes.filter(r => r.type === "entity").map(r => r.id)
+      const userIds = selectedRecipientTypes.filter(r => r.type === "user").map(r => r.id)
+      
+      // Fallback: if no typed recipients, treat all as entities (legacy behavior)
+      const fallbackEntityIds = entityIds.length === 0 && userIds.length === 0
+        ? includedRecipients.map(r => r.id)
+        : entityIds
 
       const isScheduled = sendTiming === "scheduled"
 
       const interpretation = {
         recipientSelection: {
-          contactTypes: contactTypes.length > 0 ? contactTypes : undefined,
-          entityIds: entityIds,
+          entityIds: fallbackEntityIds.length > 0 ? fallbackEntityIds : undefined,
+          userIds: userIds.length > 0 ? userIds : undefined,
         },
         scheduleIntent: {
           sendTiming: isScheduled ? "scheduled" as const : "immediate" as const,

@@ -67,6 +67,9 @@ export class QuestService {
         organizationId,
         userModifications?.groupNames || interpretation.recipientSelection.groupNames
       ),
+      // Pass through direct entity/user IDs from recipient selection
+      entityIds: interpretation.recipientSelection.entityIds,
+      userIds: interpretation.recipientSelection.userIds,
       // Use user's tag selection if provided, otherwise fall back to interpretation
       stateFilter: userStateFilter ? {
         stateKeys: userStateFilter.stateKeys,
@@ -390,14 +393,66 @@ export class QuestService {
     })
 
     try {
-      // Resolve recipients
-      const recipientResult = await resolveRecipientsWithReasons(organizationId, {
-        contactTypes: quest.confirmedSelection.contactTypes,
-        groupIds: quest.confirmedSelection.groupIds,
-        stateFilter: quest.confirmedSelection.stateFilter
-      })
+      // Resolve recipients - support direct entity/user IDs or contact type/group filtering
+      let resolvedRecipients: Array<{ email: string; firstName?: string; name?: string }>
 
-      if (recipientResult.recipients.length === 0) {
+      const hasDirectIds = (quest.confirmedSelection.entityIds && quest.confirmedSelection.entityIds.length > 0) ||
+                           (quest.confirmedSelection.userIds && quest.confirmedSelection.userIds.length > 0)
+
+      if (hasDirectIds) {
+        // Direct recipient selection: fetch entities and users by ID
+        const recipients: Array<{ email: string; firstName?: string; name?: string }> = []
+
+        if (quest.confirmedSelection.entityIds && quest.confirmedSelection.entityIds.length > 0) {
+          const entities = await prisma.entity.findMany({
+            where: {
+              id: { in: quest.confirmedSelection.entityIds },
+              organizationId,
+            },
+            select: { email: true, firstName: true, lastName: true },
+          })
+          for (const e of entities) {
+            if (e.email) {
+              recipients.push({
+                email: e.email,
+                firstName: e.firstName,
+                name: `${e.firstName}${e.lastName ? ` ${e.lastName}` : ""}`,
+              })
+            }
+          }
+        }
+
+        if (quest.confirmedSelection.userIds && quest.confirmedSelection.userIds.length > 0) {
+          const users = await prisma.user.findMany({
+            where: {
+              id: { in: quest.confirmedSelection.userIds },
+              organizationId,
+            },
+            select: { email: true, name: true },
+          })
+          for (const u of users) {
+            if (u.email) {
+              recipients.push({
+                email: u.email,
+                firstName: u.name?.split(" ")[0] || undefined,
+                name: u.name || undefined,
+              })
+            }
+          }
+        }
+
+        resolvedRecipients = recipients
+      } else {
+        // Legacy: resolve via contact types and groups
+        const recipientResult = await resolveRecipientsWithReasons(organizationId, {
+          contactTypes: quest.confirmedSelection.contactTypes,
+          groupIds: quest.confirmedSelection.groupIds,
+          stateFilter: quest.confirmedSelection.stateFilter,
+        })
+        resolvedRecipients = recipientResult.recipients
+      }
+
+      if (resolvedRecipients.length === 0) {
         throw new Error("No recipients to send to")
       }
 
@@ -414,7 +469,7 @@ export class QuestService {
       const { renderTemplate } = await import("@/lib/utils/template-renderer")
 
       // Render personalized emails for each recipient
-      const perRecipientEmails = recipientResult.recipients.map(r => {
+      const perRecipientEmails = resolvedRecipients.map(r => {
         // Build personalization data from recipient
         const data: Record<string, string> = {
           "First Name": r.firstName || r.name?.split(" ")[0] || "",
@@ -443,7 +498,7 @@ export class QuestService {
       const results = await EmailSendingService.sendBulkEmail({
         organizationId,
         jobId: taskInstanceId,
-        recipients: recipientResult.recipients.map(r => ({
+        recipients: resolvedRecipients.map(r => ({
           email: r.email,
           name: r.firstName || r.name || undefined
         })),
