@@ -6,7 +6,8 @@ import {
   ChevronDown, ChevronRight, Users, Clock, Bell, 
   MessageSquare, CheckCircle, AlertCircle, Pause, 
   PlayCircle, Mail, Paperclip, Eye, AlertTriangle,
-  Shield, ShieldAlert, ShieldCheck, ShieldQuestion, X, RotateCcw
+  Shield, ShieldAlert, ShieldCheck, ShieldQuestion, X, RotateCcw,
+  Sparkles, Send
 } from "lucide-react"
 import { format } from "date-fns"
 import {
@@ -17,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { CompletionRing } from "@/components/ui/completion-ring"
+import { getSuggestedAction, getClassificationLabel, getRiskBgColor } from "@/lib/utils/ai-suggested-action"
 
 // Types
 interface RequestRecipient {
@@ -27,6 +30,16 @@ interface RequestRecipient {
   status: string
   riskLevel?: string | null
   manualRiskOverride?: string | null
+  // AI fields
+  completionPercentage?: number
+  aiSummary?: string | null
+  riskReason?: string | null
+  completionAnalysis?: string
+  latestReply?: {
+    snippet: string
+    classification: string | null
+    receivedAt: string
+  } | null
   sentMessage: {
     subject: string
     body: string

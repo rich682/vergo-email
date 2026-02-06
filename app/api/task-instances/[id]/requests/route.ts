@@ -124,6 +124,14 @@ export async function GET(
         remindersFrequencyHours: true,
         remindersMaxCount: true,
         createdAt: true,
+        // AI fields
+        completionPercentage: true,
+        aiReasoning: true,
+        aiSummary: true,
+        riskLevel: true,
+        riskReason: true,
+        hasAttachments: true,
+        aiVerified: true,
         entity: {
           select: {
             id: true,
@@ -145,6 +153,33 @@ export async function GET(
         }
       }
     })
+
+    // Fetch latest inbound message per request (for AI reply preview)
+    const requestIds = requests.map(r => r.id)
+    const latestInboundMessages = requestIds.length > 0 ? await prisma.message.findMany({
+      where: {
+        requestId: { in: requestIds },
+        direction: "INBOUND",
+        isAutoReply: false,
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        requestId: true,
+        body: true,
+        aiClassification: true,
+        aiReasoning: true,
+        createdAt: true,
+      },
+    }) : []
+
+    // Build a map of requestId -> latest inbound message (first per request since ordered desc)
+    const latestInboundByRequest = new Map<string, typeof latestInboundMessages[0]>()
+    for (const msg of latestInboundMessages) {
+      if (!latestInboundByRequest.has(msg.requestId)) {
+        latestInboundByRequest.set(msg.requestId, msg)
+      }
+    }
 
     // Track which requests have been matched to drafts
     const matchedRequestIds = new Set<string>()
@@ -175,22 +210,46 @@ export async function GET(
         ...draft,
         taskCount: matchedRequests.length,
         reminderConfig,
-        recipients: matchedRequests.map(req => ({
-          id: req.id,
-          entityId: req.entity?.id || null,
-          name: req.entity?.firstName 
-            ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
-            : 'Unknown',
-          email: req.entity?.email || 'Unknown',
-          status: req.status || 'NO_REPLY',
-          readStatus: req.readStatus || 'unread',
-          hasReplied: req.readStatus === 'replied',
-          sentMessage: req.messages[0] ? {
-            subject: req.messages[0].subject || '',
-            body: req.messages[0].body || '',
-            sentAt: req.messages[0].createdAt
-          } : null
-        }))
+        recipients: matchedRequests.map(req => {
+          const latestInbound = latestInboundByRequest.get(req.id)
+          const bodyText = latestInbound?.body || ""
+          const snippet = bodyText.replace(/<[^>]+>/g, "").trim().slice(0, 150)
+          
+          // Extract completionAnalysis from aiReasoning JSON
+          let completionAnalysis = ""
+          if (req.aiReasoning && typeof req.aiReasoning === "object") {
+            const reasoning = req.aiReasoning as Record<string, any>
+            completionAnalysis = reasoning.completionAnalysis || ""
+          }
+          
+          return {
+            id: req.id,
+            entityId: req.entity?.id || null,
+            name: req.entity?.firstName 
+              ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
+              : 'Unknown',
+            email: req.entity?.email || 'Unknown',
+            status: req.status || 'NO_REPLY',
+            readStatus: req.readStatus || 'unread',
+            hasReplied: req.readStatus === 'replied',
+            // AI fields
+            completionPercentage: req.completionPercentage || 0,
+            aiSummary: req.aiSummary || null,
+            riskLevel: req.riskLevel || null,
+            riskReason: req.riskReason || null,
+            completionAnalysis,
+            latestReply: latestInbound ? {
+              snippet,
+              classification: latestInbound.aiClassification || null,
+              receivedAt: latestInbound.createdAt,
+            } : null,
+            sentMessage: req.messages[0] ? {
+              subject: req.messages[0].subject || '',
+              body: req.messages[0].body || '',
+              sentAt: req.messages[0].createdAt
+            } : null
+          }
+        })
       }
     })
     
@@ -233,22 +292,45 @@ export async function GET(
         user: { id: '', name: 'System', email: '' },
         taskCount: reqs.length,
         reminderConfig,
-        recipients: reqs.map(req => ({
-          id: req.id,
-          entityId: req.entity?.id || null,
-          name: req.entity?.firstName 
-            ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
-            : 'Unknown',
-          email: req.entity?.email || 'Unknown',
-          status: req.status || 'NO_REPLY',
-          readStatus: req.readStatus || 'unread',
-          hasReplied: req.readStatus === 'replied',
-          sentMessage: req.messages[0] ? {
-            subject: req.messages[0].subject || '',
-            body: req.messages[0].body || '',
-            sentAt: req.messages[0].createdAt
-          } : null
-        }))
+        recipients: reqs.map(req => {
+          const latestInbound = latestInboundByRequest.get(req.id)
+          const bodyText = latestInbound?.body || ""
+          const snippet = bodyText.replace(/<[^>]+>/g, "").trim().slice(0, 150)
+          
+          let completionAnalysis = ""
+          if (req.aiReasoning && typeof req.aiReasoning === "object") {
+            const reasoning = req.aiReasoning as Record<string, any>
+            completionAnalysis = reasoning.completionAnalysis || ""
+          }
+          
+          return {
+            id: req.id,
+            entityId: req.entity?.id || null,
+            name: req.entity?.firstName 
+              ? `${req.entity.firstName}${req.entity.lastName ? ` ${req.entity.lastName}` : ''}`
+              : 'Unknown',
+            email: req.entity?.email || 'Unknown',
+            status: req.status || 'NO_REPLY',
+            readStatus: req.readStatus || 'unread',
+            hasReplied: req.readStatus === 'replied',
+            // AI fields
+            completionPercentage: req.completionPercentage || 0,
+            aiSummary: req.aiSummary || null,
+            riskLevel: req.riskLevel || null,
+            riskReason: req.riskReason || null,
+            completionAnalysis,
+            latestReply: latestInbound ? {
+              snippet,
+              classification: latestInbound.aiClassification || null,
+              receivedAt: latestInbound.createdAt,
+            } : null,
+            sentMessage: req.messages[0] ? {
+              subject: req.messages[0].subject || '',
+              body: req.messages[0].body || '',
+              sentAt: req.messages[0].createdAt
+            } : null
+          }
+        })
       }
     })
     

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -118,6 +118,15 @@ function FormsIcon({ className }: { className?: string }) {
 }
 
 
+function InboxIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
+    </svg>
+  )
+}
+
 interface NavItem {
   href: string
   label: string
@@ -173,13 +182,34 @@ const settingsNavItems: NavItem[] = [
 
 export function Sidebar({ className = "", userRole }: SidebarProps) {
   const [collectionExpanded, setCollectionExpanded] = useState(false)
+  const [inboxUnread, setInboxUnread] = useState(0)
   
   // Check if user is admin
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
 
+  // Fetch inbox unread count
+  useEffect(() => {
+    const fetchInboxCount = async () => {
+      try {
+        const res = await fetch("/api/inbox/count")
+        if (res.ok) {
+          const data = await res.json()
+          setInboxUnread(data.unread || 0)
+        }
+      } catch {}
+    }
+    fetchInboxCount()
+    // Poll every 60 seconds
+    const interval = setInterval(fetchInboxCount, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Check if we're on the tasks/boards page
   const isOnTasksPage = pathname === "/dashboard/boards" || pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
+  
+  // Check if we're on the inbox page
+  const isOnInboxPage = pathname === "/dashboard/inbox"
   
   // Check if we're on the collection page
   const isOnCollectionPage = pathname === "/dashboard/collection" || pathname.startsWith("/dashboard/collection/")
@@ -228,6 +258,32 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
               <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
                 {UI_LABELS.jobsNavLabel}
               </span>
+            </Link>
+          </li>
+
+          {/* Inbox - visible to all */}
+          <li>
+            <Link
+              href="/dashboard/inbox"
+              className={`
+                flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                transition-all duration-150
+                ${isOnInboxPage
+                  ? "bg-gray-100 text-gray-900" 
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                }
+              `}
+              style={{ width: "calc(100% - 24px)" }}
+            >
+              <InboxIcon className="w-6 h-6 flex-shrink-0" />
+              <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                Inbox
+              </span>
+              {inboxUnread > 0 && (
+                <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
+                  {inboxUnread > 99 ? "99+" : inboxUnread}
+                </span>
+              )}
             </Link>
           </li>
 
