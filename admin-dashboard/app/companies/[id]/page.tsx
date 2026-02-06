@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { StatCard } from "@/components/stat-card"
+import { FeatureFlagsEditor } from "@/components/feature-flags-editor"
 import { formatDate, formatDateTime, timeAgo } from "@/lib/utils"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -110,24 +111,15 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
         <StatCard title="Errors" value={recentErrors.filter((e: any) => !e.resolved).length} color={recentErrors.some((e: any) => !e.resolved) ? "red" : "default"} />
       </div>
 
-      {/* Features */}
-      {org.features && typeof org.features === "object" && (
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-8">
-          <h2 className="text-sm font-semibold text-white mb-3">Feature Flags</h2>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(org.features as Record<string, boolean>).map(([key, val]) => (
-              <span
-                key={key}
-                className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium ${
-                  val ? "bg-green-900/30 text-green-400" : "bg-gray-800 text-gray-500"
-                }`}
-              >
-                {key}: {val ? "ON" : "OFF"}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Module Access / Feature Flags */}
+      <FeatureFlagsEditor
+        orgId={org.id}
+        initialFeatures={
+          org.features && typeof org.features === "object"
+            ? (org.features as Record<string, boolean>)
+            : {}
+        }
+      />
 
       {/* Users Table */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mb-8">
