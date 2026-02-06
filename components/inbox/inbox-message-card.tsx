@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { CompletionRing } from "@/components/ui/completion-ring"
 import {
   getSuggestedAction,
@@ -11,8 +12,6 @@ import {
   Send,
   Eye,
   Paperclip,
-  AlertTriangle,
-  Clock,
   Sparkles,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
@@ -57,11 +56,40 @@ interface InboxMessageCardProps {
   isAccepting?: boolean
 }
 
+/**
+ * Strip email signatures, quoted replies, and excessive whitespace from a snippet.
+ */
+function cleanSnippet(raw: string): string {
+  let text = raw
+  // Remove everything after common signature/quote markers
+  const cutMarkers = [
+    /\n--\s*\n.*/s,                          // "-- " signature separator
+    /On .{10,80} wrote:.*/s,                  // "On ... wrote:" quoted reply
+    /_{3,}.*/s,                               // ___ divider lines
+    /\*{3,}.*/s,                              // *** divider lines
+    /From:\s.*/s,                             // "From: ..." forwarded header
+    /Sent from my .*/s,                       // "Sent from my iPhone" etc
+    /Get Outlook for .*/s,                    // Outlook signature
+  ]
+  for (const marker of cutMarkers) {
+    text = text.replace(marker, "")
+  }
+  // Collapse whitespace and "> " quote prefixes
+  text = text
+    .replace(/^>+\s?/gm, "")
+    .replace(/\n{2,}/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+  return text.slice(0, 200)
+}
+
 export function InboxMessageCard({
   item,
   onAcceptSuggestion,
   isAccepting,
 }: InboxMessageCardProps) {
+  const router = useRouter()
+
   const suggestedAction = getSuggestedAction({
     completionPercentage: item.completionPercentage,
     riskLevel: item.riskLevel,
@@ -74,6 +102,7 @@ export function InboxMessageCard({
   const isUnread = !item.readStatus || item.readStatus === "unread"
   const classificationLabel = getClassificationLabel(item.classification)
   const timeAgo = formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })
+  const cleanedSnippet = item.snippet ? cleanSnippet(item.snippet) : ""
 
   // Avatar initials
   const initials = item.sender.name
@@ -85,9 +114,15 @@ export function InboxMessageCard({
         .slice(0, 2)
     : item.sender.email[0].toUpperCase()
 
+  const handleCardClick = () => {
+    // Navigate to review page for this message
+    router.push(`/dashboard/review/${item.messageId}`)
+  }
+
   return (
     <div
-      className={`border rounded-lg p-4 transition-all hover:shadow-sm ${
+      onClick={handleCardClick}
+      className={`border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer ${
         isUnread ? "bg-white border-gray-200" : "bg-gray-50/50 border-gray-100"
       }`}
     >
@@ -173,10 +208,10 @@ export function InboxMessageCard({
             </p>
           )}
 
-          {/* Reply snippet */}
-          {item.snippet && !item.aiSummary && (
+          {/* Reply snippet (cleaned) */}
+          {cleanedSnippet && !item.aiSummary && (
             <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">
-              {item.snippet}
+              {cleanedSnippet}
             </p>
           )}
 
@@ -185,6 +220,7 @@ export function InboxMessageCard({
             <div className="flex items-center gap-1.5 mt-2">
               <Link
                 href={`/dashboard/jobs/${item.task.id}`}
+                onClick={(e) => e.stopPropagation()}
                 className="text-xs text-blue-600 hover:underline truncate"
               >
                 {item.task.name}

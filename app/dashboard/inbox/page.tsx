@@ -141,7 +141,7 @@ export default function InboxPage() {
     : 0
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="p-8">
       {/* Summary Bar */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white border rounded-lg p-4 flex items-center gap-3">
