@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { 
   Filter, RefreshCw, Mail, Clock, 
-  CheckCircle, MessageSquare,
+  CheckCircle, MessageSquare, BookOpen,
   Search, X, Calendar, Tag, Paperclip, AlertTriangle, RotateCcw
 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -86,10 +86,11 @@ interface LabelOption {
   color: string | null
 }
 
-// Status options for the dropdown - No reply, Replied, Complete
+// Status options for the dropdown - No reply, Replied, Read, Complete
 const STATUS_OPTIONS = [
   { value: "NO_REPLY", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   { value: "REPLIED", label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  { value: "READ", label: "Read", icon: BookOpen, bgColor: "bg-purple-100", textColor: "text-purple-700" },
   { value: "COMPLETE", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
 ]
 
@@ -98,6 +99,7 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   // New statuses
   NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  READ: { label: "Read", icon: BookOpen, bgColor: "bg-purple-100", textColor: "text-purple-700" },
   COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   SEND_FAILED: { label: "Failed", icon: AlertTriangle, bgColor: "bg-red-100", textColor: "text-red-700" },
   // Legacy statuses (mapped to new display)
@@ -112,9 +114,22 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
 }
 
+/**
+ * Get the effective display status for a request.
+ * If the DB status is REPLIED but readStatus is "read", show as READ.
+ */
+function getEffectiveStatus(status: string, readStatus: string | null): string {
+  const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
+  if (repliedStatuses.includes(status) && readStatus === "read") {
+    return "READ"
+  }
+  return status
+}
+
 // Status badge component - cleaner display
-function StatusBadge({ status }: { status: string }) {
-  const config = ALL_STATUS_DISPLAY[status] || { 
+function StatusBadge({ status, readStatus }: { status: string; readStatus?: string | null }) {
+  const effectiveStatus = getEffectiveStatus(status, readStatus ?? null)
+  const config = ALL_STATUS_DISPLAY[effectiveStatus] || { 
     label: status, 
     icon: Clock, 
     bgColor: "bg-gray-100", 
@@ -133,17 +148,20 @@ function StatusBadge({ status }: { status: string }) {
 // Status dropdown for changing status
 function StatusDropdown({ 
   taskId, 
-  currentStatus, 
+  currentStatus,
+  readStatus,
   onStatusChange 
 }: { 
   taskId: string
   currentStatus: string
+  readStatus?: string | null
   onStatusChange: () => void 
 }) {
   const [updating, setUpdating] = useState(false)
+  const effectiveStatus = getEffectiveStatus(currentStatus, readStatus ?? null)
 
   const handleStatusChange = async (newStatus: string) => {
-    if (newStatus === currentStatus) return
+    if (newStatus === effectiveStatus) return
     
     setUpdating(true)
     try {
@@ -168,13 +186,13 @@ function StatusDropdown({
 
   return (
     <Select 
-      value={currentStatus} 
+      value={effectiveStatus} 
       onValueChange={handleStatusChange}
       disabled={updating}
     >
       <SelectTrigger className="w-[150px] h-8 text-xs border-0 bg-transparent p-0 hover:bg-gray-50 rounded-full">
         <SelectValue>
-          <StatusBadge status={currentStatus} />
+          <StatusBadge status={currentStatus} readStatus={readStatus} />
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -298,7 +316,9 @@ export default function RequestsPage() {
       if (boardFilter !== "all") params.set("boardId", boardFilter)
       if (jobFilter !== "all") params.set("jobId", jobFilter)
       if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
-      if (statusFilter !== "all") params.set("status", statusFilter)
+      // For READ filter, fetch REPLIED from server and filter client-side
+      if (statusFilter !== "all" && statusFilter !== "READ") params.set("status", statusFilter)
+      if (statusFilter === "READ") params.set("status", "REPLIED") // READ is a subset of REPLIED
       if (labelFilter !== "all") params.set("labelId", labelFilter)
       if (attachmentFilter !== "all") params.set("hasAttachments", attachmentFilter)
       
@@ -315,6 +335,11 @@ export default function RequestsPage() {
       const data = await response.json()
       let filteredRequests = data.requests || []
       
+      // Client-side filtering for READ status (readStatus === "read" within REPLIED)
+      if (statusFilter === "READ") {
+        filteredRequests = filteredRequests.filter((r: RequestTask) => r.readStatus === "read")
+      }
+
       // Client-side filtering for contact search
       if (contactSearch) {
         const searchLower = contactSearch.toLowerCase()
@@ -459,20 +484,16 @@ export default function RequestsPage() {
   }
 
 
-  // Calculate summary stats - No reply, Replied, Complete
+  // Calculate summary stats - No reply, Replied, Read, Complete
+  // Use client-side data to properly split Replied vs Read based on readStatus
   const noReplyStatuses = ["NO_REPLY", "AWAITING_RESPONSE", "IN_PROGRESS", "FLAGGED", "MANUAL_REVIEW", "ON_HOLD"]
   const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
   const completeStatuses = ["COMPLETE", "FULFILLED", "REJECTED"]
   
-  const noReplyCount = Object.entries(statusSummary)
-    .filter(([status]) => noReplyStatuses.includes(status))
-    .reduce((sum, [, count]) => sum + count, 0)
-  const repliedCount = Object.entries(statusSummary)
-    .filter(([status]) => repliedStatuses.includes(status))
-    .reduce((sum, [, count]) => sum + count, 0)
-  const completeCount = Object.entries(statusSummary)
-    .filter(([status]) => completeStatuses.includes(status))
-    .reduce((sum, [, count]) => sum + count, 0)
+  const noReplyCount = requests.filter(r => noReplyStatuses.includes(r.status)).length
+  const repliedCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus !== "read").length
+  const readCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus === "read").length
+  const completeCount = requests.filter(r => completeStatuses.includes(r.status)).length
 
   if (loading && requests.length === 0) {
     return (
@@ -501,7 +522,7 @@ export default function RequestsPage() {
   return (
     <div className="p-8">
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-5 gap-4 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-gray-900">{total}</div>
@@ -518,6 +539,12 @@ export default function RequestsPage() {
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-blue-700">{repliedCount}</div>
             <div className="text-sm text-blue-600">Replied</div>
+          </CardContent>
+        </Card>
+        <Card className="border-purple-200 bg-purple-50">
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-purple-700">{readCount}</div>
+            <div className="text-sm text-purple-600">Read</div>
           </CardContent>
         </Card>
         <Card className="border-green-200 bg-green-50">
@@ -589,6 +616,7 @@ export default function RequestsPage() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="NO_REPLY">No reply</SelectItem>
               <SelectItem value="REPLIED">Replied</SelectItem>
+              <SelectItem value="READ">Read</SelectItem>
               <SelectItem value="COMPLETE">Complete</SelectItem>
             </SelectContent>
           </Select>
@@ -783,6 +811,7 @@ export default function RequestsPage() {
                       <StatusDropdown 
                         taskId={request.id}
                         currentStatus={request.status}
+                        readStatus={request.readStatus}
                         onStatusChange={fetchRequests}
                       />
                       {request.status === "SEND_FAILED" && (

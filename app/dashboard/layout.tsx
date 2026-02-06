@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import React from "react"
 import { UserMenu } from "@/components/user-menu"
 import { Sidebar } from "@/components/sidebar"
@@ -33,10 +34,24 @@ export default async function DashboardLayout({
   const orgName = (session.user as any)?.organizationName || undefined
   const userRole = (session.user as any)?.role as string | undefined
 
+  // Fetch organization feature flags
+  let orgFeatures: Record<string, boolean> = {}
+  try {
+    const org = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { features: true },
+    })
+    if (org?.features && typeof org.features === "object") {
+      orgFeatures = org.features as Record<string, boolean>
+    }
+  } catch (err) {
+    console.error("[DashboardLayout] Failed to fetch org features:", err)
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Sidebar */}
-      <Sidebar userRole={userRole} />
+      <Sidebar userRole={userRole} orgFeatures={orgFeatures} />
       
       {/* Main content area - offset by sidebar width (w-64 = 16rem = 256px) */}
       <div className="pl-64">

@@ -79,7 +79,7 @@ export async function PATCH(
     const body = await request.json()
     const { status } = body
 
-    // Validate status - support all TaskStatus values plus CLEAR alias
+    // Validate status - support all TaskStatus values plus CLEAR and READ aliases
     const validStatuses = [
       "AWAITING_RESPONSE",
       "IN_PROGRESS",
@@ -91,7 +91,10 @@ export async function PATCH(
       "FLAGGED",
       "MANUAL_REVIEW",
       "ON_HOLD",
-      "CLEAR" // Alias for AWAITING_RESPONSE
+      "CLEAR", // Alias for AWAITING_RESPONSE
+      "READ",  // Virtual status: sets readStatus="read" on a REPLIED request
+      "NO_REPLY", // Alias for NO_REPLY (maps to AWAITING_RESPONSE)
+      "COMPLETE", // Alias for COMPLETE (maps to FULFILLED)
     ]
     if (!status || !validStatuses.includes(status)) {
       return NextResponse.json(
@@ -115,13 +118,47 @@ export async function PATCH(
       )
     }
 
-    // Map CLEAR to AWAITING_RESPONSE, otherwise use the provided status
-    const newStatus: TaskStatus = status === "CLEAR" ? "AWAITING_RESPONSE" : status as TaskStatus
+    // Handle READ virtual status -- keep DB status as REPLIED, set readStatus
+    if (status === "READ") {
+      const updatedTask = await prisma.request.update({
+        where: { id: params.id },
+        data: { 
+          status: "REPLIED" as TaskStatus,
+          readStatus: "read",
+        },
+        include: { entity: true }
+      })
+      return NextResponse.json({ success: true, task: updatedTask })
+    }
+
+    // Map aliases to actual enum values
+    let newStatus: TaskStatus
+    switch (status) {
+      case "CLEAR":
+      case "NO_REPLY":
+        newStatus = "AWAITING_RESPONSE" as TaskStatus
+        break
+      case "COMPLETE":
+        newStatus = "COMPLETE" as TaskStatus
+        break
+      default:
+        newStatus = status as TaskStatus
+    }
+
+    // When changing away from READ/replied state, clear readStatus appropriately
+    const readStatusUpdate = (newStatus === ("REPLIED" as TaskStatus)) 
+      ? undefined  // Keep current readStatus when setting to REPLIED
+      : (["AWAITING_RESPONSE", "NO_REPLY", "IN_PROGRESS"].includes(newStatus) 
+        ? "unread" 
+        : undefined)
 
     // Update task status
     const updatedTask = await prisma.request.update({
       where: { id: params.id },
-      data: { status: newStatus },
+      data: { 
+        status: newStatus,
+        ...(readStatusUpdate !== undefined ? { readStatus: readStatusUpdate } : {}),
+      },
       include: {
         entity: true
       }

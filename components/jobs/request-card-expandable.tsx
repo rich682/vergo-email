@@ -28,6 +28,7 @@ interface RequestRecipient {
   name: string
   email: string
   status: string
+  readStatus?: string | null
   riskLevel?: string | null
   manualRiskOverride?: string | null
   // AI fields
@@ -92,10 +93,11 @@ interface ReminderInfo {
   } | null
 }
 
-// Status options for recipient dropdown - No reply, Replied, Complete
+// Status options for recipient dropdown - No reply, Replied, Read, Complete
 const RECIPIENT_STATUS_OPTIONS = [
   { value: "NO_REPLY", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   { value: "REPLIED", label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  { value: "READ", label: "Read", icon: Eye, bgColor: "bg-purple-100", textColor: "text-purple-700" },
   { value: "COMPLETE", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
 ]
 
@@ -104,6 +106,7 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   // New statuses
   NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  READ: { label: "Read", icon: Eye, bgColor: "bg-purple-100", textColor: "text-purple-700" },
   COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   SEND_FAILED: { label: "Failed", icon: AlertTriangle, bgColor: "bg-red-100", textColor: "text-red-700" },
   // Legacy statuses (mapped to new display)
@@ -116,6 +119,18 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   MANUAL_REVIEW: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+}
+
+/**
+ * Get the effective display status for a request.
+ * If the DB status is REPLIED but readStatus is "read", show as READ.
+ */
+function getEffectiveStatus(status: string, readStatus: string | null | undefined): string {
+  const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
+  if (repliedStatuses.includes(status) && readStatus === "read") {
+    return "READ"
+  }
+  return status
 }
 
 // Retry button for failed requests
@@ -173,8 +188,9 @@ const RISK_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; 
 }
 
 // Mini status badge for the grid
-function RecipientStatusBadge({ status }: { status: string }) {
-  const config = ALL_STATUS_DISPLAY[status] || { 
+function RecipientStatusBadge({ status, readStatus }: { status: string; readStatus?: string | null }) {
+  const effectiveStatus = getEffectiveStatus(status, readStatus)
+  const config = ALL_STATUS_DISPLAY[effectiveStatus] || { 
     label: status, 
     icon: Clock, 
     bgColor: "bg-gray-100", 
@@ -193,17 +209,20 @@ function RecipientStatusBadge({ status }: { status: string }) {
 // Status dropdown for changing recipient status
 function RecipientStatusDropdown({ 
   recipientId, 
-  currentStatus, 
+  currentStatus,
+  readStatus,
   onStatusChange 
 }: { 
   recipientId: string
   currentStatus: string
+  readStatus?: string | null
   onStatusChange: () => void 
 }) {
   const [updating, setUpdating] = useState(false)
+  const effectiveStatus = getEffectiveStatus(currentStatus, readStatus)
 
   const handleStatusChange = async (newStatus: string) => {
-    if (newStatus === currentStatus) return
+    if (newStatus === effectiveStatus) return
     
     setUpdating(true)
     try {
@@ -228,13 +247,13 @@ function RecipientStatusDropdown({
 
   return (
     <Select 
-      value={currentStatus} 
+      value={effectiveStatus} 
       onValueChange={handleStatusChange}
       disabled={updating}
     >
       <SelectTrigger className="w-[130px] h-7 text-xs border-0 bg-transparent p-0 hover:bg-gray-100 rounded-full">
         <SelectValue>
-          <RecipientStatusBadge status={currentStatus} />
+          <RecipientStatusBadge status={currentStatus} readStatus={readStatus} />
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -700,6 +719,7 @@ export function RequestCardExpandable({ request, onRefresh }: RequestCardExpanda
                           <RecipientStatusDropdown
                             recipientId={recipient.id}
                             currentStatus={recipient.status || 'NO_REPLY'}
+                            readStatus={recipient.readStatus}
                             onStatusChange={onRefresh}
                           />
                           {(recipient.status === 'SEND_FAILED') && (

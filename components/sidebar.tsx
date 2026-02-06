@@ -9,7 +9,11 @@ import { Calendar } from "lucide-react"
 interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
+  orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
 }
+
+// External app URL for enabled modules
+const MODULE_EXTERNAL_URL = "https://app.getvergo.com"
 
 // Custom icons matching Vergo style (outline, thin strokes)
 function TasksIcon({ className }: { className?: string }) {
@@ -191,7 +195,7 @@ const settingsNavItems: NavItem[] = [
   },
 ]
 
-export function Sidebar({ className = "", userRole }: SidebarProps) {
+export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarProps) {
   const [inboxUnread, setInboxUnread] = useState(0)
   
   // Check if user is admin
@@ -346,58 +350,6 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
             )
           })()}
 
-          {/* Expenses - Admin Only */}
-          {isAdmin && (() => {
-            const isActive = pathname === "/dashboard/collection/expenses"
-            return (
-              <li>
-                <Link
-                  href="/dashboard/collection/expenses"
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
-                >
-                  <ExpensesIcon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    Expenses
-                  </span>
-                </Link>
-              </li>
-            )
-          })()}
-
-          {/* Invoices - Admin Only */}
-          {isAdmin && (() => {
-            const isActive = pathname === "/dashboard/collection/invoices"
-            return (
-              <li>
-                <Link
-                  href="/dashboard/collection/invoices"
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
-                >
-                  <InvoicesIcon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    Invoices
-                  </span>
-                </Link>
-              </li>
-            )
-          })()}
-
           {/* Reports - visible to all users */}
           {postCollectionNavItems.filter(item => item.href === "/dashboard/reports").map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
@@ -481,6 +433,102 @@ export function Sidebar({ className = "", userRole }: SidebarProps) {
               </li>
             )
           })}
+
+          {/* Expenses - Admin Only, feature-flagged */}
+          {isAdmin && (() => {
+            const hasModule = !!orgFeatures.expenses
+            const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/expenses"
+            const isActive = !hasModule && pathname === "/dashboard/collection/expenses"
+            return (
+              <li>
+                {hasModule ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 mx-3 px-3 py-3 rounded-xl transition-all duration-150 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    style={{ width: "calc(100% - 24px)" }}
+                  >
+                    <ExpensesIcon className="w-6 h-6 flex-shrink-0" />
+                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                      Expenses
+                    </span>
+                    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                ) : (
+                  <Link
+                    href={href}
+                    className={`
+                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                      transition-all duration-150
+                      ${isActive
+                        ? "bg-gray-100 text-gray-900" 
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                      }
+                    `}
+                    style={{ width: "calc(100% - 24px)" }}
+                  >
+                    <ExpensesIcon className="w-6 h-6 flex-shrink-0" />
+                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                      Expenses
+                    </span>
+                  </Link>
+                )}
+              </li>
+            )
+          })()}
+
+          {/* Invoices - Admin Only, feature-flagged */}
+          {isAdmin && (() => {
+            const hasModule = !!orgFeatures.invoices
+            const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/invoices"
+            const isActive = !hasModule && pathname === "/dashboard/collection/invoices"
+            return (
+              <li>
+                {hasModule ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 mx-3 px-3 py-3 rounded-xl transition-all duration-150 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    style={{ width: "calc(100% - 24px)" }}
+                  >
+                    <InvoicesIcon className="w-6 h-6 flex-shrink-0" />
+                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                      Invoices
+                    </span>
+                    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                ) : (
+                  <Link
+                    href={href}
+                    className={`
+                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                      transition-all duration-150
+                      ${isActive
+                        ? "bg-gray-100 text-gray-900" 
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                      }
+                    `}
+                    style={{ width: "calc(100% - 24px)" }}
+                  >
+                    <InvoicesIcon className="w-6 h-6 flex-shrink-0" />
+                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                      Invoices
+                    </span>
+                  </Link>
+                )}
+              </li>
+            )
+          })()}
 
         </ul>
 
