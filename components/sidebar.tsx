@@ -10,6 +10,11 @@ interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
   orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
+  collapsed?: boolean
+  pinned?: boolean
+  onTogglePin?: () => void
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }
 
 // External app URL for enabled modules
@@ -207,9 +212,18 @@ const settingsNavItems: NavItem[] = [
   },
 ]
 
-export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarProps) {
+export function Sidebar({
+  className = "",
+  userRole,
+  orgFeatures = {},
+  collapsed = false,
+  pinned = true,
+  onTogglePin,
+  onMouseEnter,
+  onMouseLeave,
+}: SidebarProps) {
   const [inboxUnread, setInboxUnread] = useState(0)
-  
+
   // Check if user is admin
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
@@ -226,59 +240,88 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
       } catch {}
     }
     fetchInboxCount()
-    // Poll every 60 seconds
     const interval = setInterval(fetchInboxCount, 60000)
     return () => clearInterval(interval)
   }, [])
 
   // Check if we're on the tasks/boards page
   const isOnTasksPage = pathname === "/dashboard/boards" || pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
-  
-  // Check if we're on the inbox page
   const isOnInboxPage = pathname === "/dashboard/inbox"
-  
+
+  // --- Helper classes for collapsed / expanded states ---
+  const navCls = (active: boolean) =>
+    [
+      "flex items-center rounded-lg transition-all duration-150",
+      collapsed ? "justify-center mx-1.5 p-2" : "gap-3 mx-2 px-2.5 py-1.5",
+      active
+        ? "bg-gray-100 text-gray-900"
+        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700",
+    ].join(" ")
+
+  const labelCls = collapsed
+    ? "hidden"
+    : "text-[13px] font-normal whitespace-nowrap flex-1 text-left"
+
+  const settingsLabelCls = collapsed
+    ? "hidden"
+    : "text-[13px] font-normal whitespace-nowrap"
 
   return (
     <div
       className={`
         fixed left-0 top-0 h-full bg-white border-r border-gray-100 z-40
-        flex flex-col w-64
+        flex flex-col transition-all duration-200 ease-in-out overflow-hidden
+        ${collapsed ? "w-[52px]" : "w-52"}
+        ${!pinned && !collapsed ? "shadow-xl" : ""}
         ${className}
       `}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
-      {/* Logo */}
-      <div className="h-20 flex items-center px-5">
-        <Link href="/dashboard/boards" className="flex items-center">
-          <img 
-            src="/logo.svg" 
-            alt="Vergo" 
-            className="h-8 w-auto"
-          />
+      {/* Logo / Collapse Toggle */}
+      <div className={`h-14 flex items-center flex-shrink-0 ${collapsed ? "justify-center px-2" : "justify-between px-4"}`}>
+        <Link href="/dashboard/boards" className="flex items-center flex-shrink-0">
+          {collapsed ? (
+            <svg width="18" height="20" viewBox="0 0 22 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0 2.14941H5.18129L10.4949 17.1862L15.8305 2.14941H21.0339L12.9422 22.2352H8.04755L0 2.14941Z" fill="black"/>
+            </svg>
+          ) : (
+            <img src="/logo.svg" alt="Vergo" className="h-6 w-auto" />
+          )}
         </Link>
+        {!collapsed && onTogglePin && (
+          <button
+            onClick={onTogglePin}
+            className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title={pinned ? "Collapse sidebar" : "Pin sidebar open"}
+          >
+            {pinned ? (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 17l-5-5 5-5" />
+                <path d="M18 17l-5-5 5-5" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 17l5-5-5-5" />
+                <path d="M6 17l5-5-5-5" />
+              </svg>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 pt-4 overflow-y-auto flex flex-col">
-        {/* Core Workflow Section */}
-        <ul className="space-y-1">
+      <nav className="flex-1 pt-2 overflow-y-auto flex flex-col">
+        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Tasks - Direct link to Boards */}
           <li>
             <Link
               href="/dashboard/boards"
-              className={`
-                flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                transition-all duration-150
-                ${isOnTasksPage
-                  ? "bg-gray-100 text-gray-900" 
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                }
-              `}
-              style={{ width: "calc(100% - 24px)" }}
+              title={collapsed ? UI_LABELS.jobsNavLabel : undefined}
+              className={navCls(isOnTasksPage)}
             >
-              <TasksIcon className="w-6 h-6 flex-shrink-0" />
-              <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                {UI_LABELS.jobsNavLabel}
-              </span>
+              <TasksIcon className="w-[18px] h-[18px] flex-shrink-0" />
+              <span className={labelCls}>{UI_LABELS.jobsNavLabel}</span>
             </Link>
           </li>
 
@@ -286,51 +329,37 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
           <li>
             <Link
               href="/dashboard/inbox"
-              className={`
-                flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                transition-all duration-150
-                ${isOnInboxPage
-                  ? "bg-gray-100 text-gray-900" 
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                }
-              `}
-              style={{ width: "calc(100% - 24px)" }}
+              title={collapsed ? "Inbox" : undefined}
+              className={navCls(isOnInboxPage)}
             >
-              <InboxIcon className="w-6 h-6 flex-shrink-0" />
-              <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                Inbox
-              </span>
-              {inboxUnread > 0 && (
-                <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
+              <div className="relative flex-shrink-0">
+                <InboxIcon className="w-[18px] h-[18px]" />
+                {inboxUnread > 0 && collapsed && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-600 rounded-full" />
+                )}
+              </div>
+              <span className={labelCls}>Inbox</span>
+              {inboxUnread > 0 && !collapsed && (
+                <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[16px] h-[16px] rounded-full flex items-center justify-center px-1">
                   {inboxUnread > 99 ? "99+" : inboxUnread}
                 </span>
               )}
             </Link>
           </li>
 
-          {/* Nav Items before Collection (Requests) - Admin Only */}
+          {/* Requests - Admin Only */}
           {isAdmin && preCollectionNavItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
-            
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? item.label : undefined}
+                  className={navCls(isActive)}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    {item.label}
-                  </span>
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>{item.label}</span>
                 </Link>
               </li>
             )
@@ -343,20 +372,11 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
               <li>
                 <Link
                   href="/dashboard/collection"
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? "Documents" : undefined}
+                  className={navCls(isActive)}
                 >
-                  <DocumentIcon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    Documents
-                  </span>
+                  <DocumentIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Documents</span>
                 </Link>
               </li>
             )
@@ -366,25 +386,15 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
           {postCollectionNavItems.filter(item => item.href === "/dashboard/reports").map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
-            
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? item.label : undefined}
+                  className={navCls(isActive)}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    {item.label}
-                  </span>
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>{item.label}</span>
                 </Link>
               </li>
             )
@@ -394,25 +404,15 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
           {postCollectionNavItems.filter(item => item.href === "/dashboard/forms").map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
-            
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? item.label : undefined}
+                  className={navCls(isActive)}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    {item.label}
-                  </span>
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>{item.label}</span>
                 </Link>
               </li>
             )
@@ -422,25 +422,15 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
           {isAdmin && postCollectionNavItems.filter(item => item.href === "/dashboard/databases").map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
             const Icon = item.icon
-            
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? item.label : undefined}
+                  className={navCls(isActive)}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    {item.label}
-                  </span>
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>{item.label}</span>
                 </Link>
               </li>
             )
@@ -453,20 +443,11 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
               <li>
                 <Link
                   href="/dashboard/reconciliations"
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
-                  style={{ width: "calc(100% - 24px)" }}
+                  title={collapsed ? "Reconciliations" : undefined}
+                  className={navCls(isActive)}
                 >
-                  <ReconciliationsIcon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                    Reconciliations
-                  </span>
+                  <ReconciliationsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Reconciliations</span>
                 </Link>
               </li>
             )
@@ -484,31 +465,20 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-4 mx-3 px-3 py-3 rounded-xl transition-all duration-150 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    style={{ width: "calc(100% - 24px)" }}
+                    title={collapsed ? "Expenses" : undefined}
+                    className={navCls(false)}
                   >
-                    <ExpensesIcon className="w-6 h-6 flex-shrink-0" />
-                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                      Expenses
-                    </span>
+                    <ExpensesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                    <span className={labelCls}>Expenses</span>
                   </a>
                 ) : (
                   <Link
                     href={href}
-                    className={`
-                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                      transition-all duration-150
-                      ${isActive
-                        ? "bg-gray-100 text-gray-900" 
-                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                      }
-                    `}
-                    style={{ width: "calc(100% - 24px)" }}
+                    title={collapsed ? "Expenses" : undefined}
+                    className={navCls(isActive)}
                   >
-                    <ExpensesIcon className="w-6 h-6 flex-shrink-0" />
-                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                      Expenses
-                    </span>
+                    <ExpensesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                    <span className={labelCls}>Expenses</span>
                   </Link>
                 )}
               </li>
@@ -527,31 +497,20 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-4 mx-3 px-3 py-3 rounded-xl transition-all duration-150 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    style={{ width: "calc(100% - 24px)" }}
+                    title={collapsed ? "Invoices" : undefined}
+                    className={navCls(false)}
                   >
-                    <InvoicesIcon className="w-6 h-6 flex-shrink-0" />
-                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                      Invoices
-                    </span>
+                    <InvoicesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                    <span className={labelCls}>Invoices</span>
                   </a>
                 ) : (
                   <Link
                     href={href}
-                    className={`
-                      flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                      transition-all duration-150
-                      ${isActive
-                        ? "bg-gray-100 text-gray-900" 
-                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                      }
-                    `}
-                    style={{ width: "calc(100% - 24px)" }}
+                    title={collapsed ? "Invoices" : undefined}
+                    className={navCls(isActive)}
                   >
-                    <InvoicesIcon className="w-6 h-6 flex-shrink-0" />
-                    <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
-                      Invoices
-                    </span>
+                    <InvoicesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                    <span className={labelCls}>Invoices</span>
                   </Link>
                 )}
               </li>
@@ -563,26 +522,27 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Onboarding Call CTA */}
-        <div className="mx-3 mb-3">
-          <a
-            href="https://calendly.com/vergo-ai/vergo-onboarding-call"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-all duration-150"
-          >
-            <Calendar className="w-5 h-5 flex-shrink-0" />
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">Book Onboarding</span>
-              <span className="text-xs text-orange-500">Schedule a call</span>
-            </div>
-          </a>
-        </div>
+        {/* Onboarding Call CTA - Hidden when collapsed */}
+        {!collapsed && (
+          <div className="mx-2 mb-2">
+            <a
+              href="https://calendly.com/vergo-ai/vergo-onboarding-call"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-all duration-150"
+            >
+              <Calendar className="w-4 h-4 flex-shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-xs font-medium">Book Onboarding</span>
+                <span className="text-[11px] text-orange-500">Schedule a call</span>
+              </div>
+            </a>
+          </div>
+        )}
 
         {/* Settings/Management Section (Bottom) */}
-        <ul className="space-y-1 pb-4 border-t border-gray-100 pt-4 mt-4">
+        <ul className={`${collapsed ? "space-y-1" : "space-y-0.5"} pb-3 border-t border-gray-100 pt-3 mt-2`}>
           {settingsNavItems
-            // Filter out Contacts, Team and Settings for non-admins
             .filter((item) => {
               if (!isAdmin && (item.href === "/dashboard/contacts" || item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings")) {
                 return false
@@ -595,22 +555,16 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
               isActive = false
             }
             const Icon = item.icon
-            
+
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`
-                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
-                    transition-all duration-150
-                    ${isActive 
-                      ? "bg-gray-100 text-gray-900" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                    }
-                  `}
+                  title={collapsed ? item.label : undefined}
+                  className={navCls(isActive)}
                 >
-                  <Icon className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base font-normal whitespace-nowrap">
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={settingsLabelCls}>
                     {item.label}
                   </span>
                 </Link>

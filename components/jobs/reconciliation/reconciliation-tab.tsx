@@ -50,25 +50,21 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
 
   const fetchConfig = useCallback(async () => {
     try {
-      // Check if this task already has a reconciliation config
       const res = await fetch(`/api/reconciliations?taskInstanceId=${jobId}`)
       if (!res.ok) throw new Error("Failed to load")
       const data = await res.json()
 
-      // Find config for this task
       const taskConfig = (data.configs || []).find(
         (c: any) => c.taskInstanceId === jobId || c.taskInstance?.id === jobId
       )
 
       if (taskConfig) {
         setConfig(taskConfig)
-        // Load full config with runs
         const configRes = await fetch(`/api/reconciliations/${taskConfig.id}`)
         if (configRes.ok) {
           const configData = await configRes.json()
           setConfig(configData.config)
 
-          // Get latest run
           if (configData.config.runs?.length > 0) {
             const latestRunId = configData.config.runs[0].id
             await fetchRun(taskConfig.id, latestRunId)
@@ -99,20 +95,8 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
   }, [fetchConfig])
 
   const handleConfigCreated = async (configId: string) => {
-    // Create the first run automatically
-    try {
-      const runRes = await fetch(`/api/reconciliations/${configId}/runs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-      if (runRes.ok) {
-        const { run } = await runRes.json()
-        setActiveRun(run)
-      }
-    } catch {
-      // ignore
-    }
+    // The new setup flow creates config + run + uploads + triggers matching all at once.
+    // Just reload everything.
     await fetchConfig()
   }
 
@@ -131,7 +115,6 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
         throw new Error(data.error || "Matching failed")
       }
 
-      // Reload run data
       await fetchRun(config.id, activeRun.id)
     } catch (err: any) {
       setError(err.message)
@@ -171,7 +154,7 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
     )
   }
 
-  // No config yet - show setup
+  // No config yet - show the AI-native upload-first setup
   if (!config) {
     return <ReconciliationSetup taskInstanceId={jobId} taskName={taskName} onCreated={handleConfigCreated} />
   }
@@ -196,9 +179,7 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
           <h3 className="text-sm font-medium text-gray-700">
             {config.name}
           </h3>
-          {activeRun.status === "PENDING" && (
-            <span className="text-xs text-gray-400">Upload both source files to begin</span>
-          )}
+          <span className="text-xs text-gray-400">Upload both source files to begin</span>
         </div>
         <ReconciliationUpload
           configId={config.id}
@@ -220,7 +201,7 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
         <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-3" />
         <p className="text-sm text-gray-700 font-medium">Running reconciliation...</p>
         <p className="text-xs text-gray-400 mt-1">
-          Matching {activeRun.totalSourceA} × {activeRun.totalSourceB} transactions using deterministic + AI matching
+          Matching {activeRun.totalSourceA} x {activeRun.totalSourceB} transactions using deterministic + AI matching
         </p>
       </div>
     )
