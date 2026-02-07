@@ -521,40 +521,6 @@ export default function RequestsPage() {
 
   return (
     <div className="p-8">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-gray-900">{total}</div>
-            <div className="text-sm text-gray-500">Total Requests</div>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-amber-700">{noReplyCount}</div>
-            <div className="text-sm text-amber-600">No reply</div>
-          </CardContent>
-        </Card>
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-700">{repliedCount}</div>
-            <div className="text-sm text-blue-600">Replied</div>
-          </CardContent>
-        </Card>
-        <Card className="border-purple-200 bg-purple-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-purple-700">{readCount}</div>
-            <div className="text-sm text-purple-600">Read</div>
-          </CardContent>
-        </Card>
-        <Card className="border-green-200 bg-green-50">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-700">{completeCount}</div>
-            <div className="text-sm text-green-600">Complete</div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Toolbar */}
       <div className="space-y-3 mb-4">
         {/* First row - Main filters */}

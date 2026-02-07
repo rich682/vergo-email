@@ -9,10 +9,74 @@ import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
 
+// ── Simple in-memory rate limiter (per IP) ──────────────────────────────
+const RATE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
+const MAX_SIGNUPS_PER_WINDOW = 3
+const signupAttempts = new Map<string, { count: number; windowStart: number }>()
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now()
+  const entry = signupAttempts.get(ip)
+  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
+    signupAttempts.set(ip, { count: 1, windowStart: now })
+    return false
+  }
+  entry.count++
+  return entry.count > MAX_SIGNUPS_PER_WINDOW
+}
+
+// Clean up old entries periodically (avoid memory leak)
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, entry] of signupAttempts.entries()) {
+    if (now - entry.windowStart > RATE_WINDOW_MS) {
+      signupAttempts.delete(ip)
+    }
+  }
+}, 10 * 60 * 1000) // every 10 minutes
+
 export async function POST(request: NextRequest) {
   try {
+    // ── Rate limiting ──────────────────────────────────────────────────
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || request.headers.get("x-real-ip")
+      || "unknown"
+    if (isRateLimited(ip)) {
+      console.warn(`[Signup] Rate limited IP: ${ip}`)
+      return NextResponse.json(
+        { error: "Too many signup attempts. Please try again later." },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
-    const { companyName, email, password, firstName, lastName, name } = body
+    const { companyName, email, password, firstName, lastName, name, website, _t } = body
+
+    // ── Anti-bot: honeypot check ───────────────────────────────────────
+    if (website) {
+      // Real users never see this field; bots auto-fill it
+      console.warn(`[Signup] Honeypot triggered for ${email} from ${ip}`)
+      // Return success to not tip off the bot, but do nothing
+      return NextResponse.json({
+        success: true,
+        message: "Account created! Please check your email to verify your account.",
+        emailSent: true,
+      }, { status: 201 })
+    }
+
+    // ── Anti-bot: timing check ─────────────────────────────────────────
+    if (_t && typeof _t === "number") {
+      const elapsed = Date.now() - _t
+      if (elapsed < 3000) {
+        // Form filled in under 3 seconds = almost certainly a bot
+        console.warn(`[Signup] Timing check failed for ${email} (${elapsed}ms) from ${ip}`)
+        return NextResponse.json({
+          success: true,
+          message: "Account created! Please check your email to verify your account.",
+          emailSent: true,
+        }, { status: 201 })
+      }
+    }
 
     // Validate required fields
     if (!companyName || typeof companyName !== "string" || companyName.trim().length < 2) {

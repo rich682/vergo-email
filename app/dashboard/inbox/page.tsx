@@ -1,13 +1,10 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { InboxMessageCard, type InboxItem } from "@/components/inbox/inbox-message-card"
 import {
   Inbox,
-  AlertTriangle,
   CheckCircle2,
-  Sparkles,
   Filter,
   ChevronLeft,
   ChevronRight,
@@ -21,15 +18,8 @@ interface InboxData {
   totalPages: number
 }
 
-interface InboxCounts {
-  unread: number
-  needsAttention: number
-}
-
 export default function InboxPage() {
-  const router = useRouter()
   const [data, setData] = useState<InboxData | null>(null)
-  const [counts, setCounts] = useState<InboxCounts>({ unread: 0, needsAttention: 0 })
   const [loading, setLoading] = useState(true)
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -58,26 +48,10 @@ export default function InboxPage() {
     }
   }, [page, readStatusFilter, riskFilter])
 
-  const fetchCounts = useCallback(async () => {
-    try {
-      const res = await fetch("/api/inbox/count")
-      if (res.ok) {
-        const json = await res.json()
-        setCounts(json)
-      }
-    } catch (err) {
-      console.error("Failed to fetch inbox counts:", err)
-    }
-  }, [])
-
   useEffect(() => {
     setLoading(true)
     fetchInbox()
   }, [fetchInbox])
-
-  useEffect(() => {
-    fetchCounts()
-  }, [fetchCounts])
 
   const handleAcceptSuggestion = async (requestId: string, actionType: string) => {
     setAcceptingId(requestId)
@@ -88,9 +62,7 @@ export default function InboxPage() {
         body: JSON.stringify({ actionType }),
       })
       if (res.ok) {
-        // Refresh data
         await fetchInbox()
-        await fetchCounts()
       }
     } catch (err) {
       console.error("Failed to accept suggestion:", err)
@@ -122,7 +94,6 @@ export default function InboxPage() {
         )
       )
       await fetchInbox()
-      await fetchCounts()
     } catch (err) {
       console.error("Bulk accept failed:", err)
     } finally {
@@ -142,41 +113,6 @@ export default function InboxPage() {
 
   return (
     <div className="p-8">
-      {/* Summary Bar */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border rounded-lg p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-            <Inbox className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-gray-900">{counts.unread}</p>
-            <p className="text-xs text-gray-500">Unread replies</p>
-          </div>
-        </div>
-        <div className="bg-white border rounded-lg p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-gray-900">
-              {counts.needsAttention}
-            </p>
-            <p className="text-xs text-gray-500">Needs attention</p>
-          </div>
-        </div>
-        <div className="bg-white border rounded-lg p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-green-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-gray-900">
-              {bulkEligibleCount}
-            </p>
-            <p className="text-xs text-gray-500">AI suggestions</p>
-          </div>
-        </div>
-      </div>
-
       {/* Filters + Bulk Action */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -237,15 +173,38 @@ export default function InboxPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {data.items.map((item) => (
-            <InboxMessageCard
-              key={item.messageId}
-              item={item}
-              onAcceptSuggestion={handleAcceptSuggestion}
-              isAccepting={acceptingId === item.requestId || acceptingId === "bulk"}
-            />
-          ))}
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          {/* Column headers */}
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-gray-200 bg-gray-50/80">
+            <div className="w-6 flex-shrink-0" />
+            <div className="w-[160px] flex-shrink-0 pr-3">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Sender</span>
+            </div>
+            <div className="w-[140px] flex-shrink-0 pr-3">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Board</span>
+            </div>
+            <div className="w-[160px] flex-shrink-0 pr-3">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Task</span>
+            </div>
+            <div className="flex-1 min-w-0 pr-3">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Preview</span>
+            </div>
+            <div className="w-[72px] flex-shrink-0 text-right">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Date</span>
+            </div>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-gray-100">
+            {data.items.map((item) => (
+              <InboxMessageCard
+                key={item.messageId}
+                item={item}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                isAccepting={acceptingId === item.requestId || acceptingId === "bulk"}
+              />
+            ))}
+          </div>
         </div>
       )}
 

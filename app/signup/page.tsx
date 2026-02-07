@@ -17,6 +17,9 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Anti-bot: honeypot field (hidden from real users) + form load timestamp
+  const [website, setWebsite] = useState("")
+  const [formLoadedAt] = useState(() => Date.now())
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,7 +56,10 @@ export default function SignupPage() {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
-          password
+          password,
+          // Anti-bot fields
+          website,                          // honeypot - should be empty
+          _t: formLoadedAt,                 // timestamp to verify human-speed filling
         })
       })
 
@@ -175,6 +181,20 @@ export default function SignupPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Honeypot - hidden from real users, bots will fill it */}
+            <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", top: "-9999px", opacity: 0, height: 0, overflow: "hidden" }}>
+              <label htmlFor="website">Website</label>
+              <input
+                id="website"
+                name="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+              />
+            </div>
+
             {error && (
               <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600 flex items-center gap-3">
                 <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
