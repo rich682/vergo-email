@@ -31,7 +31,7 @@ import {
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
-  FileText, FolderOpen, FileSpreadsheet, ExternalLink
+  FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO, startOfDay } from "date-fns"
 import { parseDateOnly } from "@/lib/utils/timezone"
@@ -70,6 +70,9 @@ import { TaskAISummary } from "@/components/jobs/task-ai-summary"
 
 // Report tab
 import { ReportTab } from "@/components/jobs/report-tab"
+
+// Reconciliation tab
+import { ReconciliationTab } from "@/components/jobs/reconciliation/reconciliation-tab"
 
 
 // ============================================
@@ -253,14 +256,14 @@ export default function JobDetailPage() {
   const jobId = params.id as string
 
   // Get initial tab from URL query parameter
-  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "report" | null
+  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "report" | "reconciliation" | null
 
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report">(initialTab || "overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report" | "reconciliation">(initialTab || "overview")
   
   // Inline editing states
   const [editingName, setEditingName] = useState(false)
@@ -479,17 +482,28 @@ export default function JobDetailPage() {
     }
   }, [])
 
+  // Tier 1: Essential data needed for page chrome (header, tab labels, sidebar)
   useEffect(() => {
-    fetchJob()
-    fetchTasks()
-    fetchRequests()
-    fetchDraftRequests()
-    fetchFormRequestCount()
-    fetchComments()
-    fetchTimeline()
-    fetchCollaborators()
-    fetchTeamMembers()
-  }, [fetchJob, fetchTasks, fetchRequests, fetchDraftRequests, fetchFormRequestCount, fetchComments, fetchTimeline, fetchCollaborators, fetchTeamMembers])
+    Promise.all([
+      fetchJob(),
+      fetchRequests(),
+      fetchDraftRequests(),
+      fetchFormRequestCount(),
+      fetchCollaborators(),
+      fetchTeamMembers(),
+    ])
+  }, [fetchJob, fetchRequests, fetchDraftRequests, fetchFormRequestCount, fetchCollaborators, fetchTeamMembers])
+
+  // Tier 2: Lazy-load data only when the overview tab is active
+  useEffect(() => {
+    if (activeTab === "overview") {
+      Promise.all([
+        fetchComments(),
+        fetchTimeline(),
+        fetchTasks(),
+      ])
+    }
+  }, [activeTab, fetchComments, fetchTimeline, fetchTasks])
 
   // ============================================
   // Handlers
@@ -851,6 +865,16 @@ export default function JobDetailPage() {
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
               Report
+            </button>
+          )}
+
+          {permissions?.canEdit && (
+            <button
+              onClick={() => setActiveTab("reconciliation")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              <Scale className="w-3.5 h-3.5" />
+              Reconciliation
             </button>
           )}
 
@@ -1265,6 +1289,13 @@ export default function JobDetailPage() {
                     } : null)
                   }}
                 />
+              </div>
+            )}
+
+            {activeTab === "reconciliation" && permissions?.canEdit && (
+              <div className="space-y-4">
+                <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
+                <ReconciliationTab jobId={jobId} taskName={job.name} />
               </div>
             )}
           </div>

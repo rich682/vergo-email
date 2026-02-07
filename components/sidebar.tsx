@@ -44,6 +44,18 @@ function ExpensesIcon({ className }: { className?: string }) {
   )
 }
 
+function ReconciliationsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M3 12h18" />
+      <path d="M3 18h18" />
+      <path d="M17 6l2 2-2 2" />
+      <path d="M7 18l-2-2 2-2" />
+    </svg>
+  )
+}
+
 function InvoicesIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -433,6 +445,32 @@ export function Sidebar({ className = "", userRole, orgFeatures = {} }: SidebarP
               </li>
             )
           })}
+
+          {/* Reconciliations */}
+          {(() => {
+            const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/reconciliations"
+                  className={`
+                    flex items-center gap-4 mx-3 px-3 py-3 rounded-xl
+                    transition-all duration-150
+                    ${isActive
+                      ? "bg-gray-100 text-gray-900" 
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }
+                  `}
+                  style={{ width: "calc(100% - 24px)" }}
+                >
+                  <ReconciliationsIcon className="w-6 h-6 flex-shrink-0" />
+                  <span className="text-base font-normal whitespace-nowrap flex-1 text-left">
+                    Reconciliations
+                  </span>
+                </Link>
+              </li>
+            )
+          })()}
 
           {/* Expenses - Admin Only, feature-flagged */}
           {isAdmin && (() => {

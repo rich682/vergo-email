@@ -186,63 +186,62 @@ export async function GET(request: NextRequest) {
       filteredTasks = tasks.filter(t => t.taskInstance?.ownerId === ownerId)
     }
 
-    // Get only task instances that have sent requests (exclude drafts), filtered by access
-    const jobsWithRequests = await prisma.taskInstance.findMany({
-      where: { 
-        organizationId,
-        requests: {
-          some: { isDraft: false } // Has at least one active (non-draft) request
-        },
-        // Apply same access filter for dropdown
-        ...(jobAccessFilter || {})
-      },
-      select: {
-        id: true,
-        name: true
-      },
-      orderBy: { name: "asc" }
-    })
-
-    // Get unique owners for filter dropdown
-    const owners = await prisma.user.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        name: true,
-        email: true
-      },
-      orderBy: { name: "asc" }
-    })
-
-    // Get all labels from task instances that have active requests (not drafts)
-    const labelsFromJobs = await prisma.taskInstanceLabel.findMany({
-      where: {
-        taskInstance: {
+    // Fire dropdown + status queries in parallel for better performance
+    const [jobsWithRequests, owners, labelsFromJobs, statusCounts] = await Promise.all([
+      // Get only task instances that have sent requests (exclude drafts), filtered by access
+      prisma.taskInstance.findMany({
+        where: { 
           organizationId,
           requests: {
             some: { isDraft: false }
+          },
+          ...(jobAccessFilter || {})
+        },
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: { name: "asc" }
+      }),
+      // Get unique owners for filter dropdown
+      prisma.user.findMany({
+        where: { organizationId },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        },
+        orderBy: { name: "asc" }
+      }),
+      // Get all labels from task instances that have active requests (not drafts)
+      prisma.taskInstanceLabel.findMany({
+        where: {
+          taskInstance: {
+            organizationId,
+            requests: {
+              some: { isDraft: false }
+            }
           }
-        }
-      },
-      select: {
-        id: true,
-        name: true,
-        color: true
-      },
-      distinct: ["name"],
-      orderBy: { name: "asc" }
-    })
-
-    // Get status counts (exclude drafts from counts)
-    const statusCounts = await prisma.request.groupBy({
-      by: ["status"],
-      where: {
-        organizationId,
-        taskInstanceId: { not: null },
-        isDraft: false
-      },
-      _count: true
-    })
+        },
+        select: {
+          id: true,
+          name: true,
+          color: true
+        },
+        distinct: ["name"],
+        orderBy: { name: "asc" }
+      }),
+      // Get status counts (exclude drafts from counts)
+      prisma.request.groupBy({
+        by: ["status"],
+        where: {
+          organizationId,
+          taskInstanceId: { not: null },
+          isDraft: false
+        },
+        _count: true
+      }),
+    ])
 
     const statusSummary = statusCounts.reduce((acc, item) => {
       acc[item.status] = item._count

@@ -157,6 +157,7 @@ model Organization {
   formDefinitions         FormDefinition[]
   formRequests            FormRequest[]
   formAttachments         FormAttachment[]
+  reconciliationConfigs   ReconciliationConfig[]
 
   @@index([slug])
 }
@@ -234,6 +235,7 @@ model User {
   reportViewerPermissions    GeneratedReportViewer[]
   createdFormDefinitions     FormDefinition[]           @relation("FormDefinitionCreator")
   formRequests               FormRequest[]              @relation("FormRequestRecipient")
+  completedReconciliations   ReconciliationRun[]        @relation("ReconciliationCompleter")
 
   @@index([organizationId])
   @@index([email])
@@ -369,6 +371,7 @@ model TaskInstance {
   formRequests     FormRequest[] // Form requests sent for this task
 
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
+  reconciliationConfig ReconciliationConfig? // Optional reconciliation linked to this task
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -1332,5 +1335,91 @@ model AppError {
   @@index([organizationId])
   @@index([createdAt])
   @@index([severity])
+}
+
+// ── Reconciliation Feature ──────────────────────────────────────────────
+
+enum ReconciliationRunStatus {
+  PENDING      // Awaiting file uploads
+  PROCESSING   // Matching engine running
+  REVIEW       // Matches generated, awaiting human review
+  COMPLETE     // Signed off by user
+}
+
+// One-time configuration for a reconciliation (one per task)
+model ReconciliationConfig {
+  id             String   @id @default(cuid())
+  organizationId String
+  taskInstanceId String   @unique @map("jobId") // One config per task
+
+  name           String   // "Chase Checking Bank Rec"
+
+  // Source definitions (JSON)
+  // { label: string, columns: { key: string, label: string, type: "date"|"amount"|"text"|"reference" }[] }
+  sourceAConfig  Json
+  sourceBConfig  Json
+
+  // Matching rules (JSON)
+  // { amountMatch: "exact"|"tolerance", amountTolerance?: number, dateWindowDays: number, fuzzyDescription: boolean }
+  matchingRules  Json
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstance   TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  runs           ReconciliationRun[]
+
+  @@index([organizationId])
+  @@index([taskInstanceId])
+}
+
+// One run per period execution (upload two files + matching results)
+model ReconciliationRun {
+  id              String   @id @default(cuid())
+  organizationId  String
+  configId        String
+  boardId         String?  // Optional: which board/period this run belongs to
+
+  status          ReconciliationRunStatus @default(PENDING)
+
+  // Uploaded source files
+  sourceAFileKey  String?
+  sourceAFileName String?
+  sourceBFileKey  String?
+  sourceBFileName String?
+
+  // Parsed data (JSON arrays of row objects)
+  sourceARows     Json?
+  sourceBRows     Json?
+
+  // Match results (JSON)
+  // { matched: { sourceAIdx, sourceBIdx, confidence, method, reasoning? }[], unmatchedA: number[], unmatchedB: number[] }
+  matchResults    Json?
+
+  // Exception classifications (JSON)
+  // { [index]: { category, reason, resolution?, resolvedBy?, notes? } }
+  exceptions      Json?
+
+  // Summary stats
+  totalSourceA    Int      @default(0)
+  totalSourceB    Int      @default(0)
+  matchedCount    Int      @default(0)
+  exceptionCount  Int      @default(0)
+  variance        Float    @default(0)  // Dollar variance
+
+  completedAt     DateTime?
+  completedBy     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  config          ReconciliationConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  completedByUser User?               @relation("ReconciliationCompleter", fields: [completedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([configId])
+  @@index([organizationId, status])
+  @@index([boardId])
+  @@index([completedBy])
 }
 
