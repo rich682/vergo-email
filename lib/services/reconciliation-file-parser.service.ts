@@ -150,30 +150,43 @@ export class ReconciliationFileParserService {
    */
   private static async parsePdf(buffer: Buffer): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
     try {
-      // Step 1: Extract positioned text items from the PDF
+      // Step 1: Extract text from the PDF
+      console.log("[PDF Parser] Step 1: Extracting text from PDF...")
       const pdfText = await this.extractPdfTextWithPositions(buffer)
+      console.log(`[PDF Parser] Extracted ${pdfText.items.length} text items, fullText length: ${pdfText.fullText.length}`)
 
       if (!pdfText || pdfText.fullText.length < 20) {
+        console.log("[PDF Parser] Not enough text extracted, returning empty")
         return { rows: [], detectedColumns: [] }
       }
 
-      // Step 2: Try positional row/column reconstruction
-      const positionalResult = this.reconstructTableFromPositions(pdfText.items, pdfText.pageHeight)
+      // Step 2: Try AI extraction FIRST for PDFs -- it's far more reliable for
+      // complex financial documents (statements, invoices, ledgers) because it
+      // understands context and can identify the primary transaction table
+      // amidst summaries, headers, footers, etc.
+      console.log("[PDF Parser] Step 2: Attempting AI-powered extraction...")
+      try {
+        const aiResult = await this.extractTableWithAI(pdfText.fullText)
+        console.log(`[PDF Parser] AI result: ${aiResult.detectedColumns.length} columns, ${aiResult.rows.length} rows`)
 
-      // If positional extraction found a reasonable table (3+ columns, 2+ rows), use it
-      if (positionalResult.detectedColumns.length >= 3 && positionalResult.rows.length >= 2) {
+        if (aiResult.rows.length >= 2 && aiResult.detectedColumns.length >= 2) {
+          console.log("[PDF Parser] Using AI result")
+          return aiResult
+        }
+      } catch (aiErr) {
+        console.error("[PDF Parser] AI extraction error:", aiErr)
+      }
+
+      // Step 3: Fall back to positional extraction if AI failed or is unavailable
+      console.log("[PDF Parser] Step 3: Falling back to positional extraction...")
+      const positionalResult = this.reconstructTableFromPositions(pdfText.items, pdfText.pageHeight)
+      console.log(`[PDF Parser] Positional result: ${positionalResult.detectedColumns.length} columns, ${positionalResult.rows.length} rows`)
+
+      if (positionalResult.rows.length > 0) {
         return positionalResult
       }
 
-      // Step 3: Fall back to AI-powered extraction
-      const aiResult = await this.extractTableWithAI(pdfText.fullText)
-      if (aiResult.rows.length > 0 && aiResult.detectedColumns.length >= 2) {
-        return aiResult
-      }
-
-      // If AI also failed but positional had something, return that
-      if (positionalResult.rows.length > 0) return positionalResult
-
+      console.log("[PDF Parser] All extraction methods failed, returning empty")
       return { rows: [], detectedColumns: [] }
     } catch (err) {
       console.error("[PDF Parser] Error:", err)
@@ -183,25 +196,26 @@ export class ReconciliationFileParserService {
 
   /**
    * Extract text items with their x/y positions from a PDF buffer.
+   * Uses raw PDF coordinates (y increases upward, so higher y = higher on page).
+   * Items are sorted into reading order: descending y (top-first), then ascending x (left-first).
    */
   private static async extractPdfTextWithPositions(buffer: Buffer): Promise<{
     items: { str: string; x: number; y: number; width: number; page: number }[]
     fullText: string
     pageHeight: number
   }> {
-    const pdfjsLib = await import("pdfjs-dist")
+    // Use legacy build for Node.js compatibility (standard build requires DOMMatrix)
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
     const data = new Uint8Array(buffer)
     const loadingTask = pdfjsLib.getDocument({ data })
     const pdf = await loadingTask.promise
 
     const allItems: { str: string; x: number; y: number; width: number; page: number }[] = []
     const textParts: string[] = []
-    let firstPageHeight = 792 // default US letter
+    let maxY = 0
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum)
-      const viewport = page.getViewport({ scale: 1.0 })
-      if (pageNum === 1) firstPageHeight = viewport.height
       const textContent = await page.getTextContent()
 
       const pageTextParts: string[] = []
@@ -209,12 +223,12 @@ export class ReconciliationFileParserService {
         const ti = item as any
         if (!ti.str || ti.str.trim() === "") continue
 
-        // transform[4] = x, transform[5] = y (PDF coordinate: bottom-up)
+        // transform[4] = x, transform[5] = y (raw PDF coordinate: bottom-up)
         const x = ti.transform?.[4] ?? 0
-        const rawY = ti.transform?.[5] ?? 0
-        // Flip y so top-of-page = 0
-        const y = viewport.height - rawY
+        const y = ti.transform?.[5] ?? 0
         const width = ti.width ?? 0
+
+        if (y > maxY) maxY = y
 
         allItems.push({ str: ti.str.trim(), x, y, width, page: pageNum })
         pageTextParts.push(ti.str)
@@ -222,12 +236,13 @@ export class ReconciliationFileParserService {
       textParts.push(pageTextParts.join(" "))
     }
 
-    return { items: allItems, fullText: textParts.join("\n"), pageHeight: firstPageHeight }
+    return { items: allItems, fullText: textParts.join("\n"), pageHeight: maxY }
   }
 
   /**
    * Reconstruct a table from positioned text items by clustering y-coordinates into rows
    * and x-coordinates into columns.
+   * Uses raw PDF coordinates: higher y = higher on page, so reading order = descending y.
    */
   private static reconstructTableFromPositions(
     items: { str: string; x: number; y: number; width: number; page: number }[],
@@ -235,12 +250,12 @@ export class ReconciliationFileParserService {
   ): { rows: Record<string, any>[]; detectedColumns: { key: string; label: string; sampleValues: string[] }[] } {
     if (items.length === 0) return { rows: [], detectedColumns: [] }
 
-    // Sort items top-to-bottom, left-to-right (accounting for pages)
+    // Sort items in reading order: page ascending, then y descending (top first), then x ascending
     const sorted = [...items].sort((a, b) => {
       const pageDiff = a.page - b.page
       if (pageDiff !== 0) return pageDiff
-      const yDiff = a.y - b.y
-      if (Math.abs(yDiff) > 3) return yDiff // same row if y within 3pt
+      const yDiff = b.y - a.y // descending y = top of page first
+      if (Math.abs(yDiff) > 3) return yDiff
       return a.x - b.x
     })
 
@@ -258,10 +273,10 @@ export class ReconciliationFileParserService {
       }
     }
 
-    // Sort row clusters top-to-bottom across pages
+    // Sort row clusters in reading order: page ascending, y descending (top-of-page first)
     rowClusters.sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page
-      return a.y - b.y
+      return b.y - a.y // descending = top first
     })
 
     // Sort items within each row left-to-right
@@ -269,70 +284,9 @@ export class ReconciliationFileParserService {
       cluster.items.sort((a, b) => a.x - b.x)
     }
 
-    // Find rows that look like table data (similar number of items, consistent x-positions)
-    // First, find the most common item count per row (likely the table width)
-    const itemCounts = rowClusters.map((c) => c.items.length)
-    const countFreq = new Map<number, number>()
-    for (const count of itemCounts) {
-      if (count >= 2) countFreq.set(count, (countFreq.get(count) || 0) + 1)
-    }
-
-    // Find the most frequent count that appears enough to be a table
-    let bestCount = 0
-    let bestFreq = 0
-    for (const [count, freq] of countFreq) {
-      if (freq > bestFreq || (freq === bestFreq && count > bestCount)) {
-        bestCount = count
-        bestFreq = freq
-      }
-    }
-
-    if (bestFreq < 2) {
-      // No consistent table structure found -- try merging adjacent items
-      // into cells based on x-gap analysis
-      return this.reconstructWithXGapAnalysis(rowClusters)
-    }
-
-    // Filter to rows matching the table width (±1 tolerance)
-    const tableRows = rowClusters.filter(
-      (c) => Math.abs(c.items.length - bestCount) <= 1
-    )
-
-    if (tableRows.length < 2) return { rows: [], detectedColumns: [] }
-
-    // Use the first table row as potential headers, or generate column names
-    // Detect columns from x-positions of items in the densest rows
-    const colCount = bestCount
-    const headerRow = tableRows[0]
-    const headers = headerRow.items.slice(0, colCount).map((item, idx) => {
-      const label = item.str.replace(/\s+/g, " ").trim()
-      return label || `Column ${idx + 1}`
-    })
-
-    // Check if headers look like actual headers (contain letters, not just numbers)
-    const looksLikeHeaders = headers.some((h) => /[a-zA-Z]{2,}/.test(h))
-    const dataStart = looksLikeHeaders ? 1 : 0
-
-    const rows: Record<string, any>[] = []
-    for (let i = dataStart; i < tableRows.length; i++) {
-      const cluster = tableRows[i]
-      const row: Record<string, any> = {}
-      let hasData = false
-      for (let j = 0; j < headers.length; j++) {
-        const val = cluster.items[j]?.str || ""
-        row[headers[j]] = val
-        if (val.trim()) hasData = true
-      }
-      if (hasData) rows.push(row)
-    }
-
-    const detectedColumns = headers.map((label) => ({
-      key: label,
-      label,
-      sampleValues: rows.slice(0, 3).map((r) => String(r[label] ?? "")),
-    }))
-
-    return { rows, detectedColumns }
+    // Always use x-gap merge approach: PDF text items are often fragmented
+    // (each word is a separate item), so we need to merge nearby items into cells
+    return this.reconstructWithXGapAnalysis(rowClusters)
   }
 
   /**
@@ -342,21 +296,25 @@ export class ReconciliationFileParserService {
   private static reconstructWithXGapAnalysis(
     rowClusters: { y: number; page: number; items: { str: string; x: number; width: number }[] }[]
   ): { rows: Record<string, any>[]; detectedColumns: { key: string; label: string; sampleValues: string[] }[] } {
-    // For each row, merge items that are close together (gap < 10pt) into cells
+    // For each row, sort items left-to-right, then merge nearby items into cells
     const mergedRows: string[][] = []
 
     for (const cluster of rowClusters) {
       if (cluster.items.length === 0) continue
 
-      const cells: string[] = []
-      let currentCell = cluster.items[0].str
-      let lastRight = cluster.items[0].x + cluster.items[0].width
+      // Sort items left-to-right within the row
+      const sortedItems = [...cluster.items].sort((a, b) => a.x - b.x)
 
-      for (let i = 1; i < cluster.items.length; i++) {
-        const item = cluster.items[i]
+      const cells: string[] = []
+      let currentCell = sortedItems[0].str
+      // Use item width if available, otherwise estimate ~6pt per character
+      let lastRight = sortedItems[0].x + (sortedItems[0].width || sortedItems[0].str.length * 4)
+
+      for (let i = 1; i < sortedItems.length; i++) {
+        const item = sortedItems[i]
         const gap = item.x - lastRight
 
-        if (gap > 15) {
+        if (gap > 12) {
           // Large gap = new cell
           cells.push(currentCell.trim())
           currentCell = item.str
@@ -364,7 +322,7 @@ export class ReconciliationFileParserService {
           // Small gap = same cell, append with space
           currentCell += " " + item.str
         }
-        lastRight = item.x + item.width
+        lastRight = item.x + (item.width || item.str.length * 4)
       }
       cells.push(currentCell.trim())
       if (cells.some((c) => c.length > 0)) mergedRows.push(cells)
@@ -435,8 +393,9 @@ export class ReconciliationFileParserService {
     try {
       const openai = getOpenAIClient()
 
-      // Truncate text to avoid token limits (send first ~8000 chars which is usually enough)
-      const truncatedText = fullText.length > 8000 ? fullText.slice(0, 8000) + "\n...(truncated)" : fullText
+      // Send up to 30K chars to capture multi-page documents fully
+      // GPT-4o-mini handles up to 128K tokens so this is well within limits
+      const truncatedText = fullText.length > 30000 ? fullText.slice(0, 30000) + "\n...(truncated)" : fullText
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -445,15 +404,20 @@ export class ReconciliationFileParserService {
             role: "system",
             content: `You are a financial document parser. Your job is to extract the primary data table from financial documents like bank statements, credit card statements, invoices, ledgers, etc.
 
+The text you receive is extracted from a PDF using automated tools, so it may be messy -- words may run together, columns may not align perfectly, and there may be extra spaces or concatenated text. Use your understanding of financial documents to parse through the noise.
+
 Rules:
-- Identify the main transaction/data table in the document
-- Extract ALL rows of data (not just a sample)
-- Determine clear column names from the document headers
+- Identify the main TRANSACTION / LINE ITEM table in the document (not the account summary)
+- Extract ALL rows of data -- every single transaction, not just a sample
+- Determine clear column names from the table headers
 - For credit card / bank statements, typical columns include: Transaction Date, Post Date, Reference Number, Description, Amount
-- If there are continuation pages (e.g. "Transactions continued"), include data from all pages
-- Parse amounts as numbers (remove $ signs, handle negatives)
-- Parse dates consistently (keep original format)
-- Ignore non-tabular content like account summaries, payment warnings, page footers, etc.
+- For bank statements: Date, Description, Withdrawals, Deposits, Balance
+- If there are continuation pages (e.g. "Transactions continued on next page"), include data from ALL pages
+- Parse amounts as numbers (remove $ signs, handle negatives, keep decimals)
+- Parse dates consistently (keep original format like MM/DD)
+- IGNORE non-tabular content: account summaries, payment warnings, page footers, page numbers, account info
+- IGNORE rows that are clearly footer/header artifacts (e.g. "PAGE 1 of 4", account numbers, footer codes)
+- If a transaction has a foreign currency conversion line below it (e.g. "GB POUND STERLNG 44.98 X 1.358..."), merge the conversion info into the parent transaction or skip it
 - If you cannot find a clear data table, return empty arrays
 
 Return JSON with this exact structure:
@@ -469,12 +433,12 @@ Return JSON with this exact structure:
           },
           {
             role: "user",
-            content: `Extract the data table from this financial document:\n\n${truncatedText}`
+            content: `Extract the transaction table from this financial document:\n\n${truncatedText}`
           }
         ],
         response_format: { type: "json_object" },
         temperature: 0.1,
-        max_tokens: 4000,
+        max_tokens: 16000,
       })
 
       const content = completion.choices[0]?.message?.content
