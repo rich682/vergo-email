@@ -49,14 +49,16 @@ interface ColumnMapping {
 }
 
 interface ReconciliationSetupProps {
-  taskInstanceId: string
-  taskName: string
+  /** "standalone" = config-only (builder page), "task" = config + run + matching (task tab) */
+  mode?: "standalone" | "task"
+  taskInstanceId?: string
+  taskName?: string
   onCreated: (configId: string) => void
 }
 
 // ── Component ──────────────────────────────────────────────────────────
 
-export function ReconciliationSetup({ taskInstanceId, taskName, onCreated }: ReconciliationSetupProps) {
+export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, onCreated }: ReconciliationSetupProps) {
   // Step tracking
   const [step, setStep] = useState<"upload" | "map" | "confirm">("upload")
 
@@ -82,7 +84,7 @@ export function ReconciliationSetup({ taskInstanceId, taskName, onCreated }: Rec
   const [fuzzyDescription, setFuzzyDescription] = useState(true)
 
   // Config name
-  const [name, setName] = useState(`${taskName} Reconciliation`)
+  const [name, setName] = useState(taskName ? `${taskName} Reconciliation` : "")
 
   // State
   const [creating, setCreating] = useState(false)
@@ -267,12 +269,11 @@ export function ReconciliationSetup({ taskInstanceId, taskName, onCreated }: Rec
         })),
       }
 
-      // 1. Create the config
+      // 1. Create the config (standalone -- no task association)
       const configRes = await fetch("/api/reconciliations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          taskInstanceId,
           name,
           sourceAConfig,
           sourceBConfig,
@@ -292,11 +293,18 @@ export function ReconciliationSetup({ taskInstanceId, taskName, onCreated }: Rec
 
       const { config } = await configRes.json()
 
+      // In standalone mode, we're done -- config is created, no run needed
+      if (mode === "standalone") {
+        onCreated(config.id)
+        return
+      }
+
+      // In task mode, also create a run, upload files, and trigger matching
       // 2. Create a run
       const runRes = await fetch(`/api/reconciliations/${config.id}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ taskInstanceId }),
       })
 
       if (!runRes.ok) throw new Error("Failed to create run")
@@ -784,11 +792,11 @@ export function ReconciliationSetup({ taskInstanceId, taskName, onCreated }: Rec
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating & matching...
+                {mode === "standalone" ? "Saving..." : "Creating & matching..."}
               </>
             ) : (
               <>
-                Run Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
+                {mode === "standalone" ? "Save Reconciliation" : "Run Reconciliation"} <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>

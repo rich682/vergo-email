@@ -96,6 +96,7 @@ interface CompletedReconRun {
   id: string
   configId: string
   boardId: string | null
+  taskInstanceId: string | null
   status: "COMPLETE" | "REVIEW"
   sourceAFileName: string | null
   sourceBFileName: string | null
@@ -111,12 +112,12 @@ interface CompletedReconRun {
   config: {
     id: string
     name: string
-    taskInstance: {
-      id: string
-      name: string
-      board: { id: string; name: string } | null
-    }
   }
+  taskInstance: {
+    id: string
+    name: string
+    board: { id: string; name: string } | null
+  } | null
   completedByUser: { id: string; name: string | null; email: string } | null
 }
 
@@ -903,13 +904,17 @@ export default function ReportsPage() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">
                             <span onClick={(e) => e.stopPropagation()}>
+                              {run.taskInstance ? (
                               <Link
-                                href={`/dashboard/jobs/${run.config.taskInstance.id}?tab=reconciliation`}
+                                href={`/dashboard/jobs/${run.taskInstance.id}?tab=reconciliation`}
                                 className="flex items-center gap-1 text-blue-600 hover:underline"
                               >
-                                {run.config.taskInstance.name}
+                                {run.taskInstance.name}
                                 <ExternalLink className="w-3 h-3" />
                               </Link>
+                              ) : (
+                                <span className="text-gray-400 text-xs">No task linked</span>
+                              )}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -1260,10 +1265,10 @@ export default function ReportsPage() {
               {viewingRecon?.config.name || "Reconciliation"}
             </DialogTitle>
             <DialogDescription>
-              {viewingRecon?.config.taskInstance.board?.name && (
-                <span>{viewingRecon.config.taskInstance.board.name} &bull; </span>
+              {viewingRecon?.taskInstance?.board?.name && (
+                <span>{viewingRecon.taskInstance.board.name} &bull; </span>
               )}
-              {viewingRecon?.config.taskInstance.name}
+              {viewingRecon?.taskInstance?.name || "No task linked"}
             </DialogDescription>
           </DialogHeader>
 
@@ -1331,7 +1336,7 @@ export default function ReportsPage() {
               {/* Link to full detail */}
               <div className="pt-2 border-t border-gray-200">
                 <Link
-                  href={`/dashboard/jobs/${viewingRecon.config.taskInstance.id}?tab=reconciliation`}
+                  href={viewingRecon.taskInstance ? `/dashboard/jobs/${viewingRecon.taskInstance.id}?tab=reconciliation` : `/dashboard/reconciliations/${viewingRecon.configId}`}
                   className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
                   onClick={() => setReconViewerOpen(false)}
                 >

@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         id: true,
         configId: true,
         boardId: true,
+        taskInstanceId: true,
         status: true,
         sourceAFileName: true,
         sourceBFileName: true,
@@ -53,14 +54,14 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            taskInstance: {
-              select: {
-                id: true,
-                name: true,
-                board: {
-                  select: { id: true, name: true },
-                },
-              },
+          },
+        },
+        taskInstance: {
+          select: {
+            id: true,
+            name: true,
+            board: {
+              select: { id: true, name: true },
             },
           },
         },

@@ -58,6 +58,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       organizationId: user.organizationId,
       configId,
       boardId: body.boardId,
+      taskInstanceId: body.taskInstanceId,
     })
 
     return NextResponse.json({ run }, { status: 201 })

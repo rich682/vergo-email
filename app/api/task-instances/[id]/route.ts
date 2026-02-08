@@ -140,7 +140,7 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId } = body
 
     // Handle TaskLineage promotion if requested
     let lineageId = existingInstance.lineageId
@@ -215,6 +215,8 @@ export async function PATCH(
       // Report configuration
       reportDefinitionId: reportDefinitionId !== undefined ? reportDefinitionId : undefined,
       reportFilterBindings: reportFilterBindings !== undefined ? reportFilterBindings : undefined,
+      // Reconciliation configuration
+      reconciliationConfigId: reconciliationConfigId !== undefined ? reconciliationConfigId : undefined,
     })
 
     if (!taskInstance) {

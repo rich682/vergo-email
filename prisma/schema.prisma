@@ -351,6 +351,9 @@ model TaskInstance {
   reportDefinitionId     String?
   reportFilterBindings   Json?    // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
   
+  // Reconciliation configuration - any task can point to a reusable reconciliation config
+  reconciliationConfigId String?
+  
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -360,6 +363,7 @@ model TaskInstance {
   owner           User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
   board           Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
   reportDefinition ReportDefinition?         @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
+  reconciliationConfig ReconciliationConfig? @relation(fields: [reconciliationConfigId], references: [id], onDelete: SetNull)
   collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
   requests        Request[] // Child tasks (requests) belonging to this job
   emailDrafts     EmailDraft[] // Request-level association
@@ -371,7 +375,7 @@ model TaskInstance {
   formRequests     FormRequest[] // Form requests sent for this task
 
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
-  reconciliationConfig ReconciliationConfig? // Optional reconciliation linked to this task
+  reconciliationRuns ReconciliationRun[] // Reconciliation runs triggered from this task
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -380,6 +384,7 @@ model TaskInstance {
   @@index([organizationId, createdAt])
   @@index([boardId])
   @@index([lineageId])
+  @@index([reconciliationConfigId])
   @@map("Job")
 }
 
@@ -1346,11 +1351,11 @@ enum ReconciliationRunStatus {
   COMPLETE     // Signed off by user
 }
 
-// One-time configuration for a reconciliation (one per task)
+// Reusable reconciliation configuration (like ReportDefinition)
+// Created independently, then linked to tasks via TaskInstance.reconciliationConfigId
 model ReconciliationConfig {
   id             String   @id @default(cuid())
   organizationId String
-  taskInstanceId String   @unique @map("jobId") // One config per task
 
   name           String   // "Chase Checking Bank Rec"
 
@@ -1366,12 +1371,11 @@ model ReconciliationConfig {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskInstance   TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstances  TaskInstance[]   // Tasks that use this config
   runs           ReconciliationRun[]
 
   @@index([organizationId])
-  @@index([taskInstanceId])
 }
 
 // One run per period execution (upload two files + matching results)
@@ -1380,6 +1384,7 @@ model ReconciliationRun {
   organizationId  String
   configId        String
   boardId         String?  // Optional: which board/period this run belongs to
+  taskInstanceId  String?  // Which task triggered this run
 
   status          ReconciliationRunStatus @default(PENDING)
 
@@ -1414,6 +1419,7 @@ model ReconciliationRun {
   updatedAt       DateTime @updatedAt
 
   config          ReconciliationConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  taskInstance    TaskInstance?        @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   completedByUser User?               @relation("ReconciliationCompleter", fields: [completedBy], references: [id])
 
   @@index([organizationId])
@@ -1421,5 +1427,6 @@ model ReconciliationRun {
   @@index([organizationId, status])
   @@index([boardId])
   @@index([completedBy])
+  @@index([taskInstanceId])
 }
 

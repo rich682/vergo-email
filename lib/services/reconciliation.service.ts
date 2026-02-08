@@ -27,14 +27,12 @@ export interface MatchingRules {
 // ── Config CRUD ────────────────────────────────────────────────────────
 
 export class ReconciliationService {
-  /** List all configs for an organization, with latest run info */
+  /** List all configs for an organization, with latest run info and linked task count */
   static async listConfigs(organizationId: string) {
     return prisma.reconciliationConfig.findMany({
       where: { organizationId },
       include: {
-        taskInstance: {
-          select: { id: true, name: true, boardId: true, board: { select: { id: true, name: true } } },
-        },
+        _count: { select: { taskInstances: true } },
         runs: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -53,12 +51,12 @@ export class ReconciliationService {
     })
   }
 
-  /** Get a single config with all its runs */
+  /** Get a single config with all its runs and linked tasks */
   static async getConfig(configId: string, organizationId: string) {
     return prisma.reconciliationConfig.findFirst({
       where: { id: configId, organizationId },
       include: {
-        taskInstance: {
+        taskInstances: {
           select: { id: true, name: true, boardId: true, board: { select: { id: true, name: true } } },
         },
         runs: {
@@ -67,6 +65,7 @@ export class ReconciliationService {
             id: true,
             status: true,
             boardId: true,
+            taskInstanceId: true,
             matchedCount: true,
             exceptionCount: true,
             variance: true,
@@ -82,12 +81,19 @@ export class ReconciliationService {
     })
   }
 
-  /** Get config by task instance ID */
+  /** Get config linked to a task instance (via TaskInstance.reconciliationConfigId) */
   static async getConfigByTask(taskInstanceId: string, organizationId: string) {
+    const task = await prisma.taskInstance.findFirst({
+      where: { id: taskInstanceId, organizationId },
+      select: { reconciliationConfigId: true },
+    })
+    if (!task?.reconciliationConfigId) return null
+
     return prisma.reconciliationConfig.findFirst({
-      where: { taskInstanceId, organizationId },
+      where: { id: task.reconciliationConfigId, organizationId },
       include: {
         runs: {
+          where: { taskInstanceId },
           orderBy: { createdAt: "desc" },
           take: 1,
         },
@@ -95,10 +101,9 @@ export class ReconciliationService {
     })
   }
 
-  /** Create a new reconciliation config */
+  /** Create a new reconciliation config (standalone, not tied to any task) */
   static async createConfig(data: {
     organizationId: string
-    taskInstanceId: string
     name: string
     sourceAConfig: SourceConfig
     sourceBConfig: SourceConfig
@@ -107,7 +112,6 @@ export class ReconciliationService {
     return prisma.reconciliationConfig.create({
       data: {
         organizationId: data.organizationId,
-        taskInstanceId: data.taskInstanceId,
         name: data.name,
         sourceAConfig: data.sourceAConfig as any,
         sourceBConfig: data.sourceBConfig as any,
@@ -151,6 +155,7 @@ export class ReconciliationService {
         organizationId: true,
         configId: true,
         boardId: true,
+        taskInstanceId: true,
         status: true,
         sourceAFileKey: true,
         sourceAFileName: true,
@@ -182,13 +187,14 @@ export class ReconciliationService {
     })
   }
 
-  /** Create a new run */
-  static async createRun(data: { organizationId: string; configId: string; boardId?: string }) {
+  /** Create a new run (optionally linked to a task) */
+  static async createRun(data: { organizationId: string; configId: string; boardId?: string; taskInstanceId?: string }) {
     return prisma.reconciliationRun.create({
       data: {
         organizationId: data.organizationId,
         configId: data.configId,
         boardId: data.boardId,
+        taskInstanceId: data.taskInstanceId,
         status: ReconciliationRunStatus.PENDING,
       },
     })

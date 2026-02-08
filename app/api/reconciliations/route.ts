@@ -47,23 +47,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { taskInstanceId, name, sourceAConfig, sourceBConfig, matchingRules } = body
+    const { name, sourceAConfig, sourceBConfig, matchingRules } = body
 
-    if (!taskInstanceId || !name) {
-      return NextResponse.json({ error: "taskInstanceId and name are required" }, { status: 400 })
-    }
-
-    // Verify the task belongs to this org
-    const task = await prisma.taskInstance.findFirst({
-      where: { id: taskInstanceId, organizationId: user.organizationId },
-    })
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
     const config = await ReconciliationService.createConfig({
       organizationId: user.organizationId,
-      taskInstanceId,
       name,
       sourceAConfig: sourceAConfig || { label: "Source A", columns: [] },
       sourceBConfig: sourceBConfig || { label: "Source B", columns: [] },
@@ -76,9 +67,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ config }, { status: 201 })
   } catch (error: any) {
-    if (error?.code === "P2002") {
-      return NextResponse.json({ error: "This task already has a reconciliation configured" }, { status: 409 })
-    }
     console.error("[Reconciliations] Error creating config:", error)
     return NextResponse.json({ error: "Failed to create reconciliation" }, { status: 500 })
   }

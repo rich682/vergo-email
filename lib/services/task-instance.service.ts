@@ -61,6 +61,8 @@ export interface UpdateTaskInstanceInput {
   // Report configuration
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null  // Dynamic filters { columnKey: [values] }
+  // Reconciliation configuration
+  reconciliationConfigId?: string | null
 }
 
 export interface TaskInstanceOwner {
@@ -421,6 +423,7 @@ export class TaskInstanceService {
         ...(input.isSnapshot !== undefined && { isSnapshot: input.isSnapshot }),
         ...(input.reportDefinitionId !== undefined && { reportDefinitionId: input.reportDefinitionId }),
         ...(input.reportFilterBindings !== undefined && { reportFilterBindings: input.reportFilterBindings }),
+        ...(input.reconciliationConfigId !== undefined && { reconciliationConfigId: input.reconciliationConfigId }),
       },
       include: {
         owner: { select: { id: true, name: true, email: true } },
