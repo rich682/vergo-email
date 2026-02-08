@@ -57,6 +57,21 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // If no columns or rows found, provide a helpful error
+    if (columns.length === 0 || parseResult.rowCount === 0) {
+      return NextResponse.json({
+        success: true,
+        fileName: file.name,
+        rowCount: 0,
+        columns: [],
+        warnings: [
+          "Could not detect tabular data in this file.",
+          "For PDFs, ensure the document contains a clear data table (e.g. transactions list).",
+          "Alternatively, try exporting the data as CSV or Excel for best results.",
+        ],
+      })
+    }
+
     return NextResponse.json({
       success: true,
       fileName: file.name,
