@@ -9,6 +9,9 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 
+// Allow up to 60s for PDF AI extraction
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)

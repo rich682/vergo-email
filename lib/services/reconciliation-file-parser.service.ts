@@ -402,22 +402,23 @@ export class ReconciliationFileParserService {
         messages: [
           {
             role: "system",
-            content: `You are a financial document parser. Your job is to extract the primary data table from financial documents like bank statements, credit card statements, invoices, ledgers, etc.
+            content: `You are a document parser specializing in extracting structured tabular data from PDFs. You handle any document type: financial statements, bank/credit card statements, invoices, ledgers, payroll reports, inventory lists, general accounting reports, or any document containing a data table.
 
-The text you receive is extracted from a PDF using automated tools, so it may be messy -- words may run together, columns may not align perfectly, and there may be extra spaces or concatenated text. Use your understanding of financial documents to parse through the noise.
+The text you receive is extracted from a PDF using automated tools, so it may be messy -- words may run together, columns may not align perfectly, and there may be extra spaces or concatenated text. Use your understanding of document structure to parse through the noise.
 
 Rules:
-- Identify the main TRANSACTION / LINE ITEM table in the document (not the account summary)
-- Extract ALL rows of data -- every single transaction, not just a sample
-- Determine clear column names from the table headers
-- For credit card / bank statements, typical columns include: Transaction Date, Post Date, Reference Number, Description, Amount
-- For bank statements: Date, Description, Withdrawals, Deposits, Balance
-- If there are continuation pages (e.g. "Transactions continued on next page"), include data from ALL pages
-- Parse amounts as numbers (remove $ signs, handle negatives, keep decimals)
-- Parse dates consistently (keep original format like MM/DD)
-- IGNORE non-tabular content: account summaries, payment warnings, page footers, page numbers, account info
+- First, understand what type of document this is from its content
+- Identify the main DATA TABLE in the document -- the primary repeating rows of data (e.g. transactions, line items, entries)
+- Do NOT confuse summary sections, headers, or account info with the data table
+- Extract ALL rows of data -- every single row, not just a sample
+- Determine clear column names from the table headers as they appear in the document
+- Use the column names exactly as they appear in the document. Do NOT invent or rename columns
+- If there are continuation pages (e.g. "continued on next page"), include data from ALL pages
+- Parse amounts as numbers (remove currency symbols, handle negatives/parentheses, keep decimals)
+- Parse dates consistently (keep original format)
+- IGNORE non-tabular content: summaries, warnings, page footers, page numbers, disclaimers
 - IGNORE rows that are clearly footer/header artifacts (e.g. "PAGE 1 of 4", account numbers, footer codes)
-- If a transaction has a foreign currency conversion line below it (e.g. "GB POUND STERLNG 44.98 X 1.358..."), merge the conversion info into the parent transaction or skip it
+- If a row has sub-lines (e.g. foreign currency conversions, memo lines), merge them into the parent row or skip them
 - If you cannot find a clear data table, return empty arrays
 
 Return JSON with this exact structure:
@@ -427,7 +428,7 @@ Return JSON with this exact structure:
     {"Column Name 1": "value", "Column Name 2": "value", ...},
     ...
   ],
-  "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "other",
+  "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "payroll" | "inventory" | "other",
   "confidence": "high" | "medium" | "low"
 }`
           },
