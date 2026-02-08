@@ -165,34 +165,6 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>
 }
 
-// Nav items before Collection (admin-only)
-const preCollectionNavItems: NavItem[] = [
-  {
-    href: "/dashboard/requests",
-    label: "Requests",
-    icon: RequestsIcon
-  },
-]
-
-// Nav items after Collection
-const postCollectionNavItems: NavItem[] = [
-  {
-    href: "/dashboard/reports",
-    label: "Reports",
-    icon: ReportsIcon
-  },
-  {
-    href: "/dashboard/forms",
-    label: "Forms",
-    icon: FormsIcon
-  },
-  {
-    href: "/dashboard/databases",
-    label: "Databases",
-    icon: DatabasesIcon
-  },
-]
-
 // Settings/management nav items (shown at bottom)
 const settingsNavItems: NavItem[] = [
   { 
@@ -312,8 +284,16 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 pt-2 overflow-y-auto flex flex-col">
+
+        {/* ── Organize ── */}
+        {!collapsed && (
+          <div className="px-4 pt-3 pb-1">
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Organize</span>
+          </div>
+        )}
+        {collapsed && <div className="pt-1" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
-          {/* Tasks - Direct link to Boards */}
+          {/* Tasks */}
           <li>
             <Link
               href="/dashboard/boards"
@@ -325,7 +305,7 @@ export function Sidebar({
             </Link>
           </li>
 
-          {/* Inbox - visible to all */}
+          {/* Inbox */}
           <li>
             <Link
               href="/dashboard/inbox"
@@ -348,23 +328,31 @@ export function Sidebar({
           </li>
 
           {/* Requests - Admin Only */}
-          {isAdmin && preCollectionNavItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            const Icon = item.icon
+          {isAdmin && (() => {
+            const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
             return (
-              <li key={item.href}>
+              <li>
                 <Link
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
+                  href="/dashboard/requests"
+                  title={collapsed ? "Requests" : undefined}
                   className={navCls(isActive)}
                 >
-                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>{item.label}</span>
+                  <RequestsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Requests</span>
                 </Link>
               </li>
             )
-          })}
+          })()}
+        </ul>
 
+        {/* ── Collect ── */}
+        {!collapsed && (
+          <div className="px-4 pt-4 pb-1">
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Collect</span>
+          </div>
+        )}
+        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Documents - Admin Only */}
           {isAdmin && (() => {
             const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")
@@ -377,77 +365,6 @@ export function Sidebar({
                 >
                   <DocumentIcon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className={labelCls}>Documents</span>
-                </Link>
-              </li>
-            )
-          })()}
-
-          {/* Reports - visible to all users */}
-          {postCollectionNavItems.filter(item => item.href === "/dashboard/reports").map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            const Icon = item.icon
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={navCls(isActive)}
-                >
-                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>{item.label}</span>
-                </Link>
-              </li>
-            )
-          })}
-
-          {/* Forms - visible to all users */}
-          {postCollectionNavItems.filter(item => item.href === "/dashboard/forms").map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            const Icon = item.icon
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={navCls(isActive)}
-                >
-                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>{item.label}</span>
-                </Link>
-              </li>
-            )
-          })}
-
-          {/* Databases - Admin Only */}
-          {isAdmin && postCollectionNavItems.filter(item => item.href === "/dashboard/databases").map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            const Icon = item.icon
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={navCls(isActive)}
-                >
-                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>{item.label}</span>
-                </Link>
-              </li>
-            )
-          })}
-
-          {/* Reconciliations */}
-          {(() => {
-            const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
-            return (
-              <li>
-                <Link
-                  href="/dashboard/reconciliations"
-                  title={collapsed ? "Reconciliations" : undefined}
-                  className={navCls(isActive)}
-                >
-                  <ReconciliationsIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Reconciliations</span>
                 </Link>
               </li>
             )
@@ -516,7 +433,83 @@ export function Sidebar({
               </li>
             )
           })()}
+        </ul>
 
+        {/* ── Data ── */}
+        {!collapsed && (
+          <div className="px-4 pt-4 pb-1">
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Data</span>
+          </div>
+        )}
+        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
+          {/* Reports */}
+          {(() => {
+            const isActive = pathname === "/dashboard/reports" || pathname.startsWith("/dashboard/reports/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/reports"
+                  title={collapsed ? "Reports" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <ReportsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Reports</span>
+                </Link>
+              </li>
+            )
+          })()}
+
+          {/* Forms */}
+          {(() => {
+            const isActive = pathname === "/dashboard/forms" || pathname.startsWith("/dashboard/forms/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/forms"
+                  title={collapsed ? "Forms" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <FormsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Forms</span>
+                </Link>
+              </li>
+            )
+          })()}
+
+          {/* Databases - Admin Only */}
+          {isAdmin && (() => {
+            const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/databases"
+                  title={collapsed ? "Databases" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <DatabasesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Databases</span>
+                </Link>
+              </li>
+            )
+          })()}
+
+          {/* Reconciliations */}
+          {(() => {
+            const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/reconciliations"
+                  title={collapsed ? "Reconciliations" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <ReconciliationsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Reconciliations</span>
+                </Link>
+              </li>
+            )
+          })()}
         </ul>
 
         {/* Spacer */}
