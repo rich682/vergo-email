@@ -145,257 +145,16 @@ export class ReconciliationFileParserService {
   }
 
   /**
-   * Parse PDF file -- uses positional text extraction to reconstruct tabular layout,
-   * then falls back to AI extraction if the positional approach yields poor results.
+   * Parse PDF file by sending the raw PDF bytes directly to GPT-4o-mini.
+   * This avoids all pdfjs-dist / DOMMatrix / canvas issues in serverless environments.
+   * GPT-4o-mini natively reads PDF files via the file attachment API.
    */
   private static async parsePdf(buffer: Buffer): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
     try {
-      // Step 1: Extract text from the PDF
-      console.log("[PDF Parser] Step 1: Extracting text from PDF...")
-      const pdfText = await this.extractPdfTextWithPositions(buffer)
-      console.log(`[PDF Parser] Extracted ${pdfText.items.length} text items, fullText length: ${pdfText.fullText.length}`)
-
-      if (!pdfText || pdfText.fullText.length < 20) {
-        console.log("[PDF Parser] Not enough text extracted, returning empty")
-        return { rows: [], detectedColumns: [] }
-      }
-
-      // Step 2: Try AI extraction FIRST for PDFs -- it's far more reliable for
-      // complex financial documents (statements, invoices, ledgers) because it
-      // understands context and can identify the primary transaction table
-      // amidst summaries, headers, footers, etc.
-      console.log("[PDF Parser] Step 2: Attempting AI-powered extraction...")
-      try {
-        const aiResult = await this.extractTableWithAI(pdfText.fullText)
-        console.log(`[PDF Parser] AI result: ${aiResult.detectedColumns.length} columns, ${aiResult.rows.length} rows`)
-
-        if (aiResult.rows.length >= 2 && aiResult.detectedColumns.length >= 2) {
-          console.log("[PDF Parser] Using AI result")
-          return aiResult
-        }
-      } catch (aiErr) {
-        console.error("[PDF Parser] AI extraction error:", aiErr)
-      }
-
-      // Step 3: Fall back to positional extraction if AI failed or is unavailable
-      console.log("[PDF Parser] Step 3: Falling back to positional extraction...")
-      const positionalResult = this.reconstructTableFromPositions(pdfText.items, pdfText.pageHeight)
-      console.log(`[PDF Parser] Positional result: ${positionalResult.detectedColumns.length} columns, ${positionalResult.rows.length} rows`)
-
-      if (positionalResult.rows.length > 0) {
-        return positionalResult
-      }
-
-      console.log("[PDF Parser] All extraction methods failed, returning empty")
-      return { rows: [], detectedColumns: [] }
-    } catch (err) {
-      console.error("[PDF Parser] Error:", err)
-      return { rows: [], detectedColumns: [] }
-    }
-  }
-
-  /**
-   * Extract text items with their x/y positions from a PDF buffer.
-   * Uses raw PDF coordinates (y increases upward, so higher y = higher on page).
-   * Items are sorted into reading order: descending y (top-first), then ascending x (left-first).
-   */
-  private static async extractPdfTextWithPositions(buffer: Buffer): Promise<{
-    items: { str: string; x: number; y: number; width: number; page: number }[]
-    fullText: string
-    pageHeight: number
-  }> {
-    // Use legacy build for Node.js compatibility (standard build requires DOMMatrix)
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
-    const data = new Uint8Array(buffer)
-    const loadingTask = pdfjsLib.getDocument({ data })
-    const pdf = await loadingTask.promise
-
-    const allItems: { str: string; x: number; y: number; width: number; page: number }[] = []
-    const textParts: string[] = []
-    let maxY = 0
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum)
-      const textContent = await page.getTextContent()
-
-      const pageTextParts: string[] = []
-      for (const item of textContent.items) {
-        const ti = item as any
-        if (!ti.str || ti.str.trim() === "") continue
-
-        // transform[4] = x, transform[5] = y (raw PDF coordinate: bottom-up)
-        const x = ti.transform?.[4] ?? 0
-        const y = ti.transform?.[5] ?? 0
-        const width = ti.width ?? 0
-
-        if (y > maxY) maxY = y
-
-        allItems.push({ str: ti.str.trim(), x, y, width, page: pageNum })
-        pageTextParts.push(ti.str)
-      }
-      textParts.push(pageTextParts.join(" "))
-    }
-
-    return { items: allItems, fullText: textParts.join("\n"), pageHeight: maxY }
-  }
-
-  /**
-   * Reconstruct a table from positioned text items by clustering y-coordinates into rows
-   * and x-coordinates into columns.
-   * Uses raw PDF coordinates: higher y = higher on page, so reading order = descending y.
-   */
-  private static reconstructTableFromPositions(
-    items: { str: string; x: number; y: number; width: number; page: number }[],
-    pageHeight: number
-  ): { rows: Record<string, any>[]; detectedColumns: { key: string; label: string; sampleValues: string[] }[] } {
-    if (items.length === 0) return { rows: [], detectedColumns: [] }
-
-    // Sort items in reading order: page ascending, then y descending (top first), then x ascending
-    const sorted = [...items].sort((a, b) => {
-      const pageDiff = a.page - b.page
-      if (pageDiff !== 0) return pageDiff
-      const yDiff = b.y - a.y // descending y = top of page first
-      if (Math.abs(yDiff) > 3) return yDiff
-      return a.x - b.x
-    })
-
-    // Cluster items into rows by y-position (within 4pt tolerance)
-    const rowClusters: { y: number; page: number; items: typeof sorted }[] = []
-    for (const item of sorted) {
-      const existing = rowClusters.find(
-        (c) => c.page === item.page && Math.abs(c.y - item.y) < 4
-      )
-      if (existing) {
-        existing.items.push(item)
-        existing.y = (existing.y + item.y) / 2 // running average
-      } else {
-        rowClusters.push({ y: item.y, page: item.page, items: [item] })
-      }
-    }
-
-    // Sort row clusters in reading order: page ascending, y descending (top-of-page first)
-    rowClusters.sort((a, b) => {
-      if (a.page !== b.page) return a.page - b.page
-      return b.y - a.y // descending = top first
-    })
-
-    // Sort items within each row left-to-right
-    for (const cluster of rowClusters) {
-      cluster.items.sort((a, b) => a.x - b.x)
-    }
-
-    // Always use x-gap merge approach: PDF text items are often fragmented
-    // (each word is a separate item), so we need to merge nearby items into cells
-    return this.reconstructWithXGapAnalysis(rowClusters)
-  }
-
-  /**
-   * Alternative reconstruction using x-gap analysis: merge text items into cells
-   * based on horizontal gaps, then detect columns from consistent patterns.
-   */
-  private static reconstructWithXGapAnalysis(
-    rowClusters: { y: number; page: number; items: { str: string; x: number; width: number }[] }[]
-  ): { rows: Record<string, any>[]; detectedColumns: { key: string; label: string; sampleValues: string[] }[] } {
-    // For each row, sort items left-to-right, then merge nearby items into cells
-    const mergedRows: string[][] = []
-
-    for (const cluster of rowClusters) {
-      if (cluster.items.length === 0) continue
-
-      // Sort items left-to-right within the row
-      const sortedItems = [...cluster.items].sort((a, b) => a.x - b.x)
-
-      const cells: string[] = []
-      let currentCell = sortedItems[0].str
-      // Use item width if available, otherwise estimate ~6pt per character
-      let lastRight = sortedItems[0].x + (sortedItems[0].width || sortedItems[0].str.length * 4)
-
-      for (let i = 1; i < sortedItems.length; i++) {
-        const item = sortedItems[i]
-        const gap = item.x - lastRight
-
-        if (gap > 12) {
-          // Large gap = new cell
-          cells.push(currentCell.trim())
-          currentCell = item.str
-        } else {
-          // Small gap = same cell, append with space
-          currentCell += " " + item.str
-        }
-        lastRight = item.x + (item.width || item.str.length * 4)
-      }
-      cells.push(currentCell.trim())
-      if (cells.some((c) => c.length > 0)) mergedRows.push(cells)
-    }
-
-    if (mergedRows.length < 2) return { rows: [], detectedColumns: [] }
-
-    // Find the most common cell count
-    const cellCounts = mergedRows.map((r) => r.length)
-    const freq = new Map<number, number>()
-    for (const c of cellCounts) {
-      if (c >= 2) freq.set(c, (freq.get(c) || 0) + 1)
-    }
-
-    let bestCount = 0
-    let bestFreq = 0
-    for (const [count, f] of freq) {
-      if (f > bestFreq || (f === bestFreq && count > bestCount)) {
-        bestCount = count
-        bestFreq = f
-      }
-    }
-
-    if (bestFreq < 2 || bestCount < 2) return { rows: [], detectedColumns: [] }
-
-    // Filter to rows matching the dominant cell count (±1)
-    const tableRows = mergedRows.filter((r) => Math.abs(r.length - bestCount) <= 1)
-    if (tableRows.length < 2) return { rows: [], detectedColumns: [] }
-
-    // Use first row as headers if it looks like text
-    const headerCandidates = tableRows[0]
-    const looksLikeHeaders = headerCandidates.some((h) => /[a-zA-Z]{2,}/.test(h))
-
-    const headers = looksLikeHeaders
-      ? headerCandidates.map((h, i) => h || `Column ${i + 1}`)
-      : Array.from({ length: bestCount }, (_, i) => `Column ${i + 1}`)
-
-    const dataStart = looksLikeHeaders ? 1 : 0
-    const rows: Record<string, any>[] = []
-
-    for (let i = dataStart; i < tableRows.length; i++) {
-      const cells = tableRows[i]
-      const row: Record<string, any> = {}
-      let hasData = false
-      for (let j = 0; j < headers.length; j++) {
-        row[headers[j]] = cells[j] || ""
-        if (cells[j]?.trim()) hasData = true
-      }
-      if (hasData) rows.push(row)
-    }
-
-    const detectedColumns = headers.map((label) => ({
-      key: label,
-      label,
-      sampleValues: rows.slice(0, 3).map((r) => String(r[label] ?? "")),
-    }))
-
-    return { rows, detectedColumns }
-  }
-
-  /**
-   * AI-powered table extraction: send the raw PDF text to GPT and ask it to
-   * identify and extract the primary data table as structured JSON.
-   */
-  private static async extractTableWithAI(
-    fullText: string
-  ): Promise<{ rows: Record<string, any>[]; detectedColumns: { key: string; label: string; sampleValues: string[] }[] }> {
-    try {
+      console.log("[PDF Parser] Sending PDF directly to AI for extraction...")
       const openai = getOpenAIClient()
 
-      // Send up to 30K chars to capture multi-page documents fully
-      // GPT-4o-mini handles up to 128K tokens so this is well within limits
-      const truncatedText = fullText.length > 30000 ? fullText.slice(0, 30000) + "\n...(truncated)" : fullText
+      const base64 = buffer.toString("base64")
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -403,8 +162,6 @@ export class ReconciliationFileParserService {
           {
             role: "system",
             content: `You are a document parser specializing in extracting structured tabular data from PDFs. You handle any document type: financial statements, bank/credit card statements, invoices, ledgers, payroll reports, inventory lists, general accounting reports, or any document containing a data table.
-
-The text you receive is extracted from a PDF using automated tools, so it may be messy -- words may run together, columns may not align perfectly, and there may be extra spaces or concatenated text. Use your understanding of document structure to parse through the noise.
 
 Rules:
 - First, understand what type of document this is from its content
@@ -430,12 +187,24 @@ Return JSON with this exact structure:
   ],
   "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "payroll" | "inventory" | "other",
   "confidence": "high" | "medium" | "low"
-}`
+}`,
           },
           {
             role: "user",
-            content: `Extract the transaction table from this financial document:\n\n${truncatedText}`
-          }
+            content: [
+              {
+                type: "file",
+                file: {
+                  filename: "document.pdf",
+                  file_data: `data:application/pdf;base64,${base64}`,
+                },
+              } as any,
+              {
+                type: "text",
+                text: "Extract the main data table from this document. Return ALL rows.",
+              },
+            ],
+          },
         ],
         response_format: { type: "json_object" },
         temperature: 0.1,
@@ -443,11 +212,16 @@ Return JSON with this exact structure:
       })
 
       const content = completion.choices[0]?.message?.content
-      if (!content) return { rows: [], detectedColumns: [] }
+      if (!content) {
+        console.log("[PDF Parser] No response from AI")
+        return { rows: [], detectedColumns: [] }
+      }
 
       const parsed = JSON.parse(content)
       const columns: string[] = parsed.columns || []
       const rawRows: Record<string, any>[] = parsed.rows || []
+
+      console.log(`[PDF Parser] AI extracted ${columns.length} columns, ${rawRows.length} rows (type: ${parsed.documentType}, confidence: ${parsed.confidence})`)
 
       if (columns.length === 0 || rawRows.length === 0) {
         return { rows: [], detectedColumns: [] }
@@ -461,7 +235,7 @@ Return JSON with this exact structure:
 
       return { rows: rawRows, detectedColumns }
     } catch (err) {
-      console.error("[PDF Parser] AI extraction failed:", err)
+      console.error("[PDF Parser] Error:", err)
       return { rows: [], detectedColumns: [] }
     }
   }

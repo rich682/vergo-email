@@ -5,8 +5,6 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
-  // pdfjs-dist needs to be external so the legacy Node.js build works correctly
-  serverExternalPackages: ['pdfjs-dist'],
   // TypeScript checking during build (can be slow, Vercel uses SWC which is faster)
   typescript: {
     // Temporarily ignore build errors to isolate deployment cancellation issue
