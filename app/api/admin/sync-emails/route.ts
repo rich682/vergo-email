@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 
+export const maxDuration = 60
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
   

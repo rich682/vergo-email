@@ -35,7 +35,7 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { error: "Failed to get download URL", message: error.message },
+      { error: "Failed to get download URL" },
       { status: 500 }
     )
   }
@@ -68,7 +68,7 @@ export async function DELETE(
     }
 
     return NextResponse.json(
-      { error: "Failed to delete attachment", message: error.message },
+      { error: "Failed to delete attachment" },
       { status: 500 }
     )
   }

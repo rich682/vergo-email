@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Quest list error:", error)
     return NextResponse.json(
-      { error: "Failed to list quests", errorCode: "UNKNOWN", message: error.message },
+      { error: "Failed to list quests", errorCode: "UNKNOWN" },
       { status: 500 }
     )
   }
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
-    const userId = (session.user as any).id
+    const userId = session.user.id
 
     if (!userId) {
       console.error("Quest create error: userId is missing from session", { session })
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Quest create error:", error)
     return NextResponse.json(
-      { error: "Failed to create quest", errorCode: "UNKNOWN", message: error.message },
+      { error: "Failed to create quest", errorCode: "UNKNOWN" },
       { status: 500 }
     )
   }

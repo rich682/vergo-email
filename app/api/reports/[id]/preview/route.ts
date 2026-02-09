@@ -82,7 +82,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to execute preview" },
+      { error: "Failed to execute preview" },
       { status: 500 }
     )
   }
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to render preview" },
+      { error: "Failed to render preview" },
       { status: 500 }
     )
   }

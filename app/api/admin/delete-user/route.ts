@@ -11,37 +11,31 @@ import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-// Support both GET and DELETE for easier access
-export async function GET(request: NextRequest) {
-  return handleDelete(request)
-}
-
 export async function DELETE(request: NextRequest) {
-  return handleDelete(request)
-}
-
-async function handleDelete(request: NextRequest) {
   try {
-    // Check for admin secret or authentication
-    const { searchParams } = new URL(request.url)
-    const adminSecret = searchParams.get("secret")
-    
-    // Allow with secret OR with valid session
-    if (adminSecret !== "vergo-admin-2026") {
-      const session = await getServerSession(authOptions)
-      if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized - provide secret parameter" }, { status: 401 })
-      }
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const userRole = session.user.role
+    if (userRole?.toUpperCase() !== "ADMIN") {
+      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
     const email = searchParams.get("email")
 
     if (!email) {
       return NextResponse.json({ error: "Email parameter required" }, { status: 400 })
     }
 
-    // Find the user
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+    // Find the user - only within the admin's own organization
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        organizationId: session.user.organizationId
+      },
       include: {
         organization: true
       }
@@ -51,7 +45,12 @@ async function handleDelete(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    console.log(`[Admin] Deleting user: ${user.email} (org: ${user.organization?.name})`)
+    // Prevent admins from deleting themselves
+    if (user.id === session.user.id) {
+      return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
+    }
+
+    console.log(`[Admin] Deleting user: ${user.email} (org: ${user.organization?.name}) by admin: ${session.user.email}`)
 
     // Delete the user (cascade will handle related records based on schema)
     await prisma.user.delete({
@@ -80,7 +79,7 @@ async function handleDelete(request: NextRequest) {
   } catch (error: any) {
     console.error("[Admin] Delete user error:", error)
     return NextResponse.json(
-      { error: "Failed to delete user", details: error.message },
+      { error: "Failed to delete user" },
       { status: 500 }
     )
   }

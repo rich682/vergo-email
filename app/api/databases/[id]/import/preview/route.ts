@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
 
+export const maxDuration = 60
 interface RouteParams {
   params: { id: string }
 }

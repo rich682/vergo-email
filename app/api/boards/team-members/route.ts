@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[API/boards/team-members] Error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch team members", message: error.message },
+      { error: "Failed to fetch team members" },
       { status: 500 }
     )
   }

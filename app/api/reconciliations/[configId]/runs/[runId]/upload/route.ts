@@ -10,6 +10,7 @@ import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { getStorageService } from "@/lib/services/storage.service"
 
+export const maxDuration = 60
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error: any) {
     console.error("[Reconciliations] Error uploading file:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to upload and parse file" },
+      { error: "Failed to upload and parse file" },
       { status: 500 }
     )
   }

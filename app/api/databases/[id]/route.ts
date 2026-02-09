@@ -95,7 +95,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to update database" },
+      { error: "Failed to update database" },
       { status: 400 }
     )
   }
@@ -129,7 +129,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to delete database" },
+      { error: "Failed to delete database" },
       { status: 500 }
     )
   }

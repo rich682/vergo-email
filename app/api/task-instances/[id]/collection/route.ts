@@ -121,7 +121,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching collection items:", error)
     return NextResponse.json(
-      { error: "Failed to fetch collection items", message: error.message },
+      { error: "Failed to fetch collection items" },
       { status: 500 }
     )
   }
@@ -204,7 +204,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error uploading collection item:", error)
     return NextResponse.json(
-      { error: "Failed to upload file", message: error.message },
+      { error: "Failed to upload file" },
       { status: 500 }
     )
   }

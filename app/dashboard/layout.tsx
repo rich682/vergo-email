@@ -29,16 +29,17 @@ export default async function DashboardLayout({
     redirect("/auth/signin")
   }
 
-  const orgName = (session.user as any)?.organizationName || undefined
-  const userRole = (session.user as any)?.role as string | undefined
+  const userRole = session.user?.role
 
-  // Fetch organization feature flags
+  // Fetch organization name and feature flags
+  let orgName: string | undefined
   let orgFeatures: Record<string, boolean> = {}
   try {
     const org = await prisma.organization.findUnique({
       where: { id: session.user.organizationId },
-      select: { features: true },
+      select: { name: true, features: true },
     })
+    orgName = org?.name || undefined
     if (org?.features && typeof org.features === "object") {
       orgFeatures = org.features as Record<string, boolean>
     }

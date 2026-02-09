@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Error fetching forms:", error)
     return NextResponse.json(
-      { error: "Failed to fetch forms", message: error.message },
+      { error: "Failed to fetch forms" },
       { status: 500 }
     )
   }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Error creating form:", error)
     return NextResponse.json(
-      { error: "Failed to create form", message: error.message },
+      { error: "Failed to create form" },
       { status: 500 }
     )
   }

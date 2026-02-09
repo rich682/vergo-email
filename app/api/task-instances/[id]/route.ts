@@ -37,7 +37,7 @@ export async function GET(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id } = await params
 
     const taskInstance = await TaskInstanceService.findById(id, organizationId)
@@ -88,7 +88,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Job get error:", error)
     return NextResponse.json(
-      { error: "Failed to get job", message: error.message },
+      { error: "Failed to get job" },
       { status: 500 }
     )
   }
@@ -108,7 +108,7 @@ export async function PATCH(
     }
 
     // VIEWER users cannot modify jobs
-    const sessionRole = (session.user as any).role as string | undefined
+    const sessionRole = session.user.role as string | undefined
     if (isReadOnly(sessionRole)) {
       return NextResponse.json(
         { error: "Forbidden - Viewers cannot modify tasks" },
@@ -297,7 +297,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Job update error:", error)
     return NextResponse.json(
-      { error: "Failed to update job", message: error.message },
+      { error: "Failed to update job" },
       { status: 500 }
     )
   }
@@ -317,7 +317,7 @@ export async function DELETE(
     }
 
     // VIEWER users cannot delete/archive jobs
-    const sessionRole = (session.user as any).role as string | undefined
+    const sessionRole = session.user.role as string | undefined
     if (isReadOnly(sessionRole)) {
       return NextResponse.json(
         { error: "Forbidden - Viewers cannot delete tasks" },
@@ -400,7 +400,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Job delete error:", error)
     return NextResponse.json(
-      { error: "Failed to delete job", message: error.message },
+      { error: "Failed to delete job" },
       { status: 500 }
     )
   }

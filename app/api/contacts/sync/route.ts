@@ -8,6 +8,7 @@ import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
 import { EntityService } from "@/lib/services/entity.service"
 import { GroupService } from "@/lib/services/group.service"
 
+export const maxDuration = 60
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("Contact sync error:", error)
-    return NextResponse.json({ error: error.message || "Sync failed" }, { status: 500 })
+    return NextResponse.json({ error: "Sync failed" }, { status: 500 })
   }
 }
 

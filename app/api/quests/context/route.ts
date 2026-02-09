@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Quest context error:", error)
     return NextResponse.json(
-      { error: "Failed to get context", message: error.message },
+      { error: "Failed to get context" },
       { status: 500 }
     )
   }

@@ -171,7 +171,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error('[API /tasks/[id] PATCH] Error:', error)
     return NextResponse.json(
-      { error: error.message || "Failed to update task status" },
+      { error: "Failed to update task status" },
       { status: 500 }
     )
   }

@@ -174,7 +174,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Parse request body
@@ -364,7 +364,7 @@ Number of recipients: ${recipientsWithEmail.length}`
   } catch (error: any) {
     console.error("Job request draft error:", error)
     return NextResponse.json(
-      { error: "Failed to generate draft", message: error.message },
+      { error: "Failed to generate draft" },
       { status: 500 }
     )
   }

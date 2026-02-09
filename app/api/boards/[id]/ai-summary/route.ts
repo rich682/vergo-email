@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { BoardSummaryService } from "@/lib/services/board-summary.service"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 /**
@@ -36,7 +37,7 @@ export async function GET(
     }
     
     return NextResponse.json(
-      { error: "Failed to generate board summary", message: error.message },
+      { error: "Failed to generate board summary" },
       { status: 500 }
     )
   }

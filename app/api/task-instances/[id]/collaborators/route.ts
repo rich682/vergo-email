@@ -29,7 +29,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Get collaborators error:", error)
     return NextResponse.json(
-      { error: "Failed to get collaborators", message: error.message },
+      { error: "Failed to get collaborators" },
       { status: 500 }
     )
   }
@@ -47,7 +47,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
     const body = await request.json()
 
@@ -83,7 +83,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Add collaborator error:", error)
     return NextResponse.json(
-      { error: "Failed to add collaborator", message: error.message },
+      { error: "Failed to add collaborator" },
       { status: 500 }
     )
   }
@@ -101,7 +101,7 @@ export async function DELETE(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
     const { searchParams } = new URL(request.url)
     
@@ -135,7 +135,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Remove collaborator error:", error)
     return NextResponse.json(
-      { error: "Failed to remove collaborator", message: error.message },
+      { error: "Failed to remove collaborator" },
       { status: 500 }
     )
   }

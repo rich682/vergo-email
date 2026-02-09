@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
     const { searchParams } = new URL(request.url)
     
     const status = searchParams.get("status") as JobStatus | null
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("TaskInstances list error:", error)
     return NextResponse.json(
-      { error: "Failed to list task instances", message: error.message, code: error.code, meta: error.meta },
+      { error: "Failed to list task instances", code: error.code, meta: error.meta },
       { status: 500 }
     )
   }
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
     if (isReadOnly(userRole)) {
       return NextResponse.json(
         { error: "Forbidden - Viewers cannot create tasks" },
@@ -150,13 +150,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error("TaskInstance create error:", error)
-    // Return detailed error for debugging
-    const errorDetails = {
-      error: "Failed to create task instance",
-      message: error.message,
-      code: error.code,
-      meta: error.meta
-    }
-    return NextResponse.json(errorDetails, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to create task instance" },
+      { status: 500 }
+    )
   }
 }

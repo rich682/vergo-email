@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+export const maxDuration = 30
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }

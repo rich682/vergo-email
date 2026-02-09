@@ -76,7 +76,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error marking email as read:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

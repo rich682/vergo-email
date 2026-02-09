@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("List team members error:", error)
     return NextResponse.json(
-      { error: "Failed to list team members", message: error.message },
+      { error: "Failed to list team members" },
       { status: 500 }
     )
   }

@@ -43,7 +43,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Parse request body
@@ -182,7 +182,7 @@ Generate the revised email with the requested changes.`
   } catch (error: any) {
     console.error("Job request refine error:", error)
     return NextResponse.json(
-      { error: "Failed to refine draft", message: error.message },
+      { error: "Failed to refine draft" },
       { status: 500 }
     )
   }

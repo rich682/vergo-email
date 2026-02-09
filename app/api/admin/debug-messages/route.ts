@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[Debug Messages] Error:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch debug messages" }, { status: 500 })
   }
 }
 
@@ -198,6 +198,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(results)
   } catch (error: any) {
     console.error("[Debug Messages] Error:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Failed to search messages" }, { status: 500 })
   }
 }

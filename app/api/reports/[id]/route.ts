@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to update report" },
+      { error: "Failed to update report" },
       { status: 400 }
     )
   }
@@ -136,7 +136,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to delete report" },
+      { error: "Failed to delete report" },
       { status: 400 }
     )
   }

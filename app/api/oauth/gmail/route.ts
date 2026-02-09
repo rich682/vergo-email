@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { signOAuthState } from "@/lib/utils/oauth-state"
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -26,7 +27,7 @@ export async function GET() {
     "https://www.googleapis.com/auth/userinfo.email"
   ]
 
-  const statePayload = JSON.stringify({
+  const statePayload = signOAuthState({
     organizationId: session.user.organizationId,
     userId: session.user.id,
   })

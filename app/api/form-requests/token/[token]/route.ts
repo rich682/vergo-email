@@ -9,12 +9,20 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    // Rate limit by IP to prevent token enumeration
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const rateCheck = checkRateLimit(`form-token:${ip}`, 30)
+    if (!rateCheck.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+    }
+
     const { token } = await params
 
     if (!token) {
@@ -86,7 +94,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching form request by token:", error)
     return NextResponse.json(
-      { error: "Failed to fetch form request", message: error.message },
+      { error: "Failed to fetch form request" },
       { status: 500 }
     )
   }
@@ -97,6 +105,13 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    // Rate limit by IP to prevent abuse
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const rateCheck = checkRateLimit(`form-submit:${ip}`, 10)
+    if (!rateCheck.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+    }
+
     const { token } = await params
 
     if (!token) {
@@ -119,7 +134,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error submitting form by token:", error)
     return NextResponse.json(
-      { error: "Failed to submit form", message: error.message },
+      { error: "Failed to submit form" },
       { status: 500 }
     )
   }

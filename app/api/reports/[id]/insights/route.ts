@@ -117,7 +117,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to generate insights" },
+      { error: "Failed to generate insights" },
       { status: 500 }
     )
   }

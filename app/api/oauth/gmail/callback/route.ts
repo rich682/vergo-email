@@ -3,6 +3,7 @@ import { google } from "googleapis"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { verifyOAuthState } from "@/lib/utils/oauth-state"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -61,33 +62,14 @@ export async function GET(request: Request) {
       )
     }
 
-    // Parse state - try JSON first, then try URL-decoded JSON
-    let organizationId: string | null = null
-    let userId: string | null = null
-    let parseError: string | null = null
-    
-    try {
-      const parsed = JSON.parse(state)
-      organizationId = parsed.organizationId || null
-      userId = parsed.userId || null
-      console.log("[Gmail OAuth Callback] State parsed successfully:", { organizationId, userId })
-    } catch (e) {
-      parseError = `Direct parse failed: ${e}`
-      // Try URL decoding first
-      try {
-        const decoded = decodeURIComponent(state)
-        console.log("[Gmail OAuth Callback] Trying URL-decoded state:", decoded)
-        const parsed = JSON.parse(decoded)
-        organizationId = parsed.organizationId || null
-        userId = parsed.userId || null
-        console.log("[Gmail OAuth Callback] URL-decoded state parsed successfully:", { organizationId, userId })
-        parseError = null
-      } catch (e2) {
-        parseError += ` | URL-decode parse failed: ${e2}`
-        console.error("[Gmail OAuth Callback] Failed to parse state:", parseError)
-        console.error("[Gmail OAuth Callback] Raw state was:", state)
-      }
+    // Verify and parse HMAC-signed state (also handles legacy unsigned state)
+    const parsed = verifyOAuthState(state)
+    if (!parsed) {
+      console.error("[Gmail OAuth Callback] State verification failed - possible tampering")
+      return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
     }
+    const organizationId: string | null = parsed.organizationId || null
+    const userId: string | null = parsed.userId || null
 
     // Get session
     const session = await getServerSession(authOptions)

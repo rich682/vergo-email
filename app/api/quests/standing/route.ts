@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Standing quest create error:", error)
     return NextResponse.json(
-      { error: "Failed to create standing quest", message: error.message },
+      { error: "Failed to create standing quest" },
       { status: 500 }
     )
   }

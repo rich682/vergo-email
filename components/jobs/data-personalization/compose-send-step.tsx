@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
+import { sanitizeHtml } from "@/lib/utils/sanitize-html"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -718,13 +719,15 @@ export function ComposeSendStep({
                 <div 
                   className="text-sm text-gray-700 whitespace-pre-wrap"
                   style={{ fontFamily: "Arial, sans-serif", lineHeight: "1.6" }}
-                  dangerouslySetInnerHTML={{ 
-                    __html: getPreviewBody()
-                      .replace(/\n/g, '<br>')
-                      .replace(
-                        /\[MISSING: ([^\]]+)\]/g, 
-                        '<span style="background-color: #fef3c7; padding: 2px 4px; border-radius: 2px; color: #92400e;">[$1]</span>'
-                      )
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      getPreviewBody()
+                        .replace(/\n/g, '<br>')
+                        .replace(
+                          /\[MISSING: ([^\]]+)\]/g,
+                          '<span style="background-color: #fef3c7; padding: 2px 4px; border-radius: 2px; color: #92400e;">[$1]</span>'
+                        )
+                    )
                   }}
                 />
               </div>

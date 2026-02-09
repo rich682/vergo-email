@@ -2,12 +2,32 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { computeDeterministicRisk, computeLastActivityAt } from "@/lib/services/risk-computation.service"
 import { createHash } from "crypto"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
+
+// 1x1 transparent PNG pixel (reused across all responses)
+const TRANSPARENT_PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64'
+)
+const PIXEL_HEADERS = {
+  'Content-Type': 'image/png',
+  'Cache-Control': 'no-cache, no-store, must-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0'
+} as const
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { token: string } }
 ) {
   try {
+    // Rate limit by IP to prevent abuse (generous limit since email clients can retry)
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const rateCheck = checkRateLimit(`tracking:${ip}`, 60)
+    if (!rateCheck.allowed) {
+      return new NextResponse(TRANSPARENT_PIXEL, { status: 200, headers: PIXEL_HEADERS })
+    }
+
     console.log(`[Tracking Pixel] Open event received for token: ${params.token}`)
     console.log(`[Tracking Pixel] Referer: ${request.headers.get('referer') || 'none'}`)
     console.log(`[Tracking Pixel] User-Agent: ${request.headers.get('user-agent') || 'none'}`)
@@ -30,18 +50,7 @@ export async function GET(
 
     if (!message) {
       console.log(`[Tracking Pixel] No message found for token: ${params.token}`)
-      // Still return pixel to prevent retries
-      const pixel = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-        'base64'
-      )
-      return new NextResponse(pixel, {
-        status: 200,
-        headers: {
-          'Content-Type': 'image/png',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
-        }
-      })
+      return new NextResponse(TRANSPARENT_PIXEL, { status: 200, headers: PIXEL_HEADERS })
     }
 
     const task = message.request
@@ -147,40 +156,11 @@ export async function GET(
       }))
     }
 
-    // Return 1x1 transparent PNG image
-    // Base64 encoded 1x1 transparent PNG
-    const pixel = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-      'base64'
-    )
-
-    return new NextResponse(pixel, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    })
+    return new NextResponse(TRANSPARENT_PIXEL, { status: 200, headers: PIXEL_HEADERS })
   } catch (error: any) {
     console.error('[Tracking Pixel] Error processing open event:', error)
     
-    // Still return the pixel even on error to avoid breaking email rendering
-    const pixel = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-      'base64'
-    )
-
-    return new NextResponse(pixel, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    })
+    return new NextResponse(TRANSPARENT_PIXEL, { status: 200, headers: PIXEL_HEADERS })
   }
 }
 

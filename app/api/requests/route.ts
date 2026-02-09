@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
@@ -69,6 +69,14 @@ export async function GET(request: NextRequest) {
       where.hasAttachments = true
     } else if (hasAttachments === "no") {
       where.hasAttachments = false
+    }
+
+    // Filter by owner (owner is on the taskInstance)
+    if (ownerId) {
+      where.taskInstance = {
+        ...where.taskInstance,
+        ownerId
+      }
     }
 
     // Filter by board (via taskInstance.boardId)
@@ -180,11 +188,7 @@ export async function GET(request: NextRequest) {
       take: limit
     })
 
-    // Filter by owner if specified (owner is on the taskInstance, not the request)
-    let filteredTasks = tasks
-    if (ownerId) {
-      filteredTasks = tasks.filter(t => t.taskInstance?.ownerId === ownerId)
-    }
+    const filteredTasks = tasks
 
     // Fire dropdown + status queries in parallel for better performance
     const [jobsWithRequests, owners, labelsFromJobs, statusCounts] = await Promise.all([
@@ -269,7 +273,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Error fetching requests:", error)
     return NextResponse.json(
-      { error: "Failed to fetch requests", message: error.message },
+      { error: "Failed to fetch requests" },
       { status: 500 }
     )
   }

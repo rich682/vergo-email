@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { UnifiedImportService } from "@/lib/services/unified-import.service"
 
+export const maxDuration = 60
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
 

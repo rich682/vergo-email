@@ -13,6 +13,7 @@ import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import OpenAI from "openai"
 import { differenceInDays, format } from "date-fns"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 function getOpenAIClient() {
@@ -236,7 +237,7 @@ Provide a JSON response with:
   } catch (error: any) {
     console.error("Task AI summary error:", error)
     return NextResponse.json(
-      { error: "Failed to generate summary", message: error.message },
+      { error: "Failed to generate summary" },
       { status: 500 }
     )
   }

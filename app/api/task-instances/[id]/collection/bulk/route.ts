@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
 import { CollectedItemStatus } from "@prisma/client"
 
+export const maxDuration = 120;
 export const dynamic = "force-dynamic"
 
 /**
@@ -151,7 +152,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error performing bulk operation:", error)
     return NextResponse.json(
-      { error: "Failed to perform bulk operation", message: error.message },
+      { error: "Failed to perform bulk operation" },
       { status: 500 }
     )
   }

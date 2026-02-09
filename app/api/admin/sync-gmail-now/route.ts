@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailSyncService } from "@/lib/services/email-sync.service"
 
+export const maxDuration = 60
 /**
  * Manual trigger endpoint for Gmail sync (safety valve for production)
  * Authenticated admin-only endpoint to immediately sync Gmail accounts for replies

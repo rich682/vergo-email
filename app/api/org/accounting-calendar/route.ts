@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[API/org/accounting-calendar] Error getting settings:", error)
     return NextResponse.json(
-      { error: "Failed to get accounting calendar settings", message: error.message },
+      { error: "Failed to get accounting calendar settings" },
       { status: 500 }
     )
   }
@@ -120,7 +120,7 @@ export async function PUT(request: NextRequest) {
   } catch (error: any) {
     console.error("[API/org/accounting-calendar] Error updating settings:", error)
     return NextResponse.json(
-      { error: "Failed to update accounting calendar settings", message: error.message },
+      { error: "Failed to update accounting calendar settings" },
       { status: 500 }
     )
   }

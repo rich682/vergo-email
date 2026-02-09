@@ -22,7 +22,7 @@ export async function GET() {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
 
     const jobAccessFilter = getJobAccessFilter(userId, userRole)
     const requestBaseFilter: any = {

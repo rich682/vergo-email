@@ -87,10 +87,7 @@ export async function POST(request: NextRequest) {
     console.error("Quest interpretation error:", error)
     
     return NextResponse.json(
-      { 
-        error: "Failed to interpret request",
-        message: error.message 
-      },
+      { error: "Failed to interpret request" },
       { status: 500 }
     )
   }

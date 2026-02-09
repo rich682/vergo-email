@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
+import { isValidEmail } from "@/lib/utils/validate-email"
 
 // ── Simple in-memory rate limiter (per IP) ──────────────────────────────
 const RATE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!email || typeof email !== "string" || !email.includes("@")) {
+    if (!isValidEmail(email)) {
       return NextResponse.json(
         { error: "Valid email is required" },
         { status: 400 }

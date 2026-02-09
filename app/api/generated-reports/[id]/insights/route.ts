@@ -11,6 +11,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportInsightsService } from "@/lib/services/report-insights.service"
 
+export const maxDuration = 30
 interface CachedInsights {
   insights: any
   context: {
@@ -82,7 +83,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[GeneratedReportInsights] Error:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to get insights" },
+      { error: "Failed to get insights" },
       { status: 500 }
     )
   }
@@ -138,7 +139,7 @@ export async function POST(
   } catch (error: any) {
     console.error("[GeneratedReportInsights] Error regenerating:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to regenerate insights" },
+      { error: "Failed to regenerate insights" },
       { status: 500 }
     )
   }

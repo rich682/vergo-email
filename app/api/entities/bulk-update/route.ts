@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Bulk update error:", error)
     return NextResponse.json(
-      { error: error.message || "Bulk update failed" },
+      { error: "Bulk update failed" },
       { status: 500 }
     )
   }

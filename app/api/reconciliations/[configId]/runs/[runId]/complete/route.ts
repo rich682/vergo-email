@@ -8,6 +8,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
 
+export const maxDuration = 60
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }

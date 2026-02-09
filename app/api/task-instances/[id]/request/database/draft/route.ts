@@ -47,7 +47,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Verify job exists and user has access
@@ -267,7 +267,7 @@ Best regards${senderSignature ? '\n\n' + senderSignature : ''}`
   } catch (error: any) {
     console.error("Database draft generation error:", error)
     return NextResponse.json(
-      { error: "Failed to generate draft", message: error.message },
+      { error: "Failed to generate draft" },
       { status: 500 }
     )
   }

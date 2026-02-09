@@ -6,6 +6,7 @@ import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { UserRole } from "@prisma/client"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
+export const maxDuration = 60
 interface UploadRequestBody {
   columns: DatasetColumn[]
   rows: DatasetRow[]
@@ -28,7 +29,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
 
     const instance = await TaskInstanceService.findById(taskInstanceId, organizationId)
@@ -120,7 +121,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Dataset upload error:", error)
     return NextResponse.json(
-      { error: "Failed to upload dataset", message: error.message },
+      { error: "Failed to upload dataset" },
       { status: 500 }
     )
   }

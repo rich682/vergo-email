@@ -15,7 +15,7 @@ export async function GET() {
   }
 
   const userId = session.user.id
-  const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+  const userRole = session.user.role || UserRole.MEMBER
   const isAdmin = userRole === UserRole.ADMIN
 
   // Get all accounts with owner info

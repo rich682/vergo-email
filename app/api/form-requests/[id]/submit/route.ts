@@ -44,15 +44,18 @@ export async function POST(
     console.error("Error submitting form:", error)
 
     // Handle specific errors
-    if (error.message.includes("not found") || error.message.includes("access denied")) {
-      return NextResponse.json({ error: error.message }, { status: 404 })
+    if (error.message?.includes("not found") || error.message?.includes("access denied")) {
+      return NextResponse.json({ error: "Form request not found" }, { status: 404 })
     }
-    if (error.message.includes("already been submitted") || error.message.includes("required")) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error.message?.includes("already been submitted")) {
+      return NextResponse.json({ error: "Form has already been submitted" }, { status: 400 })
+    }
+    if (error.message?.includes("required")) {
+      return NextResponse.json({ error: "Required fields are missing" }, { status: 400 })
     }
 
     return NextResponse.json(
-      { error: "Failed to submit form", message: error.message },
+      { error: "Failed to submit form" },
       { status: 500 }
     )
   }

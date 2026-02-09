@@ -155,7 +155,7 @@ ${job.dueDate ? (() => {
   } catch (error: any) {
     console.error("[API /jobs/[id]/request/reminder-preview] Error:", error)
     return NextResponse.json(
-      { error: "Failed to generate reminder previews", message: error.message },
+      { error: "Failed to generate reminder previews" },
       { status: 500 }
     )
   }

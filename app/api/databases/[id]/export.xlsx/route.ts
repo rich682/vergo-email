@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import { DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
 import { exportToExcel } from "@/lib/utils/excel-utils"
 
+export const maxDuration = 45;
 interface RouteParams {
   params: { id: string }
 }

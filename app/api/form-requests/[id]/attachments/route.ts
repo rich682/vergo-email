@@ -101,7 +101,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error uploading attachment:", error)
     return NextResponse.json(
-      { error: "Failed to upload attachment", message: error.message },
+      { error: "Failed to upload attachment" },
       { status: 500 }
     )
   }
@@ -136,7 +136,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error listing attachments:", error)
     return NextResponse.json(
-      { error: "Failed to list attachments", message: error.message },
+      { error: "Failed to list attachments" },
       { status: 500 }
     )
   }
@@ -185,7 +185,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Error deleting attachment:", error)
     return NextResponse.json(
-      { error: "Failed to delete attachment", message: error.message },
+      { error: "Failed to delete attachment" },
       { status: 500 }
     )
   }

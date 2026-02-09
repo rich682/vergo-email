@@ -24,8 +24,10 @@ const log = logger.child({ service: "EmailSendingService" })
 const RATE_LIMIT_HOURS = 24
 const RATE_LIMIT_MAX_EMAILS = 5  // Max emails to same recipient within RATE_LIMIT_HOURS
 
-// Delay between sends in bulk operations to avoid triggering recipient server rate limits
-const BULK_SEND_DELAY_MS = 2000 // 2 seconds between each email
+// Concurrency limit for bulk email sending (max parallel sends)
+const BULK_SEND_CONCURRENCY = 5
+// Stagger delay between launching each concurrent send (ms)
+const BULK_SEND_STAGGER_MS = 400
 
 /**
  * Log an email send to the audit table
@@ -742,21 +744,14 @@ export class EmailSendingService {
       campaignName: data.campaignName
     }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
 
-    const results = []
+    const results: Array<{ email: string; taskId: string; threadId: string; messageId: string; error?: string }> = []
 
     // Use deadlineDate directly from data (set by user via date picker)
     const deadlineDate = data.deadlineDate || null
 
-    for (let i = 0; i < data.recipients.length; i++) {
-      const recipient = data.recipients[i]
-
-      // Stagger sends: wait between emails to avoid triggering recipient server rate limits
-      if (i > 0 && BULK_SEND_DELAY_MS > 0) {
-        await new Promise(resolve => setTimeout(resolve, BULK_SEND_DELAY_MS))
-      }
-
+    // Process recipients concurrently with a concurrency limit
+    const sendOne = async (recipient: { email: string; name?: string }) => {
       try {
-        // Use per-recipient email if provided, otherwise use default
         const perRecipientEmail = data.perRecipientEmails?.find(e => e.email === recipient.email)
         const subjectToUse = perRecipientEmail?.subject || data.subject
         const bodyToUse = perRecipientEmail?.body || data.body
@@ -764,7 +759,7 @@ export class EmailSendingService {
 
         const result = await this.sendEmail({
           organizationId: data.organizationId,
-          userId: data.userId,  // Pass userId for account selection
+          userId: data.userId,
           jobId: data.jobId,
           to: recipient.email,
           toName: recipient.name,
@@ -779,17 +774,13 @@ export class EmailSendingService {
           attachments: data.attachments
         })
 
-        results.push({
-          email: recipient.email,
-          ...result
-        })
+        return { email: recipient.email, ...result }
       } catch (error: any) {
         log.error("Failed to send email to recipient", error, {
           email: recipient.email,
           campaignName: data.campaignName
         }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
-        
-        // Create a Request record with SEND_FAILED status so the failure is visible in the UI
+
         let failedTaskId = ""
         try {
           const failedRequest = await RequestCreationService.createRequestFromEmail({
@@ -804,7 +795,6 @@ export class EmailSendingService {
             replyToEmail: "failed@send",
             subject: data.perRecipientEmails?.find(e => e.email === recipient.email)?.subject || data.subject,
           })
-          // Update to SEND_FAILED status
           await prisma.request.update({
             where: { id: failedRequest.id },
             data: {
@@ -818,15 +808,21 @@ export class EmailSendingService {
             email: recipient.email
           }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
         }
-        
-        results.push({
-          email: recipient.email,
-          taskId: failedTaskId,
-          threadId: "",
-          messageId: "",
-          error: error.message
-        })
+
+        return { email: recipient.email, taskId: failedTaskId, threadId: "", messageId: "", error: error.message }
       }
+    }
+
+    // Process in batches of BULK_SEND_CONCURRENCY with staggered starts
+    for (let i = 0; i < data.recipients.length; i += BULK_SEND_CONCURRENCY) {
+      const batch = data.recipients.slice(i, i + BULK_SEND_CONCURRENCY)
+      const batchPromises = batch.map((recipient, idx) =>
+        new Promise<typeof results[number]>(resolve =>
+          setTimeout(() => resolve(sendOne(recipient)), idx * BULK_SEND_STAGGER_MS)
+        )
+      )
+      const batchResults = await Promise.all(batchPromises)
+      results.push(...batchResults)
     }
 
     // Initialize reminder state for each successfully created task (idempotent)

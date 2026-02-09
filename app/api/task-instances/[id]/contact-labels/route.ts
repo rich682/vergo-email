@@ -42,7 +42,7 @@ export async function GET(
   } catch (error: any) {
     console.error("List contact labels error:", error)
     return NextResponse.json(
-      { error: "Failed to list contact labels", message: error.message },
+      { error: "Failed to list contact labels" },
       { status: 500 }
     )
   }
@@ -140,7 +140,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Apply contact label error:", error)
     return NextResponse.json(
-      { error: "Failed to apply label", message: error.message },
+      { error: "Failed to apply label" },
       { status: 500 }
     )
   }
@@ -220,7 +220,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Remove contact label error:", error)
     return NextResponse.json(
-      { error: "Failed to remove label", message: error.message },
+      { error: "Failed to remove label" },
       { status: 500 }
     )
   }
@@ -301,7 +301,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Update contact label metadata error:", error)
     return NextResponse.json(
-      { error: "Failed to update metadata", message: error.message },
+      { error: "Failed to update metadata" },
       { status: 500 }
     )
   }

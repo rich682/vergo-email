@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Error processing CSV upload:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to process CSV file" },
+      { error: "Failed to process CSV file" },
       { status: 500 }
     )
   }

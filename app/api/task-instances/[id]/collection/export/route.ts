@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
 
+export const maxDuration = 45;
 export const dynamic = "force-dynamic"
 
 /**
@@ -89,7 +90,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error exporting collection metadata:", error)
     return NextResponse.json(
-      { error: "Failed to export metadata", message: error.message },
+      { error: "Failed to export metadata" },
       { status: 500 }
     )
   }

@@ -53,7 +53,7 @@ export async function GET(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
 
     // Parse query params
@@ -438,7 +438,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Get task instance requests error:", error)
     return NextResponse.json(
-      { error: "Failed to get requests", message: error.message },
+      { error: "Failed to get requests" },
       { status: 500 }
     )
   }
@@ -460,7 +460,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
 
     // Verify task instance exists and user has edit access
@@ -507,7 +507,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Draft operation error:", error)
     return NextResponse.json(
-      { error: "Failed to process draft operation", message: error.message },
+      { error: "Failed to process draft operation" },
       { status: 500 }
     )
   }
@@ -529,7 +529,7 @@ export async function DELETE(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
 
     // Verify task instance exists and user has edit access
@@ -565,7 +565,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Delete draft request error:", error)
     return NextResponse.json(
-      { error: "Failed to delete draft request", message: error.message },
+      { error: "Failed to delete draft request" },
       { status: 500 }
     )
   }
@@ -712,7 +712,7 @@ async function handleCreateDraft(
   } catch (error: any) {
     console.error("[handleCreateDraft] Error creating draft:", error)
     return NextResponse.json(
-      { error: "Failed to create scheduled request", message: error.message },
+      { error: "Failed to create scheduled request" },
       { status: 500 }
     )
   }

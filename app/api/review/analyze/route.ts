@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import OpenAI from "openai"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 // Current prompt version - increment when prompt changes significantly
@@ -434,7 +435,7 @@ Analyze this reply and provide structured findings. If attachments contain relev
   } catch (error: any) {
     console.error("[API/review/analyze] Error:", error)
     return NextResponse.json(
-      { error: "Failed to analyze message", message: error.message },
+      { error: "Failed to analyze message" },
       { status: 500 }
     )
   }

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 import OpenAI from "openai"
 
+export const maxDuration = 120;
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {

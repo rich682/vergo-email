@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
 
     const { searchParams } = new URL(request.url)
     const readStatusFilter = searchParams.get("readStatus") // unread | read | all
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[Inbox API] Error:", error?.message)
     return NextResponse.json(
-      { error: "Failed to fetch inbox", message: error.message },
+      { error: "Failed to fetch inbox" },
       { status: 500 }
     )
   }

@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
 
+export const maxDuration = 60
 interface RouteParams {
   params: { id: string }
 }
@@ -59,6 +60,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    }
+
+    // Validate file size (max 25MB)
+    const MAX_FILE_SIZE = 25 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is 25MB, got ${(file.size / 1024 / 1024).toFixed(1)}MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type
+    const ALLOWED_TYPES = [
+      "text/csv",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]
+    const ALLOWED_EXTENSIONS = [".csv", ".xls", ".xlsx"]
+    const fileExtension = file.name ? `.${file.name.split(".").pop()?.toLowerCase()}` : ""
+    if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXTENSIONS.includes(fileExtension)) {
+      return NextResponse.json(
+        { error: "Invalid file type. Accepted formats: CSV, XLS, XLSX" },
+        { status: 400 }
+      )
     }
 
     const buffer = await file.arrayBuffer()
@@ -111,13 +136,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         message,
       })
     } catch (importError: any) {
+      console.error("Error parsing import file:", importError)
       return NextResponse.json({
         success: false,
         added: 0,
         updated: 0,
         duplicates: 0,
-        errors: [importError.message || "Failed to import data"],
-        message: importError.message || "Failed to import data",
+        errors: ["Failed to import data"],
+        message: "Failed to import data",
       }, { status: 400 })
     }
   } catch (error) {

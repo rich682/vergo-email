@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 
+export const maxDuration = 60
 /**
  * Convert plain text to HTML with proper formatting
  */
@@ -157,7 +158,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error sending reply:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

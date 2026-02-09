@@ -6,6 +6,7 @@ import OpenAI from "openai"
 import { differenceInDays, startOfDay } from "date-fns"
 import { parseDateOnlySafe, formatDateOnly } from "@/lib/utils/timezone"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 function getOpenAIClient() {
@@ -209,7 +210,7 @@ Provide a JSON response with:
   } catch (error: any) {
     console.error("AI summary error:", error)
     return NextResponse.json(
-      { error: "Failed to generate summary", message: error.message },
+      { error: "Failed to generate summary" },
       { status: 500 }
     )
   }

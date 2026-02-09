@@ -84,7 +84,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Quest generate error:", error)
     return NextResponse.json(
-      { error: "Failed to generate email", message: error.message },
+      { error: "Failed to generate email" },
       { status: 500 }
     )
   }

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { format } from "date-fns"
 import { ChevronDown, ChevronRight, Reply } from "lucide-react"
+import { sanitizeHtml } from "@/lib/utils/sanitize-html"
 
 interface ThreadMessage {
   id: string
@@ -163,7 +164,7 @@ export function EmailTab({ thread, currentMessageId }: EmailTabProps) {
                     {message.htmlBody ? (
                       <div 
                         className="prose prose-sm max-w-none text-gray-700"
-                        dangerouslySetInnerHTML={{ __html: message.htmlBody }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.htmlBody) }}
                       />
                     ) : (
                       <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">

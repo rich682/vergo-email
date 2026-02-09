@@ -60,7 +60,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error downloading collection item:", error)
     return NextResponse.json(
-      { error: "Failed to download file", message: error.message },
+      { error: "Failed to download file" },
       { status: 500 }
     )
   }

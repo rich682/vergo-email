@@ -35,7 +35,7 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { error: "Failed to get download URL", message: error.message },
+      { error: "Failed to get download URL" },
       { status: 500 }
     )
   }

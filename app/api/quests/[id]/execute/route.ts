@@ -118,7 +118,7 @@ export async function POST(
     }
     
     return NextResponse.json(
-      { error: "Failed to execute quest", errorCode, message: error.message },
+      { error: "Failed to execute quest", errorCode },
       { status: 500 }
     )
   }

@@ -34,6 +34,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File is required" }, { status: 400 })
     }
 
+    // Validate file size (max 25MB)
+    const MAX_FILE_SIZE = 25 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is 25MB, got ${(file.size / 1024 / 1024).toFixed(1)}MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type
+    const ALLOWED_TYPES = [
+      "text/csv",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/pdf",
+    ]
+    const ALLOWED_EXTENSIONS = [".csv", ".xls", ".xlsx", ".pdf"]
+    const fileExtension = file.name ? `.${file.name.split(".").pop()?.toLowerCase()}` : ""
+    if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXTENSIONS.includes(fileExtension)) {
+      return NextResponse.json(
+        { error: "Invalid file type. Accepted formats: CSV, XLS, XLSX, PDF" },
+        { status: 400 }
+      )
+    }
+
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
@@ -85,7 +110,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[Reconciliations] Error analyzing file:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to analyze file" },
+      { error: "Failed to analyze file" },
       { status: 500 }
     )
   }

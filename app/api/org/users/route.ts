@@ -15,6 +15,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { UserRole } from "@prisma/client"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
+import { isValidEmail } from "@/lib/utils/validate-email"
 
 /**
  * GET /api/org/users - List users in organization
@@ -34,16 +35,9 @@ export async function GET(request: NextRequest) {
     const organizationId = session.user.organizationId
     const currentUserId = session.user.id
     const currentUserEmail = session.user.email // Use email as more reliable identifier
-    const userRole = (session.user as any).role as UserRole
+    const userRole = session.user.role
     const isAdmin = userRole === UserRole.ADMIN
     
-    console.log("[GET /api/org/users] Session info:", {
-      currentUserId,
-      currentUserEmail,
-      organizationId,
-      userRole,
-      isAdmin
-    })
 
     // Fetch users based on role
     // Admins: all users in org
@@ -57,7 +51,7 @@ export async function GET(request: NextRequest) {
         email: true,
         name: true,
         role: true,
-        passwordHash: true,  // Used to determine "pending" status
+        emailVerified: true,  // Used to determine "pending" vs "active" status
         createdAt: true,
         updatedAt: true,
         // Include connected email accounts
@@ -82,15 +76,12 @@ export async function GET(request: NextRequest) {
       // Use email comparison as primary (more reliable than ID which can mismatch)
       const isCurrentUser = user.email.toLowerCase() === currentUserEmail?.toLowerCase()
       
-      console.log("[GET /api/org/users] Checking user:", user.email, "vs session:", currentUserEmail, "match:", isCurrentUser)
-      
       return {
         id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
-        // Status: "active" if they have a real password, "pending" otherwise
-        status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
+        status: user.emailVerified ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
         // Connected email account (primary or first one)
@@ -111,7 +102,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("List org users error:", error)
     return NextResponse.json(
-      { error: "Failed to list users", message: error.message },
+      { error: "Failed to list users" },
       { status: 500 }
     )
   }
@@ -135,8 +126,8 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
-    const userRole = (session.user as any).role as UserRole
-    const inviterName = (session.user as any).name || (session.user as any).email
+    const userRole = session.user.role
+    const inviterName = session.user.name || session.user.email
 
     // Admin-only check
     if (userRole !== UserRole.ADMIN) {
@@ -150,7 +141,7 @@ export async function POST(request: NextRequest) {
     const { email, role, name } = body
 
     // Validate email
-    if (!email || typeof email !== "string" || !email.includes("@")) {
+    if (!isValidEmail(email)) {
       return NextResponse.json(
         { error: "Valid email is required" },
         { status: 400 }
@@ -243,7 +234,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Create org user error:", error)
     return NextResponse.json(
-      { error: "Failed to create user", message: error.message },
+      { error: "Failed to create user" },
       { status: 500 }
     )
   }

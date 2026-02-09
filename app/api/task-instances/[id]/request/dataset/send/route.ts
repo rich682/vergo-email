@@ -46,7 +46,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
 
     const instance = await TaskInstanceService.findById(taskInstanceId, organizationId)
@@ -168,7 +168,7 @@ export async function POST(
           })
         }
       } catch (error: any) {
-        results.push({ email: recipient.recipientEmail, success: false, error: error.message })
+        results.push({ email: recipient.recipientEmail, success: false, error: "Send failed" })
         failCount++
       }
     }
@@ -193,7 +193,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Dataset send error:", error)
     return NextResponse.json(
-      { error: "Failed to send emails", message: error.message },
+      { error: "Failed to send emails" },
       { status: 500 }
     )
   }

@@ -46,7 +46,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching form requests:", error)
     return NextResponse.json(
-      { error: "Failed to fetch form requests", message: error.message },
+      { error: "Failed to fetch form requests" },
       { status: 500 }
     )
   }
@@ -64,7 +64,7 @@ export async function POST(
 
     const { id: taskInstanceId } = await params
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
 
     // Verify task exists and user has edit access
     const task = await TaskInstanceService.findById(taskInstanceId, session.user.organizationId)
@@ -199,7 +199,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error creating form requests:", error.message, error.stack)
     return NextResponse.json(
-      { error: "Failed to create form requests", message: error.message },
+      { error: "Failed to create form requests" },
       { status: 500 }
     )
   }

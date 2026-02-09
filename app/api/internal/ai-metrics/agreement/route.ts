@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[API/internal/ai-metrics/agreement] Error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch metrics", message: error.message },
+      { error: "Failed to fetch metrics" },
       { status: 500 }
     )
   }

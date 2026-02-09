@@ -67,7 +67,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching form request:", error)
     return NextResponse.json(
-      { error: "Failed to fetch form request", message: error.message },
+      { error: "Failed to fetch form request" },
       { status: 500 }
     )
   }

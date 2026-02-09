@@ -11,6 +11,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
 
+export const maxDuration = 45;
 // GET - List generated reports
 export async function GET(request: NextRequest) {
   try {
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to create report" },
+      { error: "Failed to create report" },
       { status: 400 }
     )
   }

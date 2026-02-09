@@ -73,7 +73,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Quest get error:", error)
     return NextResponse.json(
-      { error: "Failed to get quest", message: error.message },
+      { error: "Failed to get quest" },
       { status: 500 }
     )
   }
@@ -131,7 +131,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Quest update error:", error)
     return NextResponse.json(
-      { error: "Failed to update quest", message: error.message },
+      { error: "Failed to update quest" },
       { status: 500 }
     )
   }

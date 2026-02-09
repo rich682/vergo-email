@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 
+export const maxDuration = 30
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now()
   const session = await getServerSession(authOptions)
@@ -327,7 +328,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Error generating draft:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

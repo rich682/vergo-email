@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[API/boards] Error listing boards:", error)
     return NextResponse.json(
-      { error: "Failed to list boards", message: error.message },
+      { error: "Failed to list boards" },
       { status: 500 }
     )
   }

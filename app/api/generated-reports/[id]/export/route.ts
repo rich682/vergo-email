@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
 import { reportToExcel, generateExportFilename } from "@/lib/utils/excel-export"
 
+export const maxDuration = 45;
 interface RouteParams {
   params: Promise<{ id: string }>
 }

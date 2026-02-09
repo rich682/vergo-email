@@ -36,7 +36,7 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Verify job exists and user has access
@@ -178,7 +178,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Dataset preview error:", error)
     return NextResponse.json(
-      { error: "Failed to generate preview", message: error.message },
+      { error: "Failed to generate preview" },
       { status: 500 }
     )
   }
@@ -205,7 +205,7 @@ export async function GET(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Get draftId from query params
@@ -297,7 +297,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Dataset preview summary error:", error)
     return NextResponse.json(
-      { error: "Failed to get preview summary", message: error.message },
+      { error: "Failed to get preview summary" },
       { status: 500 }
     )
   }

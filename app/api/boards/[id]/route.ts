@@ -41,7 +41,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[API/boards/[id]] Error getting board:", error)
     return NextResponse.json(
-      { error: "Failed to get board", message: error.message, code: error.code, meta: error.meta },
+      { error: "Failed to get board", code: error.code, meta: error.meta },
       { status: 500 }
     )
   }
@@ -194,7 +194,7 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { error: "Failed to update board", message: error.message },
+      { error: "Failed to update board" },
       { status: 500 }
     )
   }
@@ -235,15 +235,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Board not found" }, { status: 404 })
     }
 
-    if (error.message.includes("Cannot delete board with jobs")) {
+    if (error.message?.includes("Cannot delete board with jobs")) {
       return NextResponse.json(
-        { error: error.message },
+        { error: "Cannot delete board with existing jobs. Remove jobs first." },
         { status: 400 }
       )
     }
 
     return NextResponse.json(
-      { error: "Failed to delete board", message: error.message },
+      { error: "Failed to delete board" },
       { status: 500 }
     )
   }

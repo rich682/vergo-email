@@ -32,7 +32,7 @@ export async function GET(
     }
 
     const organizationId = session.user.organizationId
-    const userRole = (session.user as any).role as UserRole
+    const userRole = session.user.role
 
     // Admin-only check
     if (userRole !== UserRole.ADMIN) {
@@ -83,7 +83,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Get org user error:", error)
     return NextResponse.json(
-      { error: "Failed to get user", message: error.message },
+      { error: "Failed to get user" },
       { status: 500 }
     )
   }
@@ -108,7 +108,7 @@ export async function PATCH(
 
     const organizationId = session.user.organizationId
     const currentUserId = session.user.id
-    const userRole = (session.user as any).role as UserRole
+    const userRole = session.user.role
 
     // Admin-only check
     if (userRole !== UserRole.ADMIN) {
@@ -214,7 +214,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Update org user error:", error)
     return NextResponse.json(
-      { error: "Failed to update user", message: error.message },
+      { error: "Failed to update user" },
       { status: 500 }
     )
   }
@@ -239,7 +239,7 @@ export async function DELETE(
 
     const organizationId = session.user.organizationId
     const currentUserId = session.user.id
-    const userRole = (session.user as any).role as UserRole
+    const userRole = session.user.role
 
     // Admin-only check
     if (userRole !== UserRole.ADMIN) {
@@ -287,7 +287,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Delete org user error:", error)
     return NextResponse.json(
-      { error: "Failed to delete user", message: error.message },
+      { error: "Failed to delete user" },
       { status: 500 }
     )
   }

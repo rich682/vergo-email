@@ -148,7 +148,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[API/review/[messageId]] Error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch review data", message: error.message },
+      { error: "Failed to fetch review data" },
       { status: 500 }
     )
   }
@@ -261,7 +261,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("[API/review/[messageId] PATCH] Error:", error)
     return NextResponse.json(
-      { error: "Failed to update review status", message: error.message },
+      { error: "Failed to update review status" },
       { status: 500 }
     )
   }

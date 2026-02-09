@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
 import crypto from "crypto"
 
+export const maxDuration = 60
 // Structured logging helper
 function logSendEvent(event: string, data: Record<string, any>) {
   console.log(JSON.stringify({
@@ -522,7 +523,7 @@ export async function POST(
     })
     console.error("Error sending email:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

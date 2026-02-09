@@ -51,7 +51,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching collection item:", error)
     return NextResponse.json(
-      { error: "Failed to fetch item", message: error.message },
+      { error: "Failed to fetch item" },
       { status: 500 }
     )
   }
@@ -126,7 +126,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Error updating collection item:", error)
     return NextResponse.json(
-      { error: "Failed to update item", message: error.message },
+      { error: "Failed to update item" },
       { status: 500 }
     )
   }
@@ -176,7 +176,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Error deleting collection item:", error)
     return NextResponse.json(
-      { error: "Failed to delete item", message: error.message },
+      { error: "Failed to delete item" },
       { status: 500 }
     )
   }

@@ -13,6 +13,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 
+export const maxDuration = 30;
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -117,18 +118,14 @@ export async function POST(
       })
 
       return NextResponse.json(
-        {
-          success: false,
-          error: sendError.message,
-          message: `Retry failed: ${sendError.message}`,
-        },
+        { error: "Retry failed - could not send email" },
         { status: 502 }
       )
     }
   } catch (error: any) {
     console.error("[RetryRequest] Error:", error)
     return NextResponse.json(
-      { error: "Internal server error", message: error.message },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

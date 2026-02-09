@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
@@ -212,7 +212,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Error fetching collection items:", error)
     return NextResponse.json(
-      { error: "Failed to fetch collection items", message: error.message },
+      { error: "Failed to fetch collection items" },
       { status: 500 }
     )
   }
@@ -230,7 +230,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // VIEWER users cannot modify collection items
-    const userRole = (session.user as any).role as string | undefined
+    const userRole = session.user.role as string | undefined
     if (isReadOnly(userRole)) {
       return NextResponse.json(
         { error: "Forbidden - Viewers cannot modify items" },
@@ -284,7 +284,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error: any) {
     console.error("Error updating collection item:", error)
     return NextResponse.json(
-      { error: "Failed to update item", message: error.message },
+      { error: "Failed to update item" },
       { status: 500 }
     )
   }

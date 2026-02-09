@@ -32,7 +32,7 @@ export async function GET(
   } catch (error: any) {
     console.error("List comments error:", error)
     return NextResponse.json(
-      { error: "Failed to list comments", message: error.message },
+      { error: "Failed to list comments" },
       { status: 500 }
     )
   }
@@ -51,7 +51,7 @@ export async function POST(
     const { id } = await params
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const body = await request.json()
     const { content, mentions } = body
 
@@ -81,7 +81,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Create comment error:", error)
     return NextResponse.json(
-      { error: "Failed to create comment", message: error.message },
+      { error: "Failed to create comment" },
       { status: 500 }
     )
   }
@@ -119,7 +119,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Delete comment error:", error)
     return NextResponse.json(
-      { error: "Failed to delete comment", message: error.message },
+      { error: "Failed to delete comment" },
       { status: 500 }
     )
   }

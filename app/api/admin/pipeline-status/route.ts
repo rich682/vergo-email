@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         status: "error",
-        error: error.message,
+        error: "Failed to check pipeline status",
         timestamp: new Date().toISOString(),
       },
       {

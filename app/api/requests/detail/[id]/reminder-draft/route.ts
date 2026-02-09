@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 function getOpenAIClient() {
@@ -331,7 +332,7 @@ ${task.taskInstance?.dueDate ? (() => {
   } catch (error: any) {
     console.error("[API /tasks/[id]/reminder-draft GET] Error:", error)
     return NextResponse.json(
-      { error: "Failed to generate reminder previews", message: error.message },
+      { error: "Failed to generate reminder previews" },
       { status: 500 }
     )
   }

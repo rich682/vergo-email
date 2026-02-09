@@ -80,27 +80,57 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const pathname = req.nextUrl.pathname
-        
+
         // Allow Inngest without auth
         if (pathname.startsWith("/api/inngest")) {
           return true
         }
-        
+
         // Allow public auth endpoints
         if (pathname.startsWith("/api/auth/")) {
           return true
         }
-        
+
         // Allow tracking pixel
         if (pathname.startsWith("/api/tracking/")) {
           return true
         }
-        
+
         // Allow webhooks
         if (pathname.startsWith("/api/webhooks/")) {
           return true
         }
-        
+
+        // Allow token-based form access (external stakeholders without accounts)
+        if (pathname.startsWith("/api/form-requests/token/")) {
+          return true
+        }
+
+        // Allow form attachment uploads/downloads (token validated at route level)
+        if (/^\/api\/form-requests\/[^/]+\/attachments/.test(pathname)) {
+          return true
+        }
+
+        // Allow error reporting (must work even during auth failures)
+        if (pathname.startsWith("/api/errors/")) {
+          return true
+        }
+
+        // Allow public template downloads
+        if (pathname.startsWith("/api/templates/")) {
+          return true
+        }
+
+        // Allow task import template download
+        if (pathname === "/api/task-instances/template") {
+          return true
+        }
+
+        // Allow public attachment downloads by storage key
+        if (pathname.startsWith("/api/attachments/by-key/")) {
+          return true
+        }
+
         return !!token
       },
     },
@@ -110,13 +140,6 @@ export default withAuth(
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/api/requests/detail/:path*",
-    "/api/email-drafts/:path*",
-    "/api/email-accounts/:path*",
-    "/api/oauth/:path*",
-    "/api/webhooks/:path*",
-    "/api/auth/:path*",
-    "/api/tracking/:path*",
-    "/api/org/:path*",
+    "/api/:path*",
   ],
 }

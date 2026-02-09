@@ -48,7 +48,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching group:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }
@@ -113,7 +113,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Error updating group:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }
@@ -157,7 +157,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Error deleting group:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

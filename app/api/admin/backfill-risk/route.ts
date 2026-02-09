@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { computeRiskWithLLM, computeDeterministicRisk, computeLastActivityAt } from "@/lib/services/risk-computation.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
 
+export const maxDuration = 120;
 /**
  * Admin API endpoint to trigger backfill of risk levels for existing tasks
  * 

@@ -16,6 +16,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
 
+export const maxDuration = 30
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: error.message || "Failed to ensure task report" },
+      { error: "Failed to ensure task report" },
       { status: 500 }
     )
   }

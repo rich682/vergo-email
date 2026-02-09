@@ -17,6 +17,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
+export const maxDuration = 30
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
@@ -199,7 +200,7 @@ Return ONLY a valid JSON array, no other text. Generate between 5-20 tasks depen
   } catch (error: any) {
     console.error("AI generate error:", error)
     return NextResponse.json(
-      { error: "Failed to generate checklist", message: error.message },
+      { error: "Failed to generate checklist" },
       { status: 500 }
     )
   }

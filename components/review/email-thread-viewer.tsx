@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect } from "react"
 import { format } from "date-fns"
-import { 
-  Mail, 
-  Reply, 
-  ChevronDown, 
-  ChevronRight, 
-  Paperclip, 
+import { sanitizeHtml } from "@/lib/utils/sanitize-html"
+import {
+  Mail,
+  Reply,
+  ChevronDown,
+  ChevronRight,
+  Paperclip,
   Eye,
   Bot,
   AlertTriangle
@@ -202,7 +203,7 @@ export function EmailThreadViewer({ thread, currentMessageId }: EmailThreadViewe
                     {message.htmlBody ? (
                       <div 
                         className="prose prose-sm max-w-none text-gray-700"
-                        dangerouslySetInnerHTML={{ __html: message.htmlBody }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.htmlBody) }}
                       />
                     ) : (
                       <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">

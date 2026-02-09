@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
 import { getStorageService } from "@/lib/services/storage.service"
 
+export const maxDuration = 45;
 export const dynamic = "force-dynamic"
 
 /**
@@ -73,7 +74,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error downloading collection item:", error)
     return NextResponse.json(
-      { error: "Failed to download file", message: error.message },
+      { error: "Failed to download file" },
       { status: 500 }
     )
   }

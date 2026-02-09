@@ -121,7 +121,7 @@ export async function POST(
   } catch (error: any) {
     console.error("Error sending manual reminder:", error)
     return NextResponse.json(
-      { error: "Failed to send reminder", message: error.message },
+      { error: "Failed to send reminder" },
       { status: 500 }
     )
   }

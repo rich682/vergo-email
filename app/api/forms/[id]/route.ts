@@ -33,7 +33,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching form:", error)
     return NextResponse.json(
-      { error: "Failed to fetch form", message: error.message },
+      { error: "Failed to fetch form" },
       { status: 500 }
     )
   }
@@ -74,11 +74,11 @@ export async function PATCH(
     console.error("Error updating form:", error)
     
     if (error.message === "Form not found or access denied") {
-      return NextResponse.json({ error: error.message }, { status: 404 })
+      return NextResponse.json({ error: "Form not found or access denied" }, { status: 404 })
     }
     
     return NextResponse.json(
-      { error: "Failed to update form", message: error.message },
+      { error: "Failed to update form" },
       { status: 500 }
     )
   }
@@ -102,11 +102,11 @@ export async function DELETE(
     console.error("Error deleting form:", error)
     
     if (error.message === "Form not found or access denied") {
-      return NextResponse.json({ error: error.message }, { status: 404 })
+      return NextResponse.json({ error: "Form not found or access denied" }, { status: 404 })
     }
     
     return NextResponse.json(
-      { error: "Failed to delete form", message: error.message },
+      { error: "Failed to delete form" },
       { status: 500 }
     )
   }

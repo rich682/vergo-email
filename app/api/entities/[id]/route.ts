@@ -154,7 +154,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Error updating entity:", error)
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }
@@ -202,7 +202,7 @@ export async function DELETE(
       )
     }
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

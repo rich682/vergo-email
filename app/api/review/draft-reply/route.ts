@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 // Draft prompt version - increment when prompt changes significantly
@@ -275,7 +276,7 @@ Draft a brief thank-you acknowledgment. Keep it to 1-2 sentences.`
   } catch (error: any) {
     console.error("[API/review/draft-reply] Error:", error)
     return NextResponse.json(
-      { error: "Failed to generate draft", message: error.message },
+      { error: "Failed to generate draft" },
       { status: 500 }
     )
   }

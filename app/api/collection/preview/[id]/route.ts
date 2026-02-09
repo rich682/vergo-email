@@ -82,7 +82,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[Preview API] Error:", error)
     return NextResponse.json(
-      { error: "Failed to preview file", message: error.message },
+      { error: "Failed to preview file" },
       { status: 500 }
     )
   }

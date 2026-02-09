@@ -57,7 +57,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Get task instance label error:", error)
     return NextResponse.json(
-      { error: "Failed to get label", message: error.message },
+      { error: "Failed to get label" },
       { status: 500 }
     )
   }
@@ -170,7 +170,7 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { error: "Failed to update label", message: error.message },
+      { error: "Failed to update label" },
       { status: 500 }
     )
   }
@@ -230,7 +230,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Delete task instance label error:", error)
     return NextResponse.json(
-      { error: "Failed to delete label", message: error.message },
+      { error: "Failed to delete label" },
       { status: 500 }
     )
   }

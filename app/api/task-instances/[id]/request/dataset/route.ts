@@ -60,7 +60,7 @@ export async function PATCH(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Verify task instance exists and user has access
@@ -295,7 +295,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Dataset update error:", error)
     return NextResponse.json(
-      { error: "Failed to update dataset", message: error.message },
+      { error: "Failed to update dataset" },
       { status: 500 }
     )
   }
@@ -322,7 +322,7 @@ export async function GET(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: jobId } = await params
 
     // Get draftId from query params
@@ -400,7 +400,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Dataset get error:", error)
     return NextResponse.json(
-      { error: "Failed to get dataset", message: error.message },
+      { error: "Failed to get dataset" },
       { status: 500 }
     )
   }

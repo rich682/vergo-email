@@ -45,7 +45,7 @@ export async function GET(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
-    const userRole = (session.user as any).role as UserRole || UserRole.MEMBER
+    const userRole = session.user.role || UserRole.MEMBER
     const { id: taskInstanceId } = await params
     const { searchParams } = new URL(request.url)
     
@@ -247,7 +247,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Get timeline error:", error)
     return NextResponse.json(
-      { error: "Failed to get timeline", message: error.message },
+      { error: "Failed to get timeline" },
       { status: 500 }
     )
   }

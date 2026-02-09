@@ -52,7 +52,7 @@ export async function GET(
   } catch (error: any) {
     console.error("List labels error:", error)
     return NextResponse.json(
-      { error: "Failed to list labels", message: error.message },
+      { error: "Failed to list labels" },
       { status: 500 }
     )
   }
@@ -154,7 +154,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { error: "Failed to create label", message: error.message },
+      { error: "Failed to create label" },
       { status: 500 }
     )
   }

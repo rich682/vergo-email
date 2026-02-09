@@ -53,7 +53,7 @@ export async function GET(
   } catch (error: any) {
     console.error("Error fetching lineage:", error)
     return NextResponse.json(
-      { error: "Failed to fetch lineage", message: error.message },
+      { error: "Failed to fetch lineage" },
       { status: 500 }
     )
   }
@@ -100,7 +100,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Error updating lineage:", error)
     return NextResponse.json(
-      { error: "Failed to update lineage", message: error.message },
+      { error: "Failed to update lineage" },
       { status: 500 }
     )
   }
@@ -147,7 +147,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Error deleting lineage:", error)
     return NextResponse.json(
-      { error: "Failed to delete lineage", message: error.message },
+      { error: "Failed to delete lineage" },
       { status: 500 }
     )
   }

@@ -15,6 +15,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 
+export const maxDuration = 30
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
@@ -166,7 +167,7 @@ Return ONLY a valid JSON array, no other text. Example format:
   } catch (error: any) {
     console.error("Bulk import error:", error)
     return NextResponse.json(
-      { error: "Failed to process import", message: error.message },
+      { error: "Failed to process import" },
       { status: 500 }
     )
   }

@@ -203,7 +203,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Microsoft OAuth unexpected error:", error)
     return NextResponse.redirect(
-      new URL(`/dashboard/settings/team?error=unexpected_error&message=${encodeURIComponent(error.message || "Unknown error")}`, request.url)
+      new URL(`/dashboard/settings/team?error=unexpected_error`, request.url)
     )
   }
 }

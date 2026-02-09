@@ -6,8 +6,75 @@ import { prisma } from "@/lib/prisma"
 import { createHash } from "crypto"
 import { GmailIngestProvider } from "@/lib/providers/email-ingest/gmail-ingest.provider"
 import { ProviderCursor } from "@/lib/providers/email-ingest/types"
+import { createRemoteJWKSet, jwtVerify } from "jose"
+
+const GOOGLE_JWKS = createRemoteJWKSet(
+  new URL("https://www.googleapis.com/oauth2/v3/certs")
+)
+
+/**
+ * Verify Google Pub/Sub push notification JWT token.
+ * Returns the verified payload or null if verification fails.
+ */
+async function verifyPubSubToken(request: NextRequest): Promise<boolean> {
+  // If no verification email is configured, skip verification (development mode)
+  const expectedEmail = process.env.GMAIL_PUBSUB_SERVICE_ACCOUNT
+  if (!expectedEmail) {
+    console.log(JSON.stringify({
+      event: "webhook_auth_skip",
+      timestampMs: Date.now(),
+      reason: "GMAIL_PUBSUB_SERVICE_ACCOUNT not configured"
+    }))
+    return true
+  }
+
+  const authHeader = request.headers.get("authorization")
+  if (!authHeader?.startsWith("Bearer ")) {
+    console.log(JSON.stringify({
+      event: "webhook_auth_fail",
+      timestampMs: Date.now(),
+      reason: "missing_bearer_token"
+    }))
+    return false
+  }
+
+  const token = authHeader.substring(7)
+  try {
+    const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
+      issuer: "https://accounts.google.com",
+    })
+
+    // Verify the service account email matches
+    if (payload.email !== expectedEmail) {
+      console.log(JSON.stringify({
+        event: "webhook_auth_fail",
+        timestampMs: Date.now(),
+        reason: "email_mismatch",
+        expected: expectedEmail,
+        received: String(payload.email || "").substring(0, 20)
+      }))
+      return false
+    }
+
+    return true
+  } catch (err: any) {
+    console.log(JSON.stringify({
+      event: "webhook_auth_fail",
+      timestampMs: Date.now(),
+      reason: "jwt_verification_failed"
+    }))
+    return false
+  }
+}
 
 export async function POST(request: NextRequest) {
+  // Verify the request is from Google Pub/Sub
+  const isVerified = await verifyPubSubToken(request)
+  if (!isVerified) {
+    // Return 200 to prevent retries, but don't process
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   // Always return 200 OK to prevent Gmail from retrying
   try {
     const body = await request.json()

@@ -75,7 +75,7 @@ export async function PUT(
   } catch (error: any) {
     console.error("Error updating risk:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to update risk" },
+      { error: "Failed to update risk" },
       { status: 500 }
     )
   }
