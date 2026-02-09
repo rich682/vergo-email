@@ -66,7 +66,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const parseResult = await ReconciliationFileParserService.parseFile(
       buffer,
       file.name,
-      sourceConfig?.columns?.length > 0 ? sourceConfig : undefined
+      sourceConfig?.columns?.length > 0 ? sourceConfig : undefined,
+      "full" // Need all rows for actual reconciliation
     )
 
     // Store file in blob storage

@@ -2,7 +2,7 @@
  * ReconciliationFileParserService
  * Parses uploaded Excel/CSV/PDF files into structured row data for reconciliation.
  * Uses the same libraries as the existing attachment-extraction and excel-utils services.
- * PDF parsing uses positional text extraction + AI fallback for robust tabular detection.
+ * PDF parsing uses `unpdf` for serverless-friendly text extraction + AI for table detection.
  */
 import * as XLSX from "xlsx"
 import OpenAI from "openai"
@@ -26,11 +26,15 @@ export class ReconciliationFileParserService {
    * Parse a source file into structured rows.
    * If sourceConfig has columns defined, maps to those columns.
    * Otherwise, auto-detects columns for first-time setup.
+   *
+   * For PDFs, use mode="detect" (default) for fast column detection + row count,
+   * or mode="full" to extract every row (slower, used during actual reconciliation).
    */
   static async parseFile(
     buffer: Buffer,
     filename: string,
-    sourceConfig?: SourceConfig
+    sourceConfig?: SourceConfig,
+    mode: "detect" | "full" = "detect"
   ): Promise<ParsedSourceResult> {
     const ext = filename.toLowerCase().split(".").pop() || ""
     const warnings: string[] = []
@@ -47,7 +51,7 @@ export class ReconciliationFileParserService {
       rawRows = result.rows
       detectedColumns = result.detectedColumns
     } else if (ext === "pdf") {
-      const result = await this.parsePdf(buffer)
+      const result = await this.parsePdf(buffer, mode)
       rawRows = result.rows
       detectedColumns = result.detectedColumns
       if (result.rows.length === 0) {
@@ -145,99 +149,190 @@ export class ReconciliationFileParserService {
   }
 
   /**
-   * Parse PDF file by sending the raw PDF bytes directly to GPT-4o-mini.
-   * This avoids all pdfjs-dist / DOMMatrix / canvas issues in serverless environments.
-   * GPT-4o-mini natively reads PDF files via the file attachment API.
+   * Extract text from a PDF using `unpdf` (serverless-friendly, no canvas/DOMMatrix).
    */
-  private static async parsePdf(buffer: Buffer): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
+  private static async extractPdfText(buffer: Buffer): Promise<string> {
+    const { extractText } = await import("unpdf")
+    const result = await extractText(new Uint8Array(buffer))
+    // Join pages with a clear separator
+    return (result.text || []).join("\n--- PAGE BREAK ---\n")
+  }
+
+  /**
+   * Parse PDF file using unpdf for text extraction + AI for table detection.
+   *
+   * mode="detect": Fast -- asks AI for column names, total row count, and 5 sample rows.
+   *                Used by the /analyze endpoint for initial column detection.
+   * mode="full":   Slower -- asks AI to extract ALL rows. Used during actual reconciliation runs.
+   */
+  private static async parsePdf(
+    buffer: Buffer,
+    mode: "detect" | "full" = "detect"
+  ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
     try {
-      console.log("[PDF Parser] Sending PDF directly to AI for extraction...")
+      // Step 1: Extract text (fast, ~100ms)
+      console.log("[PDF Parser] Extracting text with unpdf...")
+      const fullText = await this.extractPdfText(buffer)
+      console.log(`[PDF Parser] Extracted text: ${fullText.length} chars`)
+
+      if (fullText.length < 20) {
+        console.log("[PDF Parser] Not enough text, returning empty")
+        return { rows: [], detectedColumns: [] }
+      }
+
+      // Step 2: Send text to AI for table extraction
       const openai = getOpenAIClient()
+      const truncatedText = fullText.length > 30000 ? fullText.slice(0, 30000) + "\n...(truncated)" : fullText
 
-      const base64 = buffer.toString("base64")
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a document parser specializing in extracting structured tabular data from PDFs. You handle any document type: financial statements, bank/credit card statements, invoices, ledgers, payroll reports, inventory lists, general accounting reports, or any document containing a data table.
-
-Rules:
-- First, understand what type of document this is from its content
-- Identify the main DATA TABLE in the document -- the primary repeating rows of data (e.g. transactions, line items, entries)
-- Do NOT confuse summary sections, headers, or account info with the data table
-- Extract ALL rows of data -- every single row, not just a sample
-- Determine clear column names from the table headers as they appear in the document
-- Use the column names exactly as they appear in the document. Do NOT invent or rename columns
-- If there are continuation pages (e.g. "continued on next page"), include data from ALL pages
-- Parse amounts as numbers (remove currency symbols, handle negatives/parentheses, keep decimals)
-- Parse dates consistently (keep original format)
-- IGNORE non-tabular content: summaries, warnings, page footers, page numbers, disclaimers
-- IGNORE rows that are clearly footer/header artifacts (e.g. "PAGE 1 of 4", account numbers, footer codes)
-- If a row has sub-lines (e.g. foreign currency conversions, memo lines), merge them into the parent row or skip them
-- If you cannot find a clear data table, return empty arrays
-
-Return JSON with this exact structure:
-{
-  "columns": ["Column Name 1", "Column Name 2", ...],
-  "rows": [
-    {"Column Name 1": "value", "Column Name 2": "value", ...},
-    ...
-  ],
-  "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "payroll" | "inventory" | "other",
-  "confidence": "high" | "medium" | "low"
-}`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "file",
-                file: {
-                  filename: "document.pdf",
-                  file_data: `data:application/pdf;base64,${base64}`,
-                },
-              } as any,
-              {
-                type: "text",
-                text: "Extract the main data table from this document. Return ALL rows.",
-              },
-            ],
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-        max_tokens: 16000,
-      })
-
-      const content = completion.choices[0]?.message?.content
-      if (!content) {
-        console.log("[PDF Parser] No response from AI")
-        return { rows: [], detectedColumns: [] }
+      if (mode === "detect") {
+        return await this.parsePdfDetectMode(openai, truncatedText)
+      } else {
+        return await this.parsePdfFullMode(openai, truncatedText)
       }
-
-      const parsed = JSON.parse(content)
-      const columns: string[] = parsed.columns || []
-      const rawRows: Record<string, any>[] = parsed.rows || []
-
-      console.log(`[PDF Parser] AI extracted ${columns.length} columns, ${rawRows.length} rows (type: ${parsed.documentType}, confidence: ${parsed.confidence})`)
-
-      if (columns.length === 0 || rawRows.length === 0) {
-        return { rows: [], detectedColumns: [] }
-      }
-
-      const detectedColumns = columns.map((label: string) => ({
-        key: label,
-        label,
-        sampleValues: rawRows.slice(0, 3).map((r: Record<string, any>) => String(r[label] ?? "")),
-      }))
-
-      return { rows: rawRows, detectedColumns }
     } catch (err) {
       console.error("[PDF Parser] Error:", err)
       return { rows: [], detectedColumns: [] }
     }
+  }
+
+  /**
+   * Fast detect mode: ask AI for column names + row count + 5 sample rows.
+   * Typically completes in 3-8 seconds.
+   */
+  private static async parsePdfDetectMode(
+    openai: OpenAI,
+    text: string
+  ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
+    console.log("[PDF Parser] Detect mode: asking AI for columns + samples...")
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a document parser. Extract the structure of the main data table from this document.
+
+Rules:
+- Identify the main DATA TABLE (e.g. transactions, line items, entries)
+- Do NOT confuse summary sections, headers, or account info with the data table
+- Return the column names exactly as they appear in the document
+- Return the FIRST 5 data rows as samples
+- Count the TOTAL number of data rows across all pages (not just the 5 samples)
+- Parse amounts as numbers, dates in original format
+- IGNORE non-tabular content
+
+Return JSON:
+{
+  "columns": ["Col1", "Col2", ...],
+  "sampleRows": [{"Col1": "val", ...}, ...],
+  "totalRowCount": 70,
+  "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "other"
+}`,
+        },
+        {
+          role: "user",
+          content: `Detect the table structure in this document:\n\n${text}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: 2000,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) return { rows: [], detectedColumns: [] }
+
+    const parsed = JSON.parse(content)
+    const columns: string[] = parsed.columns || []
+    const sampleRows: Record<string, any>[] = parsed.sampleRows || []
+    const totalRowCount: number = parsed.totalRowCount || sampleRows.length
+
+    console.log(`[PDF Parser] Detected ${columns.length} columns, ${totalRowCount} total rows (${sampleRows.length} samples, type: ${parsed.documentType})`)
+
+    if (columns.length === 0) return { rows: [], detectedColumns: [] }
+
+    const detectedColumns = columns.map((label: string) => ({
+      key: label,
+      label,
+      sampleValues: sampleRows.slice(0, 3).map((r: Record<string, any>) => String(r[label] ?? "")),
+    }))
+
+    // Return sample rows but with the real total count
+    // Create placeholder rows so rowCount reflects the true document size
+    const placeholderRows = Array.from({ length: totalRowCount }, (_, i) => {
+      if (i < sampleRows.length) return sampleRows[i]
+      // Placeholder row with column keys
+      const row: Record<string, any> = {}
+      for (const col of columns) row[col] = ""
+      return row
+    })
+
+    return { rows: placeholderRows, detectedColumns }
+  }
+
+  /**
+   * Full extraction mode: ask AI to extract ALL rows from the document.
+   * Can take 30-60 seconds for large documents.
+   */
+  private static async parsePdfFullMode(
+    openai: OpenAI,
+    text: string
+  ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
+    console.log("[PDF Parser] Full mode: extracting ALL rows...")
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a document parser specializing in extracting structured tabular data. Extract the COMPLETE data table.
+
+Rules:
+- Identify the main DATA TABLE (transactions, line items, entries)
+- Do NOT confuse summary sections, headers, or account info with the data table
+- Extract ALL rows -- every single row, not just a sample
+- Use column names exactly as they appear in the document
+- Include data from ALL pages (continuation pages too)
+- Parse amounts as numbers (remove currency symbols, handle negatives/parentheses)
+- Parse dates in original format
+- IGNORE non-tabular content: summaries, footers, page numbers, disclaimers
+
+Return JSON:
+{
+  "columns": ["Col1", "Col2", ...],
+  "rows": [{"Col1": "val", ...}, ...]
+}`,
+        },
+        {
+          role: "user",
+          content: `Extract ALL rows from the data table in this document:\n\n${text}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: 16000,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) return { rows: [], detectedColumns: [] }
+
+    const parsed = JSON.parse(content)
+    const columns: string[] = parsed.columns || []
+    const rawRows: Record<string, any>[] = parsed.rows || []
+
+    console.log(`[PDF Parser] Full extraction: ${columns.length} columns, ${rawRows.length} rows`)
+
+    if (columns.length === 0 || rawRows.length === 0) {
+      return { rows: [], detectedColumns: [] }
+    }
+
+    const detectedColumns = columns.map((label: string) => ({
+      key: label,
+      label,
+      sampleValues: rawRows.slice(0, 3).map((r: Record<string, any>) => String(r[label] ?? "")),
+    }))
+
+    return { rows: rawRows, detectedColumns }
   }
 
   /**
