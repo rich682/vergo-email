@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(sort:*)",
+      "Bash(find:*)",
+      "Bash(cd /Users/richardkane/Desktop/vergo Inbox v2)",
+      "Bash(cd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(xargs sed:*)",
+      "Bash(npm install:*)",
+      "Bash(bash:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(while read f)",
+      "Bash(do if grep -q \"use client\" \"$f\")",
+      "Bash(then echo \"CLIENT: $f\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(git diff:*)"
+    ]
+  }
+}
