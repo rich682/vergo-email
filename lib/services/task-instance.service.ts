@@ -126,6 +126,8 @@ export interface TaskInstanceWithStats {
   completedCount: number
   stakeholderCount?: number
   collectedItemCount?: number
+  generatedReportCount?: number
+  reconciliationRunCount?: number
 }
 
 // Permission actions for TaskInstances
@@ -257,7 +259,7 @@ export class TaskInstanceService {
         },
         client: { select: { id: true, firstName: true, lastName: true, email: true } },
         requests: { select: { id: true, status: true } },
-        _count: { select: { collectedItems: true } },
+        _count: { select: { collectedItems: true, generatedReports: true, reconciliationRuns: true } },
         board: { select: { id: true, name: true, cadence: true, periodStart: true, periodEnd: true } }
       }
     })
@@ -280,7 +282,9 @@ export class TaskInstanceService {
       requestCount,
       respondedCount,
       completedCount,
-      collectedItemCount: taskInstance._count.collectedItems
+      collectedItemCount: taskInstance._count.collectedItems,
+      generatedReportCount: taskInstance._count.generatedReports,
+      reconciliationRunCount: taskInstance._count.reconciliationRuns,
     }
   }
 
@@ -351,7 +355,7 @@ export class TaskInstanceService {
           },
           client: { select: { id: true, firstName: true, lastName: true, email: true } },
           requests: { select: { id: true, status: true } },
-          _count: { select: { collectedItems: true } }
+          _count: { select: { collectedItems: true, generatedReports: true, reconciliationRuns: true } }
         },
         orderBy: { updatedAt: "desc" },
         take: options?.limit || 50,
@@ -383,7 +387,9 @@ export class TaskInstanceService {
           respondedCount,
           completedCount,
           stakeholderCount,
-          collectedItemCount: instance._count.collectedItems
+          collectedItemCount: instance._count.collectedItems,
+          generatedReportCount: instance._count.generatedReports,
+          reconciliationRunCount: instance._count.reconciliationRuns,
         }
       })
     )
@@ -432,7 +438,7 @@ export class TaskInstanceService {
         },
         client: { select: { id: true, firstName: true, lastName: true, email: true } },
         requests: { select: { id: true, status: true } },
-        _count: { select: { collectedItems: true } }
+        _count: { select: { collectedItems: true, generatedReports: true, reconciliationRuns: true } }
       }
     })
 
@@ -443,7 +449,9 @@ export class TaskInstanceService {
       requestCount: instance.requests.length,
       respondedCount: instance.requests.filter(t => t.status === TaskStatus.REPLIED || t.status === TaskStatus.COMPLETE).length,
       completedCount: instance.requests.filter(t => t.status === TaskStatus.COMPLETE).length,
-      collectedItemCount: instance._count.collectedItems
+      collectedItemCount: instance._count.collectedItems,
+      generatedReportCount: instance._count.generatedReports,
+      reconciliationRunCount: instance._count.reconciliationRuns,
     }
   }
 

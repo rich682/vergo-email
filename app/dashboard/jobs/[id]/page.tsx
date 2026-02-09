@@ -124,6 +124,8 @@ interface Job {
   respondedCount: number
   completedCount: number
   collectedItemCount?: number
+  generatedReportCount?: number
+  reconciliationRunCount?: number
   isSnapshot?: boolean
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
@@ -864,17 +866,16 @@ export default function JobDetailPage() {
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              Report
+              Report ({job.generatedReportCount || 0})
             </button>
           )}
 
           {permissions?.canEdit && (
             <button
               onClick={() => setActiveTab("reconciliation")}
-              className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              <Scale className="w-3.5 h-3.5" />
-              Reconciliation
+              Reconciliation ({job.reconciliationRunCount || 0})
             </button>
           )}
 
