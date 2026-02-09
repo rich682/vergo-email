@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import * as XLSX from "xlsx"
+// XLSX is lazy-loaded in handleFileUpload to reduce initial bundle size
 import {
   ArrowLeft,
   FileSpreadsheet,
@@ -196,6 +196,7 @@ export default function NewDatabasePage() {
     
     try {
       const buffer = await file.arrayBuffer()
+      const XLSX = await import("xlsx")
       const workbook = XLSX.read(buffer, { type: "buffer", cellNF: true })
       
       const firstSheet = workbook.SheetNames[0]

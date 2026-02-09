@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma, type PrismaTransactionClient } from "@/lib/prisma"
 import { Request, TaskStatus } from "@prisma/client"
 import { EntityService } from "./entity.service"
 
@@ -22,7 +22,9 @@ export class RequestCreationService {
       maxCount: number
       approved: boolean
     }
-  }): Promise<Request> {
+  }, tx?: PrismaTransactionClient): Promise<Request> {
+    const db = tx || prisma
+
     // Find or create entity
     const entity = await EntityService.findOrCreateByEmail({
       email: data.entityEmail,
@@ -31,7 +33,7 @@ export class RequestCreationService {
     })
 
     // Create request with taskInstanceId
-    return prisma.request.create({
+    return db.request.create({
       data: {
         organizationId: data.organizationId,
         taskInstanceId: data.taskInstanceId || null,
@@ -63,7 +65,8 @@ export class RequestCreationService {
     providerId?: string
     providerData?: any
     trackingToken?: string
-  }): Promise<void> {
+  }, tx?: PrismaTransactionClient): Promise<void> {
+    const db = tx || prisma
     const providerData = data.providerData || {}
     const messageIdHeader = typeof providerData === 'object' && providerData !== null
       ? (providerData.messageIdHeader || providerData.internetMessageId || null)
@@ -72,7 +75,7 @@ export class RequestCreationService {
       ? (providerData.threadId || providerData.conversationId || null)
       : null
 
-    await prisma.message.create({
+    await db.message.create({
       data: {
         requestId: data.requestId,
         entityId: data.entityId,

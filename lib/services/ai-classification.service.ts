@@ -1,4 +1,5 @@
 import OpenAI from "openai"
+import { callOpenAI } from "@/lib/utils/openai-retry"
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -121,7 +122,7 @@ export class AIClassificationService {
     }
     
     const openai = getOpenAIClient()
-    const completion = await openai.chat.completions.create({
+    const completion = await callOpenAI(openai, {
       model: "gpt-4o-mini",
       messages: [
         {

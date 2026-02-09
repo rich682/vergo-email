@@ -522,34 +522,38 @@ export class EmailSendingService {
       }, { organizationId: data.organizationId, operation: "sendEmail" })
     }
 
-    // Create request with taskInstanceId for direct association
-    const task = await RequestCreationService.createRequestFromEmail({
-      organizationId: data.organizationId,
-      taskInstanceId: data.jobId || null,
-      entityEmail: data.to,
-      entityName: data.toName,
-      campaignName: data.campaignName,
-      campaignType: data.campaignType,
-      requestType: data.requestType,
-      threadId,
-      replyToEmail: replyTo,
-      subject: data.subject,
-      deadlineDate: data.deadlineDate || null,
-      remindersConfig: data.remindersConfig
-    })
+    // Create request + log outbound message atomically
+    const task = await prisma.$transaction(async (tx) => {
+      const task = await RequestCreationService.createRequestFromEmail({
+        organizationId: data.organizationId,
+        taskInstanceId: data.jobId || null,
+        entityEmail: data.to,
+        entityName: data.toName,
+        campaignName: data.campaignName,
+        campaignType: data.campaignType,
+        requestType: data.requestType,
+        threadId,
+        replyToEmail: replyTo,
+        subject: data.subject,
+        deadlineDate: data.deadlineDate || null,
+        remindersConfig: data.remindersConfig
+      }, tx)
 
-    // Log outbound message with tracking token
-    await RequestCreationService.logOutboundMessage({
-      requestId: task.id,
-      entityId: task.entityId!,
-      subject: data.subject,
-      body: data.body,
-      htmlBody: htmlBodyWithTracking,
-      fromAddress: account.email,
-      toAddress: data.to,
-      providerId: sendResult.messageId,
-      providerData: sendResult.providerData,
-      trackingToken
+      // Log outbound message with tracking token
+      await RequestCreationService.logOutboundMessage({
+        requestId: task.id,
+        entityId: task.entityId!,
+        subject: data.subject,
+        body: data.body,
+        htmlBody: htmlBodyWithTracking,
+        fromAddress: account.email,
+        toAddress: data.to,
+        providerId: sendResult.messageId,
+        providerData: sendResult.providerData,
+        trackingToken
+      }, tx)
+
+      return task
     })
 
     log.info("Email sent successfully", {
@@ -559,7 +563,7 @@ export class EmailSendingService {
       to: data.to
     }, { organizationId: data.organizationId, operation: "sendEmail" })
 
-    // Audit log the successful send
+    // Audit log stays outside transaction (fire-and-forget, non-critical)
     await logEmailSendAudit({
       organizationId: data.organizationId,
       jobId: data.jobId,

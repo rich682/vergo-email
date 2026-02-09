@@ -5,6 +5,7 @@
  */
 
 import OpenAI from "openai"
+import { callOpenAI } from "@/lib/utils/openai-retry"
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -234,7 +235,7 @@ export class CompletionDetectionService {
       ? `Files: ${input.attachmentMetadata.map(a => a.filename).join(", ")}`
       : "No files attached"
 
-    const completion = await openai.chat.completions.create({
+    const completion = await callOpenAI(openai, {
       model: "gpt-4o-mini",
       messages: [
         {

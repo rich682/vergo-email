@@ -10,6 +10,7 @@
  */
 
 import OpenAI from "openai"
+import { callOpenAI } from "@/lib/utils/openai-retry"
 import { prisma } from "@/lib/prisma"
 import { ReportExecutionService } from "./report-execution.service"
 
@@ -350,7 +351,7 @@ ANALYSIS GUIDELINES:
   private static async callAI(context: string): Promise<Omit<ReportInsight, "generatedAt">> {
     const openai = getOpenAIClient()
 
-    const completion = await openai.chat.completions.create({
+    const completion = await callOpenAI(openai, {
       model: "gpt-4o-mini",
       messages: [
         {

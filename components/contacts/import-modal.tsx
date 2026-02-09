@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useRef } from "react"
-import * as XLSX from "xlsx"
+// XLSX is lazy-loaded in file handler to reduce initial bundle size
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { humanizeStateKey } from "@/lib/utils/humanize"
@@ -89,6 +89,7 @@ export function ImportModal({ onClose, onSuccess }: Props) {
 
     try {
       const buffer = await selected.arrayBuffer()
+      const XLSX = await import("xlsx")
       const workbook = XLSX.read(buffer, { type: "array" })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][]

@@ -1,4 +1,5 @@
 import OpenAI from "openai"
+import { callOpenAI } from "@/lib/utils/openai-retry"
 import { prisma } from "@/lib/prisma"
 import { EntityService } from "./entity.service"
 import { GroupService } from "./group.service"
@@ -279,7 +280,7 @@ export class AIEmailGenerationService {
         signature = signatureParts.length > 0 ? signatureParts.join('\n') : (data.senderEmail || '')
       }
 
-      const completion = await openai.chat.completions.create({
+      const completion = await callOpenAI(openai, {
         model: "gpt-4o-mini",
         messages: [
           {

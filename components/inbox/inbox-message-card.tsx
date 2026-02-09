@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useRouter } from "next/navigation"
 import { format, isToday, isYesterday } from "date-fns"
 import { Paperclip } from "lucide-react"
@@ -80,7 +81,7 @@ function compactDate(dateStr: string): string {
   return format(d, "MMM d")
 }
 
-export function InboxMessageCard({
+export const InboxMessageCard = React.memo(function InboxMessageCard({
   item,
 }: InboxMessageCardProps) {
   const router = useRouter()
@@ -150,4 +151,4 @@ export function InboxMessageCard({
       </div>
     </div>
   )
-}
+})

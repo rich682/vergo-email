@@ -12,6 +12,7 @@
  */
 
 import OpenAI from "openai"
+import { callOpenAI } from "@/lib/utils/openai-retry"
 import { prisma } from "@/lib/prisma"
 import { ContactType } from "@prisma/client"
 import { resolveRecipientsWithReasons } from "./recipient-filter.service"
@@ -106,7 +107,7 @@ export class QuestInterpreterService {
     // Call LLM for interpretation
     const openai = getOpenAIClient()
     
-    const completion = await openai.chat.completions.create({
+    const completion = await callOpenAI(openai, {
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },

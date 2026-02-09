@@ -20,7 +20,7 @@ import {
   ReportInsightsPanel, 
   InsightsButton 
 } from "@/components/reports/report-insights-panel"
-import * as XLSX from "xlsx"
+// XLSX is lazy-loaded in handleExportExcel to reduce initial bundle size
 
 // ============================================
 // Types
@@ -345,7 +345,8 @@ export function ReportTab({
   }
 
   // Export to Excel
-  const handleExportExcel = useCallback(() => {
+  const handleExportExcel = useCallback(async () => {
+    const XLSX = await import("xlsx")
     if (!previewData || !previewData.table.columns.length) return
     
     // Build worksheet data

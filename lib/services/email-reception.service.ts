@@ -339,45 +339,50 @@ export class EmailReceptionService {
       newStatus = "REPLIED"
     }
 
-    const updatedRequest = await prisma.request.update({
-      where: { id: request.id },
-      data: {
-        hasAttachments: hasAttachments || request.hasAttachments,
-        documentKey: attachmentKeys.length > 0
-          ? attachmentKeys[0]
-          : request.documentKey,
-        readStatus: isBounce ? "bounced" : "replied",
-        ...(newStatus && { status: newStatus }),
-        // Store bounce details in aiReasoning for visibility
-        ...(isBounce && {
-          aiReasoning: {
-            bounceDetected: true,
-            bounceFrom: data.from,
-            bounceSubject: data.subject?.substring(0, 200),
-            bounceAt: new Date().toISOString(),
-          }
-        })
-      }
-    })
+    // Update request status + create message atomically
+    const { updatedRequest, message } = await prisma.$transaction(async (tx) => {
+      const updatedRequest = await tx.request.update({
+        where: { id: request.id },
+        data: {
+          hasAttachments: hasAttachments || request.hasAttachments,
+          documentKey: attachmentKeys.length > 0
+            ? attachmentKeys[0]
+            : request.documentKey,
+          readStatus: isBounce ? "bounced" : "replied",
+          ...(newStatus && { status: newStatus }),
+          // Store bounce details in aiReasoning for visibility
+          ...(isBounce && {
+            aiReasoning: {
+              bounceDetected: true,
+              bounceFrom: data.from,
+              bounceSubject: data.subject?.substring(0, 200),
+              bounceAt: new Date().toISOString(),
+            }
+          })
+        }
+      })
 
-    const message = await prisma.message.create({
-      data: {
-        requestId: request.id,
-        entityId: request.entityId,
-        direction: "INBOUND",
-        channel: "EMAIL",
-        subject: data.subject,
-        body: data.body,
-        htmlBody: data.htmlBody,
-        fromAddress: data.from,
-        toAddress: data.to,
-        providerId: data.providerId,
-        providerData: data.providerData,
-        isAutoReply,
-        attachments: attachmentKeys.length > 0
-          ? ({ keys: attachmentKeys } as any)
-          : undefined
-      }
+      const message = await tx.message.create({
+        data: {
+          requestId: request.id,
+          entityId: request.entityId,
+          direction: "INBOUND",
+          channel: "EMAIL",
+          subject: data.subject,
+          body: data.body,
+          htmlBody: data.htmlBody,
+          fromAddress: data.from,
+          toAddress: data.to,
+          providerId: data.providerId,
+          providerData: data.providerData,
+          isAutoReply,
+          attachments: attachmentKeys.length > 0
+            ? ({ keys: attachmentKeys } as any)
+            : undefined
+        }
+      })
+
+      return { updatedRequest, message }
     })
 
     if (hasAttachments && request.taskInstanceId && attachmentData.length > 0 && !isAutoReply) {

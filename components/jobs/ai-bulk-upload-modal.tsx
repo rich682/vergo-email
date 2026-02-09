@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import * as XLSX from "xlsx"
+// XLSX removed - not used in this component
 import {
   Dialog,
   DialogContent,

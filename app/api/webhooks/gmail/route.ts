@@ -7,6 +7,7 @@ import { createHash } from "crypto"
 import { GmailIngestProvider } from "@/lib/providers/email-ingest/gmail-ingest.provider"
 import { ProviderCursor } from "@/lib/providers/email-ingest/types"
 import { createRemoteJWKSet, jwtVerify } from "jose"
+import { Prisma } from "@prisma/client"
 
 const GOOGLE_JWKS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/oauth2/v3/certs")
@@ -213,7 +214,26 @@ export async function POST(request: NextRequest) {
             attachments: normalized.attachments
           }
 
-          await EmailReceptionService.processInboundEmail(emailData)
+          try {
+            await EmailReceptionService.processInboundEmail(emailData)
+          } catch (processError: any) {
+            // Catch unique constraint violation on providerId (concurrent webhook race condition)
+            if (
+              processError instanceof Prisma.PrismaClientKnownRequestError &&
+              processError.code === "P2002"
+            ) {
+              const accountHash = createHash('sha256').update(account.id).digest('hex').substring(0, 16)
+              console.log(JSON.stringify({
+                event: 'webhook_duplicate_race',
+                timestampMs: Date.now(),
+                accountHash,
+                providerId: normalized.providerId
+              }))
+              processed = true
+              continue
+            }
+            throw processError
+          }
           // Advance cursor if webhook provides a newer historyId (merge existing cursor)
           if (historyId) {
             const existingCursor = (account.syncCursor as ProviderCursor) || {}
