@@ -44,12 +44,16 @@ const serverEnvSchema = z.object({
   // Optional: Inngest
   INNGEST_EVENT_KEY: z.string().optional(),
   INNGEST_SIGNING_KEY: z.string().optional(),
+
+  // Optional: Merge.dev Accounting Integration
+  MERGE_API_KEY: z.string().optional(),
 })
 
 // Client-side environment variables (NEXT_PUBLIC_ prefix)
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_QUEST_UI: z.enum(['true', 'false']).optional(),
   NEXT_PUBLIC_JOBS_UI: z.enum(['true', 'false']).optional(),
+  NEXT_PUBLIC_ACCOUNTING_INTEGRATION: z.enum(['true', 'false']).optional(),
 })
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
@@ -81,6 +85,7 @@ export function validateClientEnv(): ClientEnv {
   const clientEnv = {
     NEXT_PUBLIC_QUEST_UI: process.env.NEXT_PUBLIC_QUEST_UI,
     NEXT_PUBLIC_JOBS_UI: process.env.NEXT_PUBLIC_JOBS_UI,
+    NEXT_PUBLIC_ACCOUNTING_INTEGRATION: process.env.NEXT_PUBLIC_ACCOUNTING_INTEGRATION,
   }
   
   const result = clientEnvSchema.safeParse(clientEnv)
@@ -131,6 +136,7 @@ export function logEnvStatus(): void {
     'MS_CLIENT_ID',
     'BLOB_READ_WRITE_TOKEN',
     'INNGEST_EVENT_KEY',
+    'MERGE_API_KEY',
   ]
   
   console.log('Environment variable status:')

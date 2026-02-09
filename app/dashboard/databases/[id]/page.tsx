@@ -72,6 +72,8 @@ interface DatabaseDetail {
   createdAt: string
   updatedAt: string
   lastImportedAt: string | null
+  sourceType: string | null
+  isReadOnly: boolean
   createdBy: {
     name: string | null
     email: string
@@ -577,31 +579,42 @@ export default function DatabaseDetailPage() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  {database.name}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold text-gray-900">
+                    {database.name}
+                  </h1>
+                  {database.sourceType && (
+                    <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                      Synced
+                    </span>
+                  )}
+                </div>
                 {database.description && (
                   <p className="text-sm text-gray-500">{database.description}</p>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
-                <Download className="w-4 h-4 mr-1.5" />
-                Template
-              </Button>
+              {!database.isReadOnly && (
+                <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+                  <Download className="w-4 h-4 mr-1.5" />
+                  Template
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={handleExport}>
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export
               </Button>
-              <Button
-                size="sm"
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-                onClick={handleImportClick}
-              >
-                <Upload className="w-4 h-4 mr-1.5" />
-                Import
-              </Button>
+              {!database.isReadOnly && (
+                <Button
+                  size="sm"
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={handleImportClick}
+                >
+                  <Upload className="w-4 h-4 mr-1.5" />
+                  Import
+                </Button>
+              )}
             </div>
           </div>
 
@@ -820,7 +833,7 @@ export default function DatabaseDetailPage() {
                   {schemaEditMode ? "Edit the structure of this database" : "View the structure of this database"}
                 </p>
               </div>
-              {!schemaEditMode ? (
+              {!schemaEditMode && !database.isReadOnly ? (
                 <Button variant="outline" size="sm" onClick={startSchemaEdit}>
                   <Pencil className="w-4 h-4 mr-1.5" />
                   Edit Schema

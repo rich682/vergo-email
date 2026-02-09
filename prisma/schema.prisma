@@ -158,6 +158,7 @@ model Organization {
   formRequests            FormRequest[]
   formAttachments         FormAttachment[]
   reconciliationConfigs   ReconciliationConfig[]
+  accountingIntegration   AccountingIntegration?
 
   @@index([slug])
 }
@@ -252,6 +253,7 @@ model Entity {
   contactType            ContactType @default(UNKNOWN) // @deprecated - use isInternal instead
   contactTypeCustomLabel String? // @deprecated
   isInternal             Boolean     @default(false) // true = internal (employee), false = external (client/vendor)
+  mergeRemoteId          String?     // Merge.dev remote_id for contacts synced from accounting software
   organizationId         String
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
@@ -269,6 +271,7 @@ model Entity {
   @@index([email])
   @@index([organizationId, email])
   @@index([organizationId, isInternal])
+  @@index([organizationId, mergeRemoteId])
 }
 
 model Group {
@@ -1077,31 +1080,36 @@ model Database {
   name            String
   description     String?
   organizationId  String
-  
+
   // Schema definition (JSON) - DatabaseSchema type
   // { columns: DatabaseSchemaColumn[], version: number }
   schema          Json
   identifierKeys  Json     // String[] - Column keys that together form the unique row identifier (composite key)
-  
+
   // Current data (JSON array of rows) - DatabaseRow[]
   rows            Json     @default("[]")
   rowCount        Int      @default(0)
-  
+
+  // Integration source tracking
+  sourceType      String?  // null = manual, "merge_accounts", "merge_invoices", "merge_gl", etc.
+  isReadOnly      Boolean  @default(false) // true for integration-synced databases
+
   // Metadata
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   createdById     String
   lastImportedAt  DateTime?
   lastImportedById String?
-  
+
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy          User               @relation("DatabaseCreator", fields: [createdById], references: [id])
   lastImportedBy     User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
   reportDefinitions  ReportDefinition[]
   formDefinitions    FormDefinition[]
-  
+
   @@index([organizationId])
   @@index([organizationId, name])
+  @@index([organizationId, sourceType])
 }
 
 // FormDefinition represents a form template for collecting structured data from users
@@ -1428,5 +1436,46 @@ model ReconciliationRun {
   @@index([boardId])
   @@index([completedBy])
   @@index([taskInstanceId])
+}
+
+// Accounting software integration via Merge.dev
+// Stores connection details and sync state per organization
+model AccountingIntegration {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique // One integration per org
+
+  // Merge.dev connection
+  accountToken      String   // Encrypted - Merge account_token
+  integrationName   String?  // e.g. "Xero", "QuickBooks Online"
+  integrationSlug   String?  // e.g. "xero", "quickbooks-online"
+  endUserEmail      String?  // Email of user who connected
+
+  // Connection state
+  isActive          Boolean  @default(true)
+  connectedAt       DateTime @default(now())
+  disconnectedAt    DateTime?
+
+  // Sync configuration (JSON) - which models to sync + interval
+  // { contacts: true, invoices: true, accounts: true, journalEntries: true,
+  //   payments: true, glTransactions: true, syncIntervalMinutes: 60 }
+  syncConfig        Json     @default("{}")
+
+  // Per-model sync state (JSON)
+  // { contacts: { lastSyncAt, status, error, rowCount },
+  //   invoices: { lastSyncAt, status, error, rowCount }, ... }
+  syncState         Json     @default("{}")
+
+  // Global sync state
+  lastSyncAt        DateTime?
+  lastSyncError     String?
+  syncStatus        String   @default("idle") // "idle" | "syncing" | "error"
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([isActive])
 }
 

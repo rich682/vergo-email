@@ -15,6 +15,7 @@ if (typeof window === "undefined") {
     QUEST_AI_INTERPRETER: process.env.QUEST_AI_INTERPRETER,
     QUEST_STANDING: process.env.QUEST_STANDING,
     NEXT_PUBLIC_JOBS_UI: process.env.NEXT_PUBLIC_JOBS_UI,
+    NEXT_PUBLIC_ACCOUNTING_INTEGRATION: process.env.NEXT_PUBLIC_ACCOUNTING_INTEGRATION,
   })
 }
 
@@ -48,4 +49,12 @@ export function isStandingQuestsEnabled(): boolean {
  */
 export function isJobsUIEnabled(): boolean {
   return process.env.NEXT_PUBLIC_JOBS_UI === "true"
+}
+
+/**
+ * Check if Accounting Integration is enabled
+ * Works on both client and server
+ */
+export function isAccountingIntegrationEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_ACCOUNTING_INTEGRATION === "true"
 }

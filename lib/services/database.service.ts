@@ -326,6 +326,8 @@ export class DatabaseService {
         description: true,
         rowCount: true,
         schema: true,
+        sourceType: true,
+        isReadOnly: true,
         createdAt: true,
         updatedAt: true,
         createdBy: {

@@ -19,6 +19,8 @@ interface DatabaseItem {
   description: string | null
   rowCount: number
   columnCount: number
+  sourceType: string | null
+  isReadOnly: boolean
   createdAt: string
   updatedAt: string
   createdBy: {
@@ -166,9 +168,16 @@ export default function DatabasesPage() {
                         <FileSpreadsheet className="w-5 h-5 text-orange-600" />
                       </div>
                       <div>
-                        <h3 className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {db.name}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
+                            {db.name}
+                          </h3>
+                          {db.sourceType && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded">
+                              Synced
+                            </span>
+                          )}
+                        </div>
                         {db.description && (
                           <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
                             {db.description}

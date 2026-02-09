@@ -1001,4 +1001,125 @@ Use plain language. Be concise.`
       }
     }
   ),
+
+  // ============================================
+  // Accounting Integration Sync (Merge.dev)
+  // ============================================
+
+  // Periodic sync - runs hourly, checks each org's configured interval
+  inngest.createFunction(
+    {
+      id: "sync-accounting-data",
+      name: "Sync Accounting Data from Merge.dev",
+      throttle: {
+        limit: 1,
+        period: "10m",
+      },
+    },
+    { cron: "0 * * * *" }, // Every hour on the hour
+    async () => {
+      if (process.env.NEXT_PUBLIC_ACCOUNTING_INTEGRATION !== "true") {
+        return { success: true, skipped: true, reason: "Accounting integration disabled" }
+      }
+
+      try {
+        const integrations = await prisma.accountingIntegration.findMany({
+          where: { isActive: true },
+          select: {
+            id: true,
+            organizationId: true,
+            lastSyncAt: true,
+            syncConfig: true,
+          },
+        })
+
+        if (integrations.length === 0) {
+          return { success: true, processed: 0 }
+        }
+
+        console.log(`[Accounting Sync] Found ${integrations.length} active integrations`)
+
+        const results: Array<{
+          orgId: string
+          skipped?: boolean
+          contactsSynced?: number
+          modelsProcessed?: string[]
+          errors?: string[]
+          error?: string
+        }> = []
+
+        for (const integration of integrations) {
+          const syncConfig = (integration.syncConfig || {}) as Record<string, unknown>
+          const intervalMinutes = (syncConfig.syncIntervalMinutes as number) || 60
+
+          // Check if enough time has passed since last sync
+          if (integration.lastSyncAt) {
+            const elapsed = Date.now() - new Date(integration.lastSyncAt).getTime()
+            if (elapsed < intervalMinutes * 60 * 1000) {
+              results.push({ orgId: integration.organizationId, skipped: true })
+              continue
+            }
+          }
+
+          try {
+            const { AccountingSyncService } = await import(
+              "@/lib/services/accounting-sync.service"
+            )
+            const result = await AccountingSyncService.syncAll(
+              integration.organizationId
+            )
+            console.log(
+              `[Accounting Sync] Org ${integration.organizationId}: ${result.contactsSynced} contacts, ${result.modelsProcessed.length} models`
+            )
+            results.push({
+              orgId: integration.organizationId,
+              ...result,
+            })
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e)
+            console.error(
+              `[Accounting Sync] Error for org ${integration.organizationId}:`,
+              msg
+            )
+            results.push({ orgId: integration.organizationId, error: msg })
+          }
+        }
+
+        return { success: true, processed: integrations.length, results }
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error("[Accounting Sync] Error:", msg)
+        return { success: false, error: msg }
+      }
+    }
+  ),
+
+  // On-demand sync - triggered by connect flow or manual sync button
+  inngest.createFunction(
+    {
+      id: "accounting-sync-on-demand",
+      name: "On-Demand Accounting Sync",
+      concurrency: { limit: 1, key: "event.data.organizationId" },
+    },
+    { event: "accounting/sync-triggered" },
+    async ({ event }) => {
+      const { organizationId } = event.data
+      console.log(`[Accounting Sync] On-demand sync triggered for org ${organizationId}`)
+
+      try {
+        const { AccountingSyncService } = await import(
+          "@/lib/services/accounting-sync.service"
+        )
+        const result = await AccountingSyncService.syncAll(organizationId)
+        console.log(
+          `[Accounting Sync] On-demand sync complete: ${result.contactsSynced} contacts, ${result.modelsProcessed.length} models, ${result.errors.length} errors`
+        )
+        return { success: true, ...result }
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error(`[Accounting Sync] On-demand sync error:`, msg)
+        return { success: false, error: msg }
+      }
+    }
+  ),
 ]
