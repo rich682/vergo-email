@@ -158,7 +158,7 @@ export class ReportDefinitionService {
 
     return reports.map(report => ({
       ...report,
-      columnCount: (report.columns as ReportColumn[])?.length || 0,
+      columnCount: (report.columns as unknown as ReportColumn[])?.length || 0,
     }))
   }
 
@@ -204,7 +204,7 @@ export class ReportDefinitionService {
     }
 
     // Validate dateColumnKey exists in database schema
-    const schema = database.schema as DatabaseSchema
+    const schema = database.schema as unknown as DatabaseSchema
     const dateColumnExists = schema.columns.some(col => col.key === input.dateColumnKey)
     if (!dateColumnExists) {
       throw new Error(`Date column "${input.dateColumnKey}" not found in database schema`)
@@ -246,11 +246,11 @@ export class ReportDefinitionService {
         dateColumnKey: input.dateColumnKey,
         layout,
         compareMode: input.compareMode || "none",
-        columns: input.columns || [],
-        formulaRows: input.formulaRows || [],
+        columns: (input.columns || []) as any,
+        formulaRows: (input.formulaRows || []) as any,
         pivotColumnKey: input.pivotColumnKey,
-        metricRows: input.metricRows || [],
-        pivotFormulaColumns: input.pivotFormulaColumns || [],
+        metricRows: (input.metricRows || []) as any,
+        pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
       },
       include: {
@@ -296,12 +296,12 @@ export class ReportDefinitionService {
         ...(input.layout !== undefined && { layout: input.layout }),
         ...(input.compareMode !== undefined && { compareMode: input.compareMode }),
         // Standard layout fields
-        ...(input.columns !== undefined && { columns: input.columns }),
-        ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows }),
+        ...(input.columns !== undefined && { columns: input.columns as any }),
+        ...(input.formulaRows !== undefined && { formulaRows: input.formulaRows as any }),
         // Pivot layout fields
         ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
-        ...(input.metricRows !== undefined && { metricRows: input.metricRows }),
-        ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns }),
+        ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
+        ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns as any }),
         // Filter configuration
         ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys }),
       },
@@ -366,9 +366,9 @@ export class ReportDefinitionService {
     }
 
     const database = report.database
-    const databaseRows = (database.rows as DatabaseRow[]) || []
-    const reportColumns = (report.columns as ReportColumn[]) || []
-    const reportFormulaRows = (report.formulaRows as ReportFormulaRow[]) || []
+    const databaseRows = (database.rows as unknown as DatabaseRow[]) || []
+    const reportColumns = (report.columns as unknown as ReportColumn[]) || []
+    const reportFormulaRows = (report.formulaRows as unknown as ReportFormulaRow[]) || []
 
     // Limit rows for preview
     const sourceRows = databaseRows.slice(0, limit)

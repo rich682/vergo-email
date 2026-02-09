@@ -31,6 +31,8 @@ export type QuestInterpretRequest = {
 export type QuestRecipientSelection = {
   contactTypes?: string[]      // e.g., ["EMPLOYEE"] - maps to ContactType enum
   groupNames?: string[]        // e.g., ["NY Office"] - resolved by server to groupIds
+  entityIds?: string[]         // Direct entity IDs from recipient selection
+  userIds?: string[]           // Direct user IDs from recipient selection
   stateFilter?: {
     stateKeys: string[]        // e.g., ["unpaid_invoices"]
     mode: "has" | "missing"

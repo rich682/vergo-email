@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       reportDefinitionId,
       filterBindings: filterBindings || undefined,
       taskInstanceId,
-      boardId: taskInstance.boardId || undefined,
+      boardId: taskInstance.boardId!,
       periodKey,
       generatedBy: user.id,
     })

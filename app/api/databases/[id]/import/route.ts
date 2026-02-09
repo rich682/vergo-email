@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    const schema = database.schema as DatabaseSchema
+    const schema = database.schema as unknown as DatabaseSchema
 
     // Parse the uploaded file and options
     const formData = await request.formData()

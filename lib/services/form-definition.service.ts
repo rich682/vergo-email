@@ -53,7 +53,7 @@ export class FormDefinitionService {
         description: input.description,
         organizationId,
         createdById,
-        fields: input.fields || [],
+        fields: (input.fields || []) as any,
         settings: { ...defaultSettings, ...input.settings },
         databaseId: input.databaseId,
         columnMapping: input.columnMapping || {},
@@ -195,7 +195,7 @@ export class FormDefinitionService {
     }
 
     // Merge settings if provided
-    const existingSettings = existing.settings as FormSettings || defaultSettings
+    const existingSettings = existing.settings as unknown as FormSettings || defaultSettings
     const newSettings = input.settings 
       ? { ...existingSettings, ...input.settings }
       : existingSettings
@@ -205,11 +205,11 @@ export class FormDefinitionService {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
-        ...(input.fields !== undefined && { fields: input.fields }),
+        ...(input.fields !== undefined && { fields: input.fields as any }),
         ...(input.settings !== undefined && { settings: newSettings }),
         ...(input.databaseId !== undefined && { databaseId: input.databaseId }),
         ...(input.columnMapping !== undefined && { columnMapping: input.columnMapping }),
-      },
+      } as any,
       include: {
         database: {
           select: {

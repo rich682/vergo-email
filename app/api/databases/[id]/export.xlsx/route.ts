@@ -49,8 +49,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    const schema = database.schema as DatabaseSchema
-    const rows = database.rows as DatabaseRow[]
+    const schema = database.schema as unknown as DatabaseSchema
+    const rows = database.rows as unknown as DatabaseRow[]
 
     // Generate the Excel file
     const buffer = exportToExcel(schema, rows, database.name)
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const filename = `${safeName}_export_${timestamp}.xlsx`
 
     // Return as downloadable file
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -472,7 +472,7 @@ export class EmailSendingService {
           htmlBody: htmlBodyWithTracking,
           replyTo,
           attachments: providerAttachments
-        })
+        } as any)
       }
     } catch (primaryError: any) {
       // Primary send failed — try Resend as fallback

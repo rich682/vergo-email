@@ -13,7 +13,6 @@ import { format } from "date-fns"
 interface JobRow {
   id: string
   name: string
-  type: string
   status: string
   ownerId: string
   ownerName: string | null

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import OpenAI from "openai"
-import { differenceInDays, startOfDay } from "date-fns"
+import { differenceInDays, startOfDay, format } from "date-fns"
 import { parseDateOnlySafe, formatDateOnly } from "@/lib/utils/timezone"
 
 export const maxDuration = 30
@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
       if (instance.status === "COMPLETE") continue
       
       // Use parseDateOnlySafe to avoid timezone shift with date-only fields
-      const dueDate = parseDateOnlySafe(instance.dueDate)
+      const dueDate = parseDateOnlySafe(instance.dueDate as any)
       const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
-      
+
       let reason: string | null = null
       
       if (daysUntilDue !== null && daysUntilDue < 0) {
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
           id: instance.id,
           name: instance.name,
           reason,
-          dueDate: formatDateOnly(instance.dueDate),
+          dueDate: formatDateOnly(instance.dueDate as any),
           daysUntilDue
         })
       }
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     const instancesContext = instances.slice(0, 50).map(instance => {
       // Use parseDateOnlySafe for date-only fields
-      const dueDate = parseDateOnlySafe(instance.dueDate)
+      const dueDate = parseDateOnlySafe(instance.dueDate as any)
       const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
       const labels = instance.labels as any
       

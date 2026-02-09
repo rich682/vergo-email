@@ -297,8 +297,8 @@ export async function POST(
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    const schema = database.schema as DatabaseSchema
-    const allRows = database.rows as DatabaseRow[]
+    const schema = database.schema as unknown as DatabaseSchema
+    const allRows = database.rows as unknown as DatabaseRow[]
 
     // Find required columns
     const emailColumnKey = findEmailColumn(schema.columns)

@@ -449,7 +449,7 @@ export class QuestService {
           groupIds: quest.confirmedSelection.groupIds,
           stateFilter: quest.confirmedSelection.stateFilter,
         })
-        resolvedRecipients = recipientResult.recipients
+        resolvedRecipients = recipientResult.recipients as any
       }
 
       if (resolvedRecipients.length === 0) {

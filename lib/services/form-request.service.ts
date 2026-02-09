@@ -514,7 +514,7 @@ export class FormRequestService {
       throw new Error("Form request not found or access denied")
     }
 
-    return this.processSubmission(formRequest, responseData)
+    return this.processSubmission(formRequest as any, responseData)
   }
 
   /**
@@ -551,7 +551,7 @@ export class FormRequestService {
       throw new Error("Form request not found or invalid token")
     }
 
-    return this.processSubmission(formRequest, responseData)
+    return this.processSubmission(formRequest as any, responseData)
   }
 
   /**
@@ -633,7 +633,7 @@ export class FormRequestService {
       data: {
         status: "SUBMITTED",
         submittedAt: new Date(),
-        responseData,
+        responseData: responseData as any,
         databaseRowIndex: newDatabaseRowIndex,
         nextReminderAt: null, // Stop reminders
       },
@@ -718,8 +718,8 @@ export class FormRequestService {
       throw new Error("Database not found")
     }
 
-    const schema = database.schema as DatabaseSchema
-    const existingRows = (database.rows || []) as DatabaseRow[]
+    const schema = database.schema as unknown as DatabaseSchema
+    const existingRows = (database.rows || []) as unknown as DatabaseRow[]
 
     // Create new row with response data
     const row: DatabaseRow = {}
@@ -727,7 +727,7 @@ export class FormRequestService {
     // Map form field values to database columns
     for (const [fieldKey, value] of Object.entries(responseData)) {
       const columnKey = columnMapping[fieldKey] || fieldKey
-      row[columnKey] = value
+      row[columnKey] = value as any
     }
 
     // Add recipient info if columns exist
@@ -819,11 +819,11 @@ export class FormRequestService {
     const row = { ...rows[rowIndex] }
     for (const [fieldKey, value] of Object.entries(responseData)) {
       const columnKey = columnMapping[fieldKey] || fieldKey
-      row[columnKey] = value
+      row[columnKey] = value as any
     }
 
     // Update status if column exists
-    const schema = database.schema as DatabaseSchema
+    const schema = database.schema as unknown as DatabaseSchema
     const statusColumnKey = schema.columns.find(c => 
       c.key.toLowerCase() === "status" || c.key.toLowerCase() === "form_status"
     )?.key

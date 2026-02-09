@@ -53,7 +53,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     )
 
     // Return as downloadable file
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

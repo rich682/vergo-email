@@ -214,9 +214,9 @@ export class ReportExecutionService {
     let table: ExecutePreviewResult["table"]
 
     if (layout === "pivot") {
-      table = this.evaluatePivotLayout(effectiveReport, currentRows, compareRows)
+      table = this.evaluatePivotLayout(effectiveReport as any, currentRows, compareRows)
     } else {
-      table = this.evaluateStandardLayout(effectiveReport, currentRows, compareRows)
+      table = this.evaluateStandardLayout(effectiveReport as any, currentRows, compareRows)
     }
 
     return {

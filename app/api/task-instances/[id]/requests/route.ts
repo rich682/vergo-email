@@ -665,26 +665,26 @@ async function handleCreateDraft(
       userId,
       threadId,
       campaignName: subject,
-      campaignType: "SCHEDULED_REQUEST",
+      campaignType: "SCHEDULED_REQUEST" as any,
       status: "NO_REPLY",
       isDraft: true,
-      
+
       // Store content directly (no source request to copy from)
       draftEditedSubject: subject,
       draftEditedBody: bodyContent,
       draftEditedHtmlBody: htmlBody || null,
-      
+
       // Schedule config
       scheduleConfig: scheduleConfig || null,
       scheduledSendAt,
       deadlineDate: scheduledSendAt || taskInstance.dueDate,
-      
+
       // Reminder config (disabled for scheduled drafts for now)
       remindersEnabled: false, // remindersEnabled,
       remindersFrequencyHours: null, // remindersFrequencyHours || 168,
       remindersMaxCount: null, // remindersMaxCount || 3,
       remindersApproved: false
-    },
+    } as any,
     include: {
       entity: {
         select: { id: true, firstName: true, lastName: true, email: true }
@@ -700,7 +700,7 @@ async function handleCreateDraft(
       draft: {
         id: draft.id,
         entityId: draft.entityId,
-        entity: draft.entity,
+        entity: (draft as any).entity,
         subject,
         body: bodyContent,
         scheduleConfig,

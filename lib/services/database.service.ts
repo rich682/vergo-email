@@ -339,7 +339,7 @@ export class DatabaseService {
 
     return databases.map(db => ({
       ...db,
-      columnCount: (db.schema as DatabaseSchema).columns.length,
+      columnCount: (db.schema as unknown as DatabaseSchema).columns.length,
     }))
   }
 
@@ -499,9 +499,9 @@ export class DatabaseService {
       throw new Error("Database not found")
     }
 
-    const schema = database.schema as DatabaseSchema
-    const identifierKeys = database.identifierKeys as string[]
-    const existingRows = database.rows as DatabaseRow[]
+    const schema = database.schema as unknown as DatabaseSchema
+    const identifierKeys = database.identifierKeys as unknown as string[]
+    const existingRows = database.rows as unknown as DatabaseRow[]
 
     // Validate rows within import batch - now supports partial import
     const validation = validateRows(rows, schema, identifierKeys)
@@ -599,9 +599,9 @@ export class DatabaseService {
       throw new Error("Database not found")
     }
 
-    const schema = database.schema as DatabaseSchema
-    const identifierKeys = database.identifierKeys as string[]
-    const existingRows = database.rows as DatabaseRow[]
+    const schema = database.schema as unknown as DatabaseSchema
+    const identifierKeys = database.identifierKeys as unknown as string[]
+    const existingRows = database.rows as unknown as DatabaseRow[]
 
     // Validate rows within import batch - now returns validRows for partial import
     const validation = validateRows(rows, schema, identifierKeys)
@@ -688,8 +688,8 @@ export class DatabaseService {
       throw new Error("Database not found")
     }
 
-    const identifierKeys = database.identifierKeys as string[]
-    const existingRows = database.rows as DatabaseRow[]
+    const identifierKeys = database.identifierKeys as unknown as string[]
+    const existingRows = database.rows as unknown as DatabaseRow[]
 
     // Build set of keys to delete
     const keysToDelete = new Set<string>()

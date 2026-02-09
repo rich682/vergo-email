@@ -454,7 +454,7 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
         ],
         response_format: { type: "json_object" },
         temperature: 0.7
-      }, { signal: abortController.signal as any })
+      }, { signal: abortController.signal } as any)
       
       if (timeoutId) {
         clearTimeout(timeoutId)

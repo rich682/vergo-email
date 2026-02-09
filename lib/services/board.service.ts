@@ -827,7 +827,6 @@ export class BoardService {
           boardId: newBoard.id,
           name: task.name,
           description: task.description,
-          type: task.type,
           status: "NOT_STARTED",
           ownerId: options?.newOwnerId || task.ownerId,
           clientId: task.clientId,

@@ -206,7 +206,7 @@ export async function runDueFormRemindersOnce(): Promise<ReminderRunResult> {
       AND: [
         {
           remindersSent: {
-            lt: prisma.raw("reminders_max_count")
+            lt: (prisma as any).raw("reminders_max_count")
           }
         }
       ]
@@ -270,8 +270,8 @@ export async function runDueFormRemindersOnce(): Promise<ReminderRunResult> {
       // Send reminder email
       const success = await FormNotificationService.sendFormReminderEmail({
         formRequestId: formRequest.id,
-        recipientEmail: formRequest.recipientUser.email,
-        recipientName: formRequest.recipientUser.name,
+        recipientEmail: formRequest.recipientUser!.email,
+        recipientName: formRequest.recipientUser!.name,
         formName: formRequest.formDefinition.name,
         taskName: formRequest.taskInstance.name,
         senderName: formRequest.taskInstance.owner?.name || null,

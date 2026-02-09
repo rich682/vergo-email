@@ -320,7 +320,7 @@ export function ReportInsightsPanel({
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchInsights}
+              onClick={() => fetchInsights()}
               className="mt-2"
             >
               <RefreshCw className="w-4 h-4 mr-2" />

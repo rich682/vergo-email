@@ -9,7 +9,7 @@ function safeMessage(error: unknown): string {
   
   // Handle standard Error objects
   if (error instanceof Error) {
-    const msg = error.message
+    const msg = (error as any).message
     if (typeof msg === 'string') return msg
     if (msg && typeof msg === 'object') {
       try { return JSON.stringify(msg) } catch { return 'An error occurred' }

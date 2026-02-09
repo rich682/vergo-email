@@ -349,7 +349,7 @@ export class EmailReceptionService {
             ? attachmentKeys[0]
             : request.documentKey,
           readStatus: isBounce ? "bounced" : "replied",
-          ...(newStatus && { status: newStatus }),
+          ...(newStatus && { status: newStatus as any }),
           // Store bounce details in aiReasoning for visibility
           ...(isBounce && {
             aiReasoning: {

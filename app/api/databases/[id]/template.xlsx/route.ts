@@ -48,18 +48,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    const schema = database.schema as DatabaseSchema
-    const identifierKeys = (database.identifierKeys as string[]) || []
+    const schema = database.schema as unknown as DatabaseSchema
+    const identifierKeys = (database.identifierKeys as unknown as string[]) || []
 
     // Generate the template - pass the first identifier key for backward compatibility
-    const buffer = generateSchemaTemplate(schema, identifierKeys[0] || null, database.name)
+    const buffer = generateSchemaTemplate(schema, (identifierKeys[0] || null) as any, database.name!)
 
     // Generate filename
     const safeName = database.name.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50)
     const filename = `${safeName}_template.xlsx`
 
     // Return as downloadable file
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

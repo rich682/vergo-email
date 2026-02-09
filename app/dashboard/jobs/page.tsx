@@ -171,6 +171,10 @@ export default function JobsPage() {
   
   // Board settings modal
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false)
+
+  // Stakeholder options (populated by fetchStakeholderOptions)
+  const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
+  const [availableGroups, setAvailableGroups] = useState<{ id: string; name: string; memberCount: number }[]>([])
   
   // Board metadata editing
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
@@ -403,7 +407,6 @@ export default function JobsPage() {
           ownerId: job.ownerId,
           labels: job.labels,
           boardId: boardId || undefined,
-          type: job.type,
           lineageId: job.lineageId
         })
       })
@@ -470,7 +473,6 @@ export default function JobsPage() {
               ownerId: job.ownerId,
               labels: job.labels,
               boardId: boardId || undefined,
-              type: job.type,
               lineageId: job.lineageId
             })
           })
@@ -651,7 +653,6 @@ export default function JobsPage() {
   const jobRows: JobRow[] = filteredJobs.map(job => ({
     id: job.id,
     name: job.name,
-    type: job.type || "GENERIC",
     status: job.status,
     ownerId: job.ownerId,
     ownerName: job.owner.name,

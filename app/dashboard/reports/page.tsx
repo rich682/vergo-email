@@ -1175,9 +1175,9 @@ export default function ReportsPage() {
                           key={`row-${row._label || rowIndex}`} 
                           className="hover:bg-blue-50 transition-colors bg-white"
                         >
-                          {viewingReport.data.table.columns.map((col, colIndex) => {
-                            const effectiveFormat = col.key === "_label" 
-                              ? "text" 
+                          {viewingReport.data.table!.columns.map((col, colIndex) => {
+                            const effectiveFormat = col.key === "_label"
+                              ? "text"
                               : ((row._format as string) || col.dataType)
                             const isLabelColumn = col.key === "_label"
                             return (
@@ -1210,11 +1210,11 @@ export default function ReportsPage() {
                       )
                     })}
                   </tbody>
-                  {viewingReport.data.table.formulaRows && viewingReport.data.table.formulaRows.length > 0 && (
+                  {viewingReport.data.table?.formulaRows && viewingReport.data.table.formulaRows.length > 0 && (
                     <tfoot className="bg-blue-50 border-t-2 border-blue-200 sticky bottom-0 z-20">
                       {viewingReport.data.table.formulaRows.map((fRow) => (
                         <tr key={fRow.key}>
-                          {viewingReport.data.table.columns.map((col, colIndex) => {
+                          {viewingReport.data.table!.columns.map((col, colIndex) => {
                             const isLabelColumn = colIndex === 0
                             return (
                               <td

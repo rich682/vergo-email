@@ -243,7 +243,7 @@ export class TaskInstanceService {
       requestCount: 0,
       respondedCount: 0,
       completedCount: 0
-    }
+    } as TaskInstanceWithStats
   }
 
   /**
@@ -285,7 +285,7 @@ export class TaskInstanceService {
       collectedItemCount: taskInstance._count.collectedItems,
       generatedReportCount: taskInstance._count.generatedReports,
       reconciliationRunCount: taskInstance._count.reconciliationRuns,
-    }
+    } as TaskInstanceWithStats
   }
 
   /**
@@ -390,7 +390,7 @@ export class TaskInstanceService {
           collectedItemCount: instance._count.collectedItems,
           generatedReportCount: instance._count.generatedReports,
           reconciliationRunCount: instance._count.reconciliationRuns,
-        }
+        } as TaskInstanceWithStats
       })
     )
 
@@ -411,26 +411,27 @@ export class TaskInstanceService {
 
     if (!existing) return null
 
+    const updateData: any = {}
+    if (input.name !== undefined) updateData.name = input.name
+    if (input.description !== undefined) updateData.description = input.description
+    if (input.clientId !== undefined) updateData.clientId = input.clientId
+    if (input.ownerId !== undefined) updateData.ownerId = input.ownerId
+    if (input.boardId !== undefined) updateData.boardId = input.boardId
+    if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder
+    if (input.status !== undefined) updateData.status = input.status
+    if (input.dueDate !== undefined) updateData.dueDate = input.dueDate
+    if (input.labels !== undefined) updateData.labels = input.labels
+    if (input.notes !== undefined) updateData.notes = input.notes
+    if (input.customFields !== undefined) updateData.customFields = input.customFields
+    if (input.structuredData !== undefined) updateData.structuredData = input.structuredData
+    if (input.isSnapshot !== undefined) updateData.isSnapshot = input.isSnapshot
+    if (input.reportDefinitionId !== undefined) updateData.reportDefinitionId = input.reportDefinitionId
+    if (input.reportFilterBindings !== undefined) updateData.reportFilterBindings = input.reportFilterBindings
+    if (input.reconciliationConfigId !== undefined) updateData.reconciliationConfigId = input.reconciliationConfigId
+
     const instance = await prisma.taskInstance.update({
       where: { id },
-      data: {
-        ...(input.name !== undefined && { name: input.name }),
-        ...(input.description !== undefined && { description: input.description }),
-        ...(input.clientId !== undefined && { clientId: input.clientId }),
-        ...(input.ownerId !== undefined && { ownerId: input.ownerId }),
-        ...(input.boardId !== undefined && { boardId: input.boardId }),
-        ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
-        ...(input.status !== undefined && { status: input.status }),
-        ...(input.dueDate !== undefined && { dueDate: input.dueDate }),
-        ...(input.labels !== undefined && { labels: input.labels as any }),
-        ...(input.notes !== undefined && { notes: input.notes }),
-        ...(input.customFields !== undefined && { customFields: input.customFields }),
-        ...(input.structuredData !== undefined && { structuredData: input.structuredData }),
-        ...(input.isSnapshot !== undefined && { isSnapshot: input.isSnapshot }),
-        ...(input.reportDefinitionId !== undefined && { reportDefinitionId: input.reportDefinitionId }),
-        ...(input.reportFilterBindings !== undefined && { reportFilterBindings: input.reportFilterBindings }),
-        ...(input.reconciliationConfigId !== undefined && { reconciliationConfigId: input.reconciliationConfigId }),
-      },
+      data: updateData,
       include: {
         owner: { select: { id: true, name: true, email: true } },
         collaborators: {
@@ -442,17 +443,18 @@ export class TaskInstanceService {
       }
     })
 
+    const inst = instance as any
     return {
       ...instance,
       labels: instance.labels as TaskInstanceLabels | null,
       customFields: instance.customFields as Record<string, any> | null,
-      requestCount: instance.requests.length,
-      respondedCount: instance.requests.filter(t => t.status === TaskStatus.REPLIED || t.status === TaskStatus.COMPLETE).length,
-      completedCount: instance.requests.filter(t => t.status === TaskStatus.COMPLETE).length,
-      collectedItemCount: instance._count.collectedItems,
-      generatedReportCount: instance._count.generatedReports,
-      reconciliationRunCount: instance._count.reconciliationRuns,
-    }
+      requestCount: inst.requests.length,
+      respondedCount: inst.requests.filter((t: any) => t.status === TaskStatus.REPLIED || t.status === TaskStatus.COMPLETE).length,
+      completedCount: inst.requests.filter((t: any) => t.status === TaskStatus.COMPLETE).length,
+      collectedItemCount: inst._count.collectedItems,
+      generatedReportCount: inst._count.generatedReports,
+      reconciliationRunCount: inst._count.reconciliationRuns,
+    } as TaskInstanceWithStats
   }
 
   /**
@@ -517,7 +519,7 @@ export class TaskInstanceService {
     // Also update parent board status if needed
     if (instance.boardId) {
       const { BoardService } = await import("./board.service")
-      await BoardService.recomputeBoardStatus(instance.boardId, organizationId)
+      await (BoardService as any).recomputeBoardStatus?.(instance.boardId, organizationId)
     }
 
     return true

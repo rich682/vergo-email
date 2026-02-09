@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    const currentSchema = database.schema as DatabaseSchema
+    const currentSchema = database.schema as unknown as DatabaseSchema
     const hasGeneratedReports = database.reportDefinitions.some(
       (rd: any) => rd._count.generatedReports > 0
     )

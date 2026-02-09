@@ -70,7 +70,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       currentPeriodKey,
       compareMode: compareMode || "none",
       liveConfig, // Pass live config for preview without saving
-      filters,    // Pass column-value filters from slice
+      filters: filters as Record<string, string[]> | undefined,    // Pass column-value filters from slice
     })
 
     return NextResponse.json(result)

@@ -78,8 +78,8 @@ export async function POST(
     // Send the reminder
     const success = await FormNotificationService.sendFormReminderEmail({
       formRequestId: formRequest.id,
-      recipientEmail: formRequest.recipientUser.email,
-      recipientName: formRequest.recipientUser.name,
+      recipientEmail: formRequest.recipientUser!.email,
+      recipientName: formRequest.recipientUser!.name,
       formName: formRequest.formDefinition.name,
       taskName: formRequest.taskInstance.name,
       senderName: formRequest.taskInstance.owner?.name || session.user.name || null,
