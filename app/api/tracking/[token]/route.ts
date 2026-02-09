@@ -23,7 +23,7 @@ export async function GET(
   try {
     // Rate limit by IP to prevent abuse (generous limit since email clients can retry)
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-    const rateCheck = checkRateLimit(`tracking:${ip}`, 60)
+    const rateCheck = await checkRateLimit(`tracking:${ip}`, 60)
     if (!rateCheck.allowed) {
       return new NextResponse(TRANSPARENT_PIXEL, { status: 200, headers: PIXEL_HEADERS })
     }

@@ -220,7 +220,7 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
             size="sm"
             onClick={goToPrevPage}
             disabled={currentPage <= 1}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0" aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -232,7 +232,7 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
             size="sm"
             onClick={goToNextPage}
             disabled={currentPage >= numPages}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0" aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </Button>
@@ -245,7 +245,7 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
             size="sm"
             onClick={zoomOut}
             disabled={scale <= 0.5}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0" aria-label="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
           </Button>
@@ -257,7 +257,7 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
             size="sm"
             onClick={zoomIn}
             disabled={scale >= 3}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0" aria-label="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
           </Button>
@@ -265,11 +265,11 @@ export function PDFViewer({ url, filename, fallbackUrl, onDownload }: PDFViewerP
           <div className="w-px h-4 bg-gray-300 mx-2" />
 
           {/* Actions */}
-          <Button variant="ghost" size="sm" onClick={openInNewTab}>
+          <Button variant="ghost" size="sm" aria-label="Open in new tab" onClick={openInNewTab}>
             <ExternalLink className="w-4 h-4" />
           </Button>
           {onDownload && (
-            <Button variant="ghost" size="sm" onClick={onDownload}>
+            <Button variant="ghost" size="sm" aria-label="Download" onClick={onDownload}>
               <Download className="w-4 h-4" />
             </Button>
           )}
@@ -359,6 +359,7 @@ export function ImageViewer({ url, filename, fallbackUrl, onDownload }: ImageVie
           onClick={zoomOut}
           disabled={scale <= 0.25}
           className="h-8 w-8 p-0"
+          aria-label="Zoom out"
         >
           <ZoomOut className="w-4 h-4" />
         </Button>
@@ -371,11 +372,12 @@ export function ImageViewer({ url, filename, fallbackUrl, onDownload }: ImageVie
           onClick={zoomIn}
           disabled={scale >= 3}
           className="h-8 w-8 p-0"
+          aria-label="Zoom in"
         >
           <ZoomIn className="w-4 h-4" />
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={rotate} className="h-8 w-8 p-0">
+        <Button variant="ghost" size="sm" onClick={rotate} className="h-8 w-8 p-0" aria-label="Rotate image">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
           </svg>
@@ -383,11 +385,11 @@ export function ImageViewer({ url, filename, fallbackUrl, onDownload }: ImageVie
 
         <div className="w-px h-4 bg-gray-300 mx-2" />
 
-        <Button variant="ghost" size="sm" onClick={openInNewTab}>
+        <Button variant="ghost" size="sm" onClick={openInNewTab} aria-label="Open in new tab">
           <ExternalLink className="w-4 h-4" />
         </Button>
         {onDownload && (
-          <Button variant="ghost" size="sm" onClick={onDownload}>
+          <Button variant="ghost" size="sm" onClick={onDownload} aria-label="Download">
             <Download className="w-4 h-4" />
           </Button>
         )}

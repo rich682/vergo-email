@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")
   const hasReplies = searchParams.get("hasReplies")
   const isOpened = searchParams.get("isOpened")
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10))
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)))
 
   const where: any = {
     organizationId: session.user.organizationId
@@ -106,36 +108,40 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const tasks = await prisma.task.findMany({
-      where,
-      include: {
-        entity: true,
-        messages: {
-          where: {
-            direction: "OUTBOUND"
+    const [tasks, totalCount] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: {
+          entity: true,
+          messages: {
+            where: {
+              direction: "OUTBOUND"
+            },
+            orderBy: {
+              createdAt: "desc"
+            },
+            take: 1,
+            select: {
+              openedAt: true,
+              openedCount: true,
+              lastOpenedAt: true,
+              subject: true
+            }
           },
-          orderBy: {
-            createdAt: "desc"
-          },
-          take: 1,
-          select: {
-            openedAt: true,
-            openedCount: true,
-            lastOpenedAt: true,
-            subject: true
+          _count: {
+            select: {
+              messages: true
+            }
           }
         },
-        _count: {
-          select: {
-            messages: true
-          }
-        }
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
-      take: 100
-    })
+        orderBy: {
+          createdAt: "desc"
+        },
+        skip: (page - 1) * limit,
+        take: limit
+      }),
+      prisma.task.count({ where })
+    ])
 
     // Get all task IDs to efficiently count inbound messages and get latest classification/body
     const taskIds = tasks.map(t => t.id)
@@ -278,7 +284,14 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return NextResponse.json(tasksWithReplies)
+    const totalPages = Math.ceil(totalCount / limit)
+    return NextResponse.json({
+      items: tasksWithReplies,
+      total: totalCount,
+      page,
+      totalPages,
+      limit
+    })
   } catch (error: any) {
     console.error('[API /tasks] Error:', error.message)
     return NextResponse.json(

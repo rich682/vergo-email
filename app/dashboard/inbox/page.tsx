@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { InboxMessageCard, type InboxItem } from "@/components/inbox/inbox-message-card"
 import {
   Inbox,
@@ -18,6 +19,8 @@ interface InboxData {
   totalPages: number
 }
 
+const ROW_HEIGHT = 44 // px — matches py-2.5 + content height
+
 export default function InboxPage() {
   const [data, setData] = useState<InboxData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,6 +30,9 @@ export default function InboxPage() {
   // Filters
   const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
   const [riskFilter, setRiskFilter] = useState<string>("")
+
+  // Virtual scrolling ref
+  const parentRef = useRef<HTMLDivElement>(null)
 
   const fetchInbox = useCallback(async () => {
     try {
@@ -111,10 +117,19 @@ export default function InboxPage() {
       ).length
     : 0
 
+  // Virtual scrolling setup
+  const items = data?.items || []
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  })
+
   return (
-    <div className="p-8">
+    <div className="p-8 flex flex-col" style={{ height: "calc(100vh - 64px)" }}>
       {/* Filters + Bulk Action */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Filter className="w-4 h-4 text-gray-400" />
           <select
@@ -124,6 +139,7 @@ export default function InboxPage() {
               setPage(1)
             }}
             className="text-sm border rounded-md px-2 py-1 text-gray-600 bg-white"
+            aria-label="Filter by read status"
           >
             <option value="all">All replies</option>
             <option value="unread">Unread</option>
@@ -136,6 +152,7 @@ export default function InboxPage() {
               setPage(1)
             }}
             className="text-sm border rounded-md px-2 py-1 text-gray-600 bg-white"
+            aria-label="Filter by risk level"
           >
             <option value="">All risk levels</option>
             <option value="high">High risk</option>
@@ -173,9 +190,9 @@ export default function InboxPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
           {/* Column headers */}
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-gray-200 bg-gray-50/80">
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-gray-200 bg-gray-50/80 flex-shrink-0">
             <div className="w-6 flex-shrink-0" />
             <div className="w-[160px] flex-shrink-0 pr-3">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Sender</span>
@@ -194,27 +211,54 @@ export default function InboxPage() {
             </div>
           </div>
 
-          {/* Rows */}
-          <div className="divide-y divide-gray-100">
-            {data.items.map((item) => (
-              <InboxMessageCard
-                key={item.messageId}
-                item={item}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                isAccepting={acceptingId === item.requestId || acceptingId === "bulk"}
-              />
-            ))}
+          {/* Virtualized Rows */}
+          <div
+            ref={parentRef}
+            className="flex-1 overflow-auto"
+          >
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                const item = items[virtualItem.index]
+                return (
+                  <div
+                    key={item.messageId}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: `${virtualItem.size}px`,
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                    className={virtualItem.index > 0 ? "border-t border-gray-100" : ""}
+                  >
+                    <InboxMessageCard
+                      item={item}
+                      onAcceptSuggestion={handleAcceptSuggestion}
+                      isAccepting={acceptingId === item.requestId || acceptingId === "bulk"}
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6">
+        <div className="flex items-center justify-center gap-4 mt-6 flex-shrink-0">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
             className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
@@ -226,6 +270,7 @@ export default function InboxPage() {
             onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
             disabled={page >= data.totalPages}
             className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+            aria-label="Next page"
           >
             Next
             <ChevronRight className="w-4 h-4" />

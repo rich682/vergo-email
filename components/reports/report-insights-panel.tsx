@@ -258,6 +258,7 @@ export function ReportInsightsPanel({
             size="sm"
             onClick={() => copyToClipboard(getFullContent(), "all")}
             title="Copy all insights"
+            aria-label="Copy all insights"
             className="h-8 w-8 p-0"
           >
             {copiedSection === "all" ? (
@@ -272,6 +273,7 @@ export function ReportInsightsPanel({
             onClick={() => fetchInsights(true)}
             disabled={loading}
             title="Regenerate insights"
+            aria-label="Regenerate insights"
             className="h-8 w-8 p-0"
           >
             <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? "animate-spin" : ""}`} />
@@ -281,6 +283,7 @@ export function ReportInsightsPanel({
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
             title={isExpanded ? "Collapse" : "Expand"}
+            aria-label={isExpanded ? "Collapse panel" : "Expand panel"}
             className="h-8 w-8 p-0"
           >
             {isExpanded ? (
@@ -293,6 +296,7 @@ export function ReportInsightsPanel({
             variant="ghost"
             size="sm"
             onClick={onClose}
+            aria-label="Close insights panel"
             className="h-8 w-8 p-0"
           >
             <X className="w-4 h-4 text-gray-500" />

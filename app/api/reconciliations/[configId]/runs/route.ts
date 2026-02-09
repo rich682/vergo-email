@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    const body = await request.json().catch(() => ({}))
+    const body = await request.json().catch((e) => { console.warn("[JSON Parse] Failed to parse request body:", e?.message); return {} })
 
     const run = await ReconciliationService.createRun({
       organizationId: user.organizationId,

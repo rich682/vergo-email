@@ -1,32 +1,50 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import Link from "next/link"
 
+interface TasksData {
+  items: any[]
+  total: number
+  page: number
+  totalPages: number
+}
+
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<any[]>([])
+  const [data, setData] = useState<TasksData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
 
-  useEffect(() => {
-    fetchTasks()
-    const interval = setInterval(fetchTasks, 30000) // Poll every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
-      const response = await fetch("/api/tasks")
+      const params = new URLSearchParams()
+      params.set("page", page.toString())
+      params.set("limit", "50")
+      const response = await fetch(`/api/tasks?${params}`)
       if (response.ok) {
-        const data = await response.json()
-        setTasks(data)
+        const json = await response.json()
+        // Handle both paginated response and legacy array response
+        if (Array.isArray(json)) {
+          setData({ items: json, total: json.length, page: 1, totalPages: 1 })
+        } else {
+          setData(json)
+        }
       }
     } catch (error) {
       console.error("Error fetching tasks:", error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchTasks()
+    const interval = setInterval(fetchTasks, 30000) // Poll every 30 seconds
+    return () => clearInterval(interval)
+  }, [fetchTasks])
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -40,15 +58,28 @@ export default function TasksPage() {
     return colors[status] || "bg-gray-100 text-gray-800"
   }
 
-  if (loading) {
-    return <div>Loading...</div>
+  const tasks = data?.items || []
+
+  if (loading && !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Tasks</h2>
-        <p className="text-gray-600">Track email responses and submissions</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Tasks</h2>
+          <p className="text-gray-600">
+            Track email responses and submissions
+            {data && data.total > 0 && (
+              <span className="ml-2 text-sm text-gray-400">({data.total} total)</span>
+            )}
+          </p>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -85,7 +116,33 @@ export default function TasksPage() {
           </Card>
         )}
       </div>
+
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">
+            Page {data.page} of {data.totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+            disabled={page >= data.totalPages}
+            className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+            aria-label="Next page"
+          >
+            Next
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
-

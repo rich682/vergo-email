@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Check rate limit
-  const rateLimitResult = checkRateLimit(session.user.organizationId)
+  const rateLimitResult = await checkRateLimit(session.user.organizationId)
   if (!rateLimitResult.allowed) {
     const retryAfterSeconds = Math.ceil((rateLimitResult.retryAfterMs || 60000) / 1000)
     return NextResponse.json(

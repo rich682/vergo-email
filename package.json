@@ -59,6 +59,8 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.1",
     "@tanstack/react-virtual": "^3.13.18",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.36.2",
     "@vercel/blob": "^0.25.0",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",

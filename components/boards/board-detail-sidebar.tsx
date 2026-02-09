@@ -131,7 +131,7 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
           setOrganizationTimezone(data.timezone)
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.warn("Failed to fetch organization timezone:", err) })
   }, [])
 
   // Local state for editing

@@ -150,6 +150,7 @@ export function AttachmentPreview({ attachment }: AttachmentPreviewProps) {
                 onClick={handleZoomOut}
                 disabled={zoom <= 50}
                 className="h-8 w-8 p-0"
+                aria-label="Zoom out"
               >
                 <ZoomOut className="w-4 h-4" />
               </Button>
@@ -160,6 +161,7 @@ export function AttachmentPreview({ attachment }: AttachmentPreviewProps) {
                 onClick={handleZoomIn}
                 disabled={zoom >= 200}
                 className="h-8 w-8 p-0"
+                aria-label="Zoom in"
               >
                 <ZoomIn className="w-4 h-4" />
               </Button>
@@ -169,6 +171,7 @@ export function AttachmentPreview({ attachment }: AttachmentPreviewProps) {
                   size="sm"
                   onClick={handleRotate}
                   className="h-8 w-8 p-0"
+                  aria-label="Rotate image"
                 >
                   <RotateCw className="w-4 h-4" />
                 </Button>

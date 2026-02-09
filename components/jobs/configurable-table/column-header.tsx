@@ -102,20 +102,23 @@ export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
         className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
         title="Manage columns"
+        aria-label="Manage columns"
       >
         <Settings className="w-4 h-4" />
       </Button>
 
       {/* Settings Dropdown - Portal */}
       {isSettingsOpen && typeof document !== "undefined" && createPortal(
-        <div 
+        <div
           ref={settingsRef}
           className="fixed w-64 bg-white border border-gray-200 rounded-lg shadow-xl"
-          style={{ 
-            top: settingsPosition.top, 
+          style={{
+            top: settingsPosition.top,
             left: settingsPosition.left,
-            zIndex: 9999 
+            zIndex: 9999
           }}
+          role="menu"
+          aria-label="Column settings"
         >
           <div className="p-2 border-b border-gray-100">
             <h4 className="text-sm font-medium text-gray-900 px-2 py-1">Manage Columns</h4>
@@ -128,10 +131,11 @@ export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
                 <div
                   key={column.id}
                   className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-50"
+                  role="menuitem"
                 >
                   <div className="flex items-center gap-2">
-                    <GripVertical className="w-4 h-4 text-gray-300" />
-                    <Icon className="w-4 h-4 text-gray-400" />
+                    <GripVertical className="w-4 h-4 text-gray-300" aria-hidden="true" />
+                    <Icon className="w-4 h-4 text-gray-400" aria-hidden="true" />
                     <span className="text-sm text-gray-700">{column.label}</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -141,6 +145,7 @@ export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
                       disabled={index === 0}
                       className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
                       title="Move up"
+                      aria-label={`Move ${column.label} up`}
                     >
                       <ChevronDown className="w-3 h-3 rotate-180 text-gray-400" />
                     </button>
@@ -149,6 +154,7 @@ export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
                       disabled={index === sortedColumns.length - 1}
                       className="p-1 rounded hover:bg-gray-100 disabled:opacity-30"
                       title="Move down"
+                      aria-label={`Move ${column.label} down`}
                     >
                       <ChevronDown className="w-3 h-3 text-gray-400" />
                     </button>
@@ -157,6 +163,7 @@ export function ColumnHeader({ columns, onColumnsChange }: ColumnHeaderProps) {
                       onClick={() => handleToggleVisibility(column.id)}
                       className="p-1 rounded hover:bg-gray-100"
                       title={column.visible ? "Hide column" : "Show column"}
+                      aria-label={column.visible ? `Hide ${column.label}` : `Show ${column.label}`}
                     >
                       {column.visible ? (
                         <Eye className="w-4 h-4 text-gray-400" />

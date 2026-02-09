@@ -18,7 +18,7 @@ export async function GET(
   try {
     // Rate limit by IP to prevent token enumeration
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-    const rateCheck = checkRateLimit(`form-token:${ip}`, 30)
+    const rateCheck = await checkRateLimit(`form-token:${ip}`, 30)
     if (!rateCheck.allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 })
     }
@@ -107,7 +107,7 @@ export async function POST(
   try {
     // Rate limit by IP to prevent abuse
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-    const rateCheck = checkRateLimit(`form-submit:${ip}`, 10)
+    const rateCheck = await checkRateLimit(`form-submit:${ip}`, 10)
     if (!rateCheck.allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 })
     }

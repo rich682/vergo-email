@@ -156,7 +156,7 @@ export function EditBoardModal({
             setOrganizationTimezone(data.timezone)
           }
         })
-        .catch(() => {})
+        .catch((err) => { console.warn("Failed to fetch organization timezone:", err) })
     }
   }, [open])
 

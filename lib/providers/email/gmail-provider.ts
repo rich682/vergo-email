@@ -1,7 +1,7 @@
 import { google } from "googleapis"
 import { OAuth2Client } from "google-auth-library"
 import { ConnectedEmailAccount } from "@prisma/client"
-import { EmailProviderDriver, EmailSendParams, ContactSyncResult } from "./email-provider"
+import { EmailProviderDriver, EmailSendParams } from "./email-provider"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { decrypt } from "@/lib/encryption"
 
@@ -178,18 +178,7 @@ export class GmailProvider implements EmailProviderDriver {
     }
   }
 
-  async syncContacts(account: ConnectedEmailAccount): Promise<ContactSyncResult> {
-    // Minimal stub: ensure token exists and return informative message.
-    if (!account.accessToken) {
-      throw new Error("No access token available for Gmail contact sync")
-    }
-    // TODO: Implement People API sync; for now, return stub to keep contract.
-    return {
-      imported: 0,
-      skipped: 0,
-      message: "Gmail contact sync not yet implemented",
-    }
-  }
+  // Note: syncContacts is not implemented for Gmail.
+  // The EmailProviderDriver interface marks it as optional.
+  // When Google People API integration is needed, implement it here.
 }
-
-

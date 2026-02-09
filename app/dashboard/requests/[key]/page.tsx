@@ -40,7 +40,7 @@ export default function RequestDetailPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setAllTasks(Array.isArray(data) ? data : [])
+        setAllTasks(Array.isArray(data) ? data : (data.items || []))
       } else {
         if (response.status === 401) {
           window.location.href = '/auth/signin?callbackUrl=/dashboard/requests'
