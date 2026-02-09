@@ -129,8 +129,10 @@ export async function POST(
       signature = signatureParts.join('\n')
     }
 
-    // Append signature to reply body with proper spacing
-    const bodyWithSignature = signature 
+    // Append signature to reply body -- but skip if draft already includes it
+    // (AI draft-reply endpoint pre-appends the signature for preview purposes)
+    const signatureAlreadyPresent = signature && replyBody.includes(signature.trim())
+    const bodyWithSignature = (signature && !signatureAlreadyPresent)
       ? `${replyBody}\n\nBest regards,\n\n${signature}`
       : replyBody
 
