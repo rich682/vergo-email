@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { organizationId: true },
+      select: { id: true, organizationId: true, role: true },
     })
 
     if (!user?.organizationId) {
@@ -37,6 +37,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
+    }
+
+    // Access check: admins see all, non-admins must be an explicit viewer
+    if (user.role !== "ADMIN") {
+      const isViewer = await prisma.generatedReportViewer.findUnique({
+        where: { generatedReportId_userId: { generatedReportId: id, userId: user.id } }
+      })
+      if (!isViewer) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
     }
 
     return NextResponse.json({ report })

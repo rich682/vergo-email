@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { isAdmin as checkIsAdmin, isReadOnly } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -19,11 +20,13 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = session.user.role
     const boardId = params.id
 
     const { searchParams } = new URL(request.url)
@@ -35,6 +38,29 @@ export async function GET(
 
     if (!board) {
       return NextResponse.json({ error: "Board not found" }, { status: 404 })
+    }
+
+    // Access check: admins see all, others must be owner or collaborator
+    if (!checkIsAdmin(userRole)) {
+      const isOwner = board.ownerId === userId
+      const isCollaborator = await prisma.boardCollaborator.findUnique({
+        where: { boardId_userId: { boardId, userId } }
+      })
+      // Also check if user owns or collaborates on any task in this board
+      const hasTaskAccess = await prisma.taskInstance.findFirst({
+        where: {
+          boardId,
+          organizationId,
+          OR: [
+            { ownerId: userId },
+            { collaborators: { some: { userId } } }
+          ]
+        },
+        select: { id: true }
+      })
+      if (!isOwner && !isCollaborator && !hasTaskAccess) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
     }
 
     return NextResponse.json({ board })
@@ -78,17 +104,35 @@ export async function PATCH(
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+    const userRole = session.user.role
     const boardId = params.id
+
+    // Read-only users cannot modify boards
+    if (isReadOnly(userRole)) {
+      return NextResponse.json({ error: "Forbidden - Viewers cannot modify boards" }, { status: 403 })
+    }
+
+    // Access check: admins can modify any board, others must be owner
+    if (!checkIsAdmin(userRole)) {
+      const existingBoard = await BoardService.getById(boardId, organizationId)
+      if (!existingBoard) {
+        return NextResponse.json({ error: "Board not found" }, { status: 404 })
+      }
+      if (existingBoard.ownerId !== userId) {
+        return NextResponse.json({ error: "Access denied - only owner or admin can edit this board" }, { status: 403 })
+      }
+    }
+
     const body = await request.json()
 
-    const { 
-      name, 
-      description, 
-      status, 
-      ownerId, 
-      cadence, 
-      periodStart, 
-      periodEnd, 
+    const {
+      name,
+      description,
+      status,
+      ownerId,
+      cadence,
+      periodStart,
+      periodEnd,
       collaboratorIds,
       automationEnabled,
       skipWeekends
@@ -209,12 +253,30 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = session.user.role
     const boardId = params.id
+
+    // Read-only users cannot delete boards
+    if (isReadOnly(userRole)) {
+      return NextResponse.json({ error: "Forbidden - Viewers cannot delete boards" }, { status: 403 })
+    }
+
+    // Access check: admins can delete any board, others must be owner
+    if (!checkIsAdmin(userRole)) {
+      const existingBoard = await BoardService.getById(boardId, organizationId)
+      if (!existingBoard) {
+        return NextResponse.json({ error: "Board not found" }, { status: 404 })
+      }
+      if (existingBoard.ownerId !== userId) {
+        return NextResponse.json({ error: "Access denied - only owner or admin can delete this board" }, { status: 403 })
+      }
+    }
 
     const { searchParams } = new URL(request.url)
     const hardDelete = searchParams.get("hard") === "true"

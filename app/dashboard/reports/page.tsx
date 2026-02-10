@@ -670,7 +670,7 @@ export default function ReportsPage() {
                           : "bg-gray-100 text-gray-600"
                       }`}>
                         {report.layout === "pivot" ? (
-                          <><LayoutGrid className="w-3 h-3" /> Pivot</>
+                          <><LayoutGrid className="w-3 h-3" /> Matrix</>
                         ) : (
                           <><Table2 className="w-3 h-3" /> Standard</>
                         )}

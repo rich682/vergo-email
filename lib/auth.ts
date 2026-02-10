@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
+import type { ModuleAccess } from "@/lib/permissions"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -53,6 +54,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           organizationId: user.organizationId,
+          moduleAccess: (user.moduleAccess as ModuleAccess) || null,
         }
       }
     })
@@ -65,6 +67,7 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name
         token.role = user.role
         token.organizationId = user.organizationId
+        token.moduleAccess = user.moduleAccess || null
       }
       return token
     },
@@ -75,6 +78,7 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string | null
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
+        session.user.moduleAccess = (token.moduleAccess as ModuleAccess) || null
       }
       return session
     }

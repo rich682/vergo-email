@@ -30,6 +30,7 @@ export default async function DashboardLayout({
   }
 
   const userRole = session.user?.role
+  const moduleAccess = session.user?.moduleAccess || null
 
   // Fetch organization name and feature flags
   let orgName: string | undefined
@@ -52,6 +53,7 @@ export default async function DashboardLayout({
       userEmail={session.user.email || ""}
       userName={session.user.name || undefined}
       userRole={userRole}
+      moduleAccess={moduleAccess}
       orgName={orgName}
       orgFeatures={orgFeatures}
     >

@@ -9,8 +9,9 @@
  * 
  * Ownership Model:
  * - Each TaskInstance has a single owner (ownerId) who is accountable
- * - Collaborators can view and execute but not edit
- * - All TaskInstances are visible org-wide by default
+ * - Collaborators can view, execute requests, and add comments
+ * - Only the owner, collaborators, and ADMINs can access a TaskInstance
+ * - MEMBERs cannot view tasks they don't own or collaborate on
  */
 
 import { prisma } from "@/lib/prisma"
@@ -150,7 +151,8 @@ export class TaskInstanceService {
     taskInstance: { id: string; ownerId: string },
     action: TaskInstanceAction
   ): Promise<boolean> {
-    if (userRole === UserRole.ADMIN) return true
+    // ADMIN and MANAGER have full access to all tasks
+    if (userRole === UserRole.ADMIN || userRole === UserRole.MANAGER) return true
     if (taskInstance.ownerId === userId) return true
     
     const isCollaborator = await prisma.taskInstanceCollaborator.findUnique({
@@ -160,9 +162,8 @@ export class TaskInstanceService {
     if (isCollaborator) {
       return ['view', 'execute_request', 'add_comment'].includes(action)
     }
-    
-    if (action === 'view') return true
-    
+
+    // Non-owner, non-collaborator, non-admin cannot access
     return false
   }
 

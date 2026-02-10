@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback } from "react"
 import { Sidebar } from "./sidebar"
 import { UserMenu } from "./user-menu"
 import { PageTitle } from "./page-title"
+import type { ModuleAccess } from "@/lib/permissions"
 
 interface DashboardShellProps {
   children: React.ReactNode
   userEmail: string
   userName?: string
   userRole?: string
+  moduleAccess?: ModuleAccess | null
   orgName?: string
   orgFeatures?: Record<string, boolean>
 }
@@ -21,6 +23,7 @@ export function DashboardShell({
   userEmail,
   userName,
   userRole,
+  moduleAccess,
   orgName,
   orgFeatures = {},
 }: DashboardShellProps) {
@@ -50,6 +53,7 @@ export function DashboardShell({
     <div className="min-h-screen bg-white">
       <Sidebar
         userRole={userRole}
+        moduleAccess={moduleAccess}
         orgFeatures={orgFeatures}
         collapsed={!expanded}
         pinned={pinned}

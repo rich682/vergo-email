@@ -1,14 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { Calendar } from "lucide-react"
+import { getEffectiveModuleAccess, type ModuleAccess } from "@/lib/permissions"
 
 interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
+  moduleAccess?: ModuleAccess | null // Per-user module access overrides
   orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
   collapsed?: boolean
   pinned?: boolean
@@ -187,6 +189,7 @@ const settingsNavItems: NavItem[] = [
 export function Sidebar({
   className = "",
   userRole,
+  moduleAccess,
   orgFeatures = {},
   collapsed = false,
   pinned = true,
@@ -196,9 +199,15 @@ export function Sidebar({
 }: SidebarProps) {
   const [inboxUnread, setInboxUnread] = useState(0)
 
-  // Check if user is admin
+  // Check if user is admin (still needed for settings/team which are always admin-only)
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
+
+  // Compute effective module access based on role + overrides
+  const modules = useMemo(
+    () => getEffectiveModuleAccess(userRole, moduleAccess),
+    [userRole, moduleAccess]
+  )
 
   // Fetch inbox unread count
   useEffect(() => {
@@ -327,8 +336,8 @@ export function Sidebar({
             </Link>
           </li>
 
-          {/* Requests - Admin Only */}
-          {isAdmin && (() => {
+          {/* Requests */}
+          {modules.requests && (() => {
             const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
             return (
               <li>
@@ -353,8 +362,8 @@ export function Sidebar({
         )}
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
-          {/* Documents - Admin Only */}
-          {isAdmin && (() => {
+          {/* Documents */}
+          {modules.collection && (() => {
             const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")
             return (
               <li>
@@ -370,8 +379,8 @@ export function Sidebar({
             )
           })()}
 
-          {/* Expenses - Admin Only, feature-flagged */}
-          {isAdmin && (() => {
+          {/* Expenses - feature-flagged */}
+          {modules.collection && (() => {
             const hasModule = !!orgFeatures.expenses
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/expenses"
             const isActive = !hasModule && pathname === "/dashboard/collection/expenses"
@@ -402,8 +411,8 @@ export function Sidebar({
             )
           })()}
 
-          {/* Invoices - Admin Only, feature-flagged */}
-          {isAdmin && (() => {
+          {/* Invoices - feature-flagged */}
+          {modules.collection && (() => {
             const hasModule = !!orgFeatures.invoices
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/invoices"
             const isActive = !hasModule && pathname === "/dashboard/collection/invoices"
@@ -444,7 +453,7 @@ export function Sidebar({
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Reports */}
-          {(() => {
+          {modules.reports && (() => {
             const isActive = pathname === "/dashboard/reports" || pathname.startsWith("/dashboard/reports/")
             return (
               <li>
@@ -461,7 +470,7 @@ export function Sidebar({
           })()}
 
           {/* Forms */}
-          {(() => {
+          {modules.forms && (() => {
             const isActive = pathname === "/dashboard/forms" || pathname.startsWith("/dashboard/forms/")
             return (
               <li>
@@ -477,8 +486,8 @@ export function Sidebar({
             )
           })()}
 
-          {/* Databases - Admin Only */}
-          {isAdmin && (() => {
+          {/* Databases */}
+          {modules.databases && (() => {
             const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
             return (
               <li>
@@ -495,7 +504,7 @@ export function Sidebar({
           })()}
 
           {/* Reconciliations */}
-          {(() => {
+          {modules.reconciliations && (() => {
             const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
             return (
               <li>
@@ -537,9 +546,10 @@ export function Sidebar({
         <ul className={`${collapsed ? "space-y-1" : "space-y-0.5"} pb-3 border-t border-gray-100 pt-3 mt-2`}>
           {settingsNavItems
             .filter((item) => {
-              if (!isAdmin && (item.href === "/dashboard/contacts" || item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings")) {
-                return false
-              }
+              // Contacts uses module access check
+              if (item.href === "/dashboard/contacts" && !modules.contacts) return false
+              // Team and Settings are always admin-only
+              if ((item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings") && !isAdmin) return false
               return true
             })
             .map((item) => {

@@ -62,6 +62,16 @@ export async function GET(
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
     }
 
+    // Access check: admins see all, non-admins must be an explicit viewer
+    if (user.role !== "ADMIN") {
+      const isViewer = await prisma.generatedReportViewer.findUnique({
+        where: { generatedReportId_userId: { generatedReportId: generatedReportId, userId: user.id } }
+      })
+      if (!isViewer) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
+    }
+
     // Check for cached insights in the report data
     const reportData = report.data as any
     if (reportData?.cachedInsights) {
@@ -102,7 +112,7 @@ export async function POST(
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, role: true },
     })
 
     if (!user?.organizationId) {
@@ -126,6 +136,16 @@ export async function POST(
 
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
+    }
+
+    // Access check: admins see all, non-admins must be an explicit viewer
+    if (user.role !== "ADMIN") {
+      const isViewer = await prisma.generatedReportViewer.findUnique({
+        where: { generatedReportId_userId: { generatedReportId, userId: user.id } }
+      })
+      if (!isViewer) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
     }
 
     // Force regenerate insights

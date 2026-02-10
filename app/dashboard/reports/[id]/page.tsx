@@ -501,7 +501,7 @@ export default function ReportBuilderPage() {
                 )}
                 <span className="font-medium text-gray-700">{report.database.name}</span>
                 <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                  {report.layout === "accounting" ? "Accounting" : report.layout === "pivot" ? "Pivot" : "Standard"}
+                  {report.layout === "accounting" ? "Accounting" : report.layout === "pivot" ? "Matrix" : "Standard"}
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">

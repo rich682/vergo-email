@@ -54,7 +54,7 @@ const LAYOUT_OPTIONS = [
   },
   {
     value: "pivot",
-    label: "Pivot / Matrix",
+    label: "Matrix",
     description: "One column's values become headers, define metric rows",
     icon: Rows3
   },
@@ -552,7 +552,7 @@ export default function NewReportPage() {
                   )}
                   <div>
                     <p className="text-sm font-medium text-blue-900">
-                      {selectedDatabase.name} - {layout === "accounting" ? "Accounting" : layout === "pivot" ? "Pivot / Matrix" : "Standard"} Layout
+                      {selectedDatabase.name} - {layout === "accounting" ? "Accounting" : layout === "pivot" ? "Matrix" : "Standard"} Layout
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
                       {selectedDatabase.rowCount.toLocaleString()} rows •

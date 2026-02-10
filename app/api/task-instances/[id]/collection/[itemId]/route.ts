@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
-import { CollectedItemStatus } from "@prisma/client"
+import { CollectedItemStatus, UserRole } from "@prisma/client"
+import { TaskInstanceService } from "@/lib/services/task-instance.service"
 
 export const dynamic = "force-dynamic"
 
@@ -17,11 +18,13 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user.role as UserRole) || UserRole.MEMBER
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
@@ -31,6 +34,12 @@ export async function GET(
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    // Check if user has access to this task
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, job, 'view')
+    if (!canView) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     const item = await EvidenceService.getById(itemId, organizationId)
@@ -72,7 +81,8 @@ export async function PATCH(
     }
 
     const organizationId = session.user.organizationId
-    const userId = session.user.id
+    const userId = session.user.id!
+    const userRole = (session.user.role as UserRole) || UserRole.MEMBER
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
@@ -82,6 +92,12 @@ export async function PATCH(
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    // Check if user has edit access to this task
+    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, job, 'edit')
+    if (!canEdit) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     // Verify item exists and belongs to task instance
@@ -142,11 +158,13 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.organizationId) {
+    if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
+    const userRole = (session.user.role as UserRole) || UserRole.MEMBER
     const { id: jobId, itemId } = params
 
     // Verify job exists and belongs to organization
@@ -156,6 +174,12 @@ export async function DELETE(
 
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 })
+    }
+
+    // Check if user has edit access to this task (delete requires edit permission)
+    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, job, 'edit')
+    if (!canEdit) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     // Verify item exists and belongs to task instance
