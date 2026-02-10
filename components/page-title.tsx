@@ -11,6 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/requests": "Requests",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/team": "Team",
+  "/dashboard/profile": "Profile Settings",
   "/dashboard/collection": "Collection",
   "/dashboard/reconciliations": "Reconciliations",
   "/dashboard/reconciliations/new": "New Reconciliation",

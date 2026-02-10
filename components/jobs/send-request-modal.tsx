@@ -1033,8 +1033,8 @@ export function SendRequestModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-orange-500" />
             Send Request
@@ -1044,6 +1044,7 @@ export function SendRequestModal({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto">
         {/* Loading email account check */}
         {(checkingAccounts || hasEmailAccount === null) && state === "mode_selection" && (
           <div className="flex flex-col items-center justify-center py-12">
@@ -2107,6 +2108,7 @@ export function SendRequestModal({
             </p>
           </div>
         )}
+        </div>
       </DialogContent>
 
       {/* Send Confirmation Dialog */}

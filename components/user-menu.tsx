@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
-import { HelpCircle, LogOut } from "lucide-react"
+import { HelpCircle, LogOut, Settings } from "lucide-react"
 
 interface UserMenuProps {
   userEmail: string
@@ -65,6 +66,13 @@ export function UserMenu({ userEmail, userName, userRole, orgName }: UserMenuPro
     }
   }, [open])
 
+  const router = useRouter()
+
+  const handleProfileSettings = () => {
+    setOpen(false)
+    router.push("/dashboard/profile")
+  }
+
   const handleHelp = () => {
     setOpen(false)
     // Open help in new tab or show help modal
@@ -106,12 +114,20 @@ export function UserMenu({ userEmail, userName, userRole, orgName }: UserMenuPro
               <p className="text-base font-medium text-gray-900">{userName}</p>
             )}
             {userRole && (
-              <p className="text-sm text-gray-500">{userRole === "ADMIN" ? "Admin" : "Member"}</p>
+              <p className="text-sm text-gray-500">{userRole === "ADMIN" ? "Admin" : userRole === "MANAGER" ? "Manager" : "Employee"}</p>
             )}
           </div>
 
           {/* Menu items */}
           <div className="py-2">
+            <button
+              onClick={handleProfileSettings}
+              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+              role="menuitem"
+            >
+              <Settings className="w-5 h-5 text-gray-400" />
+              Profile Settings
+            </button>
             <button
               onClick={handleHelp}
               className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"

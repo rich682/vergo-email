@@ -109,13 +109,19 @@ export function GroupsInput({
       </div>
 
       <Input
-        placeholder="Type group name and press Enter"
+        placeholder="Type group name to add"
         value={query}
         disabled={creating}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault()
+            handleEnter()
+          }
+        }}
+        onBlur={() => {
+          // Auto-create/select tag when user clicks away from input
+          if (query.trim()) {
             handleEnter()
           }
         }}
@@ -139,7 +145,7 @@ export function GroupsInput({
       )}
 
       {groups.length === 0 && (
-        <p className="text-sm text-gray-500">No groups yet. Create one by pressing Enter.</p>
+        <p className="text-sm text-gray-500">No groups yet. Type a name to create one.</p>
       )}
     </div>
   )

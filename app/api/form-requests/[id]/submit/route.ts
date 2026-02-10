@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import { NotificationService } from "@/lib/services/notification.service"
 
 export async function POST(
   request: NextRequest,
@@ -35,6 +36,21 @@ export async function POST(
       session.user.id,
       responseData
     )
+
+    // Notify task participants about the form submission (non-blocking)
+    if (updated.taskInstanceId) {
+      const actorName = session.user.name || "Someone"
+      const formName = (updated as any).formDefinition?.name || "a form"
+      NotificationService.notifyTaskParticipants(
+        updated.taskInstanceId,
+        session.user.organizationId,
+        session.user.id,
+        "form_response",
+        `${actorName} submitted "${formName}"`,
+        `A form response has been submitted.`,
+        { formRequestId: updated.id }
+      ).catch((err) => console.error("Failed to send form response notifications:", err))
+    }
 
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
+import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole } from "@prisma/client"
 
 export const dynamic = 'force-dynamic'
@@ -74,6 +75,19 @@ export async function POST(
       organizationId,
       role || "collaborator"
     )
+
+    // Notify the added collaborator (non-blocking)
+    const actorName = session.user.name || "Someone"
+    const taskName = instance.name || "a task"
+    NotificationService.create({
+      userId: collaboratorUserId,
+      organizationId,
+      type: "collaborator_added",
+      title: `${actorName} added you to "${taskName}"`,
+      body: `You've been added as a collaborator on this task.`,
+      taskInstanceId,
+      actorId: userId,
+    }).catch((err) => console.error("Failed to send collaborator notification:", err))
 
     return NextResponse.json({
       success: true,

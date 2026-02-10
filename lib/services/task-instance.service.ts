@@ -132,35 +132,53 @@ export interface TaskInstanceWithStats {
 }
 
 // Permission actions for TaskInstances
-export type TaskInstanceAction = 
-  | 'view' 
-  | 'edit' 
-  | 'add_request' 
-  | 'execute_request' 
-  | 'archive' 
+export type TaskInstanceAction =
+  | 'view'
+  | 'edit'
+  | 'update_status'
+  | 'add_request'
+  | 'execute_request'
+  | 'archive'
   | 'manage_collaborators'
   | 'add_comment'
 
 export class TaskInstanceService {
   /**
    * Check if a user can perform an action on a task instance
+   *
+   * ADMIN/MANAGER: Full access
+   * Owner: Full access
+   * Task Collaborator: Can view, update status, execute requests, add comments
+   * Board Collaborator: Same as task collaborator (sees all tasks in their boards)
    */
   static async canUserAccess(
     userId: string,
     userRole: UserRole,
-    taskInstance: { id: string; ownerId: string },
+    taskInstance: { id: string; ownerId: string; boardId?: string | null },
     action: TaskInstanceAction
   ): Promise<boolean> {
     // ADMIN and MANAGER have full access to all tasks
     if (userRole === UserRole.ADMIN || userRole === UserRole.MANAGER) return true
     if (taskInstance.ownerId === userId) return true
-    
-    const isCollaborator = await prisma.taskInstanceCollaborator.findUnique({
+
+    // Check task-level collaborator
+    const isTaskCollaborator = await prisma.taskInstanceCollaborator.findUnique({
       where: { taskInstanceId_userId: { taskInstanceId: taskInstance.id, userId } }
     })
-    
-    if (isCollaborator) {
-      return ['view', 'execute_request', 'add_comment'].includes(action)
+
+    if (isTaskCollaborator) {
+      return ['view', 'update_status', 'execute_request', 'add_comment'].includes(action)
+    }
+
+    // Check board-level collaborator (board collaborators can access all tasks in the board)
+    if (taskInstance.boardId) {
+      const isBoardCollaborator = await prisma.boardCollaborator.findUnique({
+        where: { boardId_userId: { boardId: taskInstance.boardId, userId } }
+      })
+
+      if (isBoardCollaborator) {
+        return ['view', 'update_status', 'execute_request', 'add_comment'].includes(action)
+      }
     }
 
     // Non-owner, non-collaborator, non-admin cannot access

@@ -879,7 +879,7 @@ export default function JobsPage() {
                             Add
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="start">
+                        <PopoverContent className="w-72 p-2" align="start">
                           <div className="space-y-1 max-h-48 overflow-y-auto">
                             {teamMembers
                               .filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id))
@@ -904,6 +904,11 @@ export default function JobsPage() {
                             {teamMembers.filter(m => m.id !== currentBoard.owner?.id && !currentBoard.collaborators?.some(c => c.userId === m.id)).length === 0 && (
                               <p className="text-sm text-gray-500 py-2 text-center">No more team members</p>
                             )}
+                          </div>
+                          <div className="border-t border-gray-100 mt-2 pt-2 px-1">
+                            <p className="text-[11px] text-amber-600 leading-tight">
+                              Board collaborators can view all tasks in this board and update their status.
+                            </p>
                           </div>
                         </PopoverContent>
                       </Popover>

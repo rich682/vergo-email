@@ -8,7 +8,7 @@
  * - MANAGER: Like ADMIN but scoped by moduleAccess. Can see all tasks (not just own).
  *            Can manage team members they supervise. Cannot change org settings.
  * - MEMBER: Can only see/edit jobs they own or collaborate on. Scoped by moduleAccess.
- * - VIEWER: Read-only access to jobs they own or collaborate on. Scoped by moduleAccess.
+ * - VIEWER: (Deprecated - treated as MEMBER) Read-only access. Kept in enum for backward compatibility.
  *
  * Module Access:
  * Each user can have a `moduleAccess` JSON field that controls which dashboard
@@ -70,13 +70,14 @@ const DEFAULT_MODULE_ACCESS: Record<string, ModuleAccess> = {
     reconciliations: false,
     contacts: false,
   },
+  // VIEWER is deprecated - treated same as MEMBER for backward compatibility
   VIEWER: {
     boards: true,
     inbox: true,
     requests: false,
     collection: false,
     reports: true,
-    forms: false,
+    forms: true,
     databases: false,
     reconciliations: false,
     contacts: false,
@@ -271,7 +272,7 @@ export function canAccessRoute(
  *
  * ADMIN: No filter (sees all org jobs)
  * MANAGER: No filter (sees all org jobs - manages team)
- * MEMBER/VIEWER: Only jobs where user is owner or collaborator
+ * MEMBER: Only jobs where user is owner, task collaborator, or board collaborator
  */
 export function getJobAccessFilter(
   userId: string,
@@ -284,21 +285,23 @@ export function getJobAccessFilter(
     return null
   }
 
-  // MEMBER and VIEWER: filter to owned or collaborated jobs
+  // MEMBER: filter to owned, task-collaborated, or board-collaborated jobs
   return {
     OR: [
       { ownerId: userId },
-      { collaborators: { some: { userId } } }
+      { collaborators: { some: { userId } } },
+      { board: { collaborators: { some: { userId } } } }
     ]
   }
 }
 
 /**
  * Check if a user role is read-only (cannot create/edit/delete)
+ * @deprecated VIEWER role has been removed from the system. This always returns false now.
  */
 export function isReadOnly(role: UserRole | string | undefined): boolean {
-  const normalizedRole = role?.toUpperCase() as UserRole | undefined
-  return normalizedRole === UserRole.VIEWER
+  // VIEWER role deprecated - no roles are read-only anymore
+  return false
 }
 
 /**
@@ -306,7 +309,6 @@ export function isReadOnly(role: UserRole | string | undefined): boolean {
  *
  * ADMIN/MANAGER: Can modify any job
  * MEMBER: Can modify jobs they own
- * VIEWER: Cannot modify any job
  */
 export function canModifyJob(
   userId: string,
@@ -315,17 +317,12 @@ export function canModifyJob(
 ): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
 
-  // VIEWER cannot modify anything
-  if (normalizedRole === UserRole.VIEWER) {
-    return false
-  }
-
   // ADMIN and MANAGER can modify everything
   if (normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER) {
     return true
   }
 
-  // MEMBER can modify jobs they own
+  // MEMBER (and deprecated VIEWER) can modify jobs they own
   return userId === jobOwnerId
 }
 
@@ -349,7 +346,7 @@ export function isAdminOrManager(role: UserRole | string | undefined): boolean {
  * Get Prisma where clause to filter boards by user access
  *
  * ADMIN/MANAGER: No filter (sees all org boards)
- * MEMBER/VIEWER: Only boards where user is owner or collaborator
+ * MEMBER: Only boards where user is owner or collaborator
  */
 export function getBoardAccessFilter(
   userId: string,
@@ -362,7 +359,7 @@ export function getBoardAccessFilter(
     return null
   }
 
-  // MEMBER and VIEWER: filter to owned or collaborated boards
+  // MEMBER: filter to owned or collaborated boards
   return {
     OR: [
       { ownerId: userId },

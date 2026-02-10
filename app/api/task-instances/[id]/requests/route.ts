@@ -26,6 +26,7 @@ import { RequestCreationService } from "@/lib/services/request-creation.service"
 import { ReminderStateService } from "@/lib/services/reminder-state.service"
 import { BusinessDayService, ScheduleConfig } from "@/lib/services/business-day.service"
 import { TrackingPixelService } from "@/lib/services/tracking-pixel.service"
+import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole, EmailProvider } from "@prisma/client"
 import { GmailProvider } from "@/lib/providers/email/gmail-provider"
 import { MicrosoftProvider } from "@/lib/providers/email/microsoft-provider"
@@ -954,6 +955,21 @@ async function handleSendDraft(
       approved: true
     })
   }
+
+  // Notify task participants about the sent request (non-blocking)
+  const taskName = draft.taskInstance?.name || "a task"
+  const recipientName = draft.entity?.firstName
+    ? `${draft.entity.firstName} ${draft.entity.lastName || ""}`.trim()
+    : draft.entity?.email || "a recipient"
+  NotificationService.notifyTaskParticipants(
+    taskInstanceId,
+    organizationId,
+    userId,
+    "request_sent",
+    `Request sent on "${taskName}"`,
+    `A request was sent to ${recipientName}`,
+    { requestId: draft.id }
+  ).catch((err) => console.error("Failed to send request notifications:", err))
 
   return NextResponse.json({
     success: true,

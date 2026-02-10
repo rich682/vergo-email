@@ -13,6 +13,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { UserRole } from "@prisma/client"
+import type { ModuleAccess, ModuleKey } from "@/lib/permissions"
 
 /**
  * GET /api/org/users/[id] - Get user details
@@ -54,6 +55,7 @@ export async function GET(
         email: true,
         name: true,
         role: true,
+        moduleAccess: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -74,6 +76,7 @@ export async function GET(
         email: user.email,
         name: user.name,
         role: user.role,
+        moduleAccess: user.moduleAccess || null,
         status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString()
@@ -120,7 +123,7 @@ export async function PATCH(
 
     const { id: targetUserId } = await params
     const body = await request.json()
-    const { role: newRole, name } = body
+    const { role: newRole, name, moduleAccess } = body
 
     // Find the target user
     const targetUser = await prisma.user.findFirst({
@@ -138,14 +141,14 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: { role?: UserRole; name?: string } = {}
+    const updateData: { role?: UserRole; name?: string; moduleAccess?: any } = {}
 
     // Handle role update
     if (newRole !== undefined) {
-      const validRoles = [UserRole.ADMIN, UserRole.MEMBER, UserRole.VIEWER]
+      const validRoles = [UserRole.ADMIN, UserRole.MEMBER, UserRole.MANAGER]
       if (!validRoles.includes(newRole)) {
         return NextResponse.json(
-          { error: "Valid role is required (ADMIN, MEMBER, or VIEWER)" },
+          { error: "Valid role is required (ADMIN, MANAGER, or MEMBER)" },
           { status: 400 }
         )
       }
@@ -175,6 +178,32 @@ export async function PATCH(
       updateData.name = name.trim() || null
     }
 
+    // Handle moduleAccess update
+    if (moduleAccess !== undefined) {
+      if (moduleAccess === null) {
+        // null = reset to role defaults
+        updateData.moduleAccess = null
+      } else if (typeof moduleAccess === "object" && !Array.isArray(moduleAccess)) {
+        // Validate keys are valid module keys
+        const validKeys: ModuleKey[] = [
+          "boards", "inbox", "requests", "collection", "reports",
+          "forms", "databases", "reconciliations", "contacts"
+        ]
+        const sanitized: ModuleAccess = {}
+        for (const key of validKeys) {
+          if (key in moduleAccess && typeof moduleAccess[key] === "boolean") {
+            sanitized[key] = moduleAccess[key]
+          }
+        }
+        updateData.moduleAccess = sanitized
+      } else {
+        return NextResponse.json(
+          { error: "moduleAccess must be an object with boolean values or null" },
+          { status: 400 }
+        )
+      }
+    }
+
     // Check if there's anything to update
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -192,6 +221,7 @@ export async function PATCH(
         email: true,
         name: true,
         role: true,
+        moduleAccess: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -205,6 +235,7 @@ export async function PATCH(
         email: updatedUser.email,
         name: updatedUser.name,
         role: updatedUser.role,
+        moduleAccess: updatedUser.moduleAccess || null,
         status: updatedUser.passwordHash && updatedUser.passwordHash.length > 10 ? "active" : "pending",
         createdAt: updatedUser.createdAt.toISOString(),
         updatedAt: updatedUser.updatedAt.toISOString()

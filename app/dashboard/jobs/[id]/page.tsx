@@ -39,6 +39,7 @@ import { parseDateOnly } from "@/lib/utils/timezone"
 // Alias for backward compatibility - use parseDateOnly from centralized utility
 const parseDateForDisplay = parseDateOnly
 import { UI_LABELS } from "@/lib/ui-labels"
+import { getEffectiveModuleAccess, type ModuleAccess } from "@/lib/permissions"
 
 // Design system components
 import { Chip } from "@/components/ui/chip"
@@ -134,6 +135,7 @@ interface Job {
 
 interface Permissions {
   canEdit: boolean
+  canUpdateStatus: boolean
   canManageCollaborators: boolean
   isOwner: boolean
   isAdmin: boolean
@@ -263,6 +265,7 @@ export default function JobDetailPage() {
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
+  const [userModuleAccess, setUserModuleAccess] = useState<Record<string, boolean> | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report" | "reconciliation">(initialTab || "overview")
@@ -357,6 +360,9 @@ export default function JobDetailPage() {
         const taskInstance = data.taskInstance
         setJob(taskInstance)
         setPermissions(data.permissions)
+        // Compute effective module access for tab visibility
+        const effectiveModules = getEffectiveModuleAccess(data.userRole, data.moduleAccess)
+        setUserModuleAccess(effectiveModules)
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")
         setEditDueDate(taskInstance.dueDate ? taskInstance.dueDate.split("T")[0] : "")
@@ -836,8 +842,8 @@ export default function JobDetailPage() {
             Overview
           </button>
 
-          {/* Requests tab - only visible to owners/admins */}
-          {permissions?.canEdit && (
+          {/* Requests tab - only visible to owners/admins with requests module access */}
+          {permissions?.canEdit && userModuleAccess?.requests !== false && (
             <button
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -851,8 +857,8 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {/* Documents tab - only visible to owners/admins */}
-          {permissions?.canEdit && (
+          {/* Documents tab - only visible to owners/admins with collection module access */}
+          {permissions?.canEdit && userModuleAccess?.collection !== false && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -861,7 +867,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {(job.reportDefinitionId || permissions?.isAdmin) && (
+          {(job.reportDefinitionId || permissions?.isAdmin) && userModuleAccess?.reports !== false && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -870,7 +876,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {permissions?.canEdit && (
+          {permissions?.canEdit && userModuleAccess?.reconciliations !== false && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -931,7 +937,7 @@ export default function JobDetailPage() {
                             )}
                           </div>
                         )}
-                        {permissions?.canEdit ? (
+                        {(permissions?.canEdit || permissions?.canUpdateStatus) ? (
                           <div className="relative">
                             <button
                               onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
@@ -1152,37 +1158,65 @@ export default function JobDetailPage() {
                   />
                 )}
 
+                {/* Activity Timeline */}
                 <Card>
                   <CardContent className="p-4">
-                    <SectionHeader title="Activity" icon={<MessageSquare className="w-4 h-4 text-gray-500" />} collapsible expanded={timelineExpanded} onToggle={() => setTimelineExpanded(!timelineExpanded)} />
+                    <SectionHeader title="Activity" icon={<Clock className="w-4 h-4 text-gray-500" />} collapsible expanded={timelineExpanded} onToggle={() => setTimelineExpanded(!timelineExpanded)} />
                     {timelineExpanded && (
                       <div className="mt-3">
-                        <div className="flex gap-3 mb-4">
-                          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                            {getInitials(job.owner?.name || null, job.owner?.email || '')}
-                          </div>
-                          <div className="flex-1 relative">
-                            <Textarea placeholder="Add a comment..." value={newComment} onChange={handleCommentChange} className="min-h-[80px] resize-none text-sm" />
-                            <div className="flex items-center justify-between mt-2">
-                              <p className="text-[10px] text-gray-400">Type @ to mention team members</p>
-                              <button onClick={handleAddComment} disabled={!newComment.trim() || submittingComment} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors">
-                                <Send className="w-3 h-3" />
-                                {submittingComment ? "Posting..." : "Post"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        {comments.length === 0 ? <p className="text-sm text-gray-500 text-center py-4">No activity yet</p> : (
-                          <div className="space-y-3">
-                            {comments.map(comment => (
-                              <div key={comment.id} className="flex gap-3">
-                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">{getInitials(comment.author?.name || null, comment.author?.email || '')}</div>
-                                <div className="flex-1 bg-gray-50 rounded-lg p-3">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium text-xs text-gray-900">{comment.author?.name || comment.author?.email?.split("@")[0] || 'Unknown'}</span>
-                                    <span className="text-[10px] text-gray-500">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
-                                  </div>
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                        {timelineEvents.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {timelineEvents.map(event => (
+                              <div key={event.id} className="flex items-start gap-3 py-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                  event.type === "email_sent" ? "bg-blue-100" :
+                                  event.type === "email_reply" ? "bg-green-100" :
+                                  event.type === "reminder_sent" ? "bg-amber-100" :
+                                  "bg-gray-100"
+                                }`}>
+                                  {event.type === "email_sent" ? (
+                                    <Mail className="w-3 h-3 text-blue-600" />
+                                  ) : event.type === "email_reply" ? (
+                                    <MessageSquare className="w-3 h-3 text-green-600" />
+                                  ) : event.type === "reminder_sent" ? (
+                                    <Clock className="w-3 h-3 text-amber-600" />
+                                  ) : (
+                                    <MessageSquare className="w-3 h-3 text-gray-500" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-700">
+                                    {event.type === "email_sent" && (
+                                      <>
+                                        <span className="font-medium">{event.author?.name || event.author?.email?.split("@")[0] || "System"}</span>
+                                        {" sent a request to "}
+                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "recipient"}</span>
+                                      </>
+                                    )}
+                                    {event.type === "email_reply" && (
+                                      <>
+                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "Contact"}</span>
+                                        {" replied to a request"}
+                                      </>
+                                    )}
+                                    {event.type === "reminder_sent" && (
+                                      <>
+                                        {"Reminder sent to "}
+                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "recipient"}</span>
+                                      </>
+                                    )}
+                                    {event.type === "comment" && (
+                                      <>
+                                        <span className="font-medium">{event.author?.name || event.author?.email?.split("@")[0] || "Unknown"}</span>
+                                        {" left a comment"}
+                                      </>
+                                    )}
+                                  </p>
+                                  <span className="text-[10px] text-gray-400">
+                                    {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
+                                  </span>
                                 </div>
                               </div>
                             ))}
@@ -1192,10 +1226,50 @@ export default function JobDetailPage() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Comments Section */}
+                <Card>
+                  <CardContent className="p-4">
+                    <SectionHeader title="Comments" icon={<MessageSquare className="w-4 h-4 text-gray-500" />} collapsible expanded={true} onToggle={() => {}} />
+                    <div className="mt-3">
+                      <div className="flex gap-3 mb-4">
+                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                          {getInitials(job.owner?.name || null, job.owner?.email || '')}
+                        </div>
+                        <div className="flex-1 relative">
+                          <Textarea placeholder="Add a comment..." value={newComment} onChange={handleCommentChange} className="min-h-[80px] resize-none text-sm" />
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-[10px] text-gray-400">Type @ to mention team members</p>
+                            <button onClick={handleAddComment} disabled={!newComment.trim() || submittingComment} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                              <Send className="w-3 h-3" />
+                              {submittingComment ? "Posting..." : "Post"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {comments.length === 0 ? <p className="text-sm text-gray-500 text-center py-4">No comments yet</p> : (
+                        <div className="space-y-3">
+                          {comments.map(comment => (
+                            <div key={comment.id} className="flex gap-3">
+                              <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">{getInitials(comment.author?.name || null, comment.author?.email || '')}</div>
+                              <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium text-xs text-gray-900">{comment.author?.name || comment.author?.email?.split("@")[0] || 'Unknown'}</span>
+                                  <span className="text-[10px] text-gray-500">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
+                                </div>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.content}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </>
             )}
 
-            {activeTab === "requests" && permissions?.canEdit && (
+            {activeTab === "requests" && permissions?.canEdit && userModuleAccess?.requests !== false && (
               <div className="space-y-4">
                 {/* Draft Requests Banner */}
                 {draftRequests.length > 0 && (
@@ -1264,14 +1338,14 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "collection" && permissions?.canEdit && (
+            {activeTab === "collection" && permissions?.canEdit && userModuleAccess?.collection !== false && (
               <div className="space-y-4">
                 <SectionHeader title="Documents" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
                 <CollectionTab jobId={jobId} />
               </div>
             )}
 
-            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && (
+            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && userModuleAccess?.reports !== false && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1293,7 +1367,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "reconciliation" && permissions?.canEdit && (
+            {activeTab === "reconciliation" && permissions?.canEdit && userModuleAccess?.reconciliations !== false && (
               <div className="space-y-4">
                 <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
                 <ReconciliationTab jobId={jobId} taskName={job.name} />

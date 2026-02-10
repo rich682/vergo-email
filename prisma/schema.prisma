@@ -160,6 +160,7 @@ model Organization {
   formAttachments         FormAttachment[]
   reconciliationConfigs   ReconciliationConfig[]
   accountingIntegration   AccountingIntegration?
+  notifications           Notification[]
 
   @@index([slug])
 }
@@ -242,10 +243,37 @@ model User {
   createdFormDefinitions     FormDefinition[]           @relation("FormDefinitionCreator")
   formRequests               FormRequest[]              @relation("FormRequestRecipient")
   completedReconciliations   ReconciliationRun[]        @relation("ReconciliationCompleter")
+  notifications              Notification[]             @relation("NotificationRecipient")
 
   @@index([organizationId])
   @@index([email])
   @@index([verificationToken])
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String   // Recipient user
+  organizationId String
+  type           String   // "comment", "reply", "status_change", "collaborator_added", "request_sent", "form_response"
+  title          String   // Short summary
+  body           String?  // Optional longer description
+  read           Boolean  @default(false)
+  // Links to the source
+  taskInstanceId String?  @map("jobId")
+  requestId      String?  @map("taskId")
+  actorId        String?  // User who triggered the notification (null for system)
+  metadata       Json?    // Additional context (e.g. old/new status)
+  createdAt      DateTime @default(now())
+
+  user         User          @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance?  @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([organizationId])
 }
 
 model Entity {
@@ -390,6 +418,7 @@ model TaskInstance {
 
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
   reconciliationRuns ReconciliationRun[] // Reconciliation runs triggered from this task
+  notifications      Notification[] // Notifications related to this task
 
   @@index([organizationId])
   @@index([organizationId, status])

@@ -169,20 +169,25 @@ interface NavItem {
 
 // Settings/management nav items (shown at bottom)
 const settingsNavItems: NavItem[] = [
-  { 
-    href: "/dashboard/contacts", 
-    label: "Contacts", 
-    icon: ContactsIcon 
+  {
+    href: "/dashboard/contacts",
+    label: "Contacts",
+    icon: ContactsIcon
   },
-  { 
-    href: "/dashboard/settings/team", 
-    label: "Team", 
-    icon: TeamIcon 
+  {
+    href: "/dashboard/settings/team",
+    label: "Team",
+    icon: TeamIcon
   },
-  { 
-    href: "/dashboard/settings", 
-    label: "Settings", 
-    icon: SettingsIcon 
+  {
+    href: "/dashboard/settings",
+    label: "Settings",
+    icon: SettingsIcon
+  },
+  {
+    href: "/dashboard/profile",
+    label: "Profile",
+    icon: SettingsIcon
   },
 ]
 
@@ -550,11 +555,13 @@ export function Sidebar({
               if (item.href === "/dashboard/contacts" && !modules.contacts) return false
               // Team and Settings are always admin-only
               if ((item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings") && !isAdmin) return false
+              // Profile is available to everyone, but admins already have Settings
+              if (item.href === "/dashboard/profile" && isAdmin) return false
               return true
             })
             .map((item) => {
             let isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-            if (item.href === "/dashboard/settings" && pathname.startsWith("/dashboard/settings/team")) {
+            if (item.href === "/dashboard/settings" && (pathname.startsWith("/dashboard/settings/team") || pathname === "/dashboard/profile")) {
               isActive = false
             }
             const Icon = item.icon

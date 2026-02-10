@@ -17,9 +17,10 @@ import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
+import { NotificationService } from "@/lib/services/notification.service"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
-import { isReadOnly } from "@/lib/permissions"
+import { isReadOnly, type ModuleAccess } from "@/lib/permissions"
 import { periodKeyFromDate } from "@/lib/utils/period"
 
 export async function GET(
@@ -60,13 +61,14 @@ export async function GET(
 
     // Include permission info for UI
     const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'edit')
+    const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'update_status')
     const canManageCollaborators = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'manage_collaborators')
 
     const labels = taskInstance.labels as any
     const stakeholders = labels?.stakeholders || []
     const customStatus = labels?.customStatus || null
     const noStakeholdersNeeded = labels?.noStakeholdersNeeded || false
-    
+
     const effectiveStatus = customStatus || taskInstance.status
 
     return NextResponse.json({
@@ -79,10 +81,13 @@ export async function GET(
       },
       permissions: {
         canEdit,
+        canUpdateStatus,
         canManageCollaborators,
         isOwner: taskInstance.ownerId === userId,
         isAdmin: userRole === UserRole.ADMIN
-      }
+      },
+      moduleAccess: (session.user.moduleAccess as ModuleAccess) || null,
+      userRole: userRole,
     })
 
   } catch (error: any) {
@@ -131,16 +136,30 @@ export async function PATCH(
       )
     }
 
-    // Check edit permission
-    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'edit')
-    if (!canEdit) {
-      return NextResponse.json(
-        { error: "Access denied - only owner or admin can edit" },
-        { status: 403 }
-      )
-    }
-
     const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId } = body
+
+    // Determine if this is a status-only update (collaborators can do this)
+    const isStatusOnlyUpdate = status && !name && !description && !clientId && !dueDate && !labels && !stakeholders && !ownerId && !notes && !customFields && !createLineage && !reportDefinitionId && !reportFilterBindings && !reconciliationConfigId
+
+    if (isStatusOnlyUpdate) {
+      // Collaborators can update status
+      const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'update_status')
+      if (!canUpdateStatus) {
+        return NextResponse.json(
+          { error: "Access denied - you don't have permission to update this task's status" },
+          { status: 403 }
+        )
+      }
+    } else {
+      // Full edit requires edit permission
+      const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'edit')
+      if (!canEdit) {
+        return NextResponse.json(
+          { error: "Access denied - only owner or admin can edit" },
+          { status: 403 }
+        )
+      }
+    }
 
     // Handle TaskLineage promotion if requested
     let lineageId = existingInstance.lineageId
@@ -272,6 +291,22 @@ export async function PATCH(
         // Log but don't fail the request if report generation fails
         console.error("Error generating report on config change:", error)
       }
+    }
+
+    // Send status change notifications (non-blocking)
+    if (status && status !== existingInstance.status) {
+      const actorName = session.user.name || "Someone"
+      const taskName = existingInstance.name || "a task"
+      const displayStatus = customStatus || status
+      NotificationService.notifyTaskParticipants(
+        id,
+        organizationId,
+        userId,
+        "status_change",
+        `${actorName} changed status of "${taskName}"`,
+        `Status changed to ${displayStatus}`,
+        { oldStatus: existingInstance.status, newStatus: displayStatus }
+      ).catch((err) => console.error("Failed to send status change notifications:", err))
     }
 
     // Sync board status if task instance has a board and status was changed

@@ -218,7 +218,7 @@ export default function FormsPage() {
                       </div>
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                      <DropdownMenuTrigger asChild onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -230,7 +230,7 @@ export default function FormsPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
                           onClick={(e) => {
-                            e.preventDefault()
+                            e.stopPropagation()
                             handleDelete(form.id, safeString(form.name))
                           }}
                           className="text-red-600 focus:text-red-600"

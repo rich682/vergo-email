@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
+import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole } from "@prisma/client"
 
 export const dynamic = 'force-dynamic'
@@ -73,6 +74,19 @@ export async function POST(
     }
 
     const comment = await TaskInstanceService.addComment(id, userId, content.trim(), organizationId, mentions)
+
+    // Send notifications to task participants (non-blocking)
+    const actorName = session.user.name || "Someone"
+    const taskName = instance.name || "a task"
+    NotificationService.notifyTaskParticipants(
+      id,
+      organizationId,
+      userId,
+      "comment",
+      `${actorName} commented on "${taskName}"`,
+      content.trim().length > 100 ? content.trim().substring(0, 100) + "..." : content.trim(),
+      { commentId: comment.id }
+    ).catch((err) => console.error("Failed to send comment notifications:", err))
 
     return NextResponse.json({
       success: true,

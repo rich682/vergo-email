@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
         email: true,
         name: true,
         role: true,
+        moduleAccess: true,
         emailVerified: true,  // Used to determine "pending" vs "active" status
         createdAt: true,
         updatedAt: true,
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        moduleAccess: user.moduleAccess || null,
         status: user.emailVerified ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
@@ -149,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    const validRoles = [UserRole.ADMIN, UserRole.MEMBER, UserRole.VIEWER]
+    const validRoles = [UserRole.ADMIN, UserRole.MEMBER, UserRole.MANAGER]
     const userRoleToSet = role && validRoles.includes(role) ? role : UserRole.MEMBER
 
     // Check if user already exists

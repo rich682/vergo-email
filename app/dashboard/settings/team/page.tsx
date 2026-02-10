@@ -19,8 +19,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
+import { getEffectiveModuleAccess, type ModuleAccess, type ModuleKey } from "@/lib/permissions"
+
+const MODULE_LABELS: { key: ModuleKey; label: string }[] = [
+  { key: "boards", label: "Tasks" },
+  { key: "inbox", label: "Inbox" },
+  { key: "requests", label: "Requests" },
+  { key: "collection", label: "Collection" },
+  { key: "reports", label: "Reports" },
+  { key: "forms", label: "Forms" },
+  { key: "databases", label: "Databases" },
+  { key: "reconciliations", label: "Reconciliations" },
+  { key: "contacts", label: "Contacts" },
+]
 
 interface ConnectedEmail {
   id: string
@@ -35,7 +49,8 @@ interface OrgUser {
   id: string
   email: string
   name: string | null
-  role: "ADMIN" | "MEMBER" | "VIEWER"
+  role: "ADMIN" | "MANAGER" | "MEMBER" | "VIEWER"
+  moduleAccess: ModuleAccess | null
   status: "active" | "pending"
   createdAt: string
   connectedEmail: ConnectedEmail | null
@@ -83,7 +98,7 @@ function TeamSettingsContent() {
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteFirstName, setInviteFirstName] = useState("")
   const [inviteLastName, setInviteLastName] = useState("")
-  const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER")
+  const [inviteRole, setInviteRole] = useState<"ADMIN" | "MANAGER" | "MEMBER">("MEMBER")
   const [inviting, setInviting] = useState(false)
   
   // Edit modal state
@@ -91,7 +106,11 @@ function TeamSettingsContent() {
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null)
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
-  const [editRole, setEditRole] = useState<"ADMIN" | "MEMBER" | "VIEWER">("MEMBER")
+  const [editRole, setEditRole] = useState<"ADMIN" | "MANAGER" | "MEMBER">("MEMBER")
+  const [editModuleAccess, setEditModuleAccess] = useState<Record<ModuleKey, boolean>>({
+    boards: true, inbox: true, requests: false, collection: false,
+    reports: true, forms: true, databases: false, reconciliations: false, contacts: false,
+  })
   const [saving, setSaving] = useState(false)
   
   // Delete confirmation state
@@ -262,8 +281,24 @@ function TeamSettingsContent() {
     setEditingUser(user)
     setEditFirstName(firstName)
     setEditLastName(lastName)
-    setEditRole(user.role)
+    // Map legacy VIEWER role to MEMBER (VIEWER has been removed)
+    const mappedRole = user.role === "VIEWER" ? "MEMBER" : user.role
+    setEditRole(mappedRole as "ADMIN" | "MANAGER" | "MEMBER")
+    // Initialize module access with effective values (merging user overrides with role defaults)
+    const effective = getEffectiveModuleAccess(mappedRole, user.moduleAccess)
+    setEditModuleAccess(effective)
     setIsEditOpen(true)
+  }
+
+  const handleRoleChangeInEdit = (newRole: "ADMIN" | "MANAGER" | "MEMBER") => {
+    setEditRole(newRole)
+    // Reset module access to the new role's defaults
+    const defaults = getEffectiveModuleAccess(newRole, null)
+    setEditModuleAccess(defaults)
+  }
+
+  const handleModuleToggle = (key: ModuleKey, checked: boolean) => {
+    setEditModuleAccess(prev => ({ ...prev, [key]: checked }))
   }
 
   const handleSaveUser = async () => {
@@ -272,12 +307,15 @@ function TeamSettingsContent() {
     setSaving(true)
     try {
       const fullName = combineName(editFirstName, editLastName)
+      // Only send moduleAccess if the role is not ADMIN (admins always have full access)
+      const moduleAccessPayload = editRole === "ADMIN" ? null : editModuleAccess
       const response = await fetch(`/api/org/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: fullName,
-          role: editRole
+          role: editRole,
+          moduleAccess: moduleAccessPayload,
         })
       })
 
@@ -287,7 +325,8 @@ function TeamSettingsContent() {
       }
 
       const data = await response.json()
-      setTeamUsers(prev => prev.map(u => u.id === editingUser.id ? data.user : u))
+      // Merge API response with existing user data (preserve connectedEmail, isCurrentUser, etc.)
+      setTeamUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...data.user } : u))
       setIsEditOpen(false)
       setEditingUser(null)
       setMessage({ type: "success", text: "User updated successfully!" })
@@ -432,17 +471,20 @@ function TeamSettingsContent() {
                 </div>
                 <div>
                   <Label htmlFor="inviteRole">Role</Label>
-                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "ADMIN" | "MEMBER")}>
+                  <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "ADMIN" | "MANAGER" | "MEMBER")}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MEMBER">Employee</SelectItem>
+                      <SelectItem value="MANAGER">Manager</SelectItem>
                       <SelectItem value="ADMIN">Admin</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1">
-                    Admins can manage team members and settings
+                    {inviteRole === "ADMIN" ? "Full access to all features and settings" :
+                     inviteRole === "MANAGER" ? "Can see all tasks and manage team workflows" :
+                     "Can access assigned tasks and enabled modules"}
                   </p>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
@@ -540,13 +582,13 @@ function TeamSettingsContent() {
                     {/* Role */}
                     <div className="col-span-1">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${
-                        user.role === "ADMIN" 
-                          ? "border-purple-200 text-purple-700 bg-purple-50" 
-                          : user.role === "VIEWER"
-                          ? "border-gray-200 text-gray-600"
+                        user.role === "ADMIN"
+                          ? "border-purple-200 text-purple-700 bg-purple-50"
+                          : user.role === "MANAGER"
+                          ? "border-blue-200 text-blue-700 bg-blue-50"
                           : "border-gray-300 text-gray-700"
                       }`}>
-                        {user.role === "ADMIN" ? "Admin" : user.role === "VIEWER" ? "Viewer" : "Employee"}
+                        {user.role === "ADMIN" ? "Admin" : user.role === "MANAGER" ? "Manager" : "Employee"}
                       </span>
                     </div>
                     
@@ -740,17 +782,45 @@ function TeamSettingsContent() {
               </div>
               <div>
                 <Label htmlFor="editRole">Role</Label>
-                <Select value={editRole} onValueChange={(v) => setEditRole(v as "ADMIN" | "MEMBER" | "VIEWER")}>
+                <Select value={editRole} onValueChange={(v) => handleRoleChangeInEdit(v as "ADMIN" | "MANAGER" | "MEMBER")}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="MANAGER">Manager</SelectItem>
                     <SelectItem value="MEMBER">Employee</SelectItem>
-                    <SelectItem value="VIEWER">Viewer</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Module Access Toggles */}
+              <div>
+                <Label>Module Access</Label>
+                {editRole === "ADMIN" ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Admins always have full access to all modules.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500 mt-1 mb-3">
+                      Choose which areas of the app this user can access.
+                    </p>
+                    <div className="space-y-2.5">
+                      {MODULE_LABELS.map(({ key, label }) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-sm text-gray-700">{label}</span>
+                          <Switch
+                            checked={editModuleAccess[key]}
+                            onCheckedChange={(checked) => handleModuleToggle(key, checked)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setIsEditOpen(false)}>
                   Cancel
