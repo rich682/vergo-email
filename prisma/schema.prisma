@@ -254,6 +254,12 @@ model Entity {
   contactTypeCustomLabel String? // @deprecated
   isInternal             Boolean     @default(false) // true = internal (employee), false = external (client/vendor)
   mergeRemoteId          String?     // Merge.dev remote_id for contacts synced from accounting software
+  addressStreet1         String?     // Primary address from accounting system
+  addressStreet2         String?
+  addressCity            String?
+  addressState           String?
+  addressPostalCode      String?
+  addressCountry         String?
   organizationId         String
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt

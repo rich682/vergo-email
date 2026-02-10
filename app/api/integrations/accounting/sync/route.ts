@@ -52,13 +52,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Parse optional asOfDate from request body
+    let asOfDate: string | undefined
+    try {
+      const body = await request.json()
+      if (body.asOfDate && typeof body.asOfDate === "string") {
+        // Validate it's a valid date string
+        const parsed = new Date(body.asOfDate)
+        if (!isNaN(parsed.getTime())) {
+          asOfDate = body.asOfDate
+        }
+      }
+    } catch {
+      // No body or invalid JSON — use default (today)
+    }
+
     // Trigger sync via Inngest
     await inngest.send({
       name: "accounting/sync-triggered",
-      data: { organizationId: user.organizationId },
+      data: {
+        organizationId: user.organizationId,
+        ...(asOfDate ? { asOfDate } : {}),
+      },
     })
 
-    return NextResponse.json({ success: true, message: "Sync initiated" })
+    return NextResponse.json({
+      success: true,
+      message: asOfDate
+        ? `Sync initiated as of ${asOfDate}`
+        : "Sync initiated",
+    })
   } catch (error) {
     console.error("Error triggering sync:", error)
     return NextResponse.json(

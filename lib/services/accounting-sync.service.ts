@@ -5,9 +5,9 @@
  * into Vergo's Entity model (contacts) and Database feature (financial data).
  *
  * Sync strategy:
- * - Contacts: upsert into Entity by mergeRemoteId, dedup by email
- * - Data models: replace-by-remote-id into auto-created read-only Databases
- * - Incremental sync via Merge's modified_after parameter
+ * - Contacts: upsert into Entity by mergeRemoteId, dedup by email, skip contacts without email
+ * - Data models: append-only snapshots into auto-created read-only Databases
+ * - Each sync appends a new snapshot with an as_of_date; trimmed to MAX_SYNCED_ROWS (newest kept)
  */
 
 import { prisma } from "@/lib/prisma"
@@ -29,6 +29,33 @@ import {
 } from "./database.service"
 
 // ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Derive a "YYYY-MM" period string from a date string.
+ */
+function derivePeriod(dateStr: string | null | undefined): string {
+  if (!dateStr) return ""
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return ""
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Resolve an account ID to a display name via the lookup map.
+ * Falls back to the raw accountId if not found.
+ */
+function resolveAccount(accountId: string | null | undefined, lookup: Map<string, string>): string {
+  if (!accountId) return ""
+  return lookup.get(accountId) || accountId
+}
+
+// ============================================
 // Schema Definitions for Synced Databases
 // ============================================
 
@@ -46,16 +73,17 @@ const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
     sourceType: "merge_accounts",
     schema: {
       columns: [
-        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 0 },
-        { key: "account_number", label: "Account Number", dataType: "text", required: false, order: 1 },
-        { key: "name", label: "Account Name", dataType: "text", required: true, order: 2 },
-        { key: "classification", label: "Classification", dataType: "text", required: false, order: 3 },
-        { key: "type", label: "Type", dataType: "text", required: false, order: 4 },
-        { key: "status", label: "Status", dataType: "text", required: false, order: 5 },
-        { key: "current_balance", label: "Current Balance", dataType: "currency", required: false, order: 6 },
-        { key: "currency", label: "Currency", dataType: "text", required: false, order: 7 },
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 1 },
+        { key: "account_number", label: "Account Number", dataType: "text", required: false, order: 2 },
+        { key: "name", label: "Account Name", dataType: "text", required: true, order: 3 },
+        { key: "classification", label: "Classification", dataType: "text", required: false, order: 4 },
+        { key: "type", label: "Type", dataType: "text", required: false, order: 5 },
+        { key: "status", label: "Status", dataType: "text", required: false, order: 6 },
+        { key: "current_balance", label: "Current Balance", dataType: "currency", required: false, order: 7 },
+        { key: "currency", label: "Currency", dataType: "text", required: false, order: 8 },
       ] as DatabaseSchemaColumn[],
-      version: 1,
+      version: 2,
     },
   },
 
@@ -65,22 +93,24 @@ const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
     sourceType: "merge_invoices",
     schema: {
       columns: [
-        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 0 },
-        { key: "invoice_number", label: "Invoice #", dataType: "text", required: false, order: 1 },
-        { key: "type", label: "Type", dataType: "text", required: false, order: 2 },
-        { key: "contact_name", label: "Contact", dataType: "text", required: false, order: 3 },
-        { key: "contact_email", label: "Contact Email", dataType: "text", required: false, order: 4 },
-        { key: "issue_date", label: "Issue Date", dataType: "date", required: false, order: 5 },
-        { key: "due_date", label: "Due Date", dataType: "date", required: false, order: 6 },
-        { key: "total_amount", label: "Total Amount", dataType: "currency", required: false, order: 7 },
-        { key: "balance", label: "Balance Due", dataType: "currency", required: false, order: 8 },
-        { key: "paid_amount", label: "Paid Amount", dataType: "currency", required: false, order: 9 },
-        { key: "status", label: "Status", dataType: "text", required: false, order: 10 },
-        { key: "is_overdue", label: "Overdue", dataType: "boolean", required: false, order: 11 },
-        { key: "days_overdue", label: "Days Overdue", dataType: "number", required: false, order: 12 },
-        { key: "currency", label: "Currency", dataType: "text", required: false, order: 13 },
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 1 },
+        { key: "invoice_number", label: "Invoice #", dataType: "text", required: false, order: 2 },
+        { key: "type", label: "Type", dataType: "text", required: false, order: 3 },
+        { key: "contact_name", label: "Contact", dataType: "text", required: false, order: 4 },
+        { key: "contact_email", label: "Contact Email", dataType: "text", required: false, order: 5 },
+        { key: "issue_date", label: "Issue Date", dataType: "date", required: false, order: 6 },
+        { key: "due_date", label: "Due Date", dataType: "date", required: false, order: 7 },
+        { key: "total_amount", label: "Total Amount", dataType: "currency", required: false, order: 8 },
+        { key: "balance", label: "Balance Due", dataType: "currency", required: false, order: 9 },
+        { key: "paid_amount", label: "Paid Amount", dataType: "currency", required: false, order: 10 },
+        { key: "status", label: "Status", dataType: "text", required: false, order: 11 },
+        { key: "is_overdue", label: "Overdue", dataType: "boolean", required: false, order: 12 },
+        { key: "days_overdue", label: "Days Overdue", dataType: "number", required: false, order: 13 },
+        { key: "currency", label: "Currency", dataType: "text", required: false, order: 14 },
+        { key: "paid_on_date", label: "Paid On", dataType: "date", required: false, order: 15 },
       ] as DatabaseSchemaColumn[],
-      version: 1,
+      version: 2,
     },
   },
 
@@ -90,18 +120,20 @@ const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
     sourceType: "merge_journal_entries",
     schema: {
       columns: [
-        { key: "remote_id", label: "Entry ID", dataType: "text", required: true, order: 0 },
-        { key: "line_id", label: "Line ID", dataType: "text", required: false, order: 1 },
-        { key: "transaction_date", label: "Date", dataType: "date", required: false, order: 2 },
-        { key: "journal_number", label: "Journal #", dataType: "text", required: false, order: 3 },
-        { key: "memo", label: "Memo", dataType: "text", required: false, order: 4 },
-        { key: "account", label: "Account", dataType: "text", required: false, order: 5 },
-        { key: "debit", label: "Debit", dataType: "currency", required: false, order: 6 },
-        { key: "credit", label: "Credit", dataType: "currency", required: false, order: 7 },
-        { key: "description", label: "Line Description", dataType: "text", required: false, order: 8 },
-        { key: "contact", label: "Contact", dataType: "text", required: false, order: 9 },
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "Entry ID", dataType: "text", required: true, order: 1 },
+        { key: "line_id", label: "Line ID", dataType: "text", required: false, order: 2 },
+        { key: "transaction_date", label: "Date", dataType: "date", required: false, order: 3 },
+        { key: "period", label: "Period", dataType: "text", required: false, order: 4 },
+        { key: "journal_number", label: "Journal #", dataType: "text", required: false, order: 5 },
+        { key: "memo", label: "Memo", dataType: "text", required: false, order: 6 },
+        { key: "account", label: "Account", dataType: "text", required: false, order: 7 },
+        { key: "debit", label: "Debit", dataType: "currency", required: false, order: 8 },
+        { key: "credit", label: "Credit", dataType: "currency", required: false, order: 9 },
+        { key: "description", label: "Line Description", dataType: "text", required: false, order: 10 },
+        { key: "contact", label: "Contact", dataType: "text", required: false, order: 11 },
       ] as DatabaseSchemaColumn[],
-      version: 1,
+      version: 2,
     },
   },
 
@@ -111,15 +143,16 @@ const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
     sourceType: "merge_payments",
     schema: {
       columns: [
-        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 0 },
-        { key: "transaction_date", label: "Date", dataType: "date", required: false, order: 1 },
-        { key: "contact_name", label: "Contact", dataType: "text", required: false, order: 2 },
-        { key: "total_amount", label: "Amount", dataType: "currency", required: false, order: 3 },
-        { key: "currency", label: "Currency", dataType: "text", required: false, order: 4 },
-        { key: "reference", label: "Reference", dataType: "text", required: false, order: 5 },
-        { key: "account", label: "Account", dataType: "text", required: false, order: 6 },
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 1 },
+        { key: "transaction_date", label: "Date", dataType: "date", required: false, order: 2 },
+        { key: "contact_name", label: "Contact", dataType: "text", required: false, order: 3 },
+        { key: "total_amount", label: "Amount", dataType: "currency", required: false, order: 4 },
+        { key: "currency", label: "Currency", dataType: "text", required: false, order: 5 },
+        { key: "reference", label: "Reference", dataType: "text", required: false, order: 6 },
+        { key: "account", label: "Account", dataType: "text", required: false, order: 7 },
       ] as DatabaseSchemaColumn[],
-      version: 1,
+      version: 2,
     },
   },
 
@@ -129,15 +162,36 @@ const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
     sourceType: "merge_gl_transactions",
     schema: {
       columns: [
-        { key: "remote_id", label: "Transaction ID", dataType: "text", required: true, order: 0 },
-        { key: "line_id", label: "Line ID", dataType: "text", required: false, order: 1 },
-        { key: "date", label: "Date", dataType: "date", required: false, order: 2 },
-        { key: "account", label: "Account", dataType: "text", required: false, order: 3 },
-        { key: "debit", label: "Debit", dataType: "currency", required: false, order: 4 },
-        { key: "credit", label: "Credit", dataType: "currency", required: false, order: 5 },
-        { key: "description", label: "Description", dataType: "text", required: false, order: 6 },
-        { key: "transaction_type", label: "Transaction Type", dataType: "text", required: false, order: 7 },
-        { key: "reference_id", label: "Reference ID", dataType: "text", required: false, order: 8 },
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "Transaction ID", dataType: "text", required: true, order: 1 },
+        { key: "line_id", label: "Line ID", dataType: "text", required: false, order: 2 },
+        { key: "date", label: "Date", dataType: "date", required: false, order: 3 },
+        { key: "period", label: "Period", dataType: "text", required: false, order: 4 },
+        { key: "account", label: "Account", dataType: "text", required: false, order: 5 },
+        { key: "debit", label: "Debit", dataType: "currency", required: false, order: 6 },
+        { key: "credit", label: "Credit", dataType: "currency", required: false, order: 7 },
+        { key: "description", label: "Description", dataType: "text", required: false, order: 8 },
+        { key: "transaction_type", label: "Transaction Type", dataType: "text", required: false, order: 9 },
+        { key: "reference_id", label: "Reference ID", dataType: "text", required: false, order: 10 },
+      ] as DatabaseSchemaColumn[],
+      version: 2,
+    },
+  },
+
+  invoice_line_items: {
+    name: "Invoice Line Items",
+    description: "Line items from invoices synced from accounting software",
+    sourceType: "merge_invoice_line_items",
+    schema: {
+      columns: [
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "invoice_remote_id", label: "Invoice ID", dataType: "text", required: true, order: 1 },
+        { key: "invoice_number", label: "Invoice #", dataType: "text", required: false, order: 2 },
+        { key: "description", label: "Description", dataType: "text", required: false, order: 3 },
+        { key: "quantity", label: "Quantity", dataType: "number", required: false, order: 4 },
+        { key: "unit_price", label: "Unit Price", dataType: "currency", required: false, order: 5 },
+        { key: "total_amount", label: "Total", dataType: "currency", required: false, order: 6 },
+        { key: "account", label: "Account", dataType: "text", required: false, order: 7 },
       ] as DatabaseSchemaColumn[],
       version: 1,
     },
@@ -179,6 +233,7 @@ interface SyncConfig {
   journalEntries?: boolean
   payments?: boolean
   glTransactions?: boolean
+  invoiceLineItems?: boolean
   syncIntervalMinutes?: number
 }
 
@@ -189,6 +244,7 @@ const CONFIG_TO_MODEL_MAP: Record<string, SyncModelKey> = {
   journalEntries: "journal_entries",
   payments: "payments",
   glTransactions: "gl_transactions",
+  invoiceLineItems: "invoice_line_items",
 }
 
 // Max rows per synced database
@@ -202,8 +258,13 @@ export class AccountingSyncService {
   /**
    * Run a full sync for an organization.
    * Syncs contacts first, then each enabled data model.
+   *
+   * @param organizationId - The organization to sync
+   * @param asOfDateParam - Optional ISO date string (YYYY-MM-DD) for the snapshot; defaults to today
    */
-  static async syncAll(organizationId: string): Promise<SyncResult> {
+  static async syncAll(organizationId: string, asOfDateParam?: string): Promise<SyncResult> {
+    const asOfDate = asOfDateParam || new Date().toISOString().split("T")[0]
+
     const integration = await prisma.accountingIntegration.findUnique({
       where: { organizationId },
     })
@@ -225,6 +286,22 @@ export class AccountingSyncService {
     })
 
     try {
+      // Build lookups for account and contact name resolution
+      const accounts = await MergeAccountingService.fetchAccounts(accountToken)
+      const accountLookup = new Map<string, string>()
+      for (const a of accounts) {
+        const displayName = a.number ? `${a.number} - ${a.name || ""}` : (a.name || "")
+        if (a.id) accountLookup.set(a.id, displayName)
+        if (a.remote_id) accountLookup.set(a.remote_id, displayName)
+      }
+
+      const contacts = await MergeAccountingService.fetchContacts(accountToken)
+      const contactLookup = new Map<string, string>()
+      for (const c of contacts) {
+        if (c.id && c.name) contactLookup.set(c.id, c.name)
+        if (c.remote_id && c.name) contactLookup.set(c.remote_id, c.name)
+      }
+
       // 1. Sync contacts first (needed for reference resolution)
       if (syncConfig.contacts !== false) {
         try {
@@ -263,6 +340,9 @@ export class AccountingSyncService {
             organizationId,
             accountToken,
             modelKey,
+            asOfDate,
+            accountLookup,
+            contactLookup,
             lastSync
           )
           syncState[modelKey] = {
@@ -324,6 +404,7 @@ export class AccountingSyncService {
   /**
    * Sync contacts from Merge into the Entity model.
    * Upserts by mergeRemoteId, deduplicates by email.
+   * Skips contacts without an email address.
    */
   static async syncContacts(
     organizationId: string,
@@ -343,17 +424,45 @@ export class AccountingSyncService {
       const primaryEmail =
         contact.email_addresses?.find((e) => e.email_address)?.email_address ||
         null
+
+      // Skip contacts without email
+      if (!primaryEmail) continue
+
       const primaryPhone =
         contact.phone_numbers?.find((p) => p.number)?.number || null
 
-      const nameParts = (contact.name || "Unknown").split(" ")
-      const firstName = nameParts[0] || "Unknown"
-      const lastName = nameParts.slice(1).join(" ") || undefined
+      // Smart name splitting
+      let firstName: string
+      let lastName: string | undefined
+      const fullName = contact.name || "Unknown"
+
+      if (contact.company && fullName === contact.company) {
+        // Company name equals contact name — use full name as firstName
+        firstName = fullName
+        lastName = undefined
+      } else if (contact.is_supplier && !fullName.includes(" ")) {
+        // Supplier with no space in name — use full name as firstName
+        firstName = fullName
+        lastName = undefined
+      } else {
+        const nameParts = fullName.split(" ")
+        firstName = nameParts[0] || "Unknown"
+        lastName = nameParts.slice(1).join(" ") || undefined
+      }
 
       // Determine contact type
       let contactType: "VENDOR" | "CLIENT" | "UNKNOWN" = "UNKNOWN"
       if (contact.is_supplier) contactType = "VENDOR"
       else if (contact.is_customer) contactType = "CLIENT"
+
+      // Extract primary address
+      const addr = contact.addresses?.[0]
+      const addressStreet1 = addr?.street_1 || ""
+      const addressStreet2 = addr?.street_2 || ""
+      const addressCity = addr?.city || ""
+      const addressState = addr?.state || ""
+      const addressPostalCode = addr?.postal_code || ""
+      const addressCountry = addr?.country || ""
 
       // Try to find existing entity by mergeRemoteId
       const existing = await prisma.entity.findFirst({
@@ -371,6 +480,12 @@ export class AccountingSyncService {
             phone: primaryPhone || existing.phone,
             companyName: contact.company || existing.companyName,
             contactType,
+            addressStreet1,
+            addressStreet2,
+            addressCity,
+            addressState,
+            addressPostalCode,
+            addressCountry,
           },
         })
         synced++
@@ -392,6 +507,12 @@ export class AccountingSyncService {
                 contactType !== "UNKNOWN"
                   ? contactType
                   : emailMatch.contactType,
+              addressStreet1,
+              addressStreet2,
+              addressCity,
+              addressState,
+              addressPostalCode,
+              addressCountry,
             },
           })
           synced++
@@ -411,6 +532,12 @@ export class AccountingSyncService {
           isInternal: false,
           organizationId,
           mergeRemoteId: contact.id,
+          addressStreet1,
+          addressStreet2,
+          addressCity,
+          addressState,
+          addressPostalCode,
+          addressCountry,
         },
       })
       synced++
@@ -426,12 +553,16 @@ export class AccountingSyncService {
   /**
    * Sync a data model from Merge into a Database.
    * Auto-creates the database if it doesn't exist.
-   * Uses replace-by-remote-id strategy for incremental updates.
+   * Uses append strategy: new snapshot rows are appended to existing rows.
+   * Migrates schema version if the definition has been updated.
    */
   static async syncDataModel(
     organizationId: string,
     accountToken: string,
     modelKey: SyncModelKey,
+    asOfDate: string,
+    accountLookup: Map<string, string>,
+    contactLookup: Map<string, string>,
     lastSyncAt?: string
   ): Promise<number> {
     const definition = SYNCED_DATABASE_SCHEMAS[modelKey]
@@ -464,12 +595,26 @@ export class AccountingSyncService {
           createdById: adminUser.id,
         },
       })
+    } else {
+      // Schema version migration: update schema if definition version is newer
+      const existingSchema = database.schema as unknown as DatabaseSchema
+      if (existingSchema && existingSchema.version < definition.schema.version) {
+        await prisma.database.update({
+          where: { id: database.id },
+          data: {
+            schema: definition.schema as unknown as Prisma.InputJsonValue,
+          },
+        })
+      }
     }
 
     // Fetch and transform data from Merge
     const newRows = await this.fetchAndTransform(
       modelKey,
       accountToken,
+      asOfDate,
+      accountLookup,
+      contactLookup,
       lastSyncAt,
       organizationId
     )
@@ -478,18 +623,14 @@ export class AccountingSyncService {
       return (database.rows as unknown as DatabaseRow[])?.length || 0
     }
 
-    // Replace-by-remote-id: remove old versions of synced rows, add new ones
+    // Append strategy: add new snapshot rows to existing rows
     const existingRows = (database.rows as unknown as DatabaseRow[]) || []
-    const newRemoteIds = new Set(newRows.map((r) => String(r.remote_id)))
-    const keptRows = existingRows.filter(
-      (r) => !newRemoteIds.has(String(r.remote_id))
-    )
-    const finalRows = [...keptRows, ...newRows]
+    const finalRows = [...existingRows, ...newRows]
 
-    // Enforce row limit - keep most recent
+    // Enforce row limit - keep newest rows (slice from end)
     const trimmedRows =
       finalRows.length > MAX_SYNCED_ROWS
-        ? finalRows.slice(-MAX_SYNCED_ROWS)
+        ? finalRows.slice(finalRows.length - MAX_SYNCED_ROWS)
         : finalRows
 
     await prisma.database.update({
@@ -510,23 +651,33 @@ export class AccountingSyncService {
   // ============================================
 
   /**
-   * Fetch data from Merge and transform to DatabaseRow format
+   * Fetch data from Merge and transform to DatabaseRow format.
+   * Passes asOfDate, accountLookup, and contactLookup to each transform function.
    */
   private static async fetchAndTransform(
     modelKey: SyncModelKey,
     accountToken: string,
+    asOfDate: string,
+    accountLookup: Map<string, string>,
+    contactLookup: Map<string, string>,
     lastSyncAt?: string,
     organizationId?: string
   ): Promise<DatabaseRow[]> {
     switch (modelKey) {
       case "accounts":
         return this.transformAccounts(
-          await MergeAccountingService.fetchAccounts(accountToken, lastSyncAt)
+          await MergeAccountingService.fetchAccounts(accountToken, lastSyncAt),
+          asOfDate,
+          accountLookup,
+          contactLookup
         )
 
       case "invoices":
         return this.transformInvoices(
-          await MergeAccountingService.fetchInvoices(accountToken, lastSyncAt)
+          await MergeAccountingService.fetchInvoices(accountToken, lastSyncAt),
+          asOfDate,
+          accountLookup,
+          contactLookup
         )
 
       case "journal_entries":
@@ -534,12 +685,18 @@ export class AccountingSyncService {
           await MergeAccountingService.fetchJournalEntries(
             accountToken,
             lastSyncAt
-          )
+          ),
+          asOfDate,
+          accountLookup,
+          contactLookup
         )
 
       case "payments":
         return this.transformPayments(
-          await MergeAccountingService.fetchPayments(accountToken, lastSyncAt)
+          await MergeAccountingService.fetchPayments(accountToken, lastSyncAt),
+          asOfDate,
+          accountLookup,
+          contactLookup
         )
 
       case "gl_transactions":
@@ -547,7 +704,18 @@ export class AccountingSyncService {
           await MergeAccountingService.fetchGeneralLedgerTransactions(
             accountToken,
             lastSyncAt
-          )
+          ),
+          asOfDate,
+          accountLookup,
+          contactLookup
+        )
+
+      case "invoice_line_items":
+        return this.transformInvoiceLineItems(
+          await MergeAccountingService.fetchInvoices(accountToken, lastSyncAt),
+          asOfDate,
+          accountLookup,
+          contactLookup
         )
 
       default:
@@ -556,10 +724,16 @@ export class AccountingSyncService {
   }
 
   // --- Accounts ---
-  private static transformAccounts(accounts: MergeAccount[]): DatabaseRow[] {
+  private static transformAccounts(
+    accounts: MergeAccount[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
+  ): DatabaseRow[] {
     return accounts
       .filter((a) => !a.remote_was_deleted)
       .map((a) => ({
+        as_of_date: asOfDate,
         remote_id: a.remote_id || a.id,
         account_number: a.number || "",
         name: a.name || "",
@@ -576,9 +750,14 @@ export class AccountingSyncService {
   }
 
   // --- Invoices ---
-  private static transformInvoices(invoices: MergeInvoice[]): DatabaseRow[] {
+  private static transformInvoices(
+    invoices: MergeInvoice[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
+  ): DatabaseRow[] {
     const now = new Date()
-    return invoices
+    const rows = invoices
       .filter((inv) => !inv.remote_was_deleted)
       .map((inv) => {
         const totalAmount = inv.total_amount ?? 0
@@ -604,6 +783,7 @@ export class AccountingSyncService {
         }
 
         return {
+          as_of_date: asOfDate,
           remote_id: inv.remote_id || inv.id,
           invoice_number: inv.number || "",
           type: inv.type || "",
@@ -618,13 +798,26 @@ export class AccountingSyncService {
           is_overdue: isOverdue,
           days_overdue: daysOverdue,
           currency: inv.currency || "",
+          paid_on_date: inv.paid_on_date || "",
         }
       })
+
+    // Sort overdue-first, then by days_overdue descending
+    rows.sort((a, b) => {
+      if (a.is_overdue && !b.is_overdue) return -1
+      if (!a.is_overdue && b.is_overdue) return 1
+      return (b.days_overdue as number) - (a.days_overdue as number)
+    })
+
+    return rows
   }
 
   // --- Journal Entries (one row per line) ---
   private static transformJournalEntries(
-    entries: MergeJournalEntry[]
+    entries: MergeJournalEntry[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
   ): DatabaseRow[] {
     const rows: DatabaseRow[] = []
     for (const entry of entries) {
@@ -634,24 +827,28 @@ export class AccountingSyncService {
         for (const line of entry.lines) {
           const netAmount = line.net_amount ?? 0
           rows.push({
+            as_of_date: asOfDate,
             remote_id: entry.remote_id || entry.id,
             line_id: line.remote_id || line.id,
             transaction_date: entry.transaction_date || "",
+            period: derivePeriod(entry.transaction_date),
             journal_number: entry.journal_number || "",
             memo: entry.memo || "",
-            account: line.account || "",
+            account: resolveAccount(line.account, accountLookup || new Map()),
             debit: netAmount > 0 ? netAmount : 0,
             credit: netAmount < 0 ? Math.abs(netAmount) : 0,
             description: line.description || "",
-            contact: line.contact || "",
+            contact: contactLookup?.get(line.contact || "") || line.contact || "",
           })
         }
       } else {
         // Entry without lines
         rows.push({
+          as_of_date: asOfDate,
           remote_id: entry.remote_id || entry.id,
           line_id: "",
           transaction_date: entry.transaction_date || "",
+          period: derivePeriod(entry.transaction_date),
           journal_number: entry.journal_number || "",
           memo: entry.memo || "",
           account: "",
@@ -662,11 +859,24 @@ export class AccountingSyncService {
         })
       }
     }
+
+    // Sort by date descending
+    rows.sort((a, b) => {
+      const dateA = a.transaction_date as string
+      const dateB = b.transaction_date as string
+      return dateB.localeCompare(dateA)
+    })
+
     return rows
   }
 
   // --- Payments ---
-  private static transformPayments(payments: MergePayment[]): DatabaseRow[] {
+  private static transformPayments(
+    payments: MergePayment[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
+  ): DatabaseRow[] {
     return payments
       .filter((p) => !p.remote_was_deleted)
       .map((p) => {
@@ -676,20 +886,27 @@ export class AccountingSyncService {
         }
 
         return {
+          as_of_date: asOfDate,
           remote_id: p.remote_id || p.id,
           transaction_date: p.transaction_date || "",
           contact_name: contactName,
           total_amount: p.total_amount ?? 0,
           currency: p.currency || "",
           reference: p.reference || "",
-          account: typeof p.account === "string" ? p.account : "",
+          account: resolveAccount(
+            typeof p.account === "string" ? p.account : "",
+            accountLookup || new Map()
+          ),
         }
       })
   }
 
   // --- General Ledger Transactions (one row per line) ---
   private static transformGLTransactions(
-    transactions: MergeGeneralLedgerTransaction[]
+    transactions: MergeGeneralLedgerTransaction[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
   ): DatabaseRow[] {
     const rows: DatabaseRow[] = []
     for (const txn of transactions) {
@@ -699,10 +916,12 @@ export class AccountingSyncService {
         for (const line of txn.lines) {
           const netAmount = line.net_amount ?? 0
           rows.push({
+            as_of_date: asOfDate,
             remote_id: txn.remote_id || txn.id,
             line_id: line.remote_id || "",
             date: txn.remote_created_at || "",
-            account: line.account || "",
+            period: derivePeriod(txn.remote_created_at),
+            account: resolveAccount(line.account, accountLookup || new Map()),
             debit: netAmount > 0 ? netAmount : 0,
             credit: netAmount < 0 ? Math.abs(netAmount) : 0,
             description: line.description || "",
@@ -712,15 +931,53 @@ export class AccountingSyncService {
         }
       } else {
         rows.push({
+          as_of_date: asOfDate,
           remote_id: txn.remote_id || txn.id,
           line_id: "",
           date: txn.remote_created_at || "",
+          period: derivePeriod(txn.remote_created_at),
           account: "",
           debit: 0,
           credit: 0,
           description: "",
           transaction_type: txn.underlying_transaction_type || "",
           reference_id: txn.underlying_transaction_remote_id || "",
+        })
+      }
+    }
+
+    // Sort by date descending
+    rows.sort((a, b) => {
+      const dateA = a.date as string
+      const dateB = b.date as string
+      return dateB.localeCompare(dateA)
+    })
+
+    return rows
+  }
+
+  // --- Invoice Line Items (flattened from invoices) ---
+  private static transformInvoiceLineItems(
+    invoices: MergeInvoice[],
+    asOfDate: string,
+    accountLookup?: Map<string, string>,
+    contactLookup?: Map<string, string>
+  ): DatabaseRow[] {
+    const rows: DatabaseRow[] = []
+    for (const inv of invoices) {
+      if (inv.remote_was_deleted) continue
+      if (!inv.line_items || inv.line_items.length === 0) continue
+
+      for (const item of inv.line_items) {
+        rows.push({
+          as_of_date: asOfDate,
+          invoice_remote_id: inv.remote_id || inv.id,
+          invoice_number: inv.number || "",
+          description: item.description || "",
+          quantity: item.quantity ?? 0,
+          unit_price: item.unit_price ?? 0,
+          total_amount: item.total_amount ?? 0,
+          account: resolveAccount(item.account, accountLookup || new Map()),
         })
       }
     }

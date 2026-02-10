@@ -11,6 +11,7 @@ import {
   Clock,
   Loader2,
   Unplug,
+  Calendar,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -42,20 +43,13 @@ interface IntegrationStatus {
 }
 
 const SYNC_MODELS = [
-  { key: "contacts", configKey: "contacts", label: "Contacts", description: "Vendors, customers, and suppliers" },
+  { key: "contacts", configKey: "contacts", label: "Contacts", description: "Vendors, customers, and suppliers with email" },
   { key: "accounts", configKey: "accounts", label: "Chart of Accounts", description: "Account categories and balances" },
   { key: "invoices", configKey: "invoices", label: "Invoices", description: "AR and AP invoices with status" },
+  { key: "invoice_line_items", configKey: "invoiceLineItems", label: "Invoice Line Items", description: "Individual line items from invoices" },
   { key: "journal_entries", configKey: "journalEntries", label: "Journal Entries", description: "Debit/credit journal entries" },
   { key: "payments", configKey: "payments", label: "Payments", description: "Payment records" },
   { key: "gl_transactions", configKey: "glTransactions", label: "General Ledger", description: "All GL transactions" },
-]
-
-const SYNC_INTERVALS = [
-  { value: 15, label: "Every 15 minutes" },
-  { value: 30, label: "Every 30 minutes" },
-  { value: 60, label: "Every hour" },
-  { value: 240, label: "Every 4 hours" },
-  { value: 1440, label: "Once daily" },
 ]
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -91,6 +85,11 @@ export default function IntegrationsSettingsPage() {
   const [syncing, setSyncing] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [asOfDate, setAsOfDate] = useState(() => {
+    // Default to today in YYYY-MM-DD format
+    const today = new Date()
+    return today.toISOString().split("T")[0]
+  })
   const [message, setMessage] = useState<{
     type: "success" | "error"
     text: string
@@ -157,12 +156,17 @@ export default function IntegrationsSettingsPage() {
     try {
       const resp = await fetch("/api/integrations/accounting/sync", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asOfDate }),
       })
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}))
         throw new Error(data.error || "Failed to trigger sync")
       }
-      showMessage("success", "Sync started. This may take a few moments.")
+      showMessage(
+        "success",
+        `Snapshot sync started as of ${new Date(asOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}. This may take a few moments.`
+      )
       await fetchStatus()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -222,26 +226,7 @@ export default function IntegrationsSettingsPage() {
     }
   }
 
-  const handleIntervalChange = async (minutes: number) => {
-    setSavingConfig(true)
-    try {
-      const resp = await fetch("/api/integrations/accounting/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ syncIntervalMinutes: minutes }),
-      })
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to update interval")
-      }
-      await fetchStatus()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showMessage("error", msg)
-    } finally {
-      setSavingConfig(false)
-    }
-  }
+  // Sync Interval removed — sync is now on-demand/snapshot-based
 
   if (loading) {
     return (
@@ -271,8 +256,8 @@ export default function IntegrationsSettingsPage() {
           Accounting Integration
         </h1>
         <p className="text-sm text-gray-500 mb-6">
-          Connect your accounting software to automatically sync contacts,
-          invoices, and financial data.
+          Connect your accounting software and pull snapshots of contacts,
+          invoices, and financial data as of any date.
         </p>
 
         {/* Messages */}
@@ -350,6 +335,15 @@ export default function IntegrationsSettingsPage() {
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 border border-gray-200 rounded-md px-2 py-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="date"
+                        value={asOfDate}
+                        onChange={(e) => setAsOfDate(e.target.value)}
+                        className="text-xs bg-transparent border-none outline-none text-gray-700 w-[110px]"
+                      />
+                    </div>
                     <button
                       onClick={handleSync}
                       disabled={
@@ -357,8 +351,8 @@ export default function IntegrationsSettingsPage() {
                       }
                       className="
                         inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                        bg-white border border-gray-200 rounded-md
-                        hover:bg-gray-50 disabled:opacity-50
+                        bg-gray-900 text-white rounded-md
+                        hover:bg-gray-800 disabled:opacity-50
                         transition-colors
                       "
                     >
@@ -371,7 +365,7 @@ export default function IntegrationsSettingsPage() {
                       />
                       {status.syncStatus === "syncing"
                         ? "Syncing..."
-                        : "Sync Now"}
+                        : `Sync as of ${new Date(asOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
                     </button>
                   </div>
                 </div>
@@ -478,34 +472,6 @@ export default function IntegrationsSettingsPage() {
                       </div>
                     )
                   })}
-                </div>
-              </div>
-
-              {/* Sync Interval */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                  <h2 className="text-sm font-medium text-gray-900">
-                    Sync Frequency
-                  </h2>
-                </div>
-                <div className="p-4">
-                  <select
-                    value={
-                      (status.syncConfig
-                        ?.syncIntervalMinutes as number) || 60
-                    }
-                    onChange={(e) =>
-                      handleIntervalChange(Number(e.target.value))
-                    }
-                    disabled={savingConfig}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300"
-                  >
-                    {SYNC_INTERVALS.map((interval) => (
-                      <option key={interval.value} value={interval.value}>
-                        {interval.label}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
