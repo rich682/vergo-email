@@ -44,12 +44,20 @@ interface SchemaColumn {
   dropdownOptions?: string[]
 }
 
+interface AccountingSourceColumn {
+  key: string
+  label: string
+  dataType: string
+  filterable?: boolean
+  filterOptions?: string[]
+}
+
 interface AccountingSource {
   key: string
   sourceType: string
   name: string
   description: string
-  columns: Array<{ key: string; label: string; dataType: string }>
+  columns: AccountingSourceColumn[]
 }
 
 interface SyncFilter {
@@ -210,7 +218,12 @@ export default function NewDatabasePage() {
   const updateSyncFilter = (index: number, updates: Partial<SyncFilter>) => {
     setSyncFilters((prev) => {
       const updated = [...prev]
-      updated[index] = { ...updated[index], ...updates }
+      // Reset value when column changes
+      if (updates.column && updates.column !== updated[index].column) {
+        updated[index] = { ...updated[index], column: updates.column, value: "" }
+      } else {
+        updated[index] = { ...updated[index], ...updates }
+      }
       return updated
     })
   }
@@ -654,7 +667,7 @@ export default function NewDatabasePage() {
                 )}
 
                 {/* Filters */}
-                {selectedSourceDef && (
+                {selectedSourceDef && selectedSourceDef.columns.some((col) => col.filterable) && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <Label>Filters (optional)</Label>
@@ -668,40 +681,54 @@ export default function NewDatabasePage() {
                     </p>
                     {syncFilters.length > 0 && (
                       <div className="space-y-2">
-                        {syncFilters.map((filter, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <Select
-                              value={filter.column}
-                              onValueChange={(val) => updateSyncFilter(index, { column: val })}
-                            >
-                              <SelectTrigger className="w-[200px]">
-                                <SelectValue placeholder="Column..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedSourceDef.columns.map((col) => (
-                                  <SelectItem key={col.key} value={col.key}>
-                                    {col.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <span className="text-sm text-gray-500">=</span>
-                            <Input
-                              value={filter.value}
-                              onChange={(e) => updateSyncFilter(index, { value: e.target.value })}
-                              placeholder="Value..."
-                              className="flex-1"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeSyncFilter(index)}
-                              className="h-9 w-9 p-0 text-gray-400 hover:text-red-600"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
+                        {syncFilters.map((filter, index) => {
+                          const filterableColumns = selectedSourceDef.columns.filter((col) => col.filterable)
+                          const selectedCol = filterableColumns.find((col) => col.key === filter.column)
+                          return (
+                            <div key={index} className="flex items-center gap-2">
+                              <Select
+                                value={filter.column}
+                                onValueChange={(val) => updateSyncFilter(index, { column: val })}
+                              >
+                                <SelectTrigger className="w-[200px]">
+                                  <SelectValue placeholder="Column..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {filterableColumns.map((col) => (
+                                    <SelectItem key={col.key} value={col.key}>
+                                      {col.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <span className="text-sm text-gray-500">=</span>
+                              <Select
+                                value={filter.value}
+                                onValueChange={(val) => updateSyncFilter(index, { value: val })}
+                                disabled={!filter.column}
+                              >
+                                <SelectTrigger className="flex-1">
+                                  <SelectValue placeholder={filter.column ? "Select value..." : "Select column first"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(selectedCol?.filterOptions || []).map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                      {opt}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeSyncFilter(index)}
+                                className="h-9 w-9 p-0 text-gray-400 hover:text-red-600"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

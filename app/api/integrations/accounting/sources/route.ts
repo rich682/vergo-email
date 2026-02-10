@@ -11,6 +11,15 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+// Column definition with optional filter metadata
+interface SourceColumn {
+  key: string
+  label: string
+  dataType: string
+  filterable?: boolean
+  filterOptions?: string[]
+}
+
 // Source model definitions (must match SYNCED_DATABASE_SCHEMAS in accounting-sync.service.ts)
 const ACCOUNTING_SOURCES = [
   {
@@ -23,12 +32,12 @@ const ACCOUNTING_SOURCES = [
       { key: "remote_id", label: "ID", dataType: "text" },
       { key: "account_number", label: "Account Number", dataType: "text" },
       { key: "name", label: "Account Name", dataType: "text" },
-      { key: "classification", label: "Classification", dataType: "text" },
-      { key: "type", label: "Type", dataType: "text" },
-      { key: "status", label: "Status", dataType: "text" },
+      { key: "classification", label: "Classification", dataType: "text", filterable: true, filterOptions: ["ASSET", "EQUITY", "EXPENSE", "LIABILITY", "REVENUE"] },
+      { key: "type", label: "Type", dataType: "text", filterable: true, filterOptions: ["ACCOUNTS_PAYABLE", "ACCOUNTS_RECEIVABLE", "BANK", "CREDIT_CARD", "EQUITY", "EXPENSE", "FIXED_ASSET", "INCOME", "LIABILITY", "OTHER_ASSET", "OTHER_CURRENT_ASSET", "OTHER_CURRENT_LIABILITY", "OTHER_EXPENSE", "OTHER_INCOME"] },
+      { key: "status", label: "Status", dataType: "text", filterable: true, filterOptions: ["ACTIVE", "ARCHIVED"] },
       { key: "current_balance", label: "Current Balance", dataType: "currency" },
-      { key: "currency", label: "Currency", dataType: "text" },
-    ],
+      { key: "currency", label: "Currency", dataType: "text", filterable: true, filterOptions: ["AUD", "CAD", "EUR", "GBP", "NZD", "USD"] },
+    ] as SourceColumn[],
   },
   {
     key: "invoices",
@@ -39,7 +48,7 @@ const ACCOUNTING_SOURCES = [
       { key: "as_of_date", label: "As Of", dataType: "date" },
       { key: "remote_id", label: "ID", dataType: "text" },
       { key: "invoice_number", label: "Invoice #", dataType: "text" },
-      { key: "type", label: "Type", dataType: "text" },
+      { key: "type", label: "Type", dataType: "text", filterable: true, filterOptions: ["ACCOUNTS_PAYABLE", "ACCOUNTS_RECEIVABLE"] },
       { key: "contact_name", label: "Contact", dataType: "text" },
       { key: "contact_email", label: "Contact Email", dataType: "text" },
       { key: "issue_date", label: "Issue Date", dataType: "date" },
@@ -47,12 +56,12 @@ const ACCOUNTING_SOURCES = [
       { key: "total_amount", label: "Total Amount", dataType: "currency" },
       { key: "balance", label: "Balance Due", dataType: "currency" },
       { key: "paid_amount", label: "Paid Amount", dataType: "currency" },
-      { key: "status", label: "Status", dataType: "text" },
-      { key: "is_overdue", label: "Overdue", dataType: "boolean" },
+      { key: "status", label: "Status", dataType: "text", filterable: true, filterOptions: ["DRAFT", "OPEN", "PARTIALLY_PAID", "PAID", "VOID"] },
+      { key: "is_overdue", label: "Overdue", dataType: "boolean", filterable: true, filterOptions: ["true", "false"] },
       { key: "days_overdue", label: "Days Overdue", dataType: "number" },
-      { key: "currency", label: "Currency", dataType: "text" },
+      { key: "currency", label: "Currency", dataType: "text", filterable: true, filterOptions: ["AUD", "CAD", "EUR", "GBP", "NZD", "USD"] },
       { key: "paid_on_date", label: "Paid On", dataType: "date" },
-    ],
+    ] as SourceColumn[],
   },
   {
     key: "invoice_line_items",
@@ -68,7 +77,7 @@ const ACCOUNTING_SOURCES = [
       { key: "unit_price", label: "Unit Price", dataType: "currency" },
       { key: "total_amount", label: "Total", dataType: "currency" },
       { key: "account", label: "Account", dataType: "text" },
-    ],
+    ] as SourceColumn[],
   },
   {
     key: "journal_entries",
@@ -88,7 +97,7 @@ const ACCOUNTING_SOURCES = [
       { key: "credit", label: "Credit", dataType: "currency" },
       { key: "description", label: "Line Description", dataType: "text" },
       { key: "contact", label: "Contact", dataType: "text" },
-    ],
+    ] as SourceColumn[],
   },
   {
     key: "payments",
@@ -101,10 +110,10 @@ const ACCOUNTING_SOURCES = [
       { key: "transaction_date", label: "Date", dataType: "date" },
       { key: "contact_name", label: "Contact", dataType: "text" },
       { key: "total_amount", label: "Amount", dataType: "currency" },
-      { key: "currency", label: "Currency", dataType: "text" },
+      { key: "currency", label: "Currency", dataType: "text", filterable: true, filterOptions: ["AUD", "CAD", "EUR", "GBP", "NZD", "USD"] },
       { key: "reference", label: "Reference", dataType: "text" },
       { key: "account", label: "Account", dataType: "text" },
-    ],
+    ] as SourceColumn[],
   },
   {
     key: "gl_transactions",
@@ -121,9 +130,9 @@ const ACCOUNTING_SOURCES = [
       { key: "debit", label: "Debit", dataType: "currency" },
       { key: "credit", label: "Credit", dataType: "currency" },
       { key: "description", label: "Description", dataType: "text" },
-      { key: "transaction_type", label: "Transaction Type", dataType: "text" },
+      { key: "transaction_type", label: "Transaction Type", dataType: "text", filterable: true, filterOptions: ["INVOICE", "JOURNAL_ENTRY", "PAYMENT", "CREDIT_NOTE", "EXPENSE", "BILL", "TRANSFER"] },
       { key: "reference_id", label: "Reference ID", dataType: "text" },
-    ],
+    ] as SourceColumn[],
   },
 ]
 
