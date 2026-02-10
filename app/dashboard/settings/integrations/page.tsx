@@ -16,7 +16,7 @@ import Link from "next/link"
 
 interface SyncModelState {
   lastSyncAt: string | null
-  status: "success" | "error" | "pending"
+  status: "success" | "error" | "pending" | "skipped"
   error: string | null
   rowCount?: number
 }
@@ -75,6 +75,8 @@ function SyncStatusIcon({ status }: { status?: string }) {
       return <CheckCircle2 className="w-4 h-4 text-green-500" />
     case "error":
       return <XCircle className="w-4 h-4 text-red-500" />
+    case "skipped":
+      return <AlertCircle className="w-4 h-4 text-amber-400" />
     case "syncing":
       return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
     default:
@@ -458,11 +460,20 @@ export default function IntegrationsSettingsPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-gray-500">
-                          {dbStat && (
-                            <span>{dbStat.rowCount.toLocaleString()} rows</span>
+                          {modelState?.status === "skipped" ? (
+                            <>
+                              <AlertCircle className="w-4 h-4 text-amber-400" />
+                              <span className="text-amber-600">Not available</span>
+                            </>
+                          ) : (
+                            <>
+                              {dbStat && (
+                                <span>{dbStat.rowCount.toLocaleString()} rows</span>
+                              )}
+                              <SyncStatusIcon status={modelState?.status} />
+                              <span>{formatDate(modelState?.lastSyncAt)}</span>
+                            </>
                           )}
-                          <SyncStatusIcon status={modelState?.status} />
-                          <span>{formatDate(modelState?.lastSyncAt)}</span>
                         </div>
                       </div>
                     )

@@ -158,9 +158,18 @@ export interface SyncResult {
 
 interface ModelSyncState {
   lastSyncAt: string | null
-  status: "success" | "error" | "pending"
+  status: "success" | "error" | "pending" | "skipped"
   error: string | null
   rowCount?: number
+}
+
+/**
+ * Check if an error is a 403 scope/access error from Merge.
+ * These are non-fatal — the model simply isn't available for this linked account.
+ */
+function isScopeError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error)
+  return msg.includes("403") || msg.includes("inaccessible") || msg.includes("enable the relevant Scopes")
 }
 
 interface SyncConfig {
@@ -265,12 +274,23 @@ export class AccountingSyncService {
           modelsProcessed.push(modelKey)
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e)
-          errors.push(`${modelKey}: ${msg}`)
-          syncState[modelKey] = {
-            ...syncState[modelKey],
-            lastSyncAt: syncState[modelKey]?.lastSyncAt || null,
-            status: "error",
-            error: msg,
+          if (isScopeError(e)) {
+            // 403 / scope errors are non-fatal — mark as skipped
+            syncState[modelKey] = {
+              ...syncState[modelKey],
+              lastSyncAt: syncState[modelKey]?.lastSyncAt || null,
+              status: "skipped",
+              error: "Not available for this integration",
+            }
+            modelsProcessed.push(modelKey)
+          } else {
+            errors.push(`${modelKey}: ${msg}`)
+            syncState[modelKey] = {
+              ...syncState[modelKey],
+              lastSyncAt: syncState[modelKey]?.lastSyncAt || null,
+              status: "error",
+              error: msg,
+            }
           }
         }
       }
