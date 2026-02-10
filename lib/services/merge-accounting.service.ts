@@ -271,10 +271,12 @@ export class MergeAccountingService {
   }
 
   /**
-   * Delete a linked account from Merge
+   * Delete a linked account from Merge.
+   * POST https://api.merge.dev/api/accounting/v1/delete-account
+   * Requires X-Account-Token header to identify which linked account to delete.
    */
   static async deleteLinkedAccount(accountToken: string): Promise<void> {
-    await this.request(`${MERGE_INTEGRATIONS_URL}/delete-account`, {
+    await this.request(`${MERGE_BASE_URL}/delete-account`, {
       method: "POST",
       accountToken,
     })

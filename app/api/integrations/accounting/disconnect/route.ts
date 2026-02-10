@@ -44,27 +44,25 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Revoke on Merge (best-effort)
+    // Delete the linked account on Merge
+    let mergeDeleted = false
     if (integration.isActive) {
       try {
         const accountToken = decrypt(integration.accountToken)
         await MergeAccountingService.deleteLinkedAccount(accountToken)
+        mergeDeleted = true
       } catch (e) {
         console.warn("Failed to delete Merge linked account:", e)
+        // Continue with local cleanup even if Merge delete fails
       }
     }
 
-    // Soft-delete the integration
-    await prisma.accountingIntegration.update({
+    // Hard-delete the integration record so the user can reconnect cleanly
+    await prisma.accountingIntegration.delete({
       where: { id: integration.id },
-      data: {
-        isActive: false,
-        disconnectedAt: new Date(),
-        syncStatus: "idle",
-      },
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, mergeDeleted })
   } catch (error) {
     console.error("Error disconnecting integration:", error)
     return NextResponse.json(
