@@ -67,7 +67,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { name, description } = body
+    const { name, description, syncFilter } = body
 
     // Validate name if provided
     if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
@@ -77,16 +77,51 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Validate syncFilter if provided
+    if (syncFilter !== undefined && syncFilter !== null) {
+      if (!Array.isArray(syncFilter)) {
+        return NextResponse.json(
+          { error: "syncFilter must be an array" },
+          { status: 400 }
+        )
+      }
+      for (const f of syncFilter) {
+        if (!f.column || !f.value || typeof f.column !== "string" || typeof f.value !== "string") {
+          return NextResponse.json(
+            { error: "Each filter must have column and value strings" },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
+    // Check if filters are changing on an accounting-sourced database
+    let filtersChanged = false
+    if (syncFilter !== undefined) {
+      const existingDb = await DatabaseService.getDatabase(params.id, user.organizationId)
+      if (existingDb?.sourceType) {
+        const oldFilter = JSON.stringify(existingDb.syncFilter || null)
+        const newFilter = JSON.stringify(syncFilter)
+        filtersChanged = oldFilter !== newFilter
+      }
+    }
+
     const database = await DatabaseService.updateDatabase(
       params.id,
       user.organizationId,
       {
         name: name?.trim(),
         description: description?.trim(),
+        ...(syncFilter !== undefined && { syncFilter: syncFilter || null }),
       }
     )
 
-    return NextResponse.json({ database })
+    // Clear rows if filters changed — old data was synced with different filters
+    if (filtersChanged) {
+      await DatabaseService.clearDatabaseRows(params.id, user.organizationId)
+    }
+
+    return NextResponse.json({ database, filtersChanged })
   } catch (error: any) {
     console.error("Error updating database:", error)
     

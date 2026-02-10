@@ -1112,4 +1112,64 @@ export class AccountingSyncService {
       throw error
     }
   }
+
+  /**
+   * Preview accounting data without writing to a database.
+   * Fetches, transforms, and filters data, returning a limited sample + total count.
+   * Used by the preview API for both creation and reconfiguration flows.
+   */
+  static async previewData(
+    organizationId: string,
+    sourceType: string,
+    syncFilter: Array<{ column: string; value: string }>,
+    asOfDate: string,
+    limit: number = 20
+  ): Promise<{ rows: DatabaseRow[]; totalCount: number }> {
+    const modelKey = this.sourceTypeToModelKey(sourceType)
+    if (!modelKey) throw new Error(`Unknown source type: ${sourceType}`)
+
+    // Get account token
+    const integration = await prisma.accountingIntegration.findUnique({
+      where: { organizationId },
+    })
+    if (!integration || !integration.isActive) {
+      throw new Error("No active accounting integration")
+    }
+    const accountToken = decrypt(integration.accountToken)
+
+    // Build lookups
+    const accounts = await MergeAccountingService.fetchAccounts(accountToken)
+    const accountLookup = new Map<string, string>()
+    for (const a of accounts) {
+      const displayName = a.number ? `${a.number} - ${a.name || ""}` : (a.name || "")
+      if (a.id) accountLookup.set(a.id, displayName)
+      if (a.remote_id) accountLookup.set(a.remote_id, displayName)
+    }
+
+    const contacts = await MergeAccountingService.fetchContacts(accountToken)
+    const contactLookup = new Map<string, string>()
+    for (const c of contacts) {
+      if (c.id && c.name) contactLookup.set(c.id, c.name)
+      if (c.remote_id && c.name) contactLookup.set(c.remote_id, c.name)
+    }
+
+    // Fetch and transform
+    let allRows = await this.fetchAndTransform(
+      modelKey,
+      accountToken,
+      asOfDate,
+      accountLookup,
+      contactLookup,
+      undefined,
+      organizationId
+    )
+
+    // Apply filters
+    allRows = this.applyFilters(allRows, syncFilter)
+
+    return {
+      rows: allRows.slice(0, limit),
+      totalCount: allRows.length,
+    }
+  }
 }

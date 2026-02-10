@@ -23,6 +23,8 @@ import {
   Calendar,
   RefreshCw,
   Loader2,
+  Settings,
+  Eye,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +43,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { SyncFilterEditor } from "@/components/databases/sync-filter-editor"
+import type { SyncFilter, FilterableColumn } from "@/components/databases/sync-filter-editor"
 
 // ============================================
 // Types
@@ -76,6 +80,7 @@ interface DatabaseDetail {
   updatedAt: string
   lastImportedAt: string | null
   sourceType: string | null
+  syncFilter: SyncFilter[] | null
   isReadOnly: boolean
   syncStatus: string | null
   lastSyncAsOfDate: string | null
@@ -171,6 +176,20 @@ export default function DatabaseDetailPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  // Configure filters dialog state
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false)
+  const [editingSyncFilters, setEditingSyncFilters] = useState<SyncFilter[]>([])
+  const [sourceColumns, setSourceColumns] = useState<FilterableColumn[]>([])
+  const [savingFilters, setSavingFilters] = useState(false)
+
+  // Preview state (in configure dialog)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewData, setPreviewData] = useState<{
+    rows: DatabaseRow[]
+    totalCount: number
+  } | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
   // ----------------------------------------
   // Data Fetching
   // ----------------------------------------
@@ -240,6 +259,93 @@ export default function DatabaseDetailPage() {
       setSyncMessage({ type: "error", text: msg })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  // Fetch source column metadata for filter editing
+  useEffect(() => {
+    if (!database?.sourceType) return
+    async function fetchSourceColumns() {
+      try {
+        const resp = await fetch("/api/integrations/accounting/sources")
+        if (resp.ok) {
+          const data = await resp.json()
+          const source = (data.sources || []).find(
+            (s: { sourceType: string }) => s.sourceType === database?.sourceType
+          )
+          if (source) {
+            setSourceColumns(source.columns)
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching source columns:", e)
+      }
+    }
+    fetchSourceColumns()
+  }, [database?.sourceType])
+
+  const openFilterDialog = () => {
+    setEditingSyncFilters(database?.syncFilter ? [...database.syncFilter] : [])
+    setPreviewData(null)
+    setPreviewError(null)
+    setFilterDialogOpen(true)
+  }
+
+  const handlePreviewInDialog = async () => {
+    if (!database?.sourceType) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const validFilters = editingSyncFilters.filter((f) => f.column && f.value)
+      const resp = await fetch("/api/integrations/accounting/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: database.sourceType,
+          syncFilter: validFilters,
+        }),
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.error || "Preview failed")
+      }
+      const data = await resp.json()
+      setPreviewData(data)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setPreviewError(msg)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const handleSaveFilters = async () => {
+    if (!database) return
+    setSavingFilters(true)
+    try {
+      const validFilters = editingSyncFilters.filter((f) => f.column && f.value)
+      const resp = await fetch(`/api/databases/${databaseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          syncFilter: validFilters.length > 0 ? validFilters : null,
+        }),
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to save filters")
+      }
+      setFilterDialogOpen(false)
+      setSyncMessage({
+        type: "success",
+        text: "Filters updated. Existing data has been cleared — click \"Sync as of\" to re-sync with the new filters.",
+      })
+      await fetchDatabase()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSyncMessage({ type: "error", text: msg })
+    } finally {
+      setSavingFilters(false)
     }
   }
 
@@ -639,6 +745,35 @@ export default function DatabaseDetailPage() {
                 </div>
                 {database.description && (
                   <p className="text-sm text-gray-500">{database.description}</p>
+                )}
+                {/* Sync filter badges */}
+                {database.sourceType && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {database.syncFilter && database.syncFilter.length > 0 ? (
+                      <>
+                        {database.syncFilter.map((f, i) => {
+                          const colDef = sourceColumns.find((c) => c.key === f.column)
+                          return (
+                            <span
+                              key={i}
+                              className="px-1.5 py-0.5 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded"
+                            >
+                              {colDef?.label || f.column} = {f.value}
+                            </span>
+                          )
+                        })}
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-400">No filters</span>
+                    )}
+                    <button
+                      onClick={openFilterDialog}
+                      className="ml-1 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Configure filters"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1438,6 +1573,110 @@ export default function DatabaseDetailPage() {
                   })()}
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Configure Filters Dialog */}
+      <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Configure Sync Filters</DialogTitle>
+            <DialogDescription>
+              Change which rows are included when syncing data from your accounting software.
+              Changing filters will clear all existing data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <SyncFilterEditor
+              filters={editingSyncFilters}
+              onChange={setEditingSyncFilters}
+              columns={sourceColumns}
+            />
+
+            {/* Preview section */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-gray-700">Data Preview</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreviewInDialog}
+                  disabled={previewLoading}
+                >
+                  {previewLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Preview Data
+                </Button>
+              </div>
+              {previewError && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+                  {previewError}
+                </div>
+              )}
+              {previewData && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto max-h-48">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          {previewData.rows.length > 0 &&
+                            Object.keys(previewData.rows[0]).slice(0, 8).map((key) => (
+                              <th key={key} className="px-2 py-1.5 text-left font-medium text-gray-600 whitespace-nowrap">
+                                {key}
+                              </th>
+                            ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {previewData.rows.slice(0, 10).map((row, i) => (
+                          <tr key={i}>
+                            {Object.keys(previewData.rows[0]).slice(0, 8).map((key) => (
+                              <td key={key} className="px-2 py-1.5 text-gray-700 whitespace-nowrap max-w-[150px] truncate">
+                                {String(row[key] ?? "")}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-2 py-1.5 bg-gray-50 border-t text-xs text-gray-500">
+                    Showing {Math.min(previewData.rows.length, 10)} of {previewData.totalCount.toLocaleString()} total rows
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Warning */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-700">
+                  Saving new filters will <strong>clear all existing data</strong> from this database. You will need to re-sync after saving.
+                </p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setFilterDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveFilters}
+              disabled={savingFilters}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {savingFilters ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Save &amp; Clear Data
             </Button>
           </DialogFooter>
         </DialogContent>

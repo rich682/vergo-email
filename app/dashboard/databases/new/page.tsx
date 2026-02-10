@@ -18,6 +18,7 @@ import {
   Database,
   Loader2,
   X,
+  Eye,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SyncFilterEditor } from "@/components/databases/sync-filter-editor"
+import type { SyncFilter } from "@/components/databases/sync-filter-editor"
 
 // ============================================
 // Types
@@ -58,11 +61,6 @@ interface AccountingSource {
   name: string
   description: string
   columns: AccountingSourceColumn[]
-}
-
-interface SyncFilter {
-  column: string
-  value: string
 }
 
 type CreateMethod = "manual" | "upload" | "accounting"
@@ -172,6 +170,14 @@ export default function NewDatabasePage() {
   const [syncFilters, setSyncFilters] = useState<SyncFilter[]>([])
   const [accountingLoading, setAccountingLoading] = useState(true)
 
+  // Preview state
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewData, setPreviewData] = useState<{
+    rows: Record<string, unknown>[]
+    totalCount: number
+  } | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
   // Form state
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -211,25 +217,34 @@ export default function NewDatabasePage() {
     }
   }
 
-  const addSyncFilter = () => {
-    setSyncFilters([...syncFilters, { column: "", value: "" }])
-  }
+  // Filter state is managed by SyncFilterEditor component via onChange callback
 
-  const updateSyncFilter = (index: number, updates: Partial<SyncFilter>) => {
-    setSyncFilters((prev) => {
-      const updated = [...prev]
-      // Reset value when column changes
-      if (updates.column && updates.column !== updated[index].column) {
-        updated[index] = { ...updated[index], column: updates.column, value: "" }
-      } else {
-        updated[index] = { ...updated[index], ...updates }
+  const handlePreview = async () => {
+    if (!selectedSource) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const validFilters = syncFilters.filter((f) => f.column && f.value)
+      const resp = await fetch("/api/integrations/accounting/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: selectedSource,
+          syncFilter: validFilters,
+        }),
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.error || "Preview failed")
       }
-      return updated
-    })
-  }
-
-  const removeSyncFilter = (index: number) => {
-    setSyncFilters((prev) => prev.filter((_, i) => i !== index))
+      const data = await resp.json()
+      setPreviewData(data)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setPreviewError(msg)
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   // ----------------------------------------
@@ -667,68 +682,73 @@ export default function NewDatabasePage() {
                 )}
 
                 {/* Filters */}
-                {selectedSourceDef && selectedSourceDef.columns.some((col) => col.filterable) && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label>Filters (optional)</Label>
-                      <Button variant="outline" size="sm" onClick={addSyncFilter}>
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Add Filter
+                {selectedSourceDef && (
+                  <SyncFilterEditor
+                    filters={syncFilters}
+                    onChange={setSyncFilters}
+                    columns={selectedSourceDef.columns}
+                  />
+                )}
+
+                {/* Data Preview */}
+                {selectedSourceDef && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Data Preview</p>
+                        <p className="text-xs text-gray-500">
+                          See a sample of the data you will get with these filters
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePreview}
+                        disabled={previewLoading}
+                      >
+                        {previewLoading ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5 mr-1.5" />
+                        )}
+                        Preview Data
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Only rows matching ALL filters will be included when syncing.
-                    </p>
-                    {syncFilters.length > 0 && (
-                      <div className="space-y-2">
-                        {syncFilters.map((filter, index) => {
-                          const filterableColumns = selectedSourceDef.columns.filter((col) => col.filterable)
-                          const selectedCol = filterableColumns.find((col) => col.key === filter.column)
-                          return (
-                            <div key={index} className="flex items-center gap-2">
-                              <Select
-                                value={filter.column}
-                                onValueChange={(val) => updateSyncFilter(index, { column: val })}
-                              >
-                                <SelectTrigger className="w-[200px]">
-                                  <SelectValue placeholder="Column..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {filterableColumns.map((col) => (
-                                    <SelectItem key={col.key} value={col.key}>
-                                      {col.label}
-                                    </SelectItem>
+                    {previewError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                        {previewError}
+                      </div>
+                    )}
+                    {previewData && (
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto max-h-80">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                {previewData.rows.length > 0 &&
+                                  Object.keys(previewData.rows[0]).map((key) => (
+                                    <th key={key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
+                                      {key}
+                                    </th>
                                   ))}
-                                </SelectContent>
-                              </Select>
-                              <span className="text-sm text-gray-500">=</span>
-                              <Select
-                                value={filter.value}
-                                onValueChange={(val) => updateSyncFilter(index, { value: val })}
-                                disabled={!filter.column}
-                              >
-                                <SelectTrigger className="flex-1">
-                                  <SelectValue placeholder={filter.column ? "Select value..." : "Select column first"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(selectedCol?.filterOptions || []).map((opt) => (
-                                    <SelectItem key={opt} value={opt}>
-                                      {opt}
-                                    </SelectItem>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {previewData.rows.map((row, i) => (
+                                <tr key={i}>
+                                  {Object.keys(previewData.rows[0]).map((key) => (
+                                    <td key={key} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[200px] truncate">
+                                      {String(row[key] ?? "")}
+                                    </td>
                                   ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeSyncFilter(index)}
-                                className="h-9 w-9 p-0 text-gray-400 hover:text-red-600"
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          )
-                        })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="px-3 py-2 bg-gray-50 border-t text-xs text-gray-500">
+                          Showing {previewData.rows.length} of {previewData.totalCount.toLocaleString()} total rows
+                        </div>
                       </div>
                     )}
                   </div>

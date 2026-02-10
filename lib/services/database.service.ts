@@ -10,6 +10,7 @@
  * - Reserved fields: Column keys starting with "_" are reserved for system use
  */
 
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 
 // ============================================
@@ -47,6 +48,7 @@ export interface CreateDatabaseInput {
 export interface UpdateDatabaseInput {
   name?: string
   description?: string
+  syncFilter?: Array<{ column: string; value: string }> | null
 }
 
 export interface ImportResult {
@@ -451,6 +453,9 @@ export class DatabaseService {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
+        ...(input.syncFilter !== undefined && {
+          syncFilter: input.syncFilter === null ? Prisma.JsonNull : input.syncFilter,
+        }),
       },
     })
 
@@ -459,6 +464,29 @@ export class DatabaseService {
     }
 
     return prisma.database.findUnique({ where: { id } })
+  }
+
+  /**
+   * Clear all rows from a database and reset sync state.
+   * Used when sync filters change — old data was synced with different filters.
+   */
+  static async clearDatabaseRows(id: string, organizationId: string) {
+    const result = await prisma.database.updateMany({
+      where: { id, organizationId },
+      data: {
+        rows: [],
+        rowCount: 0,
+        lastSyncAsOfDate: null,
+        syncStatus: null,
+        lastSyncError: null,
+      },
+    })
+
+    if (result.count === 0) {
+      throw new Error("Database not found")
+    }
+
+    return { cleared: true }
   }
 
   /**
