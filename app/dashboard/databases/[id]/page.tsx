@@ -20,6 +20,9 @@ import {
   GripVertical,
   Trash2,
   Save,
+  Calendar,
+  RefreshCw,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,6 +77,9 @@ interface DatabaseDetail {
   lastImportedAt: string | null
   sourceType: string | null
   isReadOnly: boolean
+  syncStatus: string | null
+  lastSyncAsOfDate: string | null
+  lastSyncError: string | null
   createdBy: {
     name: string | null
     email: string
@@ -157,6 +163,14 @@ export default function DatabaseDetailPage() {
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([])
   const [editingDropdownColumn, setEditingDropdownColumn] = useState<string | null>(null)
 
+  // Sync state (for accounting-sourced databases)
+  const [syncAsOfDate, setSyncAsOfDate] = useState(() => {
+    const today = new Date()
+    return today.toISOString().split("T")[0]
+  })
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
   // ----------------------------------------
   // Data Fetching
   // ----------------------------------------
@@ -194,6 +208,40 @@ export default function DatabaseDetailPage() {
   useEffect(() => {
     fetchDatabase()
   }, [fetchDatabase])
+
+  // Poll for sync status when syncing
+  useEffect(() => {
+    if (database?.syncStatus !== "syncing") return
+    const interval = setInterval(fetchDatabase, 5000)
+    return () => clearInterval(interval)
+  }, [database?.syncStatus, fetchDatabase])
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setSyncMessage(null)
+    try {
+      const resp = await fetch(`/api/databases/${databaseId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asOfDate: syncAsOfDate }),
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.error || "Sync failed")
+      }
+      const data = await resp.json()
+      setSyncMessage({
+        type: "success",
+        text: `Synced ${data.rowCount.toLocaleString()} total rows as of ${new Date(syncAsOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`,
+      })
+      await fetchDatabase()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSyncMessage({ type: "error", text: msg })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // ----------------------------------------
   // Computed Values
@@ -595,7 +643,47 @@ export default function DatabaseDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {!database.isReadOnly && (
+              {/* Sync controls for accounting-sourced databases */}
+              {database.sourceType && (
+                <>
+                  {database.lastSyncAsOfDate && (
+                    <span className="text-xs text-gray-500 mr-1">
+                      Last synced: {new Date(database.lastSyncAsOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  )}
+                  {!database.lastSyncAsOfDate && (
+                    <span className="text-xs text-gray-400 mr-1">
+                      Not yet synced
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1.5 border border-gray-200 rounded-md px-2 py-1">
+                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      type="date"
+                      value={syncAsOfDate}
+                      onChange={(e) => setSyncAsOfDate(e.target.value)}
+                      className="text-xs bg-transparent border-none outline-none text-gray-700 w-[110px]"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleSync}
+                    disabled={syncing || database.syncStatus === "syncing"}
+                    className="bg-gray-900 hover:bg-gray-800 text-white"
+                  >
+                    {syncing || database.syncStatus === "syncing" ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {syncing || database.syncStatus === "syncing"
+                      ? "Syncing..."
+                      : `Sync as of ${new Date(syncAsOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
+                  </Button>
+                </>
+              )}
+              {/* Standard buttons for non-synced databases */}
+              {!database.isReadOnly && !database.sourceType && (
                 <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
                   <Download className="w-4 h-4 mr-1.5" />
                   Template
@@ -605,7 +693,7 @@ export default function DatabaseDetailPage() {
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export
               </Button>
-              {!database.isReadOnly && (
+              {!database.isReadOnly && !database.sourceType && (
                 <Button
                   size="sm"
                   className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -617,6 +705,24 @@ export default function DatabaseDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Sync status message */}
+          {syncMessage && (
+            <div
+              className={`mt-3 px-3 py-2 rounded-lg text-sm ${
+                syncMessage.type === "success"
+                  ? "bg-green-50 text-green-800 border border-green-200"
+                  : "bg-red-50 text-red-800 border border-red-200"
+              }`}
+            >
+              {syncMessage.text}
+            </div>
+          )}
+          {database.lastSyncError && !syncMessage && (
+            <div className="mt-3 px-3 py-2 rounded-lg text-sm bg-red-50 text-red-800 border border-red-200">
+              Last sync error: {database.lastSyncError}
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-6 mt-4 border-b border-gray-200 -mb-px">

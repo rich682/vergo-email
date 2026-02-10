@@ -13,7 +13,6 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { encrypt } from "@/lib/encryption"
 import { MergeAccountingService } from "@/lib/services/merge-accounting.service"
-import { inngest } from "@/inngest/client"
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,12 +49,6 @@ export async function POST(request: NextRequest) {
 
     const defaultSyncConfig = {
       contacts: true,
-      invoices: true,
-      accounts: true,
-      journalEntries: true,
-      payments: true,
-      glTransactions: true,
-      syncIntervalMinutes: 60,
     }
 
     // Upsert the integration record
@@ -83,11 +76,18 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Trigger initial sync
-    await inngest.send({
-      name: "accounting/sync-triggered",
-      data: { organizationId: user.organizationId },
-    })
+    // Sync contacts into Entity model (non-blocking — best effort)
+    try {
+      const { AccountingSyncService } = await import(
+        "@/lib/services/accounting-sync.service"
+      )
+      await AccountingSyncService.syncContacts(
+        user.organizationId,
+        result.account_token
+      )
+    } catch (e) {
+      console.warn("Initial contact sync failed (non-blocking):", e)
+    }
 
     return NextResponse.json({
       success: true,

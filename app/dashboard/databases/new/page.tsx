@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 // XLSX is lazy-loaded in handleFileUpload to reduce initial bundle size
@@ -15,6 +15,9 @@ import {
   Table,
   Check,
   AlertCircle,
+  Database,
+  Loader2,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +44,20 @@ interface SchemaColumn {
   dropdownOptions?: string[]
 }
 
-type CreateMethod = "manual" | "upload"
+interface AccountingSource {
+  key: string
+  sourceType: string
+  name: string
+  description: string
+  columns: Array<{ key: string; label: string; dataType: string }>
+}
+
+interface SyncFilter {
+  column: string
+  value: string
+}
+
+type CreateMethod = "manual" | "upload" | "accounting"
 
 // ============================================
 // Constants
@@ -140,9 +156,68 @@ export default function NewDatabasePage() {
   const [importSampleData, setImportSampleData] = useState(true)
   const [parseError, setParseError] = useState<string | null>(null)
   
+  // Accounting source state
+  const [accountingSources, setAccountingSources] = useState<AccountingSource[]>([])
+  const [accountingConnected, setAccountingConnected] = useState(false)
+  const [accountingIntegrationName, setAccountingIntegrationName] = useState("")
+  const [selectedSource, setSelectedSource] = useState<string>("")
+  const [syncFilters, setSyncFilters] = useState<SyncFilter[]>([])
+  const [accountingLoading, setAccountingLoading] = useState(true)
+
   // Form state
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // ----------------------------------------
+  // Fetch Accounting Sources
+  // ----------------------------------------
+
+  useEffect(() => {
+    async function fetchSources() {
+      try {
+        const resp = await fetch("/api/integrations/accounting/sources")
+        if (resp.ok) {
+          const data = await resp.json()
+          setAccountingSources(data.sources || [])
+          setAccountingConnected(data.connected || false)
+          setAccountingIntegrationName(data.integrationName || "")
+        }
+      } catch (e) {
+        console.error("Error fetching accounting sources:", e)
+      } finally {
+        setAccountingLoading(false)
+      }
+    }
+    fetchSources()
+  }, [])
+
+  // Auto-suggest name when source is selected
+  const selectedSourceDef = accountingSources.find((s) => s.sourceType === selectedSource)
+
+  const handleSelectSource = (sourceType: string) => {
+    setSelectedSource(sourceType)
+    const source = accountingSources.find((s) => s.sourceType === sourceType)
+    if (source && !name) {
+      setName(source.name)
+      setDescription(source.description)
+    }
+  }
+
+  const addSyncFilter = () => {
+    setSyncFilters([...syncFilters, { column: "", value: "" }])
+  }
+
+  const updateSyncFilter = (index: number, updates: Partial<SyncFilter>) => {
+    setSyncFilters((prev) => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], ...updates }
+      return updated
+    })
+  }
+
+  const removeSyncFilter = (index: number) => {
+    setSyncFilters((prev) => prev.filter((_, i) => i !== index))
+  }
 
   // ----------------------------------------
   // Manual Schema Handlers
@@ -304,28 +379,70 @@ export default function NewDatabasePage() {
   // ----------------------------------------
 
   const handleCreate = async () => {
-    const schemaColumns = method === "upload" ? inferredColumns : columns
-    
     // Validation
     if (!name.trim()) {
       setError("Database name is required")
       return
     }
-    
+
+    // Accounting source creation
+    if (method === "accounting") {
+      if (!selectedSource) {
+        setError("Please select a data source")
+        return
+      }
+
+      setCreating(true)
+      setError(null)
+
+      try {
+        // Filter out incomplete filters
+        const validFilters = syncFilters.filter((f) => f.column && f.value)
+
+        const response = await fetch("/api/databases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || undefined,
+            sourceType: selectedSource,
+            syncFilter: validFilters.length > 0 ? validFilters : undefined,
+          }),
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to create database")
+        }
+
+        const data = await response.json()
+        router.push(`/dashboard/databases/${data.database.id}`)
+      } catch (err: any) {
+        setError(err.message)
+      } finally {
+        setCreating(false)
+      }
+      return
+    }
+
+    // Manual or upload creation
+    const schemaColumns = method === "upload" ? inferredColumns : columns
+
     if (schemaColumns.length === 0) {
       setError("At least one column is required")
       return
     }
-    
+
     const emptyLabels = schemaColumns.filter(c => !c.label.trim())
     if (emptyLabels.length > 0) {
       setError("All columns must have labels")
       return
     }
-    
+
     setCreating(true)
     setError(null)
-    
+
     try {
       // Prepare initial rows if importing sample data
       let initialRows: any[] | undefined
@@ -339,7 +456,7 @@ export default function NewDatabasePage() {
           return newRow
         })
       }
-      
+
       const response = await fetch("/api/databases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -354,12 +471,12 @@ export default function NewDatabasePage() {
           initialRows,
         }),
       })
-      
+
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || "Failed to create database")
       }
-      
+
       const data = await response.json()
       router.push(`/dashboard/databases/${data.database.id}`)
     } catch (err: any) {
@@ -388,7 +505,7 @@ export default function NewDatabasePage() {
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">Create Database</h1>
               <p className="mt-1 text-sm text-gray-500">
-                Define your database schema manually or upload a spreadsheet
+                Define your database schema manually, upload a spreadsheet, or pull from your accounting software
               </p>
             </div>
           </div>
@@ -438,8 +555,8 @@ export default function NewDatabasePage() {
           {/* Method Selection */}
           {method === null ? (
             <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-4">How do you want to define the schema?</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <h2 className="text-lg font-medium text-gray-900 mb-4">How do you want to create the database?</h2>
+              <div className={`grid gap-4 ${accountingConnected ? "grid-cols-3" : "grid-cols-2"}`}>
                 <button
                   onClick={() => setMethod("manual")}
                   className="p-6 border-2 border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all text-left group"
@@ -450,7 +567,7 @@ export default function NewDatabasePage() {
                     Define columns, types, and requirements one by one
                   </p>
                 </button>
-                
+
                 <button
                   onClick={() => setMethod("upload")}
                   className="p-6 border-2 border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all text-left group"
@@ -461,6 +578,141 @@ export default function NewDatabasePage() {
                     Import schema from Excel headers with optional sample data
                   </p>
                 </button>
+
+                {accountingConnected && (
+                  <button
+                    onClick={() => setMethod("accounting")}
+                    className="p-6 border-2 border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all text-left group"
+                  >
+                    <Database className="w-8 h-8 text-gray-400 group-hover:text-orange-500 mb-3" />
+                    <h3 className="font-medium text-gray-900">From Accounting Software</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Create from {accountingIntegrationName} data with optional filters
+                    </p>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : method === "accounting" ? (
+            /* Accounting Source Form */
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">From {accountingIntegrationName}</h2>
+                  <p className="text-sm text-gray-500">
+                    Select a data source and optionally add filters
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMethod(null)
+                    setSelectedSource("")
+                    setSyncFilters([])
+                  }}
+                >
+                  Change method
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Source selection */}
+                <div>
+                  <Label>Data Source <span className="text-red-500">*</span></Label>
+                  <Select value={selectedSource} onValueChange={handleSelectSource}>
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue placeholder="Select a data source..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accountingSources.map((source) => (
+                        <SelectItem key={source.sourceType} value={source.sourceType}>
+                          {source.name} — {source.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Schema preview */}
+                {selectedSourceDef && (
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Columns ({selectedSourceDef.columns.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedSourceDef.columns.map((col) => (
+                        <span
+                          key={col.key}
+                          className="px-2 py-0.5 bg-white border border-gray-200 text-xs text-gray-700 rounded"
+                        >
+                          {col.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Filters */}
+                {selectedSourceDef && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label>Filters (optional)</Label>
+                      <Button variant="outline" size="sm" onClick={addSyncFilter}>
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        Add Filter
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Only rows matching ALL filters will be included when syncing.
+                    </p>
+                    {syncFilters.length > 0 && (
+                      <div className="space-y-2">
+                        {syncFilters.map((filter, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <Select
+                              value={filter.column}
+                              onValueChange={(val) => updateSyncFilter(index, { column: val })}
+                            >
+                              <SelectTrigger className="w-[200px]">
+                                <SelectValue placeholder="Column..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {selectedSourceDef.columns.map((col) => (
+                                  <SelectItem key={col.key} value={col.key}>
+                                    {col.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-sm text-gray-500">=</span>
+                            <Input
+                              value={filter.value}
+                              onChange={(e) => updateSyncFilter(index, { value: e.target.value })}
+                              placeholder="Value..."
+                              className="flex-1"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeSyncFilter(index)}
+                              className="h-9 w-9 p-0 text-gray-400 hover:text-red-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-700">
+                    <strong>Note:</strong> This creates a read-only database. Use the &quot;Sync as of&quot; button
+                    in the database viewer to pull data from {accountingIntegrationName}.
+                  </p>
+                </div>
               </div>
             </div>
           ) : method === "manual" ? (
@@ -838,7 +1090,8 @@ export default function NewDatabasePage() {
                 !name.trim() ||
                 method === null ||
                 (method === "manual" && columns.length === 0) ||
-                (method === "upload" && inferredColumns.length === 0)
+                (method === "upload" && inferredColumns.length === 0) ||
+                (method === "accounting" && !selectedSource)
               }
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >

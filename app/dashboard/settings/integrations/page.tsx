@@ -6,27 +6,11 @@ import {
   ArrowLeft,
   RefreshCw,
   CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Clock,
   Loader2,
   Unplug,
-  Calendar,
+  Database,
 } from "lucide-react"
 import Link from "next/link"
-
-interface SyncModelState {
-  lastSyncAt: string | null
-  status: "success" | "error" | "pending" | "skipped"
-  error: string | null
-  rowCount?: number
-}
-
-interface DatabaseStat {
-  name: string
-  rowCount: number
-  lastImportedAt: string | null
-}
 
 interface IntegrationStatus {
   connected: boolean
@@ -36,21 +20,7 @@ interface IntegrationStatus {
   endUserEmail?: string
   lastSyncAt?: string
   syncStatus?: string
-  syncState?: Record<string, SyncModelState>
-  syncConfig?: Record<string, boolean | number>
-  lastSyncError?: string
-  databaseStats?: Record<string, DatabaseStat>
 }
-
-const SYNC_MODELS = [
-  { key: "contacts", configKey: "contacts", label: "Contacts", description: "Vendors, customers, and suppliers with email" },
-  { key: "accounts", configKey: "accounts", label: "Chart of Accounts", description: "Account categories and balances" },
-  { key: "invoices", configKey: "invoices", label: "Invoices", description: "AR and AP invoices with status" },
-  { key: "invoice_line_items", configKey: "invoiceLineItems", label: "Invoice Line Items", description: "Individual line items from invoices" },
-  { key: "journal_entries", configKey: "journalEntries", label: "Journal Entries", description: "Debit/credit journal entries" },
-  { key: "payments", configKey: "payments", label: "Payments", description: "Payment records" },
-  { key: "gl_transactions", configKey: "glTransactions", label: "General Ledger", description: "All GL transactions" },
-]
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Never"
@@ -63,33 +33,12 @@ function formatDate(dateStr: string | null | undefined): string {
   })
 }
 
-function SyncStatusIcon({ status }: { status?: string }) {
-  switch (status) {
-    case "success":
-      return <CheckCircle2 className="w-4 h-4 text-green-500" />
-    case "error":
-      return <XCircle className="w-4 h-4 text-red-500" />
-    case "skipped":
-      return <AlertCircle className="w-4 h-4 text-amber-400" />
-    case "syncing":
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-    default:
-      return <Clock className="w-4 h-4 text-gray-400" />
-  }
-}
-
 export default function IntegrationsSettingsPage() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [resyncingContacts, setResyncingContacts] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
-  const [savingConfig, setSavingConfig] = useState(false)
-  const [asOfDate, setAsOfDate] = useState(() => {
-    // Default to today in YYYY-MM-DD format
-    const today = new Date()
-    return today.toISOString().split("T")[0]
-  })
   const [message, setMessage] = useState<{
     type: "success" | "error"
     text: string
@@ -113,13 +62,6 @@ export default function IntegrationsSettingsPage() {
     fetchStatus()
   }, [fetchStatus])
 
-  // Poll for sync status when syncing
-  useEffect(() => {
-    if (status?.syncStatus !== "syncing") return
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
-  }, [status?.syncStatus, fetchStatus])
-
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text })
     setTimeout(() => setMessage(null), 5000)
@@ -140,7 +82,7 @@ export default function IntegrationsSettingsPage() {
       const data = await resp.json()
       showMessage(
         "success",
-        `Connected to ${data.integrationName}. Initial sync started.`
+        `Connected to ${data.integrationName}. Contacts synced.`
       )
       await fetchStatus()
     } catch (e: unknown) {
@@ -151,35 +93,32 @@ export default function IntegrationsSettingsPage() {
     }
   }
 
-  const handleSync = async () => {
-    setSyncing(true)
+  const handleResyncContacts = async () => {
+    setResyncingContacts(true)
     try {
       const resp = await fetch("/api/integrations/accounting/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asOfDate }),
+        body: JSON.stringify({ contactsOnly: true }),
       })
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to trigger sync")
+        throw new Error(data.error || "Failed to resync contacts")
       }
-      showMessage(
-        "success",
-        `Snapshot sync started as of ${new Date(asOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}. This may take a few moments.`
-      )
+      showMessage("success", "Contacts resynced successfully.")
       await fetchStatus()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       showMessage("error", msg)
     } finally {
-      setSyncing(false)
+      setResyncingContacts(false)
     }
   }
 
   const handleDisconnect = async () => {
     if (
       !confirm(
-        "Are you sure you want to disconnect your accounting software? Synced data will remain but will no longer update."
+        "Are you sure you want to disconnect your accounting software? Synced databases will remain but will no longer sync."
       )
     ) {
       return
@@ -204,29 +143,6 @@ export default function IntegrationsSettingsPage() {
       setDisconnecting(false)
     }
   }
-
-  const handleToggleModel = async (configKey: string, enabled: boolean) => {
-    setSavingConfig(true)
-    try {
-      const resp = await fetch("/api/integrations/accounting/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [configKey]: enabled }),
-      })
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to update config")
-      }
-      await fetchStatus()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showMessage("error", msg)
-    } finally {
-      setSavingConfig(false)
-    }
-  }
-
-  // Sync Interval removed — sync is now on-demand/snapshot-based
 
   if (loading) {
     return (
@@ -256,8 +172,8 @@ export default function IntegrationsSettingsPage() {
           Accounting Integration
         </h1>
         <p className="text-sm text-gray-500 mb-6">
-          Connect your accounting software and pull snapshots of contacts,
-          invoices, and financial data as of any date.
+          Connect your accounting software to sync contacts and create databases
+          from your financial data.
         </p>
 
         {/* Messages */}
@@ -284,9 +200,8 @@ export default function IntegrationsSettingsPage() {
               </div>
               <div className="p-6">
                 <p className="text-sm text-gray-600 mb-4">
-                  Connect your accounting software to automatically sync
-                  contacts, invoices, chart of accounts, journal entries,
-                  payments, and general ledger transactions.
+                  Connect your accounting software to sync contacts and
+                  create databases from your financial data.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-6">
                   {[
@@ -315,7 +230,7 @@ export default function IntegrationsSettingsPage() {
                 />
                 {connecting && (
                   <p className="text-sm text-gray-500 mt-2">
-                    Connecting and starting initial sync...
+                    Connecting and syncing contacts...
                   </p>
                 )}
               </div>
@@ -334,40 +249,23 @@ export default function IntegrationsSettingsPage() {
                       Connected to {status.integrationName}
                     </h2>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 border border-gray-200 rounded-md px-2 py-1">
-                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                      <input
-                        type="date"
-                        value={asOfDate}
-                        onChange={(e) => setAsOfDate(e.target.value)}
-                        className="text-xs bg-transparent border-none outline-none text-gray-700 w-[110px]"
-                      />
-                    </div>
-                    <button
-                      onClick={handleSync}
-                      disabled={
-                        syncing || status.syncStatus === "syncing"
-                      }
-                      className="
-                        inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
-                        bg-gray-900 text-white rounded-md
-                        hover:bg-gray-800 disabled:opacity-50
-                        transition-colors
-                      "
-                    >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 ${
-                          status.syncStatus === "syncing"
-                            ? "animate-spin"
-                            : ""
-                        }`}
-                      />
-                      {status.syncStatus === "syncing"
-                        ? "Syncing..."
-                        : `Sync as of ${new Date(asOfDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`}
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleResyncContacts}
+                    disabled={resyncingContacts}
+                    className="
+                      inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                      bg-white text-gray-700 border border-gray-200 rounded-md
+                      hover:bg-gray-50 disabled:opacity-50
+                      transition-colors
+                    "
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${
+                        resyncingContacts ? "animate-spin" : ""
+                      }`}
+                    />
+                    {resyncingContacts ? "Syncing..." : "Resync Contacts"}
+                  </button>
                 </div>
                 <div className="p-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -383,95 +281,31 @@ export default function IntegrationsSettingsPage() {
                         {formatDate(status.connectedAt)}
                       </p>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Last sync</span>
-                      <p className="font-medium text-gray-900">
-                        {formatDate(status.lastSyncAt)}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Status</span>
-                      <p className="font-medium text-gray-900 capitalize">
-                        {status.syncStatus}
-                      </p>
-                    </div>
                   </div>
-                  {status.lastSyncError && (
-                    <div className="mt-3 p-3 bg-red-50 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                        <p className="text-xs text-red-700">
-                          {status.lastSyncError}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* Sync Models */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                  <h2 className="text-sm font-medium text-gray-900">
-                    Data to Sync
-                  </h2>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {SYNC_MODELS.map((model) => {
-                    const modelState = status.syncState?.[model.key]
-                    const dbStat =
-                      status.databaseStats?.[
-                        `merge_${model.key}`
-                      ]
-                    const isEnabled =
-                      status.syncConfig?.[model.configKey] !== false
-
-                    return (
-                      <div
-                        key={model.key}
-                        className="px-4 py-3 flex items-center justify-between"
+              {/* Info Card — Create databases */}
+              <div className="border border-blue-100 bg-blue-50 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <Database className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">
+                      Create databases from your accounting data
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Go to{" "}
+                      <Link
+                        href="/dashboard/databases/new"
+                        className="underline font-medium hover:text-blue-900"
                       >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={isEnabled}
-                            onChange={(e) =>
-                              handleToggleModel(
-                                model.configKey,
-                                e.target.checked
-                              )
-                            }
-                            disabled={savingConfig}
-                            className="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {model.label}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {model.description}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          {modelState?.status === "skipped" ? (
-                            <>
-                              <AlertCircle className="w-4 h-4 text-amber-400" />
-                              <span className="text-amber-600">Not available</span>
-                            </>
-                          ) : (
-                            <>
-                              {dbStat && (
-                                <span>{dbStat.rowCount.toLocaleString()} rows</span>
-                              )}
-                              <SyncStatusIcon status={modelState?.status} />
-                              <span>{formatDate(modelState?.lastSyncAt)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                        Databases → New
+                      </Link>{" "}
+                      and choose &quot;From Accounting Software&quot; to create a database
+                      from your {status.integrationName} data. You can apply
+                      filters and sync as of any date.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -483,8 +317,8 @@ export default function IntegrationsSettingsPage() {
                       Disconnect Integration
                     </p>
                     <p className="text-xs text-gray-500">
-                      Synced data will remain but will no longer update
-                      automatically.
+                      Synced databases will remain but will no longer sync
+                      new data.
                     </p>
                   </div>
                   <button

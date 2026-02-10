@@ -1099,6 +1099,10 @@ model Database {
   // Integration source tracking
   sourceType      String?  // null = manual, "merge_accounts", "merge_invoices", "merge_gl", etc.
   isReadOnly      Boolean  @default(false) // true for integration-synced databases
+  syncFilter      Json?    // Column-value filters for accounting source: [{ column: "status", value: "UNPAID" }]
+  lastSyncAsOfDate String? // Last "as of" date used for sync (YYYY-MM-DD)
+  syncStatus      String?  // null | "syncing" | "error" | "success"
+  lastSyncError   String?  // Error message from last sync attempt
 
   // Metadata
   createdAt       DateTime @default(now())

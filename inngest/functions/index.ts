@@ -1002,46 +1002,4 @@ Use plain language. Be concise.`
     }
   ),
 
-  // ============================================
-  // Accounting Integration Sync (Merge.dev)
-  // ============================================
-
-  // On-demand snapshot sync - triggered by connect flow or manual "Sync as of [date]" button
-  // No automatic cron sync — users pull snapshots on demand
-  inngest.createFunction(
-    {
-      id: "accounting-sync-on-demand",
-      name: "On-Demand Accounting Sync",
-      concurrency: { limit: 1, key: "event.data.organizationId" },
-    },
-    { event: "accounting/sync-triggered" },
-    async ({ event }) => {
-      const { organizationId, asOfDate } = event.data as {
-        organizationId: string
-        asOfDate?: string
-      }
-      console.log(
-        `[Accounting Sync] On-demand sync triggered for org ${organizationId}` +
-          (asOfDate ? ` (as of ${asOfDate})` : "")
-      )
-
-      try {
-        const { AccountingSyncService } = await import(
-          "@/lib/services/accounting-sync.service"
-        )
-        const result = await AccountingSyncService.syncAll(
-          organizationId,
-          asOfDate
-        )
-        console.log(
-          `[Accounting Sync] On-demand sync complete: ${result.contactsSynced} contacts, ${result.modelsProcessed.length} models, ${result.errors.length} errors`
-        )
-        return { success: true, ...result }
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error)
-        console.error(`[Accounting Sync] On-demand sync error:`, msg)
-        return { success: false, error: msg }
-      }
-    }
-  ),
 ]

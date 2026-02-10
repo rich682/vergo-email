@@ -66,7 +66,7 @@ interface SyncedDatabaseDefinition {
   sourceType: string
 }
 
-const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
+export const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> = {
   accounts: {
     name: "Chart of Accounts",
     description: "Chart of accounts synced from accounting software",
@@ -982,5 +982,132 @@ export class AccountingSyncService {
       }
     }
     return rows
+  }
+
+  /**
+   * Map a sourceType (e.g., "merge_invoices") back to a SyncModelKey.
+   */
+  private static sourceTypeToModelKey(sourceType: string): SyncModelKey | null {
+    for (const [key, def] of Object.entries(SYNCED_DATABASE_SCHEMAS)) {
+      if (def.sourceType === sourceType) return key as SyncModelKey
+    }
+    return null
+  }
+
+  /**
+   * Apply simple column-value equality filters to rows.
+   * Filters are AND logic — all must match.
+   * Supports case-insensitive string comparison.
+   */
+  static applyFilters(
+    rows: DatabaseRow[],
+    filters: Array<{ column: string; value: string }>
+  ): DatabaseRow[] {
+    if (!filters || filters.length === 0) return rows
+    return rows.filter((row) =>
+      filters.every((f) => {
+        const cellValue = row[f.column]
+        if (cellValue === undefined || cellValue === null) return false
+        return String(cellValue).toLowerCase() === f.value.toLowerCase()
+      })
+    )
+  }
+
+  /**
+   * Sync a single database from its accounting source.
+   * Used by the per-database sync API (POST /api/databases/[id]/sync).
+   *
+   * @param databaseId - The database to sync
+   * @param asOfDate - ISO date string (YYYY-MM-DD) for the snapshot
+   */
+  static async syncSingleDatabase(
+    databaseId: string,
+    asOfDate: string
+  ): Promise<{ rowCount: number }> {
+    const database = await prisma.database.findUnique({
+      where: { id: databaseId },
+    })
+    if (!database) throw new Error("Database not found")
+    if (!database.sourceType) throw new Error("Database has no accounting source")
+
+    const modelKey = this.sourceTypeToModelKey(database.sourceType)
+    if (!modelKey) throw new Error(`Unknown source type: ${database.sourceType}`)
+
+    // Get account token
+    const integration = await prisma.accountingIntegration.findUnique({
+      where: { organizationId: database.organizationId },
+    })
+    if (!integration || !integration.isActive) {
+      throw new Error("No active accounting integration")
+    }
+    const accountToken = decrypt(integration.accountToken)
+
+    // Mark as syncing
+    await prisma.database.update({
+      where: { id: databaseId },
+      data: { syncStatus: "syncing", lastSyncError: null },
+    })
+
+    try {
+      // Build lookups
+      const accounts = await MergeAccountingService.fetchAccounts(accountToken)
+      const accountLookup = new Map<string, string>()
+      for (const a of accounts) {
+        const displayName = a.number ? `${a.number} - ${a.name || ""}` : (a.name || "")
+        if (a.id) accountLookup.set(a.id, displayName)
+        if (a.remote_id) accountLookup.set(a.remote_id, displayName)
+      }
+
+      const contacts = await MergeAccountingService.fetchContacts(accountToken)
+      const contactLookup = new Map<string, string>()
+      for (const c of contacts) {
+        if (c.id && c.name) contactLookup.set(c.id, c.name)
+        if (c.remote_id && c.name) contactLookup.set(c.remote_id, c.name)
+      }
+
+      // Fetch and transform
+      let newRows = await this.fetchAndTransform(
+        modelKey,
+        accountToken,
+        asOfDate,
+        accountLookup,
+        contactLookup,
+        undefined, // no lastSyncAt filter — always fetch all
+        database.organizationId
+      )
+
+      // Apply user-defined filters
+      const syncFilter = (database.syncFilter as Array<{ column: string; value: string }>) || []
+      newRows = this.applyFilters(newRows, syncFilter)
+
+      // Append to existing rows
+      const existingRows = (database.rows as unknown as DatabaseRow[]) || []
+      const finalRows = [...existingRows, ...newRows]
+      const trimmedRows =
+        finalRows.length > MAX_SYNCED_ROWS
+          ? finalRows.slice(finalRows.length - MAX_SYNCED_ROWS)
+          : finalRows
+
+      await prisma.database.update({
+        where: { id: databaseId },
+        data: {
+          rows: trimmedRows as unknown as Prisma.InputJsonValue,
+          rowCount: trimmedRows.length,
+          lastImportedAt: new Date(),
+          lastSyncAsOfDate: asOfDate,
+          syncStatus: "success",
+          lastSyncError: null,
+        },
+      })
+
+      return { rowCount: trimmedRows.length }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      await prisma.database.update({
+        where: { id: databaseId },
+        data: { syncStatus: "error", lastSyncError: msg },
+      })
+      throw error
+    }
   }
 }

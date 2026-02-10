@@ -2,7 +2,8 @@
  * Accounting Integration - Sync
  *
  * POST /api/integrations/accounting/sync
- * Triggers an on-demand sync via Inngest.
+ * Resyncs contacts from accounting software.
+ * Body: { contactsOnly?: true }
  * Admin only.
  */
 
@@ -10,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { inngest } from "@/inngest/client"
+import { decrypt } from "@/lib/encryption"
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,48 +45,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Don't trigger if already syncing
-    if (integration.syncStatus === "syncing") {
-      return NextResponse.json(
-        { error: "Sync already in progress" },
-        { status: 409 }
-      )
-    }
-
-    // Parse optional asOfDate from request body
-    let asOfDate: string | undefined
-    try {
-      const body = await request.json()
-      if (body.asOfDate && typeof body.asOfDate === "string") {
-        // Validate it's a valid date string
-        const parsed = new Date(body.asOfDate)
-        if (!isNaN(parsed.getTime())) {
-          asOfDate = body.asOfDate
-        }
-      }
-    } catch {
-      // No body or invalid JSON — use default (today)
-    }
-
-    // Trigger sync via Inngest
-    await inngest.send({
-      name: "accounting/sync-triggered",
-      data: {
-        organizationId: user.organizationId,
-        ...(asOfDate ? { asOfDate } : {}),
-      },
-    })
+    // Resync contacts directly
+    const { AccountingSyncService } = await import(
+      "@/lib/services/accounting-sync.service"
+    )
+    const accountToken = decrypt(integration.accountToken)
+    const contactsSynced = await AccountingSyncService.syncContacts(
+      user.organizationId,
+      accountToken
+    )
 
     return NextResponse.json({
       success: true,
-      message: asOfDate
-        ? `Sync initiated as of ${asOfDate}`
-        : "Sync initiated",
+      message: `${contactsSynced} contacts synced`,
+      contactsSynced,
     })
   } catch (error) {
-    console.error("Error triggering sync:", error)
+    console.error("Error syncing contacts:", error)
     return NextResponse.json(
-      { error: "Failed to trigger sync" },
+      { error: "Failed to sync contacts" },
       { status: 500 }
     )
   }

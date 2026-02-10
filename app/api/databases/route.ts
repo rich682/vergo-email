@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, schema, initialRows } = body
+    const { name, description, schema, initialRows, sourceType, syncFilter } = body
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -68,6 +68,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Accounting-sourced database: sourceType provided, schema auto-populated
+    if (sourceType && typeof sourceType === "string") {
+      // Import source schemas to auto-populate
+      const { SYNCED_DATABASE_SCHEMAS } = await import(
+        "@/lib/services/accounting-sync.service"
+      )
+
+      // Find matching source definition by sourceType
+      const sourceDef = Object.values(SYNCED_DATABASE_SCHEMAS).find(
+        (def: any) => def.sourceType === sourceType
+      ) as any
+
+      if (!sourceDef) {
+        return NextResponse.json(
+          { error: `Unknown source type: ${sourceType}` },
+          { status: 400 }
+        )
+      }
+
+      const database = await prisma.database.create({
+        data: {
+          name: name.trim(),
+          description: description?.trim() || sourceDef.description,
+          organizationId: user.organizationId,
+          schema: sourceDef.schema,
+          identifierKeys: ["remote_id"],
+          rows: [],
+          rowCount: 0,
+          sourceType,
+          isReadOnly: true,
+          syncFilter: syncFilter || null,
+          createdById: user.id,
+        },
+        include: {
+          createdBy: { select: { name: true, email: true } },
+        },
+      })
+
+      return NextResponse.json({ database }, { status: 201 })
+    }
+
+    // Standard manual/upload database creation
     if (!schema || !schema.columns || !Array.isArray(schema.columns)) {
       return NextResponse.json(
         { error: "Valid schema with columns is required" },
