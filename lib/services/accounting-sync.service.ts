@@ -431,29 +431,31 @@ export class AccountingSyncService {
       const primaryPhone =
         contact.phone_numbers?.find((p) => p.number)?.number || null
 
-      // Smart name splitting
-      let firstName: string
-      let lastName: string | undefined
-      const fullName = contact.name || "Unknown"
-
-      if (contact.company && fullName === contact.company) {
-        // Company name equals contact name — use full name as firstName
-        firstName = fullName
-        lastName = undefined
-      } else if (contact.is_supplier && !fullName.includes(" ")) {
-        // Supplier with no space in name — use full name as firstName
-        firstName = fullName
-        lastName = undefined
-      } else {
-        const nameParts = fullName.split(" ")
-        firstName = nameParts[0] || "Unknown"
-        lastName = nameParts.slice(1).join(" ") || undefined
-      }
-
       // Determine contact type
       let contactType: "VENDOR" | "CLIENT" | "UNKNOWN" = "UNKNOWN"
       if (contact.is_supplier) contactType = "VENDOR"
       else if (contact.is_customer) contactType = "CLIENT"
+
+      // Smart name mapping
+      // Vendors/suppliers from accounting software are companies, not people.
+      // Put the full name into companyName and firstName (for display).
+      let firstName: string
+      let lastName: string | undefined
+      let companyName: string | undefined
+      const fullName = contact.name || "Unknown"
+
+      if (contact.is_supplier || (contact.company && fullName === contact.company)) {
+        // Vendor/supplier: the "name" is a company name
+        firstName = fullName
+        lastName = undefined
+        companyName = contact.company || fullName
+      } else {
+        // Customer or unknown: split into first/last name
+        const nameParts = fullName.split(" ")
+        firstName = nameParts[0] || "Unknown"
+        lastName = nameParts.slice(1).join(" ") || undefined
+        companyName = contact.company || undefined
+      }
 
       // Extract primary address
       const addr = contact.addresses?.[0]
@@ -478,7 +480,7 @@ export class AccountingSyncService {
             lastName,
             email: primaryEmail || existing.email,
             phone: primaryPhone || existing.phone,
-            companyName: contact.company || existing.companyName,
+            companyName: companyName || existing.companyName,
             contactType,
             addressStreet1,
             addressStreet2,
@@ -502,7 +504,7 @@ export class AccountingSyncService {
             where: { id: emailMatch.id },
             data: {
               mergeRemoteId: contact.id,
-              companyName: contact.company || emailMatch.companyName,
+              companyName: companyName || emailMatch.companyName,
               contactType:
                 contactType !== "UNKNOWN"
                   ? contactType
@@ -527,7 +529,7 @@ export class AccountingSyncService {
           lastName,
           email: primaryEmail,
           phone: primaryPhone,
-          companyName: contact.company,
+          companyName,
           contactType,
           isInternal: false,
           organizationId,
