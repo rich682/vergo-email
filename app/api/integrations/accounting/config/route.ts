@@ -19,7 +19,7 @@ const syncConfigSchema = z.object({
   journalEntries: z.boolean().optional(),
   payments: z.boolean().optional(),
   glTransactions: z.boolean().optional(),
-  syncIntervalMinutes: z.number().min(15).max(1440).optional(),
+  invoiceLineItems: z.boolean().optional(),
 })
 
 export async function PUT(request: NextRequest) {
