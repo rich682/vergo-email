@@ -5,14 +5,22 @@
  * PUT /api/org/role-permissions - Update org-level role defaults (admin only)
  *
  * Stored in Organization.features JSON as:
- * { roleDefaultModuleAccess: { MEMBER: { boards: true, ... }, MANAGER: { ... } } }
+ * { roleDefaultModuleAccess: { MEMBER: { boards: "edit", ... }, MANAGER: { ... } } }
+ *
+ * Each module value can be:
+ * - false: No access
+ * - "task-view": Task-tab only, read-only (for task-scoped modules)
+ * - "task-edit": Task-tab only, editable (for task-scoped modules)
+ * - "view": Sidebar + read-only access
+ * - "edit": Full access (create/edit/delete)
+ * - true: Legacy value, treated as "edit"
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import type { ModuleAccess, ModuleKey } from "@/lib/permissions"
+import { normalizeAccessValue, type ModuleAccess, type ModuleKey, type ModuleAccessValue } from "@/lib/permissions"
 
 const VALID_MODULE_KEYS: ModuleKey[] = [
   "boards", "inbox", "requests", "collection", "reports",
@@ -98,8 +106,12 @@ export async function PUT(request: NextRequest) {
 
         const sanitizedRole: ModuleAccess = {}
         for (const key of VALID_MODULE_KEYS) {
-          if (key in roleAccess && typeof roleAccess[key] === "boolean") {
-            sanitizedRole[key] = roleAccess[key]
+          if (key in roleAccess) {
+            const val = roleAccess[key]
+            // Accept boolean, "task-view", "task-edit", "view", or "edit" — normalize to canonical form
+            if (typeof val === "boolean" || val === "view" || val === "edit" || val === "task-view" || val === "task-edit") {
+              sanitizedRole[key] = normalizeAccessValue(val as ModuleAccessValue)
+            }
           }
         }
         sanitized[role] = sanitizedRole

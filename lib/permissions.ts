@@ -5,15 +5,28 @@
  *
  * Role Model:
  * - ADMIN: Full access to everything. Can manage team, org settings, all data.
- * - MANAGER: Like ADMIN but scoped by moduleAccess. Can see all tasks (not just own).
+ * - MANAGER: Scoped by role defaults. Can see all tasks (not just own).
  *            Can manage team members they supervise. Cannot change org settings.
- * - MEMBER: Can only see/edit jobs they own or collaborate on. Scoped by moduleAccess.
- * - VIEWER: (Deprecated - treated as MEMBER) Read-only access. Kept in enum for backward compatibility.
+ * - MEMBER: Can only see/edit jobs they own or collaborate on. Scoped by role defaults.
+ * - VIEWER: (Deprecated - treated as MEMBER) Kept in enum for backward compatibility.
  *
- * Module Access:
- * Each user can have a `moduleAccess` JSON field that controls which dashboard
- * modules they can access. If null, defaults are applied based on role.
- * Admins always have access to all modules regardless of moduleAccess setting.
+ * Module Access (Role-Based Only):
+ * Access is determined purely by role. Org admins can customize per-role defaults
+ * via the Role Permissions settings page. There are no per-user overrides.
+ *
+ * Module Access Levels:
+ * - false: No access to the module anywhere
+ * - "task-view": No sidebar link, but tab visible in tasks user is linked to (read-only)
+ * - "task-edit": No sidebar link, but tab visible in tasks user is linked to (can modify)
+ * - "view": Sidebar link visible, can see all data (read-only)
+ * - "edit": Full access — sidebar link visible, can create/edit/delete
+ * - true: Legacy value, treated as "edit" for backward compatibility
+ *
+ * Task-Scoped Modules (support "task-view" and "task-edit"):
+ * requests, collection, reports, reconciliations
+ *
+ * Sidebar-Only Modules (only support false / "view" / "edit"):
+ * boards, inbox, forms, databases, contacts
  */
 
 import { UserRole, Prisma } from "@prisma/client"
@@ -21,7 +34,7 @@ import { UserRole, Prisma } from "@prisma/client"
 // ─── Module Access Types ──────────────────────────────────────────────────────
 
 /**
- * Available modules that can be toggled per user.
+ * Available modules that can be toggled per role.
  * Maps to dashboard sections and their corresponding API routes.
  */
 export type ModuleKey =
@@ -36,11 +49,35 @@ export type ModuleKey =
   | "contacts"
 
 /**
- * Module access configuration stored on User.moduleAccess (JSON field).
- * true = user can access, false = user cannot access.
- * Missing keys inherit from role defaults.
+ * Modules that support task-scoped access (shown as tabs within tasks).
+ * These modules can have "task-view" and "task-edit" levels in addition to
+ * the standard false / "view" / "edit".
  */
-export type ModuleAccess = Partial<Record<ModuleKey, boolean>>
+export const TASK_SCOPED_MODULES: ModuleKey[] = [
+  "requests", "collection", "reports", "reconciliations"
+]
+
+/**
+ * Access level for a module.
+ * - "task-view": visible as tab in tasks the user is linked to (read-only)
+ * - "task-edit": visible as tab in tasks the user is linked to (can modify)
+ * - "view": visible in sidebar and tasks (read-only)
+ * - "edit": visible in sidebar and tasks (full access)
+ */
+export type ModuleAccessLevel = "task-view" | "task-edit" | "view" | "edit"
+
+/**
+ * Module access value as stored in config.
+ * Supports legacy boolean values and all string levels:
+ * - true = full access (treated as "edit")
+ * - false = no access
+ * - "task-view" = task-scoped read-only
+ * - "task-edit" = task-scoped full access
+ * - "view" = sidebar read-only access
+ * - "edit" = sidebar full access
+ */
+export type ModuleAccessValue = boolean | ModuleAccessLevel
+export type ModuleAccess = Partial<Record<ModuleKey, ModuleAccessValue>>
 
 /**
  * Org-level role default overrides.
@@ -49,43 +86,90 @@ export type ModuleAccess = Partial<Record<ModuleKey, boolean>>
  */
 export type OrgRoleDefaults = Record<string, ModuleAccess> | null
 
+// ─── Normalization & Helper Functions ─────────────────────────────────────────
+
+/**
+ * Normalize a module access value to a consistent level.
+ * true → "edit", false → false, string values pass through if valid.
+ */
+export function normalizeAccessValue(val: ModuleAccessValue | undefined): ModuleAccessLevel | false {
+  if (val === true || val === "edit") return "edit"
+  if (val === "view") return "view"
+  if (val === "task-edit") return "task-edit"
+  if (val === "task-view") return "task-view"
+  return false
+}
+
+/**
+ * Check if a value grants any access (any non-false level).
+ */
+function isAccessGranted(val: ModuleAccessValue | undefined): boolean {
+  return val === true || val === "view" || val === "edit" || val === "task-view" || val === "task-edit"
+}
+
+/**
+ * Does this access level grant sidebar/page access?
+ * Only "view" and "edit" show the module in the sidebar.
+ * Task-scoped levels ("task-view", "task-edit") do NOT show in sidebar.
+ */
+export function hasSidebarAccess(level: ModuleAccessLevel | false): boolean {
+  return level === "view" || level === "edit"
+}
+
+/**
+ * Does this access level grant task-tab visibility?
+ * Any non-false level shows the tab within tasks the user is linked to.
+ */
+export function hasTaskTabAccess(level: ModuleAccessLevel | false): boolean {
+  return level !== false
+}
+
+/**
+ * Is the access level read-only (no create/edit/delete)?
+ * "view" and "task-view" are read-only.
+ * "edit" and "task-edit" allow modifications.
+ * false means no access at all.
+ */
+export function isModuleReadOnly(level: ModuleAccessLevel | false): boolean {
+  return level === "view" || level === "task-view"
+}
+
 /**
  * Hardcoded default module access per role (fallback when org has no overrides).
  * ADMIN always gets all (enforced in code, not here).
- * These defaults apply when User.moduleAccess is null or a key is missing,
- * AND the organization has not configured custom role defaults.
+ * These defaults apply when the organization has not configured custom role defaults.
  */
 export const DEFAULT_MODULE_ACCESS: Record<string, ModuleAccess> = {
   MANAGER: {
-    boards: true,
-    inbox: true,
-    requests: true,
-    collection: true,
-    reports: true,
-    forms: true,
-    databases: true,
-    reconciliations: true,
-    contacts: true,
+    boards: "edit",
+    inbox: "edit",
+    requests: "edit",
+    collection: "edit",
+    reports: "edit",
+    forms: "edit",
+    databases: "edit",
+    reconciliations: "edit",
+    contacts: "edit",
   },
   MEMBER: {
-    boards: true,
-    inbox: true,
-    requests: false,
-    collection: false,
-    reports: true,
-    forms: true,
+    boards: "edit",
+    inbox: "edit",
+    requests: "task-edit",
+    collection: "task-edit",
+    reports: "task-view",
+    forms: "edit",
     databases: false,
     reconciliations: false,
     contacts: false,
   },
   // VIEWER is deprecated - treated same as MEMBER for backward compatibility
   VIEWER: {
-    boards: true,
-    inbox: true,
-    requests: false,
-    collection: false,
-    reports: true,
-    forms: true,
+    boards: "edit",
+    inbox: "edit",
+    requests: "task-edit",
+    collection: "task-edit",
+    reports: "task-view",
+    forms: "edit",
     databases: false,
     reconciliations: false,
     contacts: false,
@@ -124,7 +208,7 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
 
 /**
  * Routes that are always admin-only (settings, team management, admin tools).
- * These cannot be unlocked via moduleAccess.
+ * These cannot be unlocked via role defaults.
  */
 const ADMIN_ONLY_ROUTES = [
   "/dashboard/settings/team",
@@ -141,16 +225,15 @@ const EXEMPT_ROUTES: string[] = [
   // Add any sub-routes that should be accessible to non-admins
 ]
 
-// ─── Module Access Helpers ────────────────────────────────────────────────────
+// ─── Module Access Resolution ────────────────────────────────────────────────
 
 /**
- * Check if a user has access to a specific module.
+ * Check if a user has access to a specific module (any level).
  *
- * Resolution order:
+ * Resolution order (role-based only, no per-user overrides):
  * 1. ADMIN: Always has access to all modules.
- * 2. User-specific override (User.moduleAccess field).
- * 3. Org-level role defaults (Organization.features.roleDefaultModuleAccess).
- * 4. Hardcoded role defaults (DEFAULT_MODULE_ACCESS).
+ * 2. Org-level role defaults (Organization.features.roleDefaultModuleAccess).
+ * 3. Hardcoded role defaults (DEFAULT_MODULE_ACCESS).
  */
 export function hasModuleAccess(
   role: UserRole | string | undefined,
@@ -165,9 +248,40 @@ export function hasModuleAccess(
     return true
   }
 
-  // Check user-specific override first
-  if (moduleAccess && module in moduleAccess) {
-    return moduleAccess[module] === true
+  // Check org-level role defaults
+  const roleKey = normalizedRole || "MEMBER"
+  if (orgRoleDefaults && roleKey in orgRoleDefaults) {
+    const orgDefaults = orgRoleDefaults[roleKey]
+    if (orgDefaults && module in orgDefaults) {
+      return isAccessGranted(orgDefaults[module])
+    }
+  }
+
+  // Fall back to hardcoded role defaults
+  const defaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
+  return isAccessGranted(defaults[module])
+}
+
+/**
+ * Get the access level for a specific module.
+ * Returns "edit", "view", "task-edit", "task-view", or false.
+ *
+ * Resolution order (role-based only):
+ * 1. ADMIN: Always "edit".
+ * 2. Org-level role defaults.
+ * 3. Hardcoded role defaults.
+ */
+export function getModuleAccessLevel(
+  role: UserRole | string | undefined,
+  moduleAccess: ModuleAccess | null | undefined,
+  module: ModuleKey,
+  orgRoleDefaults?: OrgRoleDefaults
+): ModuleAccessLevel | false {
+  const normalizedRole = role?.toUpperCase() as UserRole | undefined
+
+  // ADMIN always has full access
+  if (normalizedRole === UserRole.ADMIN) {
+    return "edit"
   }
 
   // Check org-level role defaults
@@ -175,71 +289,68 @@ export function hasModuleAccess(
   if (orgRoleDefaults && roleKey in orgRoleDefaults) {
     const orgDefaults = orgRoleDefaults[roleKey]
     if (orgDefaults && module in orgDefaults) {
-      return orgDefaults[module] === true
+      return normalizeAccessValue(orgDefaults[module])
     }
   }
 
   // Fall back to hardcoded role defaults
   const defaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
-  return defaults[module] === true
+  return normalizeAccessValue(defaults[module])
 }
 
 /**
- * Get the effective module access map for a user (merging overrides with defaults).
- * Used by the frontend to show/hide sidebar items.
+ * Get the effective module access map for a role (merging org defaults with hardcoded).
+ * Used by the frontend to show/hide sidebar items and control view/edit within modules.
  *
- * Resolution order per module:
- * 1. User-specific override (moduleAccess)
- * 2. Org-level role defaults (orgRoleDefaults)
- * 3. Hardcoded role defaults (DEFAULT_MODULE_ACCESS)
+ * Returns "edit", "view", "task-edit", "task-view", or false for each module.
+ *
+ * Resolution order per module (role-based only):
+ * 1. Org-level role defaults (orgRoleDefaults)
+ * 2. Hardcoded role defaults (DEFAULT_MODULE_ACCESS)
  */
 export function getEffectiveModuleAccess(
   role: UserRole | string | undefined,
   moduleAccess: ModuleAccess | null | undefined,
   orgRoleDefaults?: OrgRoleDefaults
-): Record<ModuleKey, boolean> {
+): Record<ModuleKey, ModuleAccessLevel | false> {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
 
-  // ADMIN: everything enabled
+  // ADMIN: everything enabled with full edit
   if (normalizedRole === UserRole.ADMIN) {
     return {
-      boards: true,
-      inbox: true,
-      requests: true,
-      collection: true,
-      reports: true,
-      forms: true,
-      databases: true,
-      reconciliations: true,
-      contacts: true,
+      boards: "edit",
+      inbox: "edit",
+      requests: "edit",
+      collection: "edit",
+      reports: "edit",
+      forms: "edit",
+      databases: "edit",
+      reconciliations: "edit",
+      contacts: "edit",
     }
   }
 
   const roleKey = normalizedRole || "MEMBER"
   const hardcodedDefaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
   const orgDefaults = orgRoleDefaults?.[roleKey] || {}
-  const overrides = moduleAccess || {}
 
-  const result: Record<string, boolean> = {}
+  const result: Record<string, ModuleAccessLevel | false> = {}
   const allModules: ModuleKey[] = [
     "boards", "inbox", "requests", "collection", "reports",
     "forms", "databases", "reconciliations", "contacts"
   ]
 
   for (const mod of allModules) {
-    if (mod in overrides) {
-      // User-specific override takes priority
-      result[mod] = overrides[mod] === true
-    } else if (mod in orgDefaults) {
-      // Org-level role default
-      result[mod] = orgDefaults[mod] === true
+    if (mod in orgDefaults) {
+      // Org-level role default takes priority
+      result[mod] = normalizeAccessValue(orgDefaults[mod])
     } else {
       // Hardcoded fallback
-      result[mod] = hardcodedDefaults[mod] === true
+      result[mod] = normalizeAccessValue(hardcodedDefaults[mod])
     }
   }
 
-  return result as Record<ModuleKey, boolean>
+  return result as Record<ModuleKey, ModuleAccessLevel | false>
 }
 
 /**
@@ -257,13 +368,16 @@ export function getModuleForRoute(path: string): ModuleKey | null {
 // ─── Route Access ─────────────────────────────────────────────────────────────
 
 /**
- * Check if a user with the given role and module access can access a route.
+ * Check if a user with the given role can access a route.
  *
  * Checks in order:
  * 1. ADMIN can access everything.
- * 2. Admin-only routes (settings, team) block non-admins.
- * 3. Module-mapped routes check module access.
- * 4. Everything else is allowed.
+ * 2. Exempt routes are always allowed.
+ * 3. Admin-only routes (settings, team) block non-admins.
+ * 4. Dashboard pages require sidebar-level access ("view" or "edit").
+ *    Task-scoped levels ("task-view", "task-edit") do NOT grant dashboard page access.
+ * 5. API routes allow any access level (data filtering happens in handlers).
+ * 6. Everything else is allowed.
  */
 export function canAccessRoute(
   role: UserRole | string | undefined,
@@ -296,7 +410,16 @@ export function canAccessRoute(
   // Check module-based access
   const module = getModuleForRoute(path)
   if (module) {
-    return hasModuleAccess(role, moduleAccess, module, orgRoleDefaults)
+    const level = getModuleAccessLevel(role, null, module, orgRoleDefaults)
+
+    // Dashboard pages: require sidebar-level access (view or edit)
+    // Task-scoped access (task-view, task-edit) does NOT grant standalone page access
+    if (path.startsWith("/dashboard/")) {
+      return hasSidebarAccess(level)
+    }
+
+    // API routes: allow any access level (data filtering happens in handler)
+    return level !== false
   }
 
   return true

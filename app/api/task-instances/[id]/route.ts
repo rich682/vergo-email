@@ -20,7 +20,7 @@ import { ReportGenerationService } from "@/lib/services/report-generation.servic
 import { NotificationService } from "@/lib/services/notification.service"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
-import { isReadOnly, type ModuleAccess } from "@/lib/permissions"
+import { isReadOnly } from "@/lib/permissions"
 import { periodKeyFromDate } from "@/lib/utils/period"
 
 export async function GET(
@@ -99,7 +99,6 @@ export async function GET(
         isOwner: taskInstance.ownerId === userId,
         isAdmin: userRole === UserRole.ADMIN
       },
-      moduleAccess: (session.user.moduleAccess as ModuleAccess) || null,
       userRole: userRole,
       orgRoleDefaults,
     })

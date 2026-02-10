@@ -19,34 +19,24 @@ export async function GET(
   // In Next.js 14, params may be a Promise
   const { id: itemId } = await params
   
-  console.log(`[Preview API] Request for item: ${itemId}`)
-  
   try {
-    // Require authentication - IDs are unguessable cuids, so auth is sufficient
+    // Require authentication
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.organizationId) {
       console.log(`[Preview API] Unauthorized - no session`)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log(`[Preview API] User authenticated: ${session.user.id}`)
+    const organizationId = session.user.organizationId
 
-    // Fetch the collected item by ID
-    // Since IDs are unguessable cuids, having the ID implies authorization
-    const item = await prisma.collectedItem.findUnique({
-      where: { id: itemId }
+    // Fetch the collected item by ID, scoped to user's organization
+    const item = await prisma.collectedItem.findFirst({
+      where: { id: itemId, organizationId }
     })
 
-    console.log(`[Preview API] Found item: ${!!item}`)
-
     if (!item) {
-      // Debug: check if item exists at all in the table
-      const count = await prisma.collectedItem.count()
-      console.error(`[Preview API] Item ${itemId} not found. Total CollectedItems in DB: ${count}`)
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
-
-    console.log(`[Preview API] Item details: filename=${item.filename}, fileUrl=${item.fileUrl ? 'present' : 'missing'}`)
 
     // We need a fileUrl to fetch from
     if (!item.fileUrl) {

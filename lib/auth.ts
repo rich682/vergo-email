@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
-import type { ModuleAccess, OrgRoleDefaults } from "@/lib/permissions"
+import type { OrgRoleDefaults } from "@/lib/permissions"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -58,7 +58,6 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           organizationId: user.organizationId,
-          moduleAccess: (user.moduleAccess as ModuleAccess) || null,
           orgRoleDefaults: orgRoleDefaults as OrgRoleDefaults,
         }
       }
@@ -72,9 +71,38 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name
         token.role = user.role
         token.organizationId = user.organizationId
-        token.moduleAccess = user.moduleAccess || null
         token.orgRoleDefaults = user.orgRoleDefaults || null
+        token.orgRoleDefaultsUpdatedAt = Date.now()
       }
+
+      // Periodically refresh role + orgRoleDefaults (every 5 minutes)
+      // so middleware stays current when admin changes role defaults
+      // or demotes/promotes a user without requiring re-login
+      const now = Date.now()
+      const lastRefresh = (token.orgRoleDefaultsUpdatedAt as number) || 0
+      if (now - lastRefresh > 5 * 60 * 1000 && token.organizationId) {
+        try {
+          const [org, freshUser] = await Promise.all([
+            prisma.organization.findUnique({
+              where: { id: token.organizationId as string },
+              select: { features: true }
+            }),
+            prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { role: true }
+            })
+          ])
+          const features = (org?.features as Record<string, any>) || {}
+          token.orgRoleDefaults = features.roleDefaultModuleAccess || null
+          if (freshUser) {
+            token.role = freshUser.role
+          }
+          token.orgRoleDefaultsUpdatedAt = now
+        } catch {
+          // Keep existing values if DB fetch fails
+        }
+      }
+
       return token
     },
     async session({ session, token }) {
@@ -84,7 +112,6 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string | null
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
-        session.user.moduleAccess = (token.moduleAccess as ModuleAccess) || null
         session.user.orgRoleDefaults = (token.orgRoleDefaults as OrgRoleDefaults) || null
       }
       return session

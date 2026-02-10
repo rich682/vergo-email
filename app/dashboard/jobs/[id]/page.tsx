@@ -39,7 +39,7 @@ import { parseDateOnly } from "@/lib/utils/timezone"
 // Alias for backward compatibility - use parseDateOnly from centralized utility
 const parseDateForDisplay = parseDateOnly
 import { UI_LABELS } from "@/lib/ui-labels"
-import { getEffectiveModuleAccess, type ModuleAccess, type OrgRoleDefaults } from "@/lib/permissions"
+import { getEffectiveModuleAccess, hasTaskTabAccess, isModuleReadOnly, type ModuleAccessLevel, type ModuleKey, type OrgRoleDefaults } from "@/lib/permissions"
 
 // Design system components
 import { Chip } from "@/components/ui/chip"
@@ -265,7 +265,7 @@ export default function JobDetailPage() {
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
-  const [userModuleAccess, setUserModuleAccess] = useState<Record<string, boolean> | null>(null)
+  const [userModuleAccess, setUserModuleAccess] = useState<Record<ModuleKey, ModuleAccessLevel | false> | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report" | "reconciliation">(initialTab || "overview")
@@ -360,8 +360,8 @@ export default function JobDetailPage() {
         const taskInstance = data.taskInstance
         setJob(taskInstance)
         setPermissions(data.permissions)
-        // Compute effective module access for tab visibility (user override > org role defaults > hardcoded)
-        const effectiveModules = getEffectiveModuleAccess(data.userRole, data.moduleAccess, data.orgRoleDefaults || null)
+        // Compute effective module access for tab visibility (role-based only, no per-user overrides)
+        const effectiveModules = getEffectiveModuleAccess(data.userRole, null, data.orgRoleDefaults || null)
         setUserModuleAccess(effectiveModules)
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")
@@ -842,8 +842,8 @@ export default function JobDetailPage() {
             Overview
           </button>
 
-          {/* Requests tab - only visible to owners/admins with requests module access */}
-          {permissions?.canEdit && userModuleAccess?.requests !== false && (
+          {/* Requests tab - visible with any requests access level (including task-scoped) */}
+          {hasTaskTabAccess(userModuleAccess?.requests ?? false) && (
             <button
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -857,8 +857,8 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {/* Documents tab - only visible to owners/admins with collection module access */}
-          {permissions?.canEdit && userModuleAccess?.collection !== false && (
+          {/* Documents tab - visible with any collection access level (including task-scoped) */}
+          {hasTaskTabAccess(userModuleAccess?.collection ?? false) && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -867,7 +867,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {(job.reportDefinitionId || permissions?.isAdmin) && userModuleAccess?.reports !== false && (
+          {(job.reportDefinitionId || permissions?.isAdmin) && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -876,7 +876,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {permissions?.canEdit && userModuleAccess?.reconciliations !== false && (
+          {hasTaskTabAccess(userModuleAccess?.reconciliations ?? false) && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -1269,10 +1269,10 @@ export default function JobDetailPage() {
               </>
             )}
 
-            {activeTab === "requests" && permissions?.canEdit && userModuleAccess?.requests !== false && (
+            {activeTab === "requests" && hasTaskTabAccess(userModuleAccess?.requests ?? false) && (
               <div className="space-y-4">
-                {/* Draft Requests Banner */}
-                {draftRequests.length > 0 && (
+                {/* Draft Requests Banner — only show to users who can edit requests */}
+                {permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) && draftRequests.length > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                     <div className="flex items-start gap-3">
                       <FileText className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -1326,7 +1326,7 @@ export default function JobDetailPage() {
                   </div>
                 )}
                 
-                <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={<Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button>} />
+                <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
                 <div className="space-y-3">
                   {requests.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No requests sent yet</p></div> : requests.map(r => <RequestCardExpandable key={r.id} request={r} onRefresh={fetchRequests} />)}
                 </div>
@@ -1338,14 +1338,14 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "collection" && permissions?.canEdit && userModuleAccess?.collection !== false && (
+            {activeTab === "collection" && hasTaskTabAccess(userModuleAccess?.collection ?? false) && (
               <div className="space-y-4">
                 <SectionHeader title="Documents" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
-                <CollectionTab jobId={jobId} />
+                <CollectionTab jobId={jobId} readOnly={!permissions?.canEdit || isModuleReadOnly(userModuleAccess?.collection ?? false)} />
               </div>
             )}
 
-            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && userModuleAccess?.reports !== false && (
+            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1367,10 +1367,10 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "reconciliation" && permissions?.canEdit && userModuleAccess?.reconciliations !== false && (
+            {activeTab === "reconciliation" && hasTaskTabAccess(userModuleAccess?.reconciliations ?? false) && (
               <div className="space-y-4">
                 <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
-                <ReconciliationTab jobId={jobId} taskName={job.name} />
+                <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || isModuleReadOnly(userModuleAccess?.reconciliations ?? false)} />
               </div>
             )}
           </div>

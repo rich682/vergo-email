@@ -1,11 +1,14 @@
 /**
  * Organization User API Endpoint
- * 
+ *
  * GET /api/org/users/[id] - Get user details (admin-only)
  * PATCH /api/org/users/[id] - Update user (role, name) (admin-only)
  * DELETE /api/org/users/[id] - Remove user from organization (admin-only)
- * 
+ *
  * Authorization: Admin only
+ *
+ * Note: Per-user moduleAccess has been removed. Permissions are now purely
+ * role-based, configured via Settings > Role Permissions.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -13,7 +16,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { UserRole } from "@prisma/client"
-import type { ModuleAccess, ModuleKey } from "@/lib/permissions"
 
 /**
  * GET /api/org/users/[id] - Get user details
@@ -55,7 +57,6 @@ export async function GET(
         email: true,
         name: true,
         role: true,
-        moduleAccess: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -76,7 +77,6 @@ export async function GET(
         email: user.email,
         name: user.name,
         role: user.role,
-        moduleAccess: user.moduleAccess || null,
         status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString()
@@ -95,6 +95,9 @@ export async function GET(
 /**
  * PATCH /api/org/users/[id] - Update user (role, name)
  * Admin-only endpoint
+ *
+ * Permissions are now purely role-based. Per-user moduleAccess is no longer supported.
+ * Configure role permissions in Settings > Role Permissions.
  */
 export async function PATCH(
   request: NextRequest,
@@ -123,7 +126,7 @@ export async function PATCH(
 
     const { id: targetUserId } = await params
     const body = await request.json()
-    const { role: newRole, name, moduleAccess } = body
+    const { role: newRole, name } = body
 
     // Find the target user
     const targetUser = await prisma.user.findFirst({
@@ -141,7 +144,7 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: { role?: UserRole; name?: string; moduleAccess?: any } = {}
+    const updateData: { role?: UserRole; name?: string } = {}
 
     // Handle role update
     if (newRole !== undefined) {
@@ -178,32 +181,6 @@ export async function PATCH(
       updateData.name = name.trim() || null
     }
 
-    // Handle moduleAccess update
-    if (moduleAccess !== undefined) {
-      if (moduleAccess === null) {
-        // null = reset to role defaults
-        updateData.moduleAccess = null
-      } else if (typeof moduleAccess === "object" && !Array.isArray(moduleAccess)) {
-        // Validate keys are valid module keys
-        const validKeys: ModuleKey[] = [
-          "boards", "inbox", "requests", "collection", "reports",
-          "forms", "databases", "reconciliations", "contacts"
-        ]
-        const sanitized: ModuleAccess = {}
-        for (const key of validKeys) {
-          if (key in moduleAccess && typeof moduleAccess[key] === "boolean") {
-            sanitized[key] = moduleAccess[key]
-          }
-        }
-        updateData.moduleAccess = sanitized
-      } else {
-        return NextResponse.json(
-          { error: "moduleAccess must be an object with boolean values or null" },
-          { status: 400 }
-        )
-      }
-    }
-
     // Check if there's anything to update
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -221,7 +198,6 @@ export async function PATCH(
         email: true,
         name: true,
         role: true,
-        moduleAccess: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -235,7 +211,6 @@ export async function PATCH(
         email: updatedUser.email,
         name: updatedUser.name,
         role: updatedUser.role,
-        moduleAccess: updatedUser.moduleAccess || null,
         status: updatedUser.passwordHash && updatedUser.passwordHash.length > 10 ? "active" : "pending",
         createdAt: updatedUser.createdAt.toISOString(),
         updatedAt: updatedUser.updatedAt.toISOString()

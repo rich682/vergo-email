@@ -2,11 +2,10 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useRouter } from "next/navigation"
-import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, Shield, Info } from "lucide-react"
 import Link from "next/link"
-import { DEFAULT_MODULE_ACCESS, type ModuleAccess, type ModuleKey } from "@/lib/permissions"
+import { DEFAULT_MODULE_ACCESS, TASK_SCOPED_MODULES, normalizeAccessValue, type ModuleAccess, type ModuleKey, type ModuleAccessLevel } from "@/lib/permissions"
 
 const MODULE_LABELS: { key: ModuleKey; label: string; description: string }[] = [
   { key: "boards", label: "Tasks", description: "Task boards and job management" },
@@ -25,16 +24,119 @@ const CONFIGURABLE_ROLES = [
   { key: "MANAGER", label: "Manager", description: "Team leads with broader access" },
 ] as const
 
-type RoleDefaults = Record<string, Record<ModuleKey, boolean>>
+type AccessValue = ModuleAccessLevel | false
+type RoleDefaults = Record<string, Record<ModuleKey, AccessValue>>
+
+/**
+ * 3-state segmented control for sidebar-only modules: Off / View / Full Access
+ */
+function AccessLevelControl({
+  value,
+  onChange,
+}: {
+  value: AccessValue
+  onChange: (val: AccessValue) => void
+}) {
+  const options: { label: string; val: AccessValue }[] = [
+    { label: "Off", val: false },
+    { label: "View", val: "view" },
+    { label: "Full Access", val: "edit" },
+  ]
+
+  return (
+    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+      {options.map((opt) => {
+        const isActive = value === opt.val
+        return (
+          <button
+            key={String(opt.val)}
+            onClick={() => onChange(opt.val)}
+            className={`
+              px-3 py-1 text-xs font-medium rounded-md transition-all duration-150
+              ${isActive
+                ? opt.val === false
+                  ? "bg-white text-gray-700 shadow-sm"
+                  : opt.val === "view"
+                  ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-200"
+                  : "bg-green-50 text-green-700 shadow-sm border border-green-200"
+                : "text-gray-500 hover:text-gray-700"
+              }
+            `}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * 5-state segmented control for task-scoped modules:
+ * Off / Task View / Task Edit / View / Full Access
+ */
+function TaskScopeAccessLevelControl({
+  value,
+  onChange,
+}: {
+  value: AccessValue
+  onChange: (val: AccessValue) => void
+}) {
+  const options: { label: string; val: AccessValue; shortLabel?: string }[] = [
+    { label: "Off", val: false },
+    { label: "Task View", val: "task-view" },
+    { label: "Task Edit", val: "task-edit" },
+    { label: "View All", val: "view" },
+    { label: "Full Access", val: "edit" },
+  ]
+
+  const getActiveStyles = (val: AccessValue) => {
+    if (val === false) return "bg-white text-gray-700 shadow-sm"
+    if (val === "task-view") return "bg-amber-50 text-amber-700 shadow-sm border border-amber-200"
+    if (val === "task-edit") return "bg-orange-50 text-orange-700 shadow-sm border border-orange-200"
+    if (val === "view") return "bg-blue-50 text-blue-700 shadow-sm border border-blue-200"
+    return "bg-green-50 text-green-700 shadow-sm border border-green-200"
+  }
+
+  return (
+    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+      {options.map((opt) => {
+        const isActive = value === opt.val
+        return (
+          <button
+            key={String(opt.val)}
+            onClick={() => onChange(opt.val)}
+            className={`
+              px-2 py-1 text-[11px] font-medium rounded-md transition-all duration-150
+              ${isActive ? getActiveStyles(opt.val) : "text-gray-500 hover:text-gray-700"}
+            `}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 function RolePermissionsContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [roleDefaults, setRoleDefaults] = useState<RoleDefaults>({
-    MEMBER: { ...DEFAULT_MODULE_ACCESS.MEMBER } as Record<ModuleKey, boolean>,
-    MANAGER: { ...DEFAULT_MODULE_ACCESS.MANAGER } as Record<ModuleKey, boolean>,
+  const [roleDefaults, setRoleDefaults] = useState<RoleDefaults>(() => {
+    const allModules: ModuleKey[] = ["boards", "inbox", "requests", "collection", "reports", "forms", "databases", "reconciliations", "contacts"]
+    const normalize = (src: ModuleAccess): Record<ModuleKey, AccessValue> => {
+      const result = {} as Record<ModuleKey, AccessValue>
+      for (const m of allModules) {
+        result[m] = normalizeAccessValue(src[m])
+      }
+      return result
+    }
+    return {
+      MEMBER: normalize(DEFAULT_MODULE_ACCESS.MEMBER || {}),
+      MANAGER: normalize(DEFAULT_MODULE_ACCESS.MANAGER || {}),
+    }
   })
   const [hasChanges, setHasChanges] = useState(false)
   const [originalDefaults, setOriginalDefaults] = useState<RoleDefaults | null>(null)
@@ -42,6 +144,16 @@ function RolePermissionsContent() {
   useEffect(() => {
     fetchRoleDefaults()
   }, [])
+
+  const allModules: ModuleKey[] = ["boards", "inbox", "requests", "collection", "reports", "forms", "databases", "reconciliations", "contacts"]
+
+  const normalizeRole = (src: ModuleAccess): Record<ModuleKey, AccessValue> => {
+    const result = {} as Record<ModuleKey, AccessValue>
+    for (const m of allModules) {
+      result[m] = normalizeAccessValue(src[m])
+    }
+    return result
+  }
 
   const fetchRoleDefaults = async () => {
     try {
@@ -52,15 +164,15 @@ function RolePermissionsContent() {
         if (data.roleDefaultModuleAccess) {
           // Merge org defaults with hardcoded defaults (org overrides hardcoded)
           const merged: RoleDefaults = {
-            MEMBER: { ...(DEFAULT_MODULE_ACCESS.MEMBER as Record<ModuleKey, boolean>) },
-            MANAGER: { ...(DEFAULT_MODULE_ACCESS.MANAGER as Record<ModuleKey, boolean>) },
+            MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
+            MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
           }
 
           for (const role of ["MEMBER", "MANAGER"]) {
             if (data.roleDefaultModuleAccess[role]) {
               for (const key of Object.keys(data.roleDefaultModuleAccess[role])) {
                 if (key in merged[role]) {
-                  (merged[role] as any)[key] = data.roleDefaultModuleAccess[role][key]
+                  merged[role][key as ModuleKey] = normalizeAccessValue(data.roleDefaultModuleAccess[role][key])
                 }
               }
             }
@@ -71,8 +183,8 @@ function RolePermissionsContent() {
         } else {
           // No org overrides - use hardcoded defaults
           const defaults: RoleDefaults = {
-            MEMBER: { ...(DEFAULT_MODULE_ACCESS.MEMBER as Record<ModuleKey, boolean>) },
-            MANAGER: { ...(DEFAULT_MODULE_ACCESS.MANAGER as Record<ModuleKey, boolean>) },
+            MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
+            MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
           }
           setRoleDefaults(defaults)
           setOriginalDefaults(JSON.parse(JSON.stringify(defaults)))
@@ -86,7 +198,7 @@ function RolePermissionsContent() {
     }
   }
 
-  const handleToggle = (role: string, module: ModuleKey, value: boolean) => {
+  const handleAccessChange = (role: string, module: ModuleKey, value: AccessValue) => {
     setRoleDefaults(prev => ({
       ...prev,
       [role]: {
@@ -134,8 +246,8 @@ function RolePermissionsContent() {
 
   const handleResetToSystemDefaults = () => {
     setRoleDefaults({
-      MEMBER: { ...(DEFAULT_MODULE_ACCESS.MEMBER as Record<ModuleKey, boolean>) },
-      MANAGER: { ...(DEFAULT_MODULE_ACCESS.MANAGER as Record<ModuleKey, boolean>) },
+      MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
+      MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
     })
     setHasChanges(true)
   }
@@ -170,7 +282,6 @@ function RolePermissionsContent() {
             <h1 className="text-lg font-semibold text-gray-900">Role Permissions</h1>
             <p className="text-sm text-gray-500 mt-1">
               Configure which areas of the app each role can access by default.
-              Individual users can be overridden in Team settings.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -212,12 +323,17 @@ function RolePermissionsContent() {
             <p className="font-medium">How permissions work</p>
             <p className="mt-1">
               Admin users always have access to everything. These defaults apply to Employee and Manager roles.
-              You can further override access for individual users in <Link href="/dashboard/settings/team" className="underline font-medium">Team settings</Link>.
+            </p>
+            <p className="mt-2 text-xs text-blue-600">
+              <strong>Task-scoped modules</strong> (Requests, Collection, Reports, Reconciliations) support task-level access:
+              <strong> Task View</strong> shows the tab within tasks the user is linked to (read-only),
+              <strong> Task Edit</strong> allows modifications within those tasks.
+              <strong> View All</strong> and <strong>Full Access</strong> also show the module in the sidebar.
             </p>
           </div>
         </div>
 
-        <div className="max-w-4xl space-y-6">
+        <div className="max-w-5xl space-y-6">
           {/* Role columns */}
           {CONFIGURABLE_ROLES.map(role => (
             <div key={role.key} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -232,13 +348,13 @@ function RolePermissionsContent() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
-                      // Toggle all on/off
-                      const allEnabled = MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === true)
-                      const newVal = !allEnabled
+                      // Set all to "edit" (full access) or false (off)
+                      const allFull = MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === "edit")
+                      const newVal: AccessValue = allFull ? false : "edit"
                       setRoleDefaults(prev => {
                         const updated = { ...prev[role.key] }
                         for (const m of MODULE_LABELS) {
-                          (updated as any)[m.key] = newVal
+                          updated[m.key] = newVal
                         }
                         return { ...prev, [role.key]: updated }
                       })
@@ -246,7 +362,7 @@ function RolePermissionsContent() {
                     }}
                     className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
                   >
-                    {MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === true)
+                    {MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === "edit")
                       ? "Disable all"
                       : "Enable all"}
                   </button>
@@ -254,23 +370,33 @@ function RolePermissionsContent() {
               </div>
 
               <div className="divide-y divide-gray-100">
-                {MODULE_LABELS.map(mod => (
-                  <div
-                    key={mod.key}
-                    className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                  >
-                    <div>
-                      <Label className="text-sm font-medium text-gray-900 cursor-pointer">
-                        {mod.label}
-                      </Label>
-                      <p className="text-xs text-gray-500">{mod.description}</p>
+                {MODULE_LABELS.map(mod => {
+                  const isTaskScoped = TASK_SCOPED_MODULES.includes(mod.key)
+                  return (
+                    <div
+                      key={mod.key}
+                      className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <Label className="text-sm font-medium text-gray-900 cursor-pointer">
+                          {mod.label}
+                        </Label>
+                        <p className="text-xs text-gray-500">{mod.description}</p>
+                      </div>
+                      {isTaskScoped ? (
+                        <TaskScopeAccessLevelControl
+                          value={roleDefaults[role.key]?.[mod.key] ?? false}
+                          onChange={(val) => handleAccessChange(role.key, mod.key, val)}
+                        />
+                      ) : (
+                        <AccessLevelControl
+                          value={roleDefaults[role.key]?.[mod.key] ?? false}
+                          onChange={(val) => handleAccessChange(role.key, mod.key, val)}
+                        />
+                      )}
                     </div>
-                    <Switch
-                      checked={roleDefaults[role.key]?.[mod.key] ?? false}
-                      onCheckedChange={(checked) => handleToggle(role.key, mod.key, checked)}
-                    />
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}

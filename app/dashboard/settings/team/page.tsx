@@ -19,22 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
-import { getEffectiveModuleAccess, type ModuleAccess, type ModuleKey, type OrgRoleDefaults } from "@/lib/permissions"
-
-const MODULE_LABELS: { key: ModuleKey; label: string }[] = [
-  { key: "boards", label: "Tasks" },
-  { key: "inbox", label: "Inbox" },
-  { key: "requests", label: "Requests" },
-  { key: "collection", label: "Collection" },
-  { key: "reports", label: "Reports" },
-  { key: "forms", label: "Forms" },
-  { key: "databases", label: "Databases" },
-  { key: "reconciliations", label: "Reconciliations" },
-  { key: "contacts", label: "Contacts" },
-]
 
 interface ConnectedEmail {
   id: string
@@ -50,7 +36,6 @@ interface OrgUser {
   email: string
   name: string | null
   role: "ADMIN" | "MANAGER" | "MEMBER" | "VIEWER"
-  moduleAccess: ModuleAccess | null
   status: "active" | "pending"
   createdAt: string
   connectedEmail: ConnectedEmail | null
@@ -92,7 +77,6 @@ function TeamSettingsContent() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [teamUsers, setTeamUsers] = useState<OrgUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [orgRoleDefaults, setOrgRoleDefaults] = useState<OrgRoleDefaults>(null)
 
   // Invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false)
@@ -108,10 +92,6 @@ function TeamSettingsContent() {
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
   const [editRole, setEditRole] = useState<"ADMIN" | "MANAGER" | "MEMBER">("MEMBER")
-  const [editModuleAccess, setEditModuleAccess] = useState<Record<ModuleKey, boolean>>({
-    boards: true, inbox: true, requests: false, collection: false,
-    reports: true, forms: true, databases: false, reconciliations: false, contacts: false,
-  })
   const [saving, setSaving] = useState(false)
   
   // Delete confirmation state
@@ -185,7 +165,6 @@ function TeamSettingsContent() {
 
   useEffect(() => {
     fetchTeamUsers()
-    fetchOrgRoleDefaults()
   }, [])
 
   const fetchTeamUsers = async () => {
@@ -206,18 +185,6 @@ function TeamSettingsContent() {
       setIsAdmin(false)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchOrgRoleDefaults = async () => {
-    try {
-      const response = await fetch("/api/org/role-permissions")
-      if (response.ok) {
-        const data = await response.json()
-        setOrgRoleDefaults(data.roleDefaultModuleAccess || null)
-      }
-    } catch (error) {
-      console.error("Error fetching org role defaults:", error)
     }
   }
 
@@ -298,21 +265,7 @@ function TeamSettingsContent() {
     // Map legacy VIEWER role to MEMBER (VIEWER has been removed)
     const mappedRole = user.role === "VIEWER" ? "MEMBER" : user.role
     setEditRole(mappedRole as "ADMIN" | "MANAGER" | "MEMBER")
-    // Initialize module access with effective values (merging user overrides with org/role defaults)
-    const effective = getEffectiveModuleAccess(mappedRole, user.moduleAccess, orgRoleDefaults)
-    setEditModuleAccess(effective)
     setIsEditOpen(true)
-  }
-
-  const handleRoleChangeInEdit = (newRole: "ADMIN" | "MANAGER" | "MEMBER") => {
-    setEditRole(newRole)
-    // Reset module access to the new role's defaults (from org-level, then hardcoded)
-    const defaults = getEffectiveModuleAccess(newRole, null, orgRoleDefaults)
-    setEditModuleAccess(defaults)
-  }
-
-  const handleModuleToggle = (key: ModuleKey, checked: boolean) => {
-    setEditModuleAccess(prev => ({ ...prev, [key]: checked }))
   }
 
   const handleSaveUser = async () => {
@@ -321,15 +274,12 @@ function TeamSettingsContent() {
     setSaving(true)
     try {
       const fullName = combineName(editFirstName, editLastName)
-      // Only send moduleAccess if the role is not ADMIN (admins always have full access)
-      const moduleAccessPayload = editRole === "ADMIN" ? null : editModuleAccess
       const response = await fetch(`/api/org/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: fullName,
           role: editRole,
-          moduleAccess: moduleAccessPayload,
         })
       })
 
@@ -796,7 +746,7 @@ function TeamSettingsContent() {
               </div>
               <div>
                 <Label htmlFor="editRole">Role</Label>
-                <Select value={editRole} onValueChange={(v) => handleRoleChangeInEdit(v as "ADMIN" | "MANAGER" | "MEMBER")}>
+                <Select value={editRole} onValueChange={(v) => setEditRole(v as "ADMIN" | "MANAGER" | "MEMBER")}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -806,33 +756,11 @@ function TeamSettingsContent() {
                     <SelectItem value="MEMBER">Employee</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Module Access Toggles */}
-              <div>
-                <Label>Module Access</Label>
-                {editRole === "ADMIN" ? (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Admins always have full access to all modules.
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-xs text-gray-500 mt-1 mb-3">
-                      Choose which areas of the app this user can access.
-                    </p>
-                    <div className="space-y-2.5">
-                      {MODULE_LABELS.map(({ key, label }) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <span className="text-sm text-gray-700">{label}</span>
-                          <Switch
-                            checked={editModuleAccess[key]}
-                            onCheckedChange={(checked) => handleModuleToggle(key, checked)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  {editRole === "ADMIN" ? "Full access to all features and settings" :
+                   editRole === "MANAGER" ? "Can see all tasks and manage team workflows" :
+                   "Access determined by role permissions"}
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

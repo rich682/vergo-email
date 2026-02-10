@@ -1,6 +1,6 @@
 import "next-auth"
 import { UserRole } from "@prisma/client"
-import type { ModuleAccess, OrgRoleDefaults } from "@/lib/permissions"
+import type { OrgRoleDefaults } from "@/lib/permissions"
 
 declare module "next-auth" {
   interface Session {
@@ -10,7 +10,6 @@ declare module "next-auth" {
       name: string | null
       role: UserRole
       organizationId: string
-      moduleAccess: ModuleAccess | null
       orgRoleDefaults: OrgRoleDefaults
     }
   }
@@ -21,7 +20,6 @@ declare module "next-auth" {
     name: string | null
     role: UserRole
     organizationId: string
-    moduleAccess: ModuleAccess | null
     orgRoleDefaults: OrgRoleDefaults
   }
 }
@@ -33,7 +31,7 @@ declare module "next-auth/jwt" {
     name: string | null
     role: UserRole
     organizationId: string
-    moduleAccess: ModuleAccess | null
     orgRoleDefaults: OrgRoleDefaults
+    orgRoleDefaultsUpdatedAt?: number
   }
 }

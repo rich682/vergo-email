@@ -11,6 +11,7 @@ import { ReconciliationResults } from "./reconciliation-results"
 interface ReconciliationTabProps {
   jobId: string
   taskName: string
+  readOnly?: boolean
 }
 
 interface ReconciliationConfigSummary {
@@ -43,7 +44,7 @@ interface ReconciliationRun {
   createdAt: string
 }
 
-export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
+export function ReconciliationTab({ jobId, taskName, readOnly = false }: ReconciliationTabProps) {
   const [loading, setLoading] = useState(true)
   const [linkedConfig, setLinkedConfig] = useState<ReconciliationConfigSummary | null>(null)
   const [activeRun, setActiveRun] = useState<ReconciliationRun | null>(null)
@@ -218,6 +219,16 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
 
   // ── No config linked - show picker ────────────────────────────────
   if (!linkedConfig) {
+    // Read-only users just see empty state
+    if (readOnly) {
+      return (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+          <Scale className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">No reconciliation configured for this task yet.</p>
+        </div>
+      )
+    }
+
     // Lazy-load all configs when user sees the picker
     if (allConfigs.length === 0) {
       fetchAllConfigs()
@@ -311,24 +322,30 @@ export function ReconciliationTab({ jobId, taskName }: ReconciliationTabProps) {
               {linkedConfig.sourceAConfig?.label} vs {linkedConfig.sourceBConfig?.label}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleUnlinkConfig}
-              variant="ghost"
-              size="sm"
-              className="text-xs text-gray-400 hover:text-red-500"
-              disabled={linking}
-            >
-              <Link2Off className="w-3.5 h-3.5 mr-1" />
-              Unlink
-            </Button>
-          </div>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleUnlinkConfig}
+                variant="ghost"
+                size="sm"
+                className="text-xs text-gray-400 hover:text-red-500"
+                disabled={linking}
+              >
+                <Link2Off className="w-3.5 h-3.5 mr-1" />
+                Unlink
+              </Button>
+            </div>
+          )}
         </div>
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-500 mb-4">No runs yet for this task. Start a new reconciliation run.</p>
-          <Button onClick={handleNewRun} className="bg-orange-500 hover:bg-orange-600 text-white">
-            <Plus className="w-4 h-4 mr-2" /> New Run
-          </Button>
+          <p className="text-sm text-gray-500 mb-4">
+            {readOnly ? "No reconciliation runs yet for this task." : "No runs yet for this task. Start a new reconciliation run."}
+          </p>
+          {!readOnly && (
+            <Button onClick={handleNewRun} className="bg-orange-500 hover:bg-orange-600 text-white">
+              <Plus className="w-4 h-4 mr-2" /> New Run
+            </Button>
+          )}
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>

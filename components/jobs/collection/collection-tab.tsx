@@ -51,6 +51,7 @@ interface CollectedItem {
 
 interface CollectionTabProps {
   jobId: string
+  readOnly?: boolean
 }
 
 // Helper to get file icon based on mime type
@@ -86,7 +87,7 @@ function isPreviewable(mimeType: string | null): boolean {
   return mimeType.startsWith("image/") || mimeType.includes("pdf")
 }
 
-export function CollectionTab({ jobId }: CollectionTabProps) {
+export function CollectionTab({ jobId, readOnly = false }: CollectionTabProps) {
   const router = useRouter()
   
   // State
@@ -343,15 +344,17 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleBulkAction("delete")}
-                disabled={bulkLoading}
-                title="Delete selected"
-              >
-                <Trash2 className="w-4 h-4 text-red-600" />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleBulkAction("delete")}
+                  disabled={bulkLoading}
+                  title="Delete selected"
+                >
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                </Button>
+              )}
             </div>
           )}
 
@@ -366,10 +369,12 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
             Export All
           </Button>
           
-          <Button onClick={() => setIsUploadOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Upload File
-          </Button>
+          {!readOnly && (
+            <Button onClick={() => setIsUploadOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Upload File
+            </Button>
+          )}
         </div>
       </div>
 
@@ -381,10 +386,12 @@ export function CollectionTab({ jobId }: CollectionTabProps) {
           <p className="text-sm text-gray-500 mb-4">
             Files will appear here when stakeholders reply with attachments
           </p>
-          <Button variant="outline" size="sm" onClick={() => setIsUploadOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Upload File
-          </Button>
+          {!readOnly && (
+            <Button variant="outline" size="sm" onClick={() => setIsUploadOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Upload File
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden">

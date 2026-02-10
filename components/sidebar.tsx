@@ -5,12 +5,11 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { Calendar } from "lucide-react"
-import { getEffectiveModuleAccess, type ModuleAccess, type OrgRoleDefaults } from "@/lib/permissions"
+import { getEffectiveModuleAccess, hasSidebarAccess, type OrgRoleDefaults } from "@/lib/permissions"
 
 interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
-  moduleAccess?: ModuleAccess | null // Per-user module access overrides
   orgRoleDefaults?: OrgRoleDefaults // Org-level role default module access
   orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
   collapsed?: boolean
@@ -195,7 +194,6 @@ const settingsNavItems: NavItem[] = [
 export function Sidebar({
   className = "",
   userRole,
-  moduleAccess,
   orgRoleDefaults,
   orgFeatures = {},
   collapsed = false,
@@ -210,10 +208,10 @@ export function Sidebar({
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
 
-  // Compute effective module access based on role + user overrides + org role defaults
+  // Compute effective module access based on role + org role defaults (no per-user overrides)
   const modules = useMemo(
-    () => getEffectiveModuleAccess(userRole, moduleAccess, orgRoleDefaults),
-    [userRole, moduleAccess, orgRoleDefaults]
+    () => getEffectiveModuleAccess(userRole, null, orgRoleDefaults),
+    [userRole, orgRoleDefaults]
   )
 
   // Fetch inbox unread count
@@ -344,7 +342,7 @@ export function Sidebar({
           </li>
 
           {/* Requests */}
-          {modules.requests && (() => {
+          {hasSidebarAccess(modules.requests) && (() => {
             const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
             return (
               <li>
@@ -370,7 +368,7 @@ export function Sidebar({
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Documents */}
-          {modules.collection && (() => {
+          {hasSidebarAccess(modules.collection) && (() => {
             const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")
             return (
               <li>
@@ -387,7 +385,7 @@ export function Sidebar({
           })()}
 
           {/* Expenses - feature-flagged */}
-          {modules.collection && (() => {
+          {hasSidebarAccess(modules.collection) && (() => {
             const hasModule = !!orgFeatures.expenses
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/expenses"
             const isActive = !hasModule && pathname === "/dashboard/collection/expenses"
@@ -419,7 +417,7 @@ export function Sidebar({
           })()}
 
           {/* Invoices - feature-flagged */}
-          {modules.collection && (() => {
+          {hasSidebarAccess(modules.collection) && (() => {
             const hasModule = !!orgFeatures.invoices
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/invoices"
             const isActive = !hasModule && pathname === "/dashboard/collection/invoices"
@@ -460,7 +458,7 @@ export function Sidebar({
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Reports */}
-          {modules.reports && (() => {
+          {hasSidebarAccess(modules.reports) && (() => {
             const isActive = pathname === "/dashboard/reports" || pathname.startsWith("/dashboard/reports/")
             return (
               <li>
@@ -477,7 +475,7 @@ export function Sidebar({
           })()}
 
           {/* Forms */}
-          {modules.forms && (() => {
+          {hasSidebarAccess(modules.forms) && (() => {
             const isActive = pathname === "/dashboard/forms" || pathname.startsWith("/dashboard/forms/")
             return (
               <li>
@@ -494,7 +492,7 @@ export function Sidebar({
           })()}
 
           {/* Databases */}
-          {modules.databases && (() => {
+          {hasSidebarAccess(modules.databases) && (() => {
             const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
             return (
               <li>
@@ -511,7 +509,7 @@ export function Sidebar({
           })()}
 
           {/* Reconciliations */}
-          {modules.reconciliations && (() => {
+          {hasSidebarAccess(modules.reconciliations) && (() => {
             const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
             return (
               <li>
@@ -553,8 +551,8 @@ export function Sidebar({
         <ul className={`${collapsed ? "space-y-1" : "space-y-0.5"} pb-3 border-t border-gray-100 pt-3 mt-2`}>
           {settingsNavItems
             .filter((item) => {
-              // Contacts uses module access check
-              if (item.href === "/dashboard/contacts" && !modules.contacts) return false
+              // Contacts uses module access check (sidebar-only module)
+              if (item.href === "/dashboard/contacts" && !hasSidebarAccess(modules.contacts)) return false
               // Team and Settings are always admin-only
               if ((item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings") && !isAdmin) return false
               // Profile is available to everyone, but admins already have Settings

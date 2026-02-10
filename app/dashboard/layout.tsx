@@ -31,7 +31,6 @@ export default async function DashboardLayout({
   }
 
   const userRole = session.user?.role
-  const moduleAccess = session.user?.moduleAccess || null
 
   // Fetch organization name, feature flags, and role defaults
   let orgName: string | undefined
@@ -60,7 +59,6 @@ export default async function DashboardLayout({
       userEmail={session.user.email || ""}
       userName={session.user.name || undefined}
       userRole={userRole}
-      moduleAccess={moduleAccess}
       orgRoleDefaults={orgRoleDefaults}
       orgName={orgName}
       orgFeatures={orgFeatures}
