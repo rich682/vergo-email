@@ -5,7 +5,7 @@ import { Sidebar } from "./sidebar"
 import { UserMenu } from "./user-menu"
 import { NotificationBell } from "./notification-bell"
 import { PageTitle } from "./page-title"
-import type { ModuleAccess } from "@/lib/permissions"
+import type { ModuleAccess, OrgRoleDefaults } from "@/lib/permissions"
 
 interface DashboardShellProps {
   children: React.ReactNode
@@ -13,6 +13,7 @@ interface DashboardShellProps {
   userName?: string
   userRole?: string
   moduleAccess?: ModuleAccess | null
+  orgRoleDefaults?: OrgRoleDefaults
   orgName?: string
   orgFeatures?: Record<string, boolean>
 }
@@ -25,6 +26,7 @@ export function DashboardShell({
   userName,
   userRole,
   moduleAccess,
+  orgRoleDefaults,
   orgName,
   orgFeatures = {},
 }: DashboardShellProps) {
@@ -55,6 +57,7 @@ export function DashboardShell({
       <Sidebar
         userRole={userRole}
         moduleAccess={moduleAccess}
+        orgRoleDefaults={orgRoleDefaults}
         orgFeatures={orgFeatures}
         collapsed={!expanded}
         pinned={pinned}

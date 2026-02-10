@@ -5,12 +5,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { Calendar } from "lucide-react"
-import { getEffectiveModuleAccess, type ModuleAccess } from "@/lib/permissions"
+import { getEffectiveModuleAccess, type ModuleAccess, type OrgRoleDefaults } from "@/lib/permissions"
 
 interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
   moduleAccess?: ModuleAccess | null // Per-user module access overrides
+  orgRoleDefaults?: OrgRoleDefaults // Org-level role default module access
   orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
   collapsed?: boolean
   pinned?: boolean
@@ -195,6 +196,7 @@ export function Sidebar({
   className = "",
   userRole,
   moduleAccess,
+  orgRoleDefaults,
   orgFeatures = {},
   collapsed = false,
   pinned = true,
@@ -208,10 +210,10 @@ export function Sidebar({
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
 
-  // Compute effective module access based on role + overrides
+  // Compute effective module access based on role + user overrides + org role defaults
   const modules = useMemo(
-    () => getEffectiveModuleAccess(userRole, moduleAccess),
-    [userRole, moduleAccess]
+    () => getEffectiveModuleAccess(userRole, moduleAccess, orgRoleDefaults),
+    [userRole, moduleAccess, orgRoleDefaults]
   )
 
   // Fetch inbox unread count

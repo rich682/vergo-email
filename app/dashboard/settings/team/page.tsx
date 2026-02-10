@@ -22,7 +22,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
-import { getEffectiveModuleAccess, type ModuleAccess, type ModuleKey } from "@/lib/permissions"
+import { getEffectiveModuleAccess, type ModuleAccess, type ModuleKey, type OrgRoleDefaults } from "@/lib/permissions"
 
 const MODULE_LABELS: { key: ModuleKey; label: string }[] = [
   { key: "boards", label: "Tasks" },
@@ -92,7 +92,8 @@ function TeamSettingsContent() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [teamUsers, setTeamUsers] = useState<OrgUser[]>([])
   const [loading, setLoading] = useState(true)
-  
+  const [orgRoleDefaults, setOrgRoleDefaults] = useState<OrgRoleDefaults>(null)
+
   // Invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
@@ -184,6 +185,7 @@ function TeamSettingsContent() {
 
   useEffect(() => {
     fetchTeamUsers()
+    fetchOrgRoleDefaults()
   }, [])
 
   const fetchTeamUsers = async () => {
@@ -204,6 +206,18 @@ function TeamSettingsContent() {
       setIsAdmin(false)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchOrgRoleDefaults = async () => {
+    try {
+      const response = await fetch("/api/org/role-permissions")
+      if (response.ok) {
+        const data = await response.json()
+        setOrgRoleDefaults(data.roleDefaultModuleAccess || null)
+      }
+    } catch (error) {
+      console.error("Error fetching org role defaults:", error)
     }
   }
 
@@ -284,16 +298,16 @@ function TeamSettingsContent() {
     // Map legacy VIEWER role to MEMBER (VIEWER has been removed)
     const mappedRole = user.role === "VIEWER" ? "MEMBER" : user.role
     setEditRole(mappedRole as "ADMIN" | "MANAGER" | "MEMBER")
-    // Initialize module access with effective values (merging user overrides with role defaults)
-    const effective = getEffectiveModuleAccess(mappedRole, user.moduleAccess)
+    // Initialize module access with effective values (merging user overrides with org/role defaults)
+    const effective = getEffectiveModuleAccess(mappedRole, user.moduleAccess, orgRoleDefaults)
     setEditModuleAccess(effective)
     setIsEditOpen(true)
   }
 
   const handleRoleChangeInEdit = (newRole: "ADMIN" | "MANAGER" | "MEMBER") => {
     setEditRole(newRole)
-    // Reset module access to the new role's defaults
-    const defaults = getEffectiveModuleAccess(newRole, null)
+    // Reset module access to the new role's defaults (from org-level, then hardcoded)
+    const defaults = getEffectiveModuleAccess(newRole, null, orgRoleDefaults)
     setEditModuleAccess(defaults)
   }
 

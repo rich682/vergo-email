@@ -43,11 +43,19 @@ export type ModuleKey =
 export type ModuleAccess = Partial<Record<ModuleKey, boolean>>
 
 /**
- * Default module access per role.
- * ADMIN always gets all (enforced in code, not here).
- * These defaults apply when User.moduleAccess is null or a key is missing.
+ * Org-level role default overrides.
+ * Stored in Organization.features.roleDefaultModuleAccess.
+ * When present, these override the hardcoded defaults below.
  */
-const DEFAULT_MODULE_ACCESS: Record<string, ModuleAccess> = {
+export type OrgRoleDefaults = Record<string, ModuleAccess> | null
+
+/**
+ * Hardcoded default module access per role (fallback when org has no overrides).
+ * ADMIN always gets all (enforced in code, not here).
+ * These defaults apply when User.moduleAccess is null or a key is missing,
+ * AND the organization has not configured custom role defaults.
+ */
+export const DEFAULT_MODULE_ACCESS: Record<string, ModuleAccess> = {
   MANAGER: {
     boards: true,
     inbox: true,
@@ -138,13 +146,17 @@ const EXEMPT_ROUTES: string[] = [
 /**
  * Check if a user has access to a specific module.
  *
- * ADMIN: Always has access to all modules.
- * Others: Check moduleAccess overrides, then fall back to role defaults.
+ * Resolution order:
+ * 1. ADMIN: Always has access to all modules.
+ * 2. User-specific override (User.moduleAccess field).
+ * 3. Org-level role defaults (Organization.features.roleDefaultModuleAccess).
+ * 4. Hardcoded role defaults (DEFAULT_MODULE_ACCESS).
  */
 export function hasModuleAccess(
   role: UserRole | string | undefined,
   moduleAccess: ModuleAccess | null | undefined,
-  module: ModuleKey
+  module: ModuleKey,
+  orgRoleDefaults?: OrgRoleDefaults
 ): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
 
@@ -158,8 +170,16 @@ export function hasModuleAccess(
     return moduleAccess[module] === true
   }
 
-  // Fall back to role defaults
+  // Check org-level role defaults
   const roleKey = normalizedRole || "MEMBER"
+  if (orgRoleDefaults && roleKey in orgRoleDefaults) {
+    const orgDefaults = orgRoleDefaults[roleKey]
+    if (orgDefaults && module in orgDefaults) {
+      return orgDefaults[module] === true
+    }
+  }
+
+  // Fall back to hardcoded role defaults
   const defaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
   return defaults[module] === true
 }
@@ -167,10 +187,16 @@ export function hasModuleAccess(
 /**
  * Get the effective module access map for a user (merging overrides with defaults).
  * Used by the frontend to show/hide sidebar items.
+ *
+ * Resolution order per module:
+ * 1. User-specific override (moduleAccess)
+ * 2. Org-level role defaults (orgRoleDefaults)
+ * 3. Hardcoded role defaults (DEFAULT_MODULE_ACCESS)
  */
 export function getEffectiveModuleAccess(
   role: UserRole | string | undefined,
-  moduleAccess: ModuleAccess | null | undefined
+  moduleAccess: ModuleAccess | null | undefined,
+  orgRoleDefaults?: OrgRoleDefaults
 ): Record<ModuleKey, boolean> {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
 
@@ -190,7 +216,8 @@ export function getEffectiveModuleAccess(
   }
 
   const roleKey = normalizedRole || "MEMBER"
-  const defaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
+  const hardcodedDefaults = DEFAULT_MODULE_ACCESS[roleKey] || DEFAULT_MODULE_ACCESS.MEMBER
+  const orgDefaults = orgRoleDefaults?.[roleKey] || {}
   const overrides = moduleAccess || {}
 
   const result: Record<string, boolean> = {}
@@ -200,7 +227,16 @@ export function getEffectiveModuleAccess(
   ]
 
   for (const mod of allModules) {
-    result[mod] = mod in overrides ? overrides[mod] === true : defaults[mod] === true
+    if (mod in overrides) {
+      // User-specific override takes priority
+      result[mod] = overrides[mod] === true
+    } else if (mod in orgDefaults) {
+      // Org-level role default
+      result[mod] = orgDefaults[mod] === true
+    } else {
+      // Hardcoded fallback
+      result[mod] = hardcodedDefaults[mod] === true
+    }
   }
 
   return result as Record<ModuleKey, boolean>
@@ -232,7 +268,8 @@ export function getModuleForRoute(path: string): ModuleKey | null {
 export function canAccessRoute(
   role: UserRole | string | undefined,
   path: string,
-  moduleAccess?: ModuleAccess | null
+  moduleAccess?: ModuleAccess | null,
+  orgRoleDefaults?: OrgRoleDefaults
 ): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
 
@@ -259,7 +296,7 @@ export function canAccessRoute(
   // Check module-based access
   const module = getModuleForRoute(path)
   if (module) {
-    return hasModuleAccess(role, moduleAccess, module)
+    return hasModuleAccess(role, moduleAccess, module, orgRoleDefaults)
   }
 
   return true

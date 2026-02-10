@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import React from "react"
 import { DashboardShell } from "@/components/dashboard-shell"
+import type { OrgRoleDefaults } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -32,9 +33,10 @@ export default async function DashboardLayout({
   const userRole = session.user?.role
   const moduleAccess = session.user?.moduleAccess || null
 
-  // Fetch organization name and feature flags
+  // Fetch organization name, feature flags, and role defaults
   let orgName: string | undefined
   let orgFeatures: Record<string, boolean> = {}
+  let orgRoleDefaults: OrgRoleDefaults = null
   try {
     const org = await prisma.organization.findUnique({
       where: { id: session.user.organizationId },
@@ -42,7 +44,12 @@ export default async function DashboardLayout({
     })
     orgName = org?.name || undefined
     if (org?.features && typeof org.features === "object") {
-      orgFeatures = org.features as Record<string, boolean>
+      const features = org.features as Record<string, any>
+      orgFeatures = features as Record<string, boolean>
+      // Extract role defaults from features
+      if (features.roleDefaultModuleAccess) {
+        orgRoleDefaults = features.roleDefaultModuleAccess as OrgRoleDefaults
+      }
     }
   } catch (err) {
     console.error("[DashboardLayout] Failed to fetch org features:", err)
@@ -54,6 +61,7 @@ export default async function DashboardLayout({
       userName={session.user.name || undefined}
       userRole={userRole}
       moduleAccess={moduleAccess}
+      orgRoleDefaults={orgRoleDefaults}
       orgName={orgName}
       orgFeatures={orgFeatures}
     >

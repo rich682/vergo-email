@@ -39,7 +39,7 @@ import { parseDateOnly } from "@/lib/utils/timezone"
 // Alias for backward compatibility - use parseDateOnly from centralized utility
 const parseDateForDisplay = parseDateOnly
 import { UI_LABELS } from "@/lib/ui-labels"
-import { getEffectiveModuleAccess, type ModuleAccess } from "@/lib/permissions"
+import { getEffectiveModuleAccess, type ModuleAccess, type OrgRoleDefaults } from "@/lib/permissions"
 
 // Design system components
 import { Chip } from "@/components/ui/chip"
@@ -360,8 +360,8 @@ export default function JobDetailPage() {
         const taskInstance = data.taskInstance
         setJob(taskInstance)
         setPermissions(data.permissions)
-        // Compute effective module access for tab visibility
-        const effectiveModules = getEffectiveModuleAccess(data.userRole, data.moduleAccess)
+        // Compute effective module access for tab visibility (user override > org role defaults > hardcoded)
+        const effectiveModules = getEffectiveModuleAccess(data.userRole, data.moduleAccess, data.orgRoleDefaults || null)
         setUserModuleAccess(effectiveModules)
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")

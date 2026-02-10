@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
-import type { ModuleAccess } from "@/lib/permissions"
+import type { ModuleAccess, OrgRoleDefaults } from "@/lib/permissions"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -48,6 +48,10 @@ export const authOptions: NextAuthOptions = {
           console.error("[Auth] Failed to update lastLoginAt:", err)
         })
 
+        // Extract org-level role defaults from organization features
+        const orgFeatures = (user.organization?.features as Record<string, any>) || {}
+        const orgRoleDefaults = orgFeatures.roleDefaultModuleAccess || null
+
         return {
           id: user.id,
           email: user.email,
@@ -55,6 +59,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           organizationId: user.organizationId,
           moduleAccess: (user.moduleAccess as ModuleAccess) || null,
+          orgRoleDefaults: orgRoleDefaults as OrgRoleDefaults,
         }
       }
     })
@@ -68,6 +73,7 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role
         token.organizationId = user.organizationId
         token.moduleAccess = user.moduleAccess || null
+        token.orgRoleDefaults = user.orgRoleDefaults || null
       }
       return token
     },
@@ -79,6 +85,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
         session.user.moduleAccess = (token.moduleAccess as ModuleAccess) || null
+        session.user.orgRoleDefaults = (token.orgRoleDefaults as OrgRoleDefaults) || null
       }
       return session
     }

@@ -2,7 +2,7 @@ import { withAuth } from "next-auth/middleware"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { canAccessRoute } from "@/lib/permissions"
-import type { ModuleAccess } from "@/lib/permissions"
+import type { ModuleAccess, OrgRoleDefaults } from "@/lib/permissions"
 
 /**
  * Generate a unique request ID for tracing
@@ -26,8 +26,9 @@ export default withAuth(
     // Check role + module-based access
     const role = token?.role as string | undefined
     const moduleAccess = (token?.moduleAccess as ModuleAccess) || null
+    const orgRoleDefaults = (token?.orgRoleDefaults as OrgRoleDefaults) || null
 
-    if (!canAccessRoute(role, pathname, moduleAccess)) {
+    if (!canAccessRoute(role, pathname, moduleAccess, orgRoleDefaults)) {
       // For API routes, return 403 Forbidden
       if (pathname.startsWith("/api/")) {
         return NextResponse.json(
