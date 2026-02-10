@@ -103,7 +103,7 @@ interface ReportDefinition {
   description: string | null
   cadence: string
   dateColumnKey: string
-  layout: "standard" | "pivot"
+  layout: "standard" | "pivot" | "accounting"
   compareMode: "none" | "mom" | "yoy"
   // Standard layout fields
   columns: ReportColumn[]
@@ -112,6 +112,9 @@ interface ReportDefinition {
   pivotColumnKey: string | null
   metricRows: MetricRow[]
   pivotFormulaColumns: PivotFormulaColumn[]  // Formula columns for pivot layout
+  // Accounting layout fields
+  rowColumnKey: string | null
+  valueColumnKey: string | null
   database: {
     id: string
     name: string
@@ -256,7 +259,9 @@ export default function ReportBuilderPage() {
 
   const fetchPreview = useCallback(async () => {
     if (!report) return
-    
+
+    const isAccounting = report.layout === "accounting"
+
     setPreviewLoading(true)
     try {
       const response = await fetch(`/api/reports/${id}/preview`, {
@@ -264,8 +269,9 @@ export default function ReportBuilderPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          currentPeriodKey: currentPeriodKey || undefined,
-          compareMode: effectiveCompareMode,
+          // Accounting layout: no period filtering — all rows used
+          currentPeriodKey: isAccounting ? undefined : (currentPeriodKey || undefined),
+          compareMode: isAccounting ? "none" : effectiveCompareMode,
           // Send current local state so preview works without saving
           liveConfig: {
             columns: reportColumns,
@@ -276,13 +282,13 @@ export default function ReportBuilderPage() {
           },
         }),
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setPreviewData(data)
-        
-        // Auto-select first period if none selected
-        if (!currentPeriodKey && data.availablePeriods?.length > 0) {
+
+        // Auto-select first period if none selected (not for accounting layout)
+        if (!isAccounting && !currentPeriodKey && data.availablePeriods?.length > 0) {
           setCurrentPeriodKey(data.availablePeriods[0].key)
         }
       }
@@ -488,14 +494,14 @@ export default function ReportBuilderPage() {
             {/* Data Source Info */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm">
-                {report.layout === "pivot" ? (
+                {report.layout === "accounting" || report.layout === "pivot" ? (
                   <LayoutGrid className="w-4 h-4 text-blue-500" />
                 ) : (
                   <Database className="w-4 h-4 text-gray-500" />
                 )}
                 <span className="font-medium text-gray-700">{report.database.name}</span>
                 <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                  {report.layout === "pivot" ? "Pivot" : "Standard"}
+                  {report.layout === "accounting" ? "Accounting" : report.layout === "pivot" ? "Pivot" : "Standard"}
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
@@ -505,6 +511,38 @@ export default function ReportBuilderPage() {
                 )}
               </p>
             </div>
+
+            {/* === ACCOUNTING LAYOUT CONFIG === */}
+            {report.layout === "accounting" && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50">
+                  <span className="font-medium text-sm text-gray-700">Accounting Configuration</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Row Column</span>
+                    <span className="text-gray-700 font-medium">
+                      {databaseColumns.find(c => c.key === report.rowColumnKey)?.label || report.rowColumnKey || "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Period Column</span>
+                    <span className="text-gray-700 font-medium">
+                      {databaseColumns.find(c => c.key === report.pivotColumnKey)?.label || report.pivotColumnKey || "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Value Column</span>
+                    <span className="text-gray-700 font-medium">
+                      {databaseColumns.find(c => c.key === report.valueColumnKey)?.label || report.valueColumnKey || "—"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+                    Variance column is auto-generated (last period - first period)
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* === FILTERS CONFIGURATION === */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -969,83 +1007,97 @@ export default function ReportBuilderPage() {
               </Button>
             </div>
             
-            {/* Period and Compare Mode Controls */}
-            <div className="flex items-center gap-4">
-              {/* Period Picker */}
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <Select
-                  value={currentPeriodKey}
-                  onValueChange={(v) => {
-                    setCurrentPeriodKey(v)
-                    setHasUnsavedChanges(true)
-                  }}
-                >
-                  <SelectTrigger className="w-[180px] h-8 text-sm">
-                    <SelectValue placeholder="Select period..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {previewData?.availablePeriods && previewData.availablePeriods.length > 0 ? (
-                      previewData.availablePeriods.map((period) => (
-                        <SelectItem key={period.key} value={period.key}>
-                          {period.label}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="px-2 py-1.5 text-sm text-gray-500">No periods available</div>
+            {/* Period and Compare Mode Controls - hidden for accounting layout */}
+            {report.layout !== "accounting" && (
+              <>
+                <div className="flex items-center gap-4">
+                  {/* Period Picker */}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <Select
+                      value={currentPeriodKey}
+                      onValueChange={(v) => {
+                        setCurrentPeriodKey(v)
+                        setHasUnsavedChanges(true)
+                      }}
+                    >
+                      <SelectTrigger className="w-[180px] h-8 text-sm">
+                        <SelectValue placeholder="Select period..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {previewData?.availablePeriods && previewData.availablePeriods.length > 0 ? (
+                          previewData.availablePeriods.map((period) => (
+                            <SelectItem key={period.key} value={period.key}>
+                              {period.label}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No periods available</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Compare Mode Selector - only for standard layout */}
+                  {report.layout !== "pivot" && (
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-gray-400" />
+                      <Select
+                        value={compareMode}
+                        onValueChange={(v: "none" | "mom" | "yoy") => {
+                          setCompareMode(v)
+                          setHasUnsavedChanges(true)
+                        }}
+                      >
+                        <SelectTrigger className="w-[140px] h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Comparison</SelectItem>
+                          <SelectItem value="mom">vs Previous (MoM)</SelectItem>
+                          <SelectItem value="yoy">vs Last Year (YoY)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Info for pivot layout with comparison rows */}
+                  {report.layout === "pivot" && metricRows.some(m => m.type === "comparison") && (
+                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      Comparison data auto-loaded for comparison rows
+                    </div>
+                  )}
+                </div>
+
+                {/* Period Info Display */}
+                {previewData && (previewData.current || previewData.compare) && (
+                  <div className="mt-3 flex items-center gap-4 text-xs">
+                    {previewData.current && (
+                      <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded text-blue-700">
+                        <span className="font-medium">Current:</span>
+                        <span>{previewData.current.label}</span>
+                        <span className="text-blue-500">({previewData.current.rowCount} rows)</span>
+                      </div>
                     )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Compare Mode Selector - only for standard layout */}
-              {report.layout !== "pivot" && (
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-gray-400" />
-                  <Select
-                    value={compareMode}
-                    onValueChange={(v: "none" | "mom" | "yoy") => {
-                      setCompareMode(v)
-                      setHasUnsavedChanges(true)
-                    }}
-                  >
-                    <SelectTrigger className="w-[140px] h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Comparison</SelectItem>
-                      <SelectItem value="mom">vs Previous (MoM)</SelectItem>
-                      <SelectItem value="yoy">vs Last Year (YoY)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Info for pivot layout with comparison rows */}
-              {report.layout === "pivot" && metricRows.some(m => m.type === "comparison") && (
-                <div className="text-xs text-gray-500 flex items-center gap-1">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  Comparison data auto-loaded for comparison rows
-                </div>
-              )}
-            </div>
-
-            {/* Period Info Display */}
-            {previewData && (previewData.current || previewData.compare) && (
-              <div className="mt-3 flex items-center gap-4 text-xs">
-                {previewData.current && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded text-blue-700">
-                    <span className="font-medium">Current:</span>
-                    <span>{previewData.current.label}</span>
-                    <span className="text-blue-500">({previewData.current.rowCount} rows)</span>
+                    {previewData.compare && (
+                      <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 rounded text-amber-700">
+                        <span className="font-medium">Compare:</span>
+                        <span>{previewData.compare.label}</span>
+                        <span className="text-amber-500">({previewData.compare.rowCount} rows)</span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {previewData.compare && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 rounded text-amber-700">
-                    <span className="font-medium">Compare:</span>
-                    <span>{previewData.compare.label}</span>
-                    <span className="text-amber-500">({previewData.compare.rowCount} rows)</span>
-                  </div>
+              </>
+            )}
+
+            {/* Accounting layout info */}
+            {report.layout === "accounting" && previewData && (
+              <div className="text-xs text-gray-500">
+                All periods shown as columns with auto-generated variance
+                {previewData.diagnostics && (
+                  <span> • {previewData.diagnostics.totalDatabaseRows.toLocaleString()} total rows</span>
                 )}
               </div>
             )}
@@ -1074,13 +1126,20 @@ export default function ReportBuilderPage() {
             ) : !previewData || previewData.table.columns.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-500">
-                  {report.layout === "pivot" ? (
+                  {report.layout === "accounting" ? (
                     <>
                       <p className="font-medium">No preview available</p>
                       <p className="text-sm mt-1">
-                        {metricRows.length === 0 
-                          ? "Add metric rows to preview your report" 
-                          : !currentPeriodKey 
+                        No data found in the database. Sync data first to see the accounting report.
+                      </p>
+                    </>
+                  ) : report.layout === "pivot" ? (
+                    <>
+                      <p className="font-medium">No preview available</p>
+                      <p className="text-sm mt-1">
+                        {metricRows.length === 0
+                          ? "Add metric rows to preview your report"
+                          : !currentPeriodKey
                             ? "Select a period to preview data"
                             : "No data found for the selected period"}
                       </p>

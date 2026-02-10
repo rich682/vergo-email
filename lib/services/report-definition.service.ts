@@ -68,7 +68,7 @@ export interface PivotFormulaColumn {
 export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
 
 // Layout modes
-export type ReportLayout = "standard" | "pivot"
+export type ReportLayout = "standard" | "pivot" | "accounting"
 
 // Compare modes for variance analysis
 export type CompareMode = "none" | "mom" | "yoy"
@@ -88,6 +88,9 @@ export interface CreateReportDefinitionInput {
   pivotColumnKey?: string
   metricRows?: MetricRow[]
   pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
+  // Accounting layout fields
+  rowColumnKey?: string
+  valueColumnKey?: string
   organizationId: string
   createdById: string
 }
@@ -104,6 +107,9 @@ export interface UpdateReportDefinitionInput {
   pivotColumnKey?: string
   metricRows?: MetricRow[]
   pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
+  // Accounting layout fields
+  rowColumnKey?: string
+  valueColumnKey?: string
   // Filter configuration - which database columns to expose as filters
   filterColumnKeys?: string[]
 }
@@ -218,7 +224,7 @@ export class ReportDefinitionService {
 
     // Validate layout
     const layout = input.layout || "standard"
-    const validLayouts = ["standard", "pivot"]
+    const validLayouts = ["standard", "pivot", "accounting"]
     if (!validLayouts.includes(layout)) {
       throw new Error(`Invalid layout "${layout}". Must be one of: ${validLayouts.join(", ")}`)
     }
@@ -226,6 +232,19 @@ export class ReportDefinitionService {
     // Validate pivot layout requirements
     if (layout === "pivot" && !input.pivotColumnKey) {
       throw new Error("Pivot layout requires a pivot column")
+    }
+
+    // Validate accounting layout requirements
+    if (layout === "accounting") {
+      if (!input.pivotColumnKey) {
+        throw new Error("Accounting layout requires a pivot column (dates)")
+      }
+      if (!input.rowColumnKey) {
+        throw new Error("Accounting layout requires a row column")
+      }
+      if (!input.valueColumnKey) {
+        throw new Error("Accounting layout requires a value column")
+      }
     }
 
     // Validate pivotColumnKey exists in database schema if provided
@@ -249,6 +268,8 @@ export class ReportDefinitionService {
         columns: (input.columns || []) as any,
         formulaRows: (input.formulaRows || []) as any,
         pivotColumnKey: input.pivotColumnKey,
+        rowColumnKey: input.rowColumnKey,
+        valueColumnKey: input.valueColumnKey,
         metricRows: (input.metricRows || []) as any,
         pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
@@ -302,6 +323,9 @@ export class ReportDefinitionService {
         ...(input.pivotColumnKey !== undefined && { pivotColumnKey: input.pivotColumnKey }),
         ...(input.metricRows !== undefined && { metricRows: input.metricRows as any }),
         ...(input.pivotFormulaColumns !== undefined && { pivotFormulaColumns: input.pivotFormulaColumns as any }),
+        // Accounting layout fields
+        ...(input.rowColumnKey !== undefined && { rowColumnKey: input.rowColumnKey }),
+        ...(input.valueColumnKey !== undefined && { valueColumnKey: input.valueColumnKey }),
         // Filter configuration
         ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys }),
       },

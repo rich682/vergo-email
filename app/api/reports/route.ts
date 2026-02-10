@@ -58,9 +58,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { 
-      name, description, databaseId, cadence, dateColumnKey, 
-      layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows 
+    const {
+      name, description, databaseId, cadence, dateColumnKey,
+      layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows,
+      rowColumnKey, valueColumnKey
     } = body
 
     // Validate required fields
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate layout if provided
-    const validLayouts = ["standard", "pivot"]
+    const validLayouts = ["standard", "pivot", "accounting"]
     if (layout && !validLayouts.includes(layout)) {
       return NextResponse.json(
         { error: `Layout must be one of: ${validLayouts.join(", ")}` },
@@ -110,6 +111,16 @@ export async function POST(request: NextRequest) {
         { error: "Pivot layout requires a pivot column" },
         { status: 400 }
       )
+    }
+
+    // Validate accounting layout requirements
+    if (layout === "accounting") {
+      if (!pivotColumnKey || !rowColumnKey || !valueColumnKey) {
+        return NextResponse.json(
+          { error: "Accounting layout requires row column, period column, and value column" },
+          { status: 400 }
+        )
+      }
     }
 
     // Validate compareMode if provided
@@ -134,6 +145,8 @@ export async function POST(request: NextRequest) {
       formulaRows: formulaRows as ReportFormulaRow[] | undefined,
       pivotColumnKey,
       metricRows: metricRows as MetricRow[] | undefined,
+      rowColumnKey,
+      valueColumnKey,
       organizationId: user.organizationId,
       createdById: user.id,
     })

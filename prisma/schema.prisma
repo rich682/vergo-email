@@ -1259,9 +1259,15 @@ model ReportDefinition {
   // Array of: { key, label, columnFormulas: { [colKey]: "SUM"|"AVG"|expression }, order }
   formulaRows     Json     @default("[]")
   
-  // === Pivot layout fields ===
-  // Database column whose unique values become column headers (e.g., project_name)
+  // === Pivot / Accounting layout fields ===
+  // Database column whose unique values become column headers (e.g., project_name, as_of_date)
   pivotColumnKey  String?
+
+  // === Accounting layout fields ===
+  // Column identifying each row (e.g., account_name)
+  rowColumnKey     String?
+  // Column providing cell values (e.g., current_balance)
+  valueColumnKey   String?
   
   // Metric rows for pivot layout
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, format, order }

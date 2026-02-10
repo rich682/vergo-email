@@ -92,9 +92,12 @@ interface ReportWithConfig {
   pivotColumnKey?: string | null
   metricRows?: MetricRow[]
   pivotFormulaColumns?: PivotFormulaColumn[]
+  // Accounting layout fields
+  rowColumnKey?: string | null
+  valueColumnKey?: string | null
   cadence: ReportCadence
   dateColumnKey: string
-  layout: "standard" | "pivot"
+  layout: "standard" | "pivot" | "accounting"
   compareMode?: "none" | "mom" | "yoy"
 }
 
@@ -141,11 +144,8 @@ export class ReportExecutionService {
 
     const cadence = report.cadence as ReportCadence
     const dateColumnKey = report.dateColumnKey
-    const layout = report.layout as "standard" | "pivot"
+    const layout = report.layout as "standard" | "pivot" | "accounting"
     const allRows = (report.database.rows || []) as Array<Record<string, unknown>>
-
-    // Get available periods from the data
-    const availablePeriods = getPeriodsFromRows(allRows, dateColumnKey, cadence)
 
     // Diagnostics
     const diagnostics = {
@@ -153,6 +153,29 @@ export class ReportExecutionService {
       parseFailures: 0,
       warnings: [] as string[],
     }
+
+    // Accounting layout: skip period filtering entirely — all rows used, dates ARE the columns
+    if (layout === "accounting") {
+      let currentRows = allRows
+
+      // Apply column-value filters if any
+      if (filters && Object.keys(filters).length > 0) {
+        currentRows = this.filterRowsByColumnValues(currentRows, filters)
+      }
+
+      const table = this.evaluateAccountingLayout(effectiveReport as any, currentRows)
+
+      return {
+        current: null,
+        compare: null,
+        availablePeriods: [],
+        table,
+        diagnostics,
+      }
+    }
+
+    // Get available periods from the data
+    const availablePeriods = getPeriodsFromRows(allRows, dateColumnKey, cadence)
 
     // Filter rows by period
     let currentRows: Array<Record<string, unknown>>
@@ -195,12 +218,12 @@ export class ReportExecutionService {
     // Apply column-value filters (from slice filterBindings)
     if (filters && Object.keys(filters).length > 0) {
       currentRows = this.filterRowsByColumnValues(currentRows, filters)
-      
+
       // Update row count in currentInfo if it exists
       if (currentInfo) {
         currentInfo.rowCount = currentRows.length
       }
-      
+
       // Also filter compare rows if they exist
       if (compareRows) {
         compareRows = this.filterRowsByColumnValues(compareRows, filters)
@@ -573,6 +596,136 @@ export class ReportExecutionService {
       
       return row
     })
+
+    return { columns, rows: dataRows, formulaRows: [] }
+  }
+
+  /**
+   * Evaluate accounting layout - proper pivot table for accounting data.
+   * Row column = identifies each row (e.g., Account Name)
+   * Pivot column = values become column headers (e.g., as_of_date → "2026-01-31", "2026-02-28")
+   * Value column = cell values (e.g., Current Balance)
+   * Auto-generated Variance column (last - first)
+   */
+  private static evaluateAccountingLayout(
+    report: ReportWithConfig,
+    allRows: Array<Record<string, unknown>>
+  ): ExecutePreviewResult["table"] {
+    const rowColumnKey = report.rowColumnKey
+    const pivotColumnKey = report.pivotColumnKey
+    const valueColumnKey = report.valueColumnKey
+
+    if (!rowColumnKey || !pivotColumnKey || !valueColumnKey) {
+      return { columns: [], rows: [], formulaRows: [] }
+    }
+
+    if (allRows.length === 0) {
+      return { columns: [], rows: [], formulaRows: [] }
+    }
+
+    // Extract unique row identifiers (preserving first-appearance order)
+    const rowIdOrder: string[] = []
+    const rowIdSet = new Set<string>()
+    for (const row of allRows) {
+      const rowId = String(row[rowColumnKey] ?? "")
+      if (rowId && !rowIdSet.has(rowId)) {
+        rowIdSet.add(rowId)
+        rowIdOrder.push(rowId)
+      }
+    }
+
+    // Extract unique pivot values (sorted — ISO dates sort correctly)
+    const pivotValueSet = new Set<string>()
+    for (const row of allRows) {
+      const pv = String(row[pivotColumnKey] ?? "")
+      if (pv) pivotValueSet.add(pv)
+    }
+    const pivotValues = [...pivotValueSet].sort()
+
+    if (rowIdOrder.length === 0 || pivotValues.length === 0) {
+      return { columns: [], rows: [], formulaRows: [] }
+    }
+
+    // Build lookup: { rowId: { pivotVal: numericValue } }
+    const lookup: Record<string, Record<string, number | null>> = {}
+    for (const rowId of rowIdOrder) {
+      lookup[rowId] = {}
+    }
+
+    for (const row of allRows) {
+      const rowId = String(row[rowColumnKey] ?? "")
+      const pv = String(row[pivotColumnKey] ?? "")
+      if (!rowId || !pv) continue
+
+      const rawValue = row[valueColumnKey]
+      let num: number | null = null
+      if (typeof rawValue === "number") {
+        num = rawValue
+      } else if (typeof rawValue === "string" && rawValue !== "" && !isNaN(Number(rawValue))) {
+        num = Number(rawValue)
+      }
+
+      if (lookup[rowId]) {
+        lookup[rowId][pv] = num
+      }
+    }
+
+    // Build table columns: [_label, ...pivotValues, _variance]
+    const columns: TableColumn[] = [
+      { key: "_label", label: "", dataType: "text", type: "source" },
+      ...pivotValues.map(pv => ({
+        key: pv,
+        label: pv,
+        dataType: "currency" as const,
+        type: "source" as const,
+      })),
+      { key: "_variance", label: "Variance", dataType: "currency", type: "formula" },
+    ]
+
+    // Build data rows: one per unique row identifier
+    const dataRows = rowIdOrder.map(rowId => {
+      const row: Record<string, unknown> = {
+        _label: rowId,
+        _format: "currency",
+      }
+
+      for (const pv of pivotValues) {
+        row[pv] = lookup[rowId][pv] ?? null
+      }
+
+      // Variance = last pivot value - first pivot value
+      const firstVal = lookup[rowId][pivotValues[0]]
+      const lastVal = lookup[rowId][pivotValues[pivotValues.length - 1]]
+      if (firstVal !== null && firstVal !== undefined && lastVal !== null && lastVal !== undefined) {
+        row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+      } else {
+        row["_variance"] = null
+      }
+
+      return row
+    })
+
+    // Apply pivotFormulaColumns if any (reuse existing evaluatePivotFormulaColumn)
+    const pivotFormulaColumns = (report.pivotFormulaColumns || []) as PivotFormulaColumn[]
+    const sortedFormulaColumns = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
+
+    // Add formula columns to output columns (before variance)
+    for (const fc of sortedFormulaColumns) {
+      // Insert before the variance column
+      columns.splice(columns.length - 1, 0, {
+        key: fc.key,
+        label: fc.label,
+        dataType: "currency",
+        type: "formula",
+      })
+    }
+
+    // Compute formula column values for each row
+    for (const row of dataRows) {
+      for (const fc of sortedFormulaColumns) {
+        row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
+      }
+    }
 
     return { columns, rows: dataRows, formulaRows: [] }
   }

@@ -142,11 +142,13 @@ export class ReportGenerationService {
     }
 
     // Execute the report with period and filters
+    // For accounting layout, skip period filtering — all rows used, dates ARE the columns
+    const isAccounting = reportDef.layout === "accounting"
     const result = await ReportExecutionService.executePreview({
       reportDefinitionId,
       organizationId,
-      currentPeriodKey: periodKey,
-      compareMode: (reportDef.compareMode as "none" | "mom" | "yoy") || "none",
+      currentPeriodKey: isAccounting ? undefined : periodKey,
+      compareMode: isAccounting ? "none" : ((reportDef.compareMode as "none" | "mom" | "yoy") || "none"),
       filters: filterBindings,
     })
 
@@ -259,11 +261,13 @@ export class ReportGenerationService {
     }
 
     // Execute the report with period and filters
+    // For accounting layout, skip period filtering — all rows used, dates ARE the columns
+    const isAccounting = reportDef.layout === "accounting"
     const result = await ReportExecutionService.executePreview({
       reportDefinitionId,
       organizationId,
-      currentPeriodKey: periodKey,
-      compareMode: (reportDef.compareMode as "none" | "mom" | "yoy") || "none",
+      currentPeriodKey: isAccounting ? undefined : periodKey,
+      compareMode: isAccounting ? "none" : ((reportDef.compareMode as "none" | "mom" | "yoy") || "none"),
       filters: filterBindings,
     })
 
