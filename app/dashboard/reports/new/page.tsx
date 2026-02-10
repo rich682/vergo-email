@@ -53,6 +53,12 @@ const LAYOUT_OPTIONS = [
     icon: LayoutGrid
   },
   {
+    value: "pivot",
+    label: "Pivot / Matrix",
+    description: "One column's values become headers, define metric rows",
+    icon: Rows3
+  },
+  {
     value: "standard",
     label: "Standard",
     description: "Database rows become report rows, select columns to display",
@@ -165,6 +171,15 @@ export default function NewReportPage() {
         setError("Please select a value column")
         return
       }
+    } else if (layout === "pivot") {
+      if (!dateColumnKey) {
+        setError("Please select a date column")
+        return
+      }
+      if (!pivotColumnKey) {
+        setError("Please select a pivot column")
+        return
+      }
     } else {
       // Standard layout
       if (!dateColumnKey) {
@@ -191,7 +206,7 @@ export default function NewReportPage() {
           layout,
           databaseId,
           dateColumnKey: effectiveDateColumnKey,
-          pivotColumnKey: layout === "accounting" ? pivotColumnKey : undefined,
+          pivotColumnKey: (layout === "accounting" || layout === "pivot") ? pivotColumnKey : undefined,
           rowColumnKey: layout === "accounting" ? rowColumnKey : undefined,
           valueColumnKey: layout === "accounting" ? valueColumnKey : undefined,
         }),
@@ -218,7 +233,9 @@ export default function NewReportPage() {
   const isFormValid = name.trim() && cadence && databaseId && (
     layout === "accounting"
       ? (rowColumnKey && pivotColumnKey && valueColumnKey)
-      : dateColumnKey
+      : layout === "pivot"
+        ? (dateColumnKey && pivotColumnKey)
+        : dateColumnKey
   )
 
   return (
@@ -296,7 +313,7 @@ export default function NewReportPage() {
             {/* Layout Selection */}
             <div className="space-y-2">
               <Label>Report Layout *</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {LAYOUT_OPTIONS.map((option) => {
                   const Icon = option.icon
                   const isSelected = layout === option.value
@@ -456,8 +473,8 @@ export default function NewReportPage() {
               </>
             )}
 
-            {/* === STANDARD LAYOUT: Date Column Selection === */}
-            {databaseId && layout === "standard" && (
+            {/* === STANDARD + PIVOT LAYOUT: Date Column Selection === */}
+            {databaseId && (layout === "standard" || layout === "pivot") && (
               <div className="space-y-2">
                 <Label>Date/Period Column *</Label>
                 <p className="text-xs text-gray-500 mb-2">
@@ -492,21 +509,50 @@ export default function NewReportPage() {
               </div>
             )}
 
+            {/* Pivot Column Selection - Only show for pivot layout after database + date column selected */}
+            {databaseId && layout === "pivot" && !loadingDatabaseDetail && databaseColumns.length > 0 && dateColumnKey && (
+              <div className="space-y-2">
+                <Label>Pivot Column *</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Column whose unique values become column headers (e.g., Project Name, Product)
+                </p>
+                <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select the pivot column..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {databaseColumns
+                      .filter(col => col.key !== dateColumnKey)
+                      .map((col) => (
+                        <SelectItem key={col.key} value={col.key}>
+                          <div className="flex items-center gap-2">
+                            <LayoutGrid className="w-4 h-4 text-gray-400" />
+                            <span>{col.label}</span>
+                            <span className="text-xs text-gray-400">({col.dataType})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Selected Database Info */}
             {selectedDatabase && (
               (layout === "accounting" && rowColumnKey && pivotColumnKey && valueColumnKey) ||
+              (layout === "pivot" && dateColumnKey && pivotColumnKey) ||
               (layout === "standard" && dateColumnKey)
             ) && (
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center gap-3">
-                  {layout === "accounting" ? (
+                  {layout === "accounting" || layout === "pivot" ? (
                     <LayoutGrid className="w-5 h-5 text-blue-600" />
                   ) : (
                     <Database className="w-5 h-5 text-blue-600" />
                   )}
                   <div>
                     <p className="text-sm font-medium text-blue-900">
-                      {selectedDatabase.name} - {layout === "accounting" ? "Accounting" : "Standard"} Layout
+                      {selectedDatabase.name} - {layout === "accounting" ? "Accounting" : layout === "pivot" ? "Pivot / Matrix" : "Standard"} Layout
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
                       {selectedDatabase.rowCount.toLocaleString()} rows •
@@ -518,7 +564,12 @@ export default function NewReportPage() {
                           {" "}• Value: {databaseColumns.find(c => c.key === valueColumnKey)?.label || valueColumnKey}
                         </>
                       ) : (
-                        <> • Period: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}</>
+                        <>
+                          {" "}• Period: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}
+                          {layout === "pivot" && pivotColumnKey && (
+                            <> • Pivot: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}</>
+                          )}
+                        </>
                       )}
                     </p>
                   </div>
