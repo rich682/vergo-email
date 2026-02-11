@@ -619,7 +619,7 @@ export default function ReportsPage() {
                       onClick={() => router.push(`/dashboard/reports/${report.id}`)}
                     >
                       <td className="px-4 py-2">
-                        <div className="font-medium text-gray-900 truncate max-w-[300px]">{report.name}</div>
+                        <div className="text-sm font-medium text-gray-900 truncate max-w-[300px]">{report.name}</div>
                         {report.description && (
                           <div className="text-xs text-gray-500 truncate max-w-[300px]">{report.description}</div>
                         )}
@@ -804,7 +804,7 @@ export default function ReportsPage() {
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-2">
                               <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                              <span className="font-medium text-gray-900">
+                              <span className="text-sm font-medium text-gray-900">
                                 {report.data?.reportName || "Untitled Report"}
                               </span>
                             </div>
@@ -869,7 +869,7 @@ export default function ReportsPage() {
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-2">
                               <Scale className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                              <span className="font-medium text-gray-900">
+                              <span className="text-sm font-medium text-gray-900">
                                 {run.config.name}
                               </span>
                             </div>

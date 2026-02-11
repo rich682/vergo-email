@@ -202,7 +202,7 @@ export default function FormsPage() {
                     onClick={() => router.push(`/dashboard/forms/${form.id}`)}
                   >
                     <td className="px-4 py-2">
-                      <span className="font-medium text-gray-900 truncate block max-w-[250px]">
+                      <span className="text-sm font-medium text-gray-900 truncate block max-w-[250px]">
                         {safeString(form.name)}
                       </span>
                     </td>

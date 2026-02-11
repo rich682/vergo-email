@@ -424,7 +424,7 @@ export default function CollectionPage() {
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
-                        <div className="font-medium text-gray-900 truncate max-w-[180px]">
+                        <div className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
                           {item.filename}
                         </div>
                         <div className="text-xs text-gray-500">

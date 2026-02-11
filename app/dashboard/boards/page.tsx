@@ -778,7 +778,7 @@ function BoardRow({
       case "name":
         return (
           <div className="flex-shrink-0 min-w-0 truncate" style={{ width }}>
-            <span className="font-medium text-gray-900 truncate block">{board.name}</span>
+            <span className="text-sm font-medium text-gray-900 truncate block">{board.name}</span>
           </div>
         )
       case "cadence":

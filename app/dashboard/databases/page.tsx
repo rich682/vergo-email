@@ -161,7 +161,7 @@ export default function DatabasesPage() {
                   >
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900 truncate max-w-[250px]">{db.name}</span>
+                        <span className="text-sm font-medium text-gray-900 truncate max-w-[250px]">{db.name}</span>
                         {db.sourceType && (
                           <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded flex-shrink-0">
                             Synced
