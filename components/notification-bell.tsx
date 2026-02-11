@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Check, MessageSquare, Mail, UserPlus, RefreshCw, ClipboardList } from "lucide-react"
+import { Bell, Check, MessageSquare, Mail, UserPlus, RefreshCw, ClipboardList, AtSign } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
 interface Notification {
@@ -109,6 +109,8 @@ export function NotificationBell() {
     switch (type) {
       case "comment":
         return <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+      case "mention":
+        return <AtSign className="w-3.5 h-3.5 text-purple-500" />
       case "reply":
         return <Mail className="w-3.5 h-3.5 text-green-500" />
       case "status_change":
@@ -119,6 +121,8 @@ export function NotificationBell() {
         return <Mail className="w-3.5 h-3.5 text-blue-500" />
       case "form_response":
         return <ClipboardList className="w-3.5 h-3.5 text-teal-500" />
+      case "form_request":
+        return <ClipboardList className="w-3.5 h-3.5 text-orange-500" />
       default:
         return <Bell className="w-3.5 h-3.5 text-gray-400" />
     }

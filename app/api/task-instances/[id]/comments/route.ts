@@ -78,15 +78,47 @@ export async function POST(
     // Send notifications to task participants (non-blocking)
     const actorName = session.user.name || "Someone"
     const taskName = instance.name || "a task"
-    NotificationService.notifyTaskParticipants(
-      id,
-      organizationId,
-      userId,
-      "comment",
-      `${actorName} commented on "${taskName}"`,
-      content.trim().length > 100 ? content.trim().substring(0, 100) + "..." : content.trim(),
-      { commentId: comment.id }
-    ).catch((err) => console.error("Failed to send comment notifications:", err))
+    const commentPreview = content.trim().length > 100 ? content.trim().substring(0, 100) + "..." : content.trim()
+    const mentionedIds = Array.isArray(mentions) ? mentions.filter((m: string) => m !== userId) : []
+
+    if (mentionedIds.length > 0) {
+      // Send "mention" notifications to mentioned users
+      NotificationService.createMany(
+        mentionedIds.map((mentionedUserId: string) => ({
+          userId: mentionedUserId,
+          organizationId,
+          type: "mention" as const,
+          title: `${actorName} mentioned you in "${taskName}"`,
+          body: commentPreview,
+          taskInstanceId: id,
+          actorId: userId,
+          metadata: { commentId: comment.id },
+        }))
+      ).catch((err) => console.error("Failed to send mention notifications:", err))
+
+      // Send generic "comment" notifications to remaining participants (exclude mentioned users to avoid duplicates)
+      NotificationService.notifyTaskParticipants(
+        id,
+        organizationId,
+        userId,
+        "comment",
+        `${actorName} commented on "${taskName}"`,
+        commentPreview,
+        { commentId: comment.id },
+        mentionedIds
+      ).catch((err) => console.error("Failed to send comment notifications:", err))
+    } else {
+      // No mentions — send generic comment notification to all participants
+      NotificationService.notifyTaskParticipants(
+        id,
+        organizationId,
+        userId,
+        "comment",
+        `${actorName} commented on "${taskName}"`,
+        commentPreview,
+        { commentId: comment.id }
+      ).catch((err) => console.error("Failed to send comment notifications:", err))
+    }
 
     return NextResponse.json({
       success: true,

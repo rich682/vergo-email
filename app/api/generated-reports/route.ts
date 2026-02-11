@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
     const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
     const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
 
-    // Determine viewer filter: admins see all, non-admins only see reports they're viewers of
-    const viewerUserId = user.role === "ADMIN" ? undefined : user.id
+    // Determine viewer filter: admins and managers see all, members only see reports they're viewers of
+    const viewerUserId = (user.role === "ADMIN" || user.role === "MANAGER") ? undefined : user.id
 
     // Fetch reports
     const reports = await ReportGenerationService.list({

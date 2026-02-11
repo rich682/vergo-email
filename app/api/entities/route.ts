@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
+import { canWriteToModule } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -71,12 +72,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canWriteToModule(session.user.role, "contacts", session.user.orgRoleDefaults)) {
+    return NextResponse.json({ error: "Read-only access — you do not have permission to create contacts" }, { status: 403 })
   }
 
   try {

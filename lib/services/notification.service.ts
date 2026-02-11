@@ -4,10 +4,12 @@ import { Prisma } from "@prisma/client"
 export type NotificationType =
   | "comment"
   | "reply"
+  | "mention"
   | "status_change"
   | "collaborator_added"
   | "request_sent"
   | "form_response"
+  | "form_request"
 
 interface CreateNotificationInput {
   userId: string
@@ -74,7 +76,8 @@ export class NotificationService {
     type: NotificationType,
     title: string,
     body?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, any>,
+    excludeUserIds?: string[]
   ) {
     // Get the task with owner and collaborators
     const task = await prisma.taskInstance.findUnique({
@@ -88,13 +91,15 @@ export class NotificationService {
 
     if (!task) return
 
-    // Collect all participant user IDs (excluding the actor)
+    const excludeSet = new Set(excludeUserIds || [])
+
+    // Collect all participant user IDs (excluding the actor and excluded users)
     const participantIds = new Set<string>()
-    if (task.ownerId !== actorId) {
+    if (task.ownerId !== actorId && !excludeSet.has(task.ownerId)) {
       participantIds.add(task.ownerId)
     }
     task.collaborators.forEach((c) => {
-      if (c.userId !== actorId) participantIds.add(c.userId)
+      if (c.userId !== actorId && !excludeSet.has(c.userId)) participantIds.add(c.userId)
     })
 
     // Also notify board collaborators if task belongs to a board
@@ -104,7 +109,7 @@ export class NotificationService {
         select: { userId: true },
       })
       boardCollabs.forEach((c) => {
-        if (c.userId !== actorId) participantIds.add(c.userId)
+        if (c.userId !== actorId && !excludeSet.has(c.userId)) participantIds.add(c.userId)
       })
     }
 

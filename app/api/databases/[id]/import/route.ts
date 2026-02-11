@@ -13,6 +13,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
+import { canWriteToModule } from "@/lib/permissions"
 
 export const maxDuration = 60
 interface RouteParams {
@@ -33,6 +34,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     // Get the database

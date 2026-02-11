@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { canWriteToModule } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -111,6 +112,10 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.organizationId || !session?.user?.id) {
       console.error("[API/boards] Unauthorized - session:", JSON.stringify(session?.user))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canWriteToModule(session.user.role, "boards", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const organizationId = session.user.organizationId

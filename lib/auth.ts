@@ -75,12 +75,12 @@ export const authOptions: NextAuthOptions = {
         token.orgRoleDefaultsUpdatedAt = Date.now()
       }
 
-      // Periodically refresh role + orgRoleDefaults (every 5 minutes)
+      // Periodically refresh role + orgRoleDefaults (every 1 minute)
       // so middleware stays current when admin changes role defaults
       // or demotes/promotes a user without requiring re-login
       const now = Date.now()
       const lastRefresh = (token.orgRoleDefaultsUpdatedAt as number) || 0
-      if (now - lastRefresh > 5 * 60 * 1000 && token.organizationId) {
+      if (now - lastRefresh > 60 * 1000 && token.organizationId) {
         try {
           const [org, freshUser] = await Promise.all([
             prisma.organization.findUnique({

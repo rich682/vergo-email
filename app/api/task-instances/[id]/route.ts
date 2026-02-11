@@ -20,7 +20,6 @@ import { ReportGenerationService } from "@/lib/services/report-generation.servic
 import { NotificationService } from "@/lib/services/notification.service"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
-import { isReadOnly } from "@/lib/permissions"
 import { periodKeyFromDate } from "@/lib/utils/period"
 
 export async function GET(
@@ -125,14 +124,7 @@ export async function PATCH(
       )
     }
 
-    // VIEWER users cannot modify jobs
     const sessionRole = session.user.role as string | undefined
-    if (isReadOnly(sessionRole)) {
-      return NextResponse.json(
-        { error: "Forbidden - Viewers cannot modify tasks" },
-        { status: 403 }
-      )
-    }
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
@@ -364,14 +356,7 @@ export async function DELETE(
       )
     }
 
-    // VIEWER users cannot delete/archive jobs
     const sessionRole = session.user.role as string | undefined
-    if (isReadOnly(sessionRole)) {
-      return NextResponse.json(
-        { error: "Forbidden - Viewers cannot delete tasks" },
-        { status: 403 }
-      )
-    }
 
     const organizationId = session.user.organizationId
     const userId = session.user.id

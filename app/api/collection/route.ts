@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { CollectedItemSource, CollectedItemStatus } from "@prisma/client"
-import { getJobAccessFilter, isReadOnly } from "@/lib/permissions"
+import { getJobAccessFilter } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -227,15 +227,6 @@ export async function PATCH(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // VIEWER users cannot modify collection items
-    const userRole = session.user.role as string | undefined
-    if (isReadOnly(userRole)) {
-      return NextResponse.json(
-        { error: "Forbidden - Viewers cannot modify items" },
-        { status: 403 }
-      )
     }
 
     const organizationId = session.user.organizationId

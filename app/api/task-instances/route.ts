@@ -19,7 +19,6 @@ import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
 import { JobStatus } from "@prisma/client"
-import { isReadOnly } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
@@ -95,14 +94,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
-      )
-    }
-
-    const userRole = session.user.role as string | undefined
-    if (isReadOnly(userRole)) {
-      return NextResponse.json(
-        { error: "Forbidden - Viewers cannot create tasks" },
-        { status: 403 }
       )
     }
 

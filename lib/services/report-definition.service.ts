@@ -98,6 +98,7 @@ export interface CreateReportDefinitionInput {
 export interface UpdateReportDefinitionInput {
   name?: string
   description?: string
+  cadence?: ReportCadence
   layout?: ReportLayout
   compareMode?: CompareMode
   // Standard layout fields
@@ -314,6 +315,7 @@ export class ReportDefinitionService {
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
+        ...(input.cadence !== undefined && { cadence: input.cadence }),
         ...(input.layout !== undefined && { layout: input.layout }),
         ...(input.compareMode !== undefined && { compareMode: input.compareMode }),
         // Standard layout fields

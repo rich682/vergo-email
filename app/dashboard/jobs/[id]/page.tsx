@@ -324,6 +324,7 @@ export default function JobDetailPage() {
   // Mention suggestions
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false)
   const [mentionFilter, setMentionFilter] = useState("")
+  const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([])
 
   // ============================================
   // Computed values
@@ -583,12 +584,16 @@ export default function JobDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content: newComment.trim() })
+        body: JSON.stringify({
+          content: newComment.trim(),
+          mentions: mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
+        })
       })
       if (response.ok) {
         const data = await response.json()
         setComments(prev => [data.comment, ...prev])
         setNewComment("")
+        setMentionedUserIds([])
         fetchTimeline()
       }
     } catch (error) {
@@ -734,6 +739,7 @@ export default function JobDetailPage() {
     const newValue = newComment.slice(0, lastAtIndex) + `@${displayName} `
     setNewComment(newValue)
     setShowMentionSuggestions(false)
+    setMentionedUserIds(prev => prev.includes(user.id) ? prev : [...prev, user.id])
   }
 
   // Merge team members and collaborators for mention suggestions (deduped by user id)

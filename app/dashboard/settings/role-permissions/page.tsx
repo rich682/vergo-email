@@ -159,7 +159,7 @@ function RolePermissionsContent() {
 
       setOriginalDefaults(JSON.parse(JSON.stringify(roleDefaults)))
       setHasChanges(false)
-      setMessage({ type: "success", text: "Role permissions saved successfully! Changes will take effect when users next refresh their browser." })
+      setMessage({ type: "success", text: "Role permissions saved successfully! Changes will apply automatically within 1 minute." })
       setTimeout(() => setMessage(null), 8000)
     } catch (err: any) {
       setMessage({ type: "error", text: err?.message || "Failed to save" })
@@ -323,8 +323,8 @@ function RolePermissionsContent() {
 
                       // Task Tab is disabled when: not task-scoped (N/A) or sidebar is on (implied)
                       const taskTabDisabled = !isTaskScoped || sidebar
-                      // Can Edit is disabled when: module is completely off (no visibility scope)
-                      const canEditDisabled = isTaskScoped ? (!sidebar && !taskTab) : !sidebar
+                      // Can Edit: always clickable for task-scoped modules (auto-enables taskTab)
+                      const canEditDisabled = isTaskScoped ? false : !sidebar
 
                       const handleSidebarChange = (checked: boolean) => {
                         if (checked) {
@@ -351,7 +351,13 @@ function RolePermissionsContent() {
                       }
 
                       const handleCanEditChange = (checked: boolean) => {
-                        handleAccessChange(role.key, mod.key, checkboxesToValue(sidebar, isTaskScoped ? taskTab : sidebar, checked, isTaskScoped))
+                        if (isTaskScoped) {
+                          // Auto-enable taskTab when enabling canEdit
+                          const newTaskTab = checked ? true : taskTab
+                          handleAccessChange(role.key, mod.key, checkboxesToValue(sidebar, newTaskTab, checked, isTaskScoped))
+                        } else {
+                          handleAccessChange(role.key, mod.key, checkboxesToValue(sidebar, sidebar, checked, isTaskScoped))
+                        }
                       }
 
                       return (

@@ -11,6 +11,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService } from "@/lib/services/database.service"
+import { canWriteToModule } from "@/lib/permissions"
 
 interface RouteParams {
   params: { id: string }
@@ -64,6 +65,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -151,6 +156,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     await DatabaseService.deleteDatabase(params.id, user.organizationId)

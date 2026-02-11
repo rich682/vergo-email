@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
 import type { CreateFormDefinitionInput } from "@/lib/types/form"
+import { canWriteToModule } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +36,10 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canWriteToModule(session.user.role, "forms", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const body: CreateFormDefinitionInput = await request.json()

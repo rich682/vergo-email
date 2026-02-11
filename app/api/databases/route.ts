@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
+import { canWriteToModule } from "@/lib/permissions"
 
 // GET - List databases
 export async function GET(request: NextRequest) {
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const body = await request.json()

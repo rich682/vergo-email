@@ -195,6 +195,36 @@ export default function NewReportPage() {
       // For accounting layout, dateColumnKey = pivotColumnKey
       const effectiveDateColumnKey = layout === "accounting" ? pivotColumnKey : dateColumnKey
 
+      // Auto-populate columns/metricRows from database schema
+      const dbColumns = databaseDetail?.schema?.columns || []
+      let autoColumns: any[] | undefined
+      let autoMetricRows: any[] | undefined
+
+      if (layout === "standard") {
+        // Add all database columns as source columns
+        autoColumns = dbColumns.map((col: DatabaseColumn, index: number) => ({
+          key: `src_${col.key}`,
+          label: col.label,
+          type: "source" as const,
+          sourceColumnKey: col.key,
+          dataType: col.dataType,
+          order: index,
+        }))
+      } else if (layout === "pivot") {
+        // Add all numeric/currency columns as source metric rows
+        const numericColumns = dbColumns.filter(
+          (col: DatabaseColumn) => col.dataType === "number" || col.dataType === "currency"
+        )
+        autoMetricRows = numericColumns.map((col: DatabaseColumn, index: number) => ({
+          key: `metric_${col.key}`,
+          label: col.label,
+          type: "source" as const,
+          sourceColumnKey: col.key,
+          format: col.dataType === "currency" ? "currency" : "number",
+          order: index,
+        }))
+      }
+
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,6 +239,8 @@ export default function NewReportPage() {
           pivotColumnKey: (layout === "accounting" || layout === "pivot") ? pivotColumnKey : undefined,
           rowColumnKey: layout === "accounting" ? rowColumnKey : undefined,
           valueColumnKey: layout === "accounting" ? valueColumnKey : undefined,
+          ...(autoColumns && { columns: autoColumns }),
+          ...(autoMetricRows && { metricRows: autoMetricRows }),
         }),
       })
 

@@ -11,6 +11,7 @@ import { authOptions } from "@/lib/auth"
 import { FormRequestService } from "@/lib/services/form-request.service"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { FormNotificationService } from "@/lib/services/form-notification.service"
+import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 
@@ -193,6 +194,33 @@ export async function POST(
     } catch (emailError: any) {
       // Log but don't fail the request - form requests were created successfully
       console.error("[FormRequests] Email sending failed:", emailError.message)
+    }
+
+    // Create in-app notifications for internal user recipients (non-blocking)
+    try {
+      const internalRecipients = allFormRequests.filter(fr => fr.recipientUserId && fr.recipientUserId !== session.user.id)
+      if (internalRecipients.length > 0) {
+        const formDef = await prisma.formDefinition.findFirst({
+          where: { id: formDefinitionId, organizationId: session.user.organizationId },
+          select: { name: true },
+        })
+        const formName = formDef?.name || "a form"
+
+        await NotificationService.createMany(
+          internalRecipients.map(fr => ({
+            userId: fr.recipientUserId!,
+            organizationId: session.user.organizationId,
+            type: "form_request" as const,
+            title: "New form request",
+            body: `You've been asked to fill out "${formName}" for ${task.name}`,
+            taskInstanceId,
+            actorId: session.user.id,
+          }))
+        )
+        console.log(`[FormRequests] Created ${internalRecipients.length} in-app notifications`)
+      }
+    } catch (notifError: any) {
+      console.error("[FormRequests] In-app notification failed:", notifError.message)
     }
 
     return NextResponse.json({ count: totalCount, formRequests: allFormRequests }, { status: 201 })

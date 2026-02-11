@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
+import { canWriteToModule } from "@/lib/permissions"
 import type { UpdateFormDefinitionInput } from "@/lib/types/form"
 
 export async function GET(
@@ -47,6 +48,10 @@ export async function PATCH(
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canWriteToModule(session.user.role, "forms", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const { id } = await params
@@ -92,6 +97,10 @@ export async function DELETE(
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canWriteToModule(session.user.role, "forms", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
     }
 
     const { id } = await params

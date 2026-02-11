@@ -12,6 +12,7 @@
 
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { parseNumericValue } from "@/lib/utils/safe-expression"
 
 // ============================================
 // Types
@@ -98,13 +99,7 @@ export function getCompositeKey(row: DatabaseRow, identifierKeys: string[]): str
 export function getFullRowKey(row: DatabaseRow, schema: DatabaseSchema): string {
   return schema.columns
     .sort((a, b) => a.order - b.order)
-    .map(col => {
-      const value = row[col.key]
-      // Normalize values for consistent comparison
-      if (value === null || value === undefined) return ""
-      if (typeof value === "number") return String(value)
-      return String(value).trim()
-    })
+    .map(col => normalizeValue(row[col.key]))
     .join("|||")
 }
 
@@ -144,12 +139,22 @@ export function getRowDiff(
 }
 
 /**
- * Normalize a value for comparison
+ * Normalize a value for comparison.
+ * Strips currency symbols & commas from numeric-looking strings
+ * so "$1,234.56" and "1234.56" compare as equal.
  */
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return ""
   if (typeof value === "number") return String(value)
-  return String(value).trim()
+  const str = String(value).trim()
+  // Try to parse as a number (handles $, £, €, commas, whitespace)
+  const num = parseNumericValue(str)
+  if (num !== null) return String(num)
+  // Boolean normalization
+  const lower = str.toLowerCase()
+  if (["true", "yes", "1", "y"].includes(lower)) return "true"
+  if (["false", "no", "0", "n"].includes(lower)) return "false"
+  return str
 }
 
 // ============================================

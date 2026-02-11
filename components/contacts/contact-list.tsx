@@ -59,6 +59,9 @@ export function ContactList({
   const showSelectionColumn = true
 
   const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this contact? This action cannot be undone.")) {
+      return
+    }
     try {
       const res = await fetch(`/api/entities/${id}`, { method: "DELETE" })
       if (!res.ok) {

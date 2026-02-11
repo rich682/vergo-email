@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -202,6 +203,13 @@ export default function ReportBuilderPage() {
   // Filter column configuration - which database columns are exposed as filters
   const [filterColumnKeys, setFilterColumnKeys] = useState<string[]>([])
   const [filterConfigOpen, setFilterConfigOpen] = useState(false)
+
+  // Settings dialog state
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsName, setSettingsName] = useState("")
+  const [settingsDescription, setSettingsDescription] = useState("")
+  const [settingsCadence, setSettingsCadence] = useState("")
+  const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Fetch report definition
   const fetchReport = useCallback(async () => {
@@ -474,6 +482,19 @@ export default function ReportBuilderPage() {
                   Saved
                 </span>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSettingsName(report.name)
+                  setSettingsDescription(report.description || "")
+                  setSettingsCadence(report.cadence)
+                  setSettingsOpen(true)
+                }}
+              >
+                <Settings2 className="w-4 h-4 mr-1.5" />
+                Settings
+              </Button>
             </div>
           </div>
         </div>
@@ -740,19 +761,23 @@ export default function ReportBuilderPage() {
               </div>
             )}
 
-            {/* === PIVOT COLUMNS SECTION === */}
-            {report.layout === "pivot" && (
+            {/* === PIVOT / ACCOUNTING COLUMNS SECTION === */}
+            {(report.layout === "pivot" || report.layout === "accounting") && (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
                   <div>
-                    <span className="font-medium text-sm text-gray-700">Pivot Columns</span>
-                    <p className="text-xs text-gray-400 mt-0.5">Auto-generated + formula columns</p>
+                    <span className="font-medium text-sm text-gray-700">
+                      {report.layout === "accounting" ? "Formula Columns" : "Pivot Columns"}
+                    </span>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {report.layout === "accounting" ? "Add computed columns (e.g. Total)" : "Auto-generated + formula columns"}
+                    </p>
                   </div>
                 </div>
 
                 <div className="p-3 space-y-3">
-                  {/* Auto-generated columns from pivot */}
-                  {previewData?.table?.columns && previewData.table.columns.filter(c => c.key !== "_label" && c.type === "source").length > 0 && (
+                  {/* Auto-generated columns from pivot (pivot layout only) */}
+                  {report.layout === "pivot" && previewData?.table?.columns && previewData.table.columns.filter(c => c.key !== "_label" && c.type === "source").length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                         From Data
@@ -823,7 +848,7 @@ export default function ReportBuilderPage() {
             )}
 
             {/* === STANDARD LAYOUT UI === */}
-            {report.layout !== "pivot" && (
+            {report.layout === "standard" && (
               <>
             {/* Columns Section */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -1355,6 +1380,100 @@ export default function ReportBuilderPage() {
           return newMetric.key
         }}
       />
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Report Settings</DialogTitle>
+            <DialogDescription>
+              Update the report name, description, and cadence.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="settings-name">Name</Label>
+              <Input
+                id="settings-name"
+                value={settingsName}
+                onChange={(e) => setSettingsName(e.target.value)}
+                placeholder="Report name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="settings-description">Description</Label>
+              <Textarea
+                id="settings-description"
+                value={settingsDescription}
+                onChange={(e) => setSettingsDescription(e.target.value)}
+                placeholder="Optional description"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="settings-cadence">Cadence</Label>
+              <Select value={settingsCadence} onValueChange={setSettingsCadence}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select cadence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="annual">Annual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!settingsName.trim() || !settingsCadence || settingsSaving}
+              onClick={async () => {
+                setSettingsSaving(true)
+                try {
+                  const response = await fetch(`/api/reports/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      name: settingsName.trim(),
+                      description: settingsDescription.trim() || null,
+                      cadence: settingsCadence,
+                    }),
+                  })
+                  if (!response.ok) {
+                    throw new Error("Failed to update settings")
+                  }
+                  const data = await response.json()
+                  setReport(prev => prev ? {
+                    ...prev,
+                    name: data.report.name,
+                    description: data.report.description,
+                    cadence: data.report.cadence,
+                  } : prev)
+                  setSettingsOpen(false)
+                } catch (err: any) {
+                  setError(err.message)
+                } finally {
+                  setSettingsSaving(false)
+                }
+              }}
+            >
+              {settingsSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Settings"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Pivot Formula Column Modal */}
       <PivotFormulaColumnModal

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canWriteToModule } from "@/lib/permissions"
 import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportLayout, CompareMode, MetricRow } from "@/lib/services/report-definition.service"
 
 interface RouteParams {
@@ -70,8 +71,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
+    if (!canWriteToModule(session.user.role, "reports", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    }
+
     const body = await request.json()
-    const { name, description, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, rowColumnKey, valueColumnKey } = body
+    const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, rowColumnKey, valueColumnKey } = body
 
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
@@ -80,6 +85,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       {
         name: name?.trim(),
         description: description?.trim(),
+        cadence,
         layout: layout as ReportLayout | undefined,
         compareMode: compareMode as CompareMode | undefined,
         columns: columns as ReportColumn[] | undefined,
@@ -125,6 +131,21 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canWriteToModule(session.user.role, "reports", session.user.orgRoleDefaults)) {
+      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    }
+
+    // Check for linked tasks if this is a preflight check
+    const url = new URL(request.url)
+    const preflight = url.searchParams.get("preflight")
+
+    if (preflight === "true") {
+      const linkedTaskCount = await prisma.taskInstance.count({
+        where: { reportDefinitionId: id },
+      })
+      return NextResponse.json({ linkedTaskCount })
     }
 
     await ReportDefinitionService.deleteReportDefinition(id, user.organizationId)

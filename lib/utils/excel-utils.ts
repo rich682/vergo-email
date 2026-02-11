@@ -7,6 +7,7 @@
 
 import * as XLSX from "xlsx"
 import { DatabaseSchema, DatabaseSchemaColumn, DatabaseRow } from "@/lib/services/database.service"
+import { parseNumericValue } from "@/lib/utils/safe-expression"
 
 // ============================================
 // Types
@@ -230,13 +231,19 @@ export function parseExcelWithSchema(
     }
   }
   
-  // Convert rows to use schema keys
+  // Build a map from column key to dataType for value coercion
+  const keyToDataType = new Map<string, string>()
+  for (const col of schema.columns) {
+    keyToDataType.set(col.key, col.dataType)
+  }
+
+  // Convert rows to use schema keys, with type coercion based on schema
   return parsed.rows.map(row => {
     const result: DatabaseRow = {}
     for (const [header, value] of Object.entries(row)) {
       const key = headerToKey.get(header)
       if (key) {
-        result[key] = value
+        result[key] = coerceValue(value, keyToDataType.get(key) || "text")
       }
     }
     return result
@@ -246,6 +253,48 @@ export function parseExcelWithSchema(
 // ============================================
 // Helpers
 // ============================================
+
+/**
+ * Coerce a parsed value to match the expected schema data type.
+ * Strips currency symbols and commas from numeric fields,
+ * normalizes booleans, and attempts date parsing.
+ */
+function coerceValue(
+  value: string | number | boolean | null,
+  dataType: string
+): string | number | boolean | null {
+  if (value === null || value === undefined) return null
+
+  switch (dataType) {
+    case "currency":
+    case "number": {
+      const num = parseNumericValue(value)
+      if (num !== null) return num
+      // If parsing fails, keep original value (will be caught by validation)
+      return value
+    }
+    case "boolean": {
+      const str = String(value).toLowerCase().trim()
+      if (["true", "yes", "1", "y"].includes(str)) return true
+      if (["false", "no", "0", "n"].includes(str)) return false
+      return value
+    }
+    case "date": {
+      // Attempt to parse common date formats to ISO string
+      const str = String(value).trim()
+      if (!str) return null
+      const parsed = new Date(str)
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split("T")[0] // YYYY-MM-DD
+      }
+      // Keep original if parsing fails
+      return value
+    }
+    default:
+      // text, dropdown, file — keep as-is, just trim strings
+      return typeof value === "string" ? value.trim() : value
+  }
+}
 
 /**
  * Format data type for display

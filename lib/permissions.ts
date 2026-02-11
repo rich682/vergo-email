@@ -470,11 +470,27 @@ export function getJobAccessFilter(
 
 /**
  * Check if a user role is read-only (cannot create/edit/delete)
- * @deprecated VIEWER role has been removed from the system. This always returns false now.
+ * @deprecated Use canWriteToModule() instead, which checks per-module access levels.
  */
 export function isReadOnly(role: UserRole | string | undefined): boolean {
   // VIEWER role deprecated - no roles are read-only anymore
   return false
+}
+
+/**
+ * Check if a user can perform write operations (create/edit/delete) on a module.
+ * Returns true only for "edit" or "task-edit" access levels.
+ * Returns false for "view", "task-view", or no access.
+ *
+ * ADMIN always returns true.
+ */
+export function canWriteToModule(
+  role: UserRole | string | undefined,
+  module: ModuleKey,
+  orgRoleDefaults?: OrgRoleDefaults
+): boolean {
+  const level = getModuleAccessLevel(role, null, module, orgRoleDefaults)
+  return level === "edit" || level === "task-edit"
 }
 
 /**

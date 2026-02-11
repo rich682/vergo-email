@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
-import { isAdmin as checkIsAdmin, isReadOnly } from "@/lib/permissions"
+import { isAdmin as checkIsAdmin } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -106,11 +106,6 @@ export async function PATCH(
     const userId = session.user.id
     const userRole = session.user.role
     const boardId = params.id
-
-    // Read-only users cannot modify boards
-    if (isReadOnly(userRole)) {
-      return NextResponse.json({ error: "Forbidden - Viewers cannot modify boards" }, { status: 403 })
-    }
 
     // Access check: admins can modify any board, others must be owner
     if (!checkIsAdmin(userRole)) {
@@ -261,11 +256,6 @@ export async function DELETE(
     const userId = session.user.id
     const userRole = session.user.role
     const boardId = params.id
-
-    // Read-only users cannot delete boards
-    if (isReadOnly(userRole)) {
-      return NextResponse.json({ error: "Forbidden - Viewers cannot delete boards" }, { status: 403 })
-    }
 
     // Access check: admins can delete any board, others must be owner
     if (!checkIsAdmin(userRole)) {

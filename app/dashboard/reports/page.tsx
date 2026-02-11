@@ -474,11 +474,23 @@ export default function ReportsPage() {
   }, [isCreateModalOpen, fetchOrgUsers])
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
-      return
-    }
-
     try {
+      // Preflight check: see if any tasks are linked to this report
+      const preflightRes = await fetch(`/api/reports/${id}?preflight=true`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      const preflightData = await preflightRes.json()
+      const linkedCount = preflightData.linkedTaskCount || 0
+
+      const message = linkedCount > 0
+        ? `This report is linked to ${linkedCount} active task${linkedCount > 1 ? "s" : ""}. Deleting it will remove the report from those tasks.\n\nAre you sure you want to delete "${name}"? This action cannot be undone.`
+        : `Are you sure you want to delete "${name}"? This action cannot be undone.`
+
+      if (!confirm(message)) {
+        return
+      }
+
       const response = await fetch(`/api/reports/${id}`, {
         method: "DELETE",
         credentials: "include",
