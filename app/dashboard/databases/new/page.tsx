@@ -468,6 +468,17 @@ export default function NewDatabasePage() {
       return
     }
 
+    // Check for duplicate labels (case-insensitive) — prevents silent data loss during spreadsheet import
+    const labelCounts = new Map<string, string>()
+    for (const col of schemaColumns) {
+      const normalized = col.label.trim().toLowerCase()
+      if (labelCounts.has(normalized)) {
+        setError(`Duplicate column label: "${col.label}". Column labels must be unique.`)
+        return
+      }
+      labelCounts.set(normalized, col.label)
+    }
+
     setCreating(true)
     setError(null)
 

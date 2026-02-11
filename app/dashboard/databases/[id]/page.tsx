@@ -158,6 +158,7 @@ export default function DatabaseDetailPage() {
   const [importing, setImporting] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [updateExisting, setUpdateExisting] = useState(false)
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Schema editing state
@@ -455,11 +456,13 @@ export default function DatabaseDetailPage() {
     setImportModalOpen(true)
     setImportFile(null)
     setImportPreview(null)
+    setAcknowledgedWarnings(false)
   }
 
   const handleFileSelect = async (file: File) => {
     setImportFile(file)
     setImportPreview(null)
+    setAcknowledgedWarnings(false)
     setPreviewing(true)
 
     try {
@@ -604,11 +607,22 @@ export default function DatabaseDetailPage() {
 
   const saveSchema = async () => {
     if (!database) return
-    
+
+    // Client-side duplicate label check for immediate feedback
+    const labelSet = new Set<string>()
+    for (const col of editingColumns) {
+      const normalized = col.label.trim().toLowerCase()
+      if (labelSet.has(normalized)) {
+        setSchemaError(`Duplicate column label: "${col.label}". Column labels must be unique.`)
+        return
+      }
+      labelSet.add(normalized)
+    }
+
     setSavingSchema(true)
     setSchemaError(null)
     setSchemaWarnings([])
-    
+
     try {
       const response = await fetch(`/api/databases/${databaseId}/schema`, {
         method: "PATCH",
@@ -856,6 +870,25 @@ export default function DatabaseDetailPage() {
           {database.lastSyncError && !syncMessage && (
             <div className="mt-3 px-3 py-2 rounded-lg text-sm bg-red-50 text-red-800 border border-red-200">
               Last sync error: {database.lastSyncError}
+            </div>
+          )}
+
+          {/* Row capacity warning */}
+          {database.rowCount >= 8000 && (
+            <div className={`mt-3 px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
+              database.rowCount >= 10000
+                ? "bg-red-50 text-red-800 border border-red-200"
+                : database.rowCount >= 9000
+                  ? "bg-amber-50 text-amber-800 border border-amber-200"
+                  : "bg-yellow-50 text-yellow-800 border border-yellow-200"
+            }`}>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                {database.rowCount >= 10000
+                  ? `This database has reached the ${(10000).toLocaleString()} row limit. New imports will be rejected until rows are removed.`
+                  : `This database is at ${Math.round((database.rowCount / 10000) * 100)}% capacity (${database.rowCount.toLocaleString()} / ${(10000).toLocaleString()} rows).`
+                }
+              </span>
             </div>
           )}
 
@@ -1502,13 +1535,15 @@ export default function DatabaseDetailPage() {
                   </div>
                 )}
 
-                {/* Warnings */}
+                {/* Warnings — require acknowledgment before import */}
                 {importPreview.warnings && importPreview.warnings.length > 0 && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
                       <div>
-                        <p className="font-medium text-amber-700">Warnings</p>
+                        <p className="font-medium text-amber-700">
+                          Rows will be skipped
+                        </p>
                         <ul className="mt-1 text-sm text-amber-600 space-y-0.5">
                           {importPreview.warnings.map((warn, i) => (
                             <li key={i}>{warn}</li>
@@ -1516,6 +1551,17 @@ export default function DatabaseDetailPage() {
                         </ul>
                       </div>
                     </div>
+                    <label className="flex items-center gap-2 pt-2 border-t border-amber-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={acknowledgedWarnings}
+                        onChange={(e) => setAcknowledgedWarnings(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="text-sm font-medium text-amber-800">
+                        I understand that {(importPreview.invalidRowCount || 0) + (importPreview.exactDuplicateCount || 0)} row(s) will be skipped
+                      </span>
+                    </label>
                   </div>
                 )}
 
@@ -1540,6 +1586,7 @@ export default function DatabaseDetailPage() {
                 setImportFile(null)
                 setImportPreview(null)
                 setUpdateExisting(false)
+                setAcknowledgedWarnings(false)
               }}
             >
               Cancel
@@ -1547,9 +1594,10 @@ export default function DatabaseDetailPage() {
             <Button
               onClick={handleConfirmImport}
               disabled={
-                !importPreview?.valid || 
-                importing || 
-                ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0))
+                !importPreview?.valid ||
+                importing ||
+                ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0)) ||
+                (((importPreview?.warnings?.length || 0) > 0) && !acknowledgedWarnings)
               }
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >

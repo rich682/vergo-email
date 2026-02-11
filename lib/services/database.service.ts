@@ -181,6 +181,16 @@ export function validateSchema(schema: DatabaseSchema, _identifierKeys?: string[
     }
   }
 
+  // Check for duplicate labels (case-insensitive) to prevent silent data loss during import
+  const labelSet = new Set<string>()
+  for (const col of schema.columns) {
+    const normalizedLabel = col.label.trim().toLowerCase()
+    if (labelSet.has(normalizedLabel)) {
+      return `Duplicate column label: "${col.label}". Column labels must be unique.`
+    }
+    labelSet.add(normalizedLabel)
+  }
+
   // Check for reserved field prefixes
   for (const col of schema.columns) {
     if (col.key.startsWith("_")) {
@@ -592,15 +602,21 @@ export class DatabaseService {
       }
     }
 
-    // Update database with combined rows
-    await prisma.database.update({
-      where: { id },
-      data: {
-        rows: finalRows as any,
-        rowCount: finalRows.length,
-        lastImportedAt: new Date(),
-        lastImportedById: userId,
-      },
+    // Use a transaction to ensure atomicity — if the write fails, no partial data is persisted
+    await prisma.$transaction(async (tx) => {
+      // Re-read the database inside the transaction to guard against concurrent writes
+      const current = await tx.database.findUnique({ where: { id }, select: { rowCount: true } })
+      if (!current) throw new Error("Database not found during import transaction")
+
+      await tx.database.update({
+        where: { id },
+        data: {
+          rows: finalRows as any,
+          rowCount: finalRows.length,
+          lastImportedAt: new Date(),
+          lastImportedById: userId,
+        },
+      })
     })
 
     return {

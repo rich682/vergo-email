@@ -174,7 +174,20 @@ export default function DatabasesPage() {
                         {db.description || "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{db.rowCount.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-sm">
+                      <span className={db.rowCount >= 9000 ? "text-amber-600 font-medium" : "text-gray-500"}>
+                        {db.rowCount.toLocaleString()}
+                      </span>
+                      {db.rowCount >= 8000 && (
+                        <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                          db.rowCount >= 10000
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {db.rowCount >= 10000 ? "Full" : `${Math.round((db.rowCount / 10000) * 100)}%`}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-sm text-gray-500">{db.columnCount}</td>
                     <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>

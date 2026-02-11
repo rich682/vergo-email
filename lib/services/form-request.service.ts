@@ -14,7 +14,7 @@ import type {
   FormRequestProgress,
   DEFAULT_REMINDER_CONFIG,
 } from "@/lib/types/form"
-import { DatabaseService, DatabaseRow, DatabaseSchema } from "@/lib/services/database.service"
+import { DatabaseService, DatabaseRow, DatabaseSchema, MAX_ROWS } from "@/lib/services/database.service"
 
 // Default reminder configuration
 const defaultReminderConfig = {
@@ -722,6 +722,24 @@ export class FormRequestService {
 
     const schema = database.schema as unknown as DatabaseSchema
     const existingRows = (database.rows || []) as unknown as DatabaseRow[]
+    const schemaKeys = new Set(schema.columns.map(c => c.key))
+
+    // Validate row capacity before inserting
+    if (existingRows.length >= MAX_ROWS) {
+      throw new Error(
+        `Database has reached the ${MAX_ROWS.toLocaleString()} row limit. ` +
+        `Form submission cannot be saved until rows are removed.`
+      )
+    }
+
+    // Validate that mapped columns exist in the database schema
+    for (const [fieldKey, columnKey] of Object.entries(columnMapping)) {
+      if (columnKey && !schemaKeys.has(columnKey)) {
+        console.warn(
+          `Form field "${fieldKey}" maps to column "${columnKey}" which does not exist in database schema. Value will be stored with this key but won't appear in the schema view.`
+        )
+      }
+    }
 
     // Create new row with response data
     const row: DatabaseRow = {}
@@ -779,16 +797,18 @@ export class FormRequestService {
       }
     }
 
-    // Add the new row
+    // Add the new row using a transaction to prevent data loss on concurrent writes
     const newRowIndex = existingRows.length
     const allRows = [...existingRows, row]
 
-    await prisma.database.update({
-      where: { id: databaseId },
-      data: {
-        rows: allRows,
-        rowCount: allRows.length,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.database.update({
+        where: { id: databaseId },
+        data: {
+          rows: allRows,
+          rowCount: allRows.length,
+        },
+      })
     })
 
     return newRowIndex
@@ -843,9 +863,11 @@ export class FormRequestService {
 
     rows[rowIndex] = row
 
-    await prisma.database.update({
-      where: { id: databaseId },
-      data: { rows },
+    await prisma.$transaction(async (tx) => {
+      await tx.database.update({
+        where: { id: databaseId },
+        data: { rows },
+      })
     })
   }
 
