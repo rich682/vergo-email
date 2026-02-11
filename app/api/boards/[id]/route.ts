@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
-import { isAdmin as checkIsAdmin } from "@/lib/permissions"
+import { isAdmin as checkIsAdmin, canPerformAction } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -40,8 +40,8 @@ export async function GET(
       return NextResponse.json({ error: "Board not found" }, { status: 404 })
     }
 
-    // Access check: admins see all, others must be owner or collaborator
-    if (!checkIsAdmin(userRole)) {
+    // Access check: users with boards:view_all see all, others must be owner or collaborator
+    if (!canPerformAction(userRole, "boards:view_all", session.user.orgActionPermissions)) {
       const isOwner = board.ownerId === userId
       const isCollaborator = await prisma.boardCollaborator.findUnique({
         where: { boardId_userId: { boardId, userId } }
@@ -106,6 +106,10 @@ export async function PATCH(
     const userId = session.user.id
     const userRole = session.user.role
     const boardId = params.id
+
+    if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to edit boards" }, { status: 403 })
+    }
 
     // Access check: admins can modify any board, others must be owner
     if (!checkIsAdmin(userRole)) {
@@ -256,6 +260,10 @@ export async function DELETE(
     const userId = session.user.id
     const userRole = session.user.role
     const boardId = params.id
+
+    if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to delete boards" }, { status: 403 })
+    }
 
     // Access check: admins can delete any board, others must be owner
     if (!checkIsAdmin(userRole)) {

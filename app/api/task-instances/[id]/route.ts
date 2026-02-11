@@ -21,6 +21,7 @@ import { NotificationService } from "@/lib/services/notification.service"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { periodKeyFromDate } from "@/lib/utils/period"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(
   request: NextRequest,
@@ -156,6 +157,15 @@ export async function PATCH(
         )
       }
     } else {
+      // Non-owners need tasks:edit_any permission
+      if (existingInstance.ownerId !== userId) {
+        if (!canPerformAction(session.user.role, "tasks:edit_any", session.user.orgActionPermissions)) {
+          return NextResponse.json(
+            { error: "You do not have permission to edit tasks you don't own" },
+            { status: 403 }
+          )
+        }
+      }
       // Full edit requires edit permission
       const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'edit')
       if (!canEdit) {
@@ -365,6 +375,10 @@ export async function DELETE(
     const { searchParams } = new URL(request.url)
     
     const hard = searchParams.get("hard") === "true"
+
+    if (!canPerformAction(session.user.role, "tasks:delete", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to delete tasks" }, { status: 403 })
+    }
 
     // SAFETY: Hard delete is restricted to ADMIN users only
     if (hard && userRole !== UserRole.ADMIN) {

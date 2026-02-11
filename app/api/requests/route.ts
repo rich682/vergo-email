@@ -42,8 +42,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
     const skip = (page - 1) * limit
 
-    // Get job access filter based on user role
-    const jobAccessFilter = getJobAccessFilter(userId, userRole)
+    // Get job access filter based on user role and action permissions
+    const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
 
     const where: any = {
       organizationId,

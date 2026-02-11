@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: Promise<{ configId: string }>
@@ -19,6 +20,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ config: null })
     }
 
     const user = await prisma.user.findUnique({
@@ -49,6 +54,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to edit reconciliations" }, { status: 403 })
+    }
+
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { organizationId: true },
@@ -73,6 +82,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to delete reconciliations" }, { status: 403 })
     }
 
     const user = await prisma.user.findUnique({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(
   request: NextRequest,
@@ -45,12 +46,16 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:manage_drafts", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage drafts" }, { status: 403 })
   }
 
   try {

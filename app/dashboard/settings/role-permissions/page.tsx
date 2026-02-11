@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Shield, Info } from "lucide-react"
 import Link from "next/link"
 import { Checkbox } from "@/components/ui/checkbox"
-import { DEFAULT_MODULE_ACCESS, TASK_SCOPED_MODULES, normalizeAccessValue, type ModuleAccess, type ModuleKey, type ModuleAccessLevel } from "@/lib/permissions"
+import { DEFAULT_MODULE_ACCESS, TASK_SCOPED_MODULES, normalizeAccessValue, ACTION_CATEGORIES, DEFAULT_ACTION_PERMISSIONS, type ModuleAccess, type ModuleKey, type ModuleAccessLevel, type ActionKey } from "@/lib/permissions"
 
 const MODULE_LABELS: { key: ModuleKey; label: string; description: string }[] = [
   { key: "boards", label: "Tasks", description: "Task boards and job management" },
@@ -75,6 +75,14 @@ function RolePermissionsContent() {
   const [hasChanges, setHasChanges] = useState(false)
   const [originalDefaults, setOriginalDefaults] = useState<RoleDefaults | null>(null)
 
+  // Action permissions state
+  type ActionPermissions = Record<string, Partial<Record<ActionKey, boolean>>>
+  const [actionPermissions, setActionPermissions] = useState<ActionPermissions>(() => ({
+    MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
+    MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
+  }))
+  const [originalActionPermissions, setOriginalActionPermissions] = useState<ActionPermissions | null>(null)
+
   useEffect(() => {
     fetchRoleDefaults()
   }, [])
@@ -121,6 +129,32 @@ function RolePermissionsContent() {
           setRoleDefaults(defaults)
           setOriginalDefaults(JSON.parse(JSON.stringify(defaults)))
         }
+
+        // Load action permissions
+        if (data.roleActionPermissions) {
+          const mergedActions: ActionPermissions = {
+            MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
+            MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
+          }
+          for (const role of ["MEMBER", "MANAGER"]) {
+            if (data.roleActionPermissions[role]) {
+              for (const [key, val] of Object.entries(data.roleActionPermissions[role])) {
+                if (typeof val === "boolean") {
+                  mergedActions[role][key as ActionKey] = val
+                }
+              }
+            }
+          }
+          setActionPermissions(mergedActions)
+          setOriginalActionPermissions(JSON.parse(JSON.stringify(mergedActions)))
+        } else {
+          const defaultActions: ActionPermissions = {
+            MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
+            MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
+          }
+          setActionPermissions(defaultActions)
+          setOriginalActionPermissions(JSON.parse(JSON.stringify(defaultActions)))
+        }
       }
     } catch (error) {
       console.error("Error fetching role defaults:", error)
@@ -149,7 +183,10 @@ function RolePermissionsContent() {
       const response = await fetch("/api/org/role-permissions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleDefaultModuleAccess: roleDefaults })
+        body: JSON.stringify({
+          roleDefaultModuleAccess: roleDefaults,
+          roleActionPermissions: actionPermissions,
+        })
       })
 
       if (!response.ok) {
@@ -158,6 +195,7 @@ function RolePermissionsContent() {
       }
 
       setOriginalDefaults(JSON.parse(JSON.stringify(roleDefaults)))
+      setOriginalActionPermissions(JSON.parse(JSON.stringify(actionPermissions)))
       setHasChanges(false)
       setMessage({ type: "success", text: "Role permissions saved successfully! Changes will apply automatically within 1 minute." })
       setTimeout(() => setMessage(null), 8000)
@@ -172,14 +210,21 @@ function RolePermissionsContent() {
   const handleReset = () => {
     if (originalDefaults) {
       setRoleDefaults(JSON.parse(JSON.stringify(originalDefaults)))
-      setHasChanges(false)
     }
+    if (originalActionPermissions) {
+      setActionPermissions(JSON.parse(JSON.stringify(originalActionPermissions)))
+    }
+    setHasChanges(false)
   }
 
   const handleResetToSystemDefaults = () => {
     setRoleDefaults({
       MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
       MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
+    })
+    setActionPermissions({
+      MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
+      MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
     })
     setHasChanges(true)
   }
@@ -400,6 +445,85 @@ function RolePermissionsContent() {
               </div>
             )
           })}
+
+          {/* ─── Action Permissions ────────────────────────────────────── */}
+          <div className="mt-10 mb-2">
+            <h2 className="text-base font-semibold text-gray-900">Action Permissions</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Control what each role can do within modules they have access to. Admin always has full access.
+            </p>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Action
+                  </th>
+                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                    Admin
+                  </th>
+                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                    Manager
+                  </th>
+                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                    Employee
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {ACTION_CATEGORIES.map(category => (
+                  <>
+                    {/* Category header row */}
+                    <tr key={`cat-${category.key}`} className="bg-gray-50/70">
+                      <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        {category.label}
+                      </td>
+                    </tr>
+                    {/* Action rows */}
+                    {category.actions.map(action => (
+                      <tr key={action.key} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2.5 pl-6">
+                          <span className="text-sm text-gray-700">{action.label}</span>
+                        </td>
+                        {/* Admin — always on, disabled */}
+                        <td className="text-center px-4 py-2.5">
+                          <Checkbox checked={true} disabled className="opacity-60 cursor-not-allowed" />
+                        </td>
+                        {/* Manager */}
+                        <td className="text-center px-4 py-2.5">
+                          <Checkbox
+                            checked={actionPermissions.MANAGER?.[action.key] ?? DEFAULT_ACTION_PERMISSIONS.MANAGER[action.key] ?? true}
+                            onCheckedChange={(checked: boolean) => {
+                              setActionPermissions(prev => ({
+                                ...prev,
+                                MANAGER: { ...prev.MANAGER, [action.key]: checked },
+                              }))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </td>
+                        {/* Employee */}
+                        <td className="text-center px-4 py-2.5">
+                          <Checkbox
+                            checked={actionPermissions.MEMBER?.[action.key] ?? DEFAULT_ACTION_PERMISSIONS.MEMBER[action.key] ?? false}
+                            onCheckedChange={(checked: boolean) => {
+                              setActionPermissions(prev => ({
+                                ...prev,
+                                MEMBER: { ...prev.MEMBER, [action.key]: checked },
+                              }))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Reset to defaults */}
           <div className="flex items-center justify-between pt-2 pb-8">

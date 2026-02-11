@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
-import type { OrgRoleDefaults } from "@/lib/permissions"
+import type { OrgRoleDefaults, OrgActionPermissions } from "@/lib/permissions"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -48,9 +48,10 @@ export const authOptions: NextAuthOptions = {
           console.error("[Auth] Failed to update lastLoginAt:", err)
         })
 
-        // Extract org-level role defaults from organization features
+        // Extract org-level role defaults and action permissions from organization features
         const orgFeatures = (user.organization?.features as Record<string, any>) || {}
         const orgRoleDefaults = orgFeatures.roleDefaultModuleAccess || null
+        const orgActionPermissions = orgFeatures.roleActionPermissions || null
 
         return {
           id: user.id,
@@ -59,6 +60,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           organizationId: user.organizationId,
           orgRoleDefaults: orgRoleDefaults as OrgRoleDefaults,
+          orgActionPermissions: orgActionPermissions as OrgActionPermissions,
         }
       }
     })
@@ -72,6 +74,7 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role
         token.organizationId = user.organizationId
         token.orgRoleDefaults = user.orgRoleDefaults || null
+        token.orgActionPermissions = user.orgActionPermissions || null
         token.orgRoleDefaultsUpdatedAt = Date.now()
       }
 
@@ -94,6 +97,7 @@ export const authOptions: NextAuthOptions = {
           ])
           const features = (org?.features as Record<string, any>) || {}
           token.orgRoleDefaults = features.roleDefaultModuleAccess || null
+          token.orgActionPermissions = features.roleActionPermissions || null
           if (freshUser) {
             token.role = freshUser.role
           }
@@ -113,6 +117,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
         session.user.orgRoleDefaults = (token.orgRoleDefaults as OrgRoleDefaults) || null
+        session.user.orgActionPermissions = (token.orgActionPermissions as OrgActionPermissions) || null
       }
       return session
     }

@@ -16,6 +16,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { JobStatus, TaskStatus, UserRole } from "@prisma/client"
+import { canPerformAction, type OrgActionPermissions } from "@/lib/permissions"
 
 export interface TaskInstanceStakeholder {
   type: "contact_type" | "group" | "individual"
@@ -315,6 +316,7 @@ export class TaskInstanceService {
     options?: {
       userId?: string
       userRole?: UserRole | string
+      orgActionPermissions?: OrgActionPermissions
       status?: JobStatus
       clientId?: string
       boardId?: string
@@ -340,10 +342,9 @@ export class TaskInstanceService {
       }
     }
 
-    const normalizedRole = options?.userRole?.toString().toUpperCase()
-    const isAdmin = normalizedRole === "ADMIN"
-    
-    if (options?.userId && !isAdmin) {
+    const canViewAll = canPerformAction(options?.userRole, "tasks:view_all", options?.orgActionPermissions)
+
+    if (options?.userId && !canViewAll) {
       where = {
         ...where,
         OR: [

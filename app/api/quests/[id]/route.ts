@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
+import { canPerformAction } from "@/lib/permissions"
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
@@ -99,6 +100,10 @@ export async function PATCH(
         { error: "Unauthorized" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage quests" }, { status: 403 })
     }
 
     const organizationId = session.user.organizationId

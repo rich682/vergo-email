@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { CSVImportService } from "@/lib/services/csv-import.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "contacts:import", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to import contacts" }, { status: 403 })
   }
 
   try {

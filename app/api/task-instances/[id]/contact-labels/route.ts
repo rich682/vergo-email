@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceLabelService } from "@/lib/services/task-instance-label.service"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // GET /api/task-instances/[id]/contact-labels - List contacts with their labels
 export async function GET(
@@ -60,6 +61,10 @@ export async function POST(
         { error: "Unauthorized" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "labels:apply_contacts", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to apply labels to contacts" }, { status: 403 })
     }
 
     const { id: taskInstanceId } = await params
@@ -160,6 +165,10 @@ export async function DELETE(
       )
     }
 
+    if (!canPerformAction(session.user.role, "labels:apply_contacts", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to remove labels from contacts" }, { status: 403 })
+    }
+
     const { id: taskInstanceId } = await params
     const organizationId = session.user.organizationId
 
@@ -238,6 +247,10 @@ export async function PATCH(
         { error: "Unauthorized" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "labels:apply_contacts", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to update contact labels" }, { status: 403 })
     }
 
     const { id: taskInstanceId } = await params

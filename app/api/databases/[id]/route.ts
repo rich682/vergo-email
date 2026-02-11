@@ -11,7 +11,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService } from "@/lib/services/database.service"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: { id: string }
@@ -32,6 +32,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view databases" }, { status: 403 })
     }
 
     const database = await DatabaseService.getDatabase(params.id, user.organizationId)
@@ -67,8 +71,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -158,8 +162,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
     }
 
     await DatabaseService.deleteDatabase(params.id, user.organizationId)

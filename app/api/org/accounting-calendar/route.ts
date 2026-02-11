@@ -81,6 +81,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    if (session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Only admins can update accounting calendar settings" }, { status: 403 })
+    }
+
     const body = await request.json()
     const { fiscalYearStartMonth, timezone } = body
 

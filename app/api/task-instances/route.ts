@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
 import { JobStatus } from "@prisma/client"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
     const result = await TaskInstanceService.findByOrganization(organizationId, {
       userId,  // Pass for role-based filtering
       userRole,  // Pass for role-based filtering
+      orgActionPermissions: session.user.orgActionPermissions,
       status: status || undefined,
       clientId: clientId || undefined,
       boardId: boardId || undefined,
@@ -97,19 +99,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!canPerformAction(session.user.role, "tasks:create", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to create tasks" }, { status: 403 })
+    }
+
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const body = await request.json()
 
-    const { 
-      name, 
-      description, 
-      clientId, 
-      dueDate, 
-      labels, 
-      tags, 
-      ownerId, 
-      boardId, 
+    const {
+      name,
+      description,
+      clientId,
+      dueDate,
+      labels,
+      tags,
+      ownerId,
+      boardId,
       lineageId
     } = body
 

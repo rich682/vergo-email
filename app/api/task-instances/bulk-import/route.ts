@@ -14,6 +14,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 30
 function getOpenAIClient() {
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
         { error: "Unauthorized" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "tasks:import", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to bulk import tasks" }, { status: 403 })
     }
 
     const organizationId = session.user.organizationId

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { EntityService } from "@/lib/services/entity.service"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(
   request: NextRequest,
@@ -67,8 +67,8 @@ export async function PATCH(
     )
   }
 
-  if (!canWriteToModule(session.user.role, "contacts", session.user.orgRoleDefaults)) {
-    return NextResponse.json({ error: "Read-only access — you do not have permission to edit contacts" }, { status: 403 })
+  if (!canPerformAction(session.user.role, "contacts:manage", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to edit contacts" }, { status: 403 })
   }
 
   try {
@@ -178,8 +178,8 @@ export async function DELETE(
     )
   }
 
-  if (!canWriteToModule(session.user.role, "contacts", session.user.orgRoleDefaults)) {
-    return NextResponse.json({ error: "Read-only access — you do not have permission to delete contacts" }, { status: 403 })
+  if (!canPerformAction(session.user.role, "contacts:manage", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to delete contacts" }, { status: 403 })
   }
 
   try {

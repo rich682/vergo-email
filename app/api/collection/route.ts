@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { CollectedItemSource, CollectedItemStatus } from "@prisma/client"
-import { getJobAccessFilter } from "@/lib/permissions"
+import { getJobAccessFilter, canPerformAction } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
     const skip = (page - 1) * limit
 
-    // Get job access filter based on user role
-    const jobAccessFilter = getJobAccessFilter(userId, userRole)
+    // Get job access filter based on user role and action permissions
+    const jobAccessFilter = getJobAccessFilter(userId, userRole, "collection:view_all", session.user.orgActionPermissions)
 
     const where: any = {
       organizationId,
@@ -231,6 +231,10 @@ export async function PATCH(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+
+    if (!canPerformAction(session.user.role, "collection:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage collection items" }, { status: 403 })
+    }
 
     const body = await request.json()
     const { id, status, rejectionReason } = body

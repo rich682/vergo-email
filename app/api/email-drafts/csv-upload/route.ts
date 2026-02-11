@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { parseCSV, CSVParseError } from "@/lib/utils/csv-parser"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:manage_drafts", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage drafts" }, { status: 403 })
   }
 
   try {

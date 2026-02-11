@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // Default column configuration for boards list
 const DEFAULT_BOARD_COLUMNS = [
@@ -93,6 +94,10 @@ export async function PATCH(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "boards:edit_columns", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to edit board column configuration" }, { status: 403 })
     }
 
     const user = await prisma.user.findUnique({

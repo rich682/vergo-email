@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 type BulkAction = 
   | "add_to_groups" 
@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!canWriteToModule(session.user.role, "contacts", session.user.orgRoleDefaults)) {
-    return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+  if (!canPerformAction(session.user.role, "contacts:manage", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage contacts" }, { status: 403 })
   }
 
   const organizationId = session.user.organizationId

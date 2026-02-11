@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions"
 import OpenAI from "openai"
 
 export const maxDuration = 30
@@ -27,6 +28,10 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage reconciliations" }, { status: 403 })
     }
 
     const body = await request.json()

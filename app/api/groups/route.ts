@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { GroupService } from "@/lib/services/group.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -36,12 +37,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "contacts:manage_groups", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage contact groups" }, { status: 403 })
   }
 
   try {

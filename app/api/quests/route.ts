@@ -13,6 +13,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { QuestService } from "@/lib/services/quest.service"
 import type { QuestCreateInput, QuestInterpretationResult } from "@/lib/types/quest"
+import { canPerformAction } from "@/lib/permissions"
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
@@ -111,6 +112,10 @@ export async function POST(request: NextRequest) {
         { error: "Unauthorized", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage quests" }, { status: 403 })
     }
 
     const organizationId = session.user.organizationId

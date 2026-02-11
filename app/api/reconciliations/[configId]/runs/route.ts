@@ -7,6 +7,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: Promise<{ configId: string }>
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ runs: [] })
     }
 
     const user = await prisma.user.findUnique({
@@ -42,6 +47,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to create reconciliation runs" }, { status: 403 })
     }
 
     const user = await prisma.user.findUnique({

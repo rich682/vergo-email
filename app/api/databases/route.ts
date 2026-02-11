@@ -10,7 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 // GET - List databases
 export async function GET(request: NextRequest) {
@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ databases: [] })
     }
 
     const databases = await DatabaseService.listDatabases(user.organizationId)
@@ -58,8 +62,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "databases", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
     }
 
     const body = await request.json()

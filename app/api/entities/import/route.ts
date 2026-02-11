@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { UnifiedImportService } from "@/lib/services/unified-import.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 60
 export async function POST(request: NextRequest) {
@@ -9,6 +10,10 @@ export async function POST(request: NextRequest) {
 
   if (!session?.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  if (!canPerformAction(session.user.role, "contacts:import", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to import contacts" }, { status: 403 })
   }
 
   const formData = await request.formData()

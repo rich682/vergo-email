@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,10 @@ export async function POST(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:manage_requests", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage requests" }, { status: 403 })
   }
 
   try {

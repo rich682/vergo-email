@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 45;
 // GET - List generated reports
@@ -27,6 +28,10 @@ export async function GET(request: NextRequest) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ reports: [], periods: [] })
     }
 
     // Parse query params

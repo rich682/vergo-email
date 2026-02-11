@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportLayout, CompareMode, MetricRow } from "@/lib/services/report-definition.service"
 
 interface RouteParams {
@@ -34,6 +34,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
     const report = await ReportDefinitionService.getReportDefinition(id, user.organizationId)
@@ -71,8 +75,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "reports", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage reports" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -133,8 +137,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "reports", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage reports" }, { status: 403 })
     }
 
     // Check for linked tasks if this is a preflight check

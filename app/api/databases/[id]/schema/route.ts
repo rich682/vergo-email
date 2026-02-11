@@ -19,6 +19,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseSchema, DatabaseSchemaColumn, validateSchema } from "@/lib/services/database.service"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: { id: string }
@@ -42,6 +43,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "databases:import", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to modify database schemas" }, { status: 403 })
     }
 
     // Get the database with report generation info

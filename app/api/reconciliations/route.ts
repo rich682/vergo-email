@@ -7,13 +7,17 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ configs: [] })
     }
 
     const user = await prisma.user.findUnique({
@@ -47,8 +51,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canWriteToModule(session.user.role, "reconciliations", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to create reconciliations" }, { status: 403 })
     }
 
     const body = await request.json()

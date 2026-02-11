@@ -13,6 +13,7 @@ import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { FormNotificationService } from "@/lib/services/form-notification.service"
 import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole } from "@prisma/client"
+import { canPerformAction } from "@/lib/permissions"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(
@@ -61,6 +62,10 @@ export async function POST(
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId || !session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "forms:send", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to send form requests" }, { status: 403 })
     }
 
     const { id: taskInstanceId } = await params

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceLabelService, MetadataFieldSchema } from "@/lib/services/task-instance-label.service"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // GET /api/task-instances/[id]/labels - List all labels for a task instance
 export async function GET(
@@ -70,6 +71,10 @@ export async function POST(
         { error: "Unauthorized" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "labels:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage labels" }, { status: 403 })
     }
 
     const { id: taskInstanceId } = await params

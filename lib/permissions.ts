@@ -215,6 +215,7 @@ const ADMIN_ONLY_ROUTES = [
   "/dashboard/settings",
   "/api/org/settings",
   "/api/org/team",
+  "/api/org/accounting-calendar",
   "/api/admin",
 ]
 
@@ -441,24 +442,37 @@ export function canAccessRoute(
 // ─── Job/Board Access Filters ─────────────────────────────────────────────────
 
 /**
- * Get Prisma where clause to filter jobs by user access
+ * Get Prisma where clause to filter jobs by user access.
  *
- * ADMIN: No filter (sees all org jobs)
- * MANAGER: No filter (sees all org jobs - manages team)
- * MEMBER: Only jobs where user is owner, task collaborator, or board collaborator
+ * Uses action permissions to determine if user can see all items or only their own.
+ * Pass the appropriate view_all action key for the module context:
+ * - "tasks:view_all" for task listings
+ * - "inbox:view_all" for inbox/requests
+ * - "collection:view_all" for collection
+ *
+ * When viewAllAction is granted → null (no filter, sees everything)
+ * Otherwise → only owned, task-collaborated, or board-collaborated jobs
  */
 export function getJobAccessFilter(
   userId: string,
-  role: UserRole | string | undefined
+  role: UserRole | string | undefined,
+  viewAllAction?: ActionKey,
+  orgActionPermissions?: OrgActionPermissions
 ): Prisma.TaskInstanceWhereInput | null {
-  const normalizedRole = role?.toUpperCase() as UserRole | undefined
-
-  // ADMIN and MANAGER see all jobs
-  if (normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER) {
-    return null
+  // If a viewAllAction is specified, use the action permission system
+  if (viewAllAction) {
+    if (canPerformAction(role, viewAllAction, orgActionPermissions)) {
+      return null
+    }
+  } else {
+    // Legacy fallback: ADMIN and MANAGER see all jobs
+    const normalizedRole = role?.toUpperCase() as UserRole | undefined
+    if (normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER) {
+      return null
+    }
   }
 
-  // MEMBER: filter to owned, task-collaborated, or board-collaborated jobs
+  // Filter to owned, task-collaborated, or board-collaborated jobs
   return {
     OR: [
       { ownerId: userId },
@@ -469,20 +483,16 @@ export function getJobAccessFilter(
 }
 
 /**
- * Check if a user role is read-only (cannot create/edit/delete)
- * @deprecated Use canWriteToModule() instead, which checks per-module access levels.
+ * @deprecated Use canPerformAction() instead with specific action keys.
+ * No roles are read-only anymore — this always returns false.
  */
 export function isReadOnly(role: UserRole | string | undefined): boolean {
-  // VIEWER role deprecated - no roles are read-only anymore
   return false
 }
 
 /**
- * Check if a user can perform write operations (create/edit/delete) on a module.
- * Returns true only for "edit" or "task-edit" access levels.
- * Returns false for "view", "task-view", or no access.
- *
- * ADMIN always returns true.
+ * @deprecated Use canPerformAction() instead with specific action keys.
+ * e.g. canPerformAction(role, "contacts:manage", orgActionPermissions)
  */
 export function canWriteToModule(
   role: UserRole | string | undefined,
@@ -555,4 +565,352 @@ export function getBoardAccessFilter(
       { collaborators: { some: { userId } } }
     ]
   }
+}
+
+// ─── Action Permission System ─────────────────────────────────────────────────
+//
+// Granular action-level permissions that control what operations each role can
+// perform. These sit on top of module access (which controls sidebar/page
+// visibility). Module access is checked by middleware; action permissions are
+// checked by individual API route handlers.
+
+/**
+ * All granular action permission keys.
+ * Format: "module:action" for readability and grouping.
+ */
+export type ActionKey =
+  // Contacts
+  | "contacts:view"
+  | "contacts:manage"
+  | "contacts:import"
+  | "contacts:manage_groups"
+  | "contacts:manage_types"
+  // Tasks & Boards
+  | "tasks:view_all"
+  | "boards:view_all"
+  | "tasks:create"
+  | "tasks:edit_any"
+  | "tasks:delete"
+  | "tasks:import"
+  | "boards:manage"
+  | "boards:edit_columns"
+  // Labels & Attachments
+  | "labels:manage"
+  | "labels:apply_contacts"
+  | "attachments:upload"
+  // Inbox & Requests
+  | "inbox:view_all"
+  | "inbox:manage_requests"
+  | "inbox:send_emails"
+  | "inbox:manage_drafts"
+  | "inbox:manage_quests"
+  | "inbox:review"
+  // Reports
+  | "reports:view"
+  | "reports:manage"
+  | "reports:generate"
+  // Forms
+  | "forms:view"
+  | "forms:manage"
+  | "forms:send"
+  // Databases
+  | "databases:view"
+  | "databases:manage"
+  | "databases:import"
+  // Collection
+  | "collection:view_all"
+  | "collection:manage"
+  // Reconciliations
+  | "reconciliations:view"
+  | "reconciliations:manage"
+  | "reconciliations:resolve"
+
+/**
+ * Per-role action permission map. Each key is a role name (MANAGER, MEMBER),
+ * each value is a partial record of action keys to boolean.
+ * Missing keys fall back to DEFAULT_ACTION_PERMISSIONS.
+ */
+export type RoleActionPermissions = Record<string, Partial<Record<ActionKey, boolean>>>
+
+/**
+ * Org-level action permissions, stored in Organization.features.roleActionPermissions.
+ * null means no overrides configured (use defaults).
+ */
+export type OrgActionPermissions = RoleActionPermissions | null
+
+/**
+ * Category definition for the settings UI.
+ */
+export interface ActionCategory {
+  key: string
+  label: string
+  actions: ActionDefinition[]
+}
+
+/**
+ * Individual action definition for the settings UI and validation.
+ */
+export interface ActionDefinition {
+  key: ActionKey
+  label: string
+}
+
+/**
+ * All valid action keys as an array (for validation).
+ */
+export const ALL_ACTION_KEYS: ActionKey[] = [
+  "contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types",
+  "tasks:view_all", "boards:view_all", "tasks:create", "tasks:edit_any", "tasks:delete", "tasks:import", "boards:manage", "boards:edit_columns",
+  "labels:manage", "labels:apply_contacts", "attachments:upload",
+  "inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review",
+  "reports:view", "reports:manage", "reports:generate",
+  "forms:view", "forms:manage", "forms:send",
+  "databases:view", "databases:manage", "databases:import",
+  "collection:view_all", "collection:manage",
+  "reconciliations:view", "reconciliations:manage", "reconciliations:resolve",
+]
+
+/**
+ * Hardcoded default action permissions per role.
+ * ADMIN is not listed because ADMIN always returns true.
+ */
+export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolean>> = {
+  MANAGER: {
+    "contacts:view": true,
+    "contacts:manage": true,
+    "contacts:import": true,
+    "contacts:manage_groups": true,
+    "contacts:manage_types": true,
+    "tasks:view_all": true,
+    "boards:view_all": true,
+    "tasks:create": true,
+    "tasks:edit_any": true,
+    "tasks:delete": true,
+    "tasks:import": true,
+    "boards:manage": true,
+    "boards:edit_columns": true,
+    "labels:manage": true,
+    "labels:apply_contacts": true,
+    "attachments:upload": true,
+    "inbox:view_all": true,
+    "inbox:manage_requests": true,
+    "inbox:send_emails": true,
+    "inbox:manage_drafts": true,
+    "inbox:manage_quests": true,
+    "inbox:review": true,
+    "reports:view": true,
+    "reports:manage": true,
+    "reports:generate": true,
+    "forms:view": true,
+    "forms:manage": true,
+    "forms:send": true,
+    "databases:view": true,
+    "databases:manage": true,
+    "databases:import": true,
+    "collection:view_all": true,
+    "collection:manage": true,
+    "reconciliations:view": true,
+    "reconciliations:manage": true,
+    "reconciliations:resolve": true,
+  },
+  MEMBER: {
+    "contacts:view": true,
+    "contacts:manage": false,
+    "contacts:import": false,
+    "contacts:manage_groups": false,
+    "contacts:manage_types": false,
+    "tasks:view_all": false,
+    "boards:view_all": false,
+    "tasks:create": true,
+    "tasks:edit_any": false,
+    "tasks:delete": false,
+    "tasks:import": false,
+    "boards:manage": false,
+    "boards:edit_columns": false,
+    "labels:manage": true,
+    "labels:apply_contacts": true,
+    "attachments:upload": true,
+    "inbox:view_all": false,
+    "inbox:manage_requests": false,
+    "inbox:send_emails": false,
+    "inbox:manage_drafts": false,
+    "inbox:manage_quests": false,
+    "inbox:review": false,
+    "reports:view": false,
+    "reports:manage": false,
+    "reports:generate": false,
+    "forms:view": true,
+    "forms:manage": false,
+    "forms:send": true,
+    "databases:view": false,
+    "databases:manage": false,
+    "databases:import": false,
+    "collection:view_all": false,
+    "collection:manage": true,
+    "reconciliations:view": false,
+    "reconciliations:manage": false,
+    "reconciliations:resolve": false,
+  },
+}
+
+/**
+ * Action categories for the settings UI.
+ */
+export const ACTION_CATEGORIES: ActionCategory[] = [
+  {
+    key: "contacts",
+    label: "Contacts",
+    actions: [
+      { key: "contacts:view", label: "View contacts" },
+      { key: "contacts:manage", label: "Create, edit & delete contacts" },
+      { key: "contacts:import", label: "Import contacts (CSV/file)" },
+      { key: "contacts:manage_groups", label: "Create, edit & delete contact groups" },
+      { key: "contacts:manage_types", label: "Create & delete custom contact types" },
+    ],
+  },
+  {
+    key: "tasks_boards",
+    label: "Tasks & Boards",
+    actions: [
+      { key: "tasks:view_all", label: "View all tasks (not just own/collaborated)" },
+      { key: "boards:view_all", label: "View all boards (not just own/collaborated)" },
+      { key: "tasks:create", label: "Create tasks" },
+      { key: "tasks:edit_any", label: "Edit any task (not just owned)" },
+      { key: "tasks:delete", label: "Delete / archive tasks" },
+      { key: "tasks:import", label: "Bulk import tasks (AI / spreadsheet)" },
+      { key: "boards:manage", label: "Create, edit & delete boards" },
+      { key: "boards:edit_columns", label: "Edit board column configuration" },
+    ],
+  },
+  {
+    key: "labels_attachments",
+    label: "Labels & Attachments",
+    actions: [
+      { key: "labels:manage", label: "Create, edit & delete task labels" },
+      { key: "labels:apply_contacts", label: "Apply / remove labels on contacts" },
+      { key: "attachments:upload", label: "Upload task attachments" },
+    ],
+  },
+  {
+    key: "inbox_requests",
+    label: "Inbox & Requests",
+    actions: [
+      { key: "inbox:view_all", label: "View all inbox messages (not just own tasks)" },
+      { key: "inbox:manage_requests", label: "Update request status, mark read, update risk" },
+      { key: "inbox:send_emails", label: "Send emails & execute quests" },
+      { key: "inbox:manage_drafts", label: "Create & edit email drafts" },
+      { key: "inbox:manage_quests", label: "Create & manage quests" },
+      { key: "inbox:review", label: "Approve/reject in review queue" },
+    ],
+  },
+  {
+    key: "reports",
+    label: "Reports",
+    actions: [
+      { key: "reports:view", label: "View generated reports & export" },
+      { key: "reports:manage", label: "Create, edit & delete report definitions" },
+      { key: "reports:generate", label: "Generate reports" },
+    ],
+  },
+  {
+    key: "forms",
+    label: "Forms",
+    actions: [
+      { key: "forms:view", label: "View form templates & submissions" },
+      { key: "forms:manage", label: "Create, edit & delete form templates" },
+      { key: "forms:send", label: "Send form requests to recipients" },
+    ],
+  },
+  {
+    key: "databases",
+    label: "Databases",
+    actions: [
+      { key: "databases:view", label: "View databases & data" },
+      { key: "databases:manage", label: "Create, edit & delete databases" },
+      { key: "databases:import", label: "Import data & edit schema" },
+    ],
+  },
+  {
+    key: "collection",
+    label: "Collection",
+    actions: [
+      { key: "collection:view_all", label: "View all collection items (not just own tasks)" },
+      { key: "collection:manage", label: "Upload & manage collection files" },
+    ],
+  },
+  {
+    key: "reconciliations",
+    label: "Reconciliations",
+    actions: [
+      { key: "reconciliations:view", label: "View reconciliations & run results" },
+      { key: "reconciliations:manage", label: "Create, edit & delete reconciliations" },
+      { key: "reconciliations:resolve", label: "Resolve exceptions in runs" },
+    ],
+  },
+]
+
+/**
+ * Check if a user with the given role can perform a specific action.
+ *
+ * Resolution order:
+ * 1. ADMIN: Always returns true.
+ * 2. Org-level action overrides (Organization.features.roleActionPermissions).
+ * 3. Hardcoded defaults (DEFAULT_ACTION_PERMISSIONS).
+ */
+export function canPerformAction(
+  role: UserRole | string | undefined,
+  action: ActionKey,
+  orgActionPermissions?: OrgActionPermissions
+): boolean {
+  const normalizedRole = role?.toUpperCase() as UserRole | undefined
+
+  // ADMIN always has all permissions
+  if (normalizedRole === UserRole.ADMIN) {
+    return true
+  }
+
+  const roleKey = normalizedRole || "MEMBER"
+
+  // Check org-level action overrides
+  if (orgActionPermissions && roleKey in orgActionPermissions) {
+    const roleOverrides = orgActionPermissions[roleKey]
+    if (roleOverrides && action in roleOverrides) {
+      return roleOverrides[action] === true
+    }
+  }
+
+  // Fall back to hardcoded defaults
+  const defaults = DEFAULT_ACTION_PERMISSIONS[roleKey] || DEFAULT_ACTION_PERMISSIONS.MEMBER
+  return defaults[action] === true
+}
+
+/**
+ * Get all effective action permissions for a role.
+ * Used by the settings UI to display current state.
+ */
+export function getEffectiveActionPermissions(
+  role: UserRole | string | undefined,
+  orgActionPermissions?: OrgActionPermissions
+): Record<ActionKey, boolean> {
+  const normalizedRole = role?.toUpperCase() as UserRole | undefined
+
+  if (normalizedRole === UserRole.ADMIN) {
+    const all = {} as Record<ActionKey, boolean>
+    for (const key of ALL_ACTION_KEYS) {
+      all[key] = true
+    }
+    return all
+  }
+
+  const roleKey = normalizedRole || "MEMBER"
+  const defaults = { ...(DEFAULT_ACTION_PERMISSIONS[roleKey] || DEFAULT_ACTION_PERMISSIONS.MEMBER) }
+  const overrides = orgActionPermissions?.[roleKey] || {}
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key in defaults) {
+      defaults[key as ActionKey] = value as boolean
+    }
+  }
+
+  return defaults
 }

@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { normalizeAccessValue, type ModuleAccess, type ModuleKey, type ModuleAccessValue } from "@/lib/permissions"
+import { normalizeAccessValue, ALL_ACTION_KEYS, type ModuleAccess, type ModuleKey, type ModuleAccessValue, type ActionKey } from "@/lib/permissions"
 
 const VALID_MODULE_KEYS: ModuleKey[] = [
   "boards", "inbox", "requests", "collection", "reports",
@@ -47,10 +47,12 @@ export async function GET(request: NextRequest) {
 
     const features = (organization?.features as Record<string, any>) || {}
     const roleDefaults = features.roleDefaultModuleAccess || null
+    const roleActionPermissions = features.roleActionPermissions || null
 
     return NextResponse.json({
       success: true,
-      roleDefaultModuleAccess: roleDefaults
+      roleDefaultModuleAccess: roleDefaults,
+      roleActionPermissions,
     })
   } catch (error: any) {
     console.error("[RolePermissions] GET error:", error)
@@ -82,7 +84,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { roleDefaultModuleAccess } = body
+    const { roleDefaultModuleAccess, roleActionPermissions } = body
 
     if (!roleDefaultModuleAccess || typeof roleDefaultModuleAccess !== "object") {
       return NextResponse.json(
@@ -118,6 +120,33 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Validate and sanitize action permissions (if provided)
+    const validActionKeys = new Set<string>(ALL_ACTION_KEYS)
+    let sanitizedActions: Record<string, Partial<Record<ActionKey, boolean>>> | undefined
+
+    if (roleActionPermissions && typeof roleActionPermissions === "object") {
+      sanitizedActions = {}
+      for (const role of CONFIGURABLE_ROLES) {
+        if (role in roleActionPermissions) {
+          const rolePerms = roleActionPermissions[role]
+          if (typeof rolePerms !== "object" || Array.isArray(rolePerms)) {
+            return NextResponse.json(
+              { error: `Invalid action permissions for role ${role}` },
+              { status: 400 }
+            )
+          }
+
+          const sanitizedRoleActions: Partial<Record<ActionKey, boolean>> = {}
+          for (const [key, val] of Object.entries(rolePerms)) {
+            if (validActionKeys.has(key) && typeof val === "boolean") {
+              sanitizedRoleActions[key as ActionKey] = val
+            }
+          }
+          sanitizedActions[role] = sanitizedRoleActions
+        }
+      }
+    }
+
     // Merge with existing features (preserve other feature flags)
     const organization = await prisma.organization.findUnique({
       where: { id: session.user.organizationId },
@@ -126,13 +155,18 @@ export async function PUT(request: NextRequest) {
 
     const existingFeatures = (organization?.features as Record<string, any>) || {}
 
+    const updateData: Record<string, any> = {
+      ...existingFeatures,
+      roleDefaultModuleAccess: sanitized,
+    }
+    if (sanitizedActions !== undefined) {
+      updateData.roleActionPermissions = sanitizedActions
+    }
+
     const updatedOrg = await prisma.organization.update({
       where: { id: session.user.organizationId },
       data: {
-        features: {
-          ...existingFeatures,
-          roleDefaultModuleAccess: sanitized
-        }
+        features: updateData,
       },
       select: { features: true }
     })
@@ -143,7 +177,8 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      roleDefaultModuleAccess: updatedFeatures.roleDefaultModuleAccess || null
+      roleDefaultModuleAccess: updatedFeatures.roleDefaultModuleAccess || null,
+      roleActionPermissions: updatedFeatures.roleActionPermissions || null,
     })
   } catch (error: any) {
     console.error("[RolePermissions] PUT error:", error)

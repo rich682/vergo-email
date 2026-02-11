@@ -4,6 +4,7 @@ import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, a
 import { formatInTimeZone } from "date-fns-tz"
 import { TaskInstanceService } from "./task-instance.service"
 import { ReportGenerationService } from "./report-generation.service"
+import { canPerformAction, type OrgActionPermissions } from "@/lib/permissions"
 import {
   calculateNextPeriodStart,
   getEndOfPeriod,
@@ -240,6 +241,7 @@ export class BoardService {
       includeTaskInstanceCount?: boolean
       userId?: string
       userRole?: string
+      orgActionPermissions?: OrgActionPermissions
     }
   ): Promise<BoardWithCounts[]> {
     const where: any = { organizationId }
@@ -263,10 +265,10 @@ export class BoardService {
       }
     }
 
-    // Apply role-based access filter for non-admins
+    // Apply role-based access filter based on boards:view_all permission
     if (options?.userId && options?.userRole) {
-      const normalizedRole = options.userRole.toUpperCase()
-      if (normalizedRole !== "ADMIN") {
+      const canViewAll = canPerformAction(options.userRole, "boards:view_all", options.orgActionPermissions)
+      if (!canViewAll) {
         // Non-admins can see boards where they have any access:
         // - Board owner
         // - Board collaborator

@@ -11,12 +11,17 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ runs: [] })
     }
 
     const user = await prisma.user.findUnique({

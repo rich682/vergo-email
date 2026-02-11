@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskStatus } from "@prisma/client"
+import { canPerformAction } from "@/lib/permissions"
 
 // Note: Request model is @@map("Task") in Prisma schema, so prisma.request maps to Task table
 
@@ -67,12 +68,16 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:manage_requests", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to manage requests" }, { status: 403 })
   }
 
   try {

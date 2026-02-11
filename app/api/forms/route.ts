@@ -10,13 +10,17 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
 import type { CreateFormDefinitionInput } from "@/lib/types/form"
-import { canWriteToModule } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "forms:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ forms: [] })
     }
 
     const forms = await FormDefinitionService.findAll(session.user.organizationId)
@@ -38,8 +42,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canWriteToModule(session.user.role, "forms", session.user.orgRoleDefaults)) {
-      return NextResponse.json({ error: "Read-only access" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "forms:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage forms" }, { status: 403 })
     }
 
     const body: CreateFormDefinitionInput = await request.json()

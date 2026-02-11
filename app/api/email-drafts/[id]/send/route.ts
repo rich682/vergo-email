@@ -10,6 +10,7 @@ import { normalizeTagName } from "@/lib/utils/csv-parser"
 import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
 import crypto from "crypto"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 60
 // Structured logging helper
@@ -33,6 +34,10 @@ export async function POST(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:send_emails", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to send emails" }, { status: 403 })
   }
 
   const orgId = session.user.organizationId

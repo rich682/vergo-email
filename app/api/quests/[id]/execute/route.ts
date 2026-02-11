@@ -16,6 +16,7 @@ import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // Feature flag check
 function isQuestUIEnabled(): boolean {
@@ -34,6 +35,10 @@ export async function POST(
         { error: "Unauthorized", errorCode: "ORG_ACCESS_DENIED" },
         { status: 401 }
       )
+    }
+
+    if (!canPerformAction(session.user.role, "inbox:send_emails", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to send emails" }, { status: 403 })
     }
 
     const organizationId = session.user.organizationId

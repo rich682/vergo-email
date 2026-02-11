@@ -24,7 +24,7 @@ export async function GET() {
     const userId = session.user.id
     const userRole = session.user.role as string | undefined
 
-    const jobAccessFilter = getJobAccessFilter(userId, userRole)
+    const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
     const requestBaseFilter: any = {
       organizationId,
       isDraft: false,
