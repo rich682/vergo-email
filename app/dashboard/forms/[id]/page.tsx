@@ -411,7 +411,7 @@ export default function FormBuilderPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
       </div>
     )
@@ -419,7 +419,7 @@ export default function FormBuilderPage() {
 
   if (!form) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <p className="text-gray-500">Form not found</p>
       </div>
     )
@@ -428,7 +428,7 @@ export default function FormBuilderPage() {
   const sortedFields = [...form.fields].sort((a, b) => a.order - b.order)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">

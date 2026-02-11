@@ -416,7 +416,7 @@ export default function ReportBuilderPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
       </div>
     )
@@ -424,7 +424,7 @@ export default function ReportBuilderPage() {
 
   if (!report) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500">Report not found</p>
           <Link href="/dashboard/reports" className="mt-4 inline-block">
