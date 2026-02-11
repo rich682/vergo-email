@@ -116,8 +116,7 @@ export default function ContactsPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-8 py-4">
+    <div className="p-8">
         {/* Action Row */}
         <div className="flex items-center justify-end mb-4">
           {/* Contacts Tab CTAs */}
@@ -260,7 +259,6 @@ export default function ContactsPage() {
             />
           </div>
         ) : null}
-      </div>
     </div>
   )
 }

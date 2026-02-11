@@ -536,21 +536,7 @@ export default function ReportsPage() {
   const isUnifiedLoading = generatedLoading || reconLoading
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Page Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Reports</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {isAdmin 
-              ? "Build report templates and view generated reports"
-              : "View reports you have access to"
-            }
-          </p>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
+    <div className="p-8 space-y-8">
         {/* ============================================ */}
         {/* SECTION 1: Report Builder (Admin Only) */}
         {/* ============================================ */}
@@ -761,31 +747,31 @@ export default function ReportsPage() {
           </div>
 
           {/* Unified Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="border rounded-lg overflow-hidden">
             <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Name
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Type
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Details
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Date
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Source
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {isUnifiedLoading ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center">
@@ -815,7 +801,7 @@ export default function ReportsPage() {
                           className="hover:bg-gray-50 cursor-pointer"
                           onClick={() => openReportViewer(report)}
                         >
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2">
                             <div className="flex items-center gap-2">
                               <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
                               <span className="font-medium text-gray-900">
@@ -823,12 +809,12 @@ export default function ReportsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2">
                             <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
                               Report
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-4 py-2 text-sm text-gray-600">
                             {report.data?.sliceName ? (
                               <span>{report.data.sliceName}</span>
                             ) : (
@@ -837,10 +823,10 @@ export default function ReportsPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
+                          <td className="px-4 py-2 text-sm text-gray-500">
                             {format(new Date(report.generatedAt), "MMM d, yyyy")}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-4 py-2 text-sm text-gray-600">
                             {report.source === "manual" || !report.taskInstance ? (
                               <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
                                 Manual
@@ -857,11 +843,11 @@ export default function ReportsPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 title="Download Excel"
                                 onClick={() => handleDownload(report.id)}
                               >
@@ -880,7 +866,7 @@ export default function ReportsPage() {
                           className="hover:bg-gray-50 cursor-pointer"
                           onClick={() => { setViewingRecon(run); setReconViewerOpen(true) }}
                         >
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2">
                             <div className="flex items-center gap-2">
                               <Scale className="w-4 h-4 text-purple-500 flex-shrink-0" />
                               <span className="font-medium text-gray-900">
@@ -888,12 +874,12 @@ export default function ReportsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2">
                             <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
                               Reconciliation
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-4 py-2 text-sm text-gray-600">
                             <div className="flex items-center gap-3">
                               <span className="text-green-600 font-medium">{run.matchedCount} matched</span>
                               {run.exceptionCount > 0 && (
@@ -904,10 +890,10 @@ export default function ReportsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
+                          <td className="px-4 py-2 text-sm text-gray-500">
                             {format(new Date(run.completedAt || run.createdAt), "MMM d, yyyy")}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-4 py-2 text-sm text-gray-600">
                             <span onClick={(e) => e.stopPropagation()}>
                               {run.taskInstance ? (
                               <Link
@@ -922,11 +908,11 @@ export default function ReportsPage() {
                               )}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 title="View Details"
                                 onClick={() => { setViewingRecon(run); setReconViewerOpen(true) }}
                               >
@@ -943,7 +929,6 @@ export default function ReportsPage() {
             </table>
           </div>
         </section>
-      </div>
 
       {/* Create Report Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>

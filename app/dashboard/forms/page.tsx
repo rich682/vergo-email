@@ -129,42 +129,28 @@ export default function FormsPage() {
   })
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Forms</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Create forms to collect structured data from your team
-              </p>
-            </div>
-            <Link href="/dashboard/forms/new">
-              <Button className="bg-orange-500 hover:bg-orange-600 text-white">
-                <Plus className="w-4 h-4 mr-2" />
-                New Form
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Search */}
-        <div className="mb-6">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search forms..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+    <div className="p-8">
+      {/* Search + Action */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Search forms..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
             />
           </div>
+        <div className="ml-auto">
+          <Link href="/dashboard/forms/new">
+            <Button className="bg-orange-500 hover:bg-orange-600 text-white">
+              <Plus className="w-4 h-4 mr-2" />
+              New Form
+            </Button>
+          </Link>
         </div>
+      </div>
 
         {/* Loading state */}
         {loading ? (
@@ -269,7 +255,6 @@ export default function FormsPage() {
             </table>
           </div>
         )}
-      </div>
     </div>
   )
 }

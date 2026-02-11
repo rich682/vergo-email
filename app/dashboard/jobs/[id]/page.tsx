@@ -1335,11 +1335,11 @@ export default function JobDetailPage() {
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Risk</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Risk</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1354,12 +1354,12 @@ export default function JobDetailPage() {
                                 }
                               }}
                             >
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-2">
                                 <span className="text-sm text-gray-900 truncate max-w-[250px] block">
                                   {r.generatedSubject || "Untitled"}
                                 </span>
                               </td>
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-2">
                                 <div>
                                   <span className="text-sm font-medium text-gray-900">{recipient.name}</span>
                                   {recipient.email && recipient.email !== "Unknown" && (
@@ -1367,7 +1367,7 @@ export default function JobDetailPage() {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-2">
                                 <StatusBadge
                                   status={
                                     ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"].includes(recipient.status) && recipient.readStatus === "read"
@@ -1377,7 +1377,7 @@ export default function JobDetailPage() {
                                   size="sm"
                                 />
                               </td>
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-2">
                                 {recipient.riskLevel === "high" ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">High</span>
                                 ) : recipient.riskLevel === "medium" ? (
@@ -1388,7 +1388,7 @@ export default function JobDetailPage() {
                                   <span className="text-sm text-gray-400">—</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2">
+                              <td className="px-4 py-2">
                                 <span className="text-sm text-gray-600">
                                   {recipient.sentMessage?.sentAt
                                     ? format(new Date(recipient.sentMessage.sentAt), "MMM d, yyyy")

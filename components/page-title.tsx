@@ -15,6 +15,12 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/collection": "Collection",
   "/dashboard/reconciliations": "Reconciliations",
   "/dashboard/reconciliations/new": "New Reconciliation",
+  "/dashboard/reports": "Reports",
+  "/dashboard/reports/new": "New Report Template",
+  "/dashboard/databases": "Databases",
+  "/dashboard/databases/new": "New Database",
+  "/dashboard/forms": "Forms",
+  "/dashboard/forms/new": "New Form",
 }
 
 export function PageTitle() {
@@ -29,6 +35,12 @@ export function PageTitle() {
       title = "Item Details"
     } else if (pathname.startsWith("/dashboard/review/")) {
       title = "Review"
+    } else if (pathname.startsWith("/dashboard/reports/")) {
+      title = "Report Template"
+    } else if (pathname.startsWith("/dashboard/databases/")) {
+      title = "Database"
+    } else if (pathname.startsWith("/dashboard/forms/")) {
+      title = "Form"
     }
   }
   

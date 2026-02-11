@@ -694,16 +694,16 @@ export default function RequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Attachments</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Owner</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Attachments</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -714,22 +714,22 @@ export default function RequestsPage() {
                   className="hover:bg-gray-50 cursor-pointer"
                   onClick={() => handleOpenThread(request)}
                 >
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-600 truncate max-w-[150px] block">
                       {request.job?.board?.name || "—"}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-900 truncate max-w-[180px] block">
                       {request.job?.name || "—"}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <div className="text-sm text-gray-900 truncate max-w-[200px]">
                       {request.campaignName || "Untitled"}
                     </div>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                       request.requestType === 'data' 
                         ? 'bg-purple-100 text-purple-700' 
@@ -744,7 +744,7 @@ export default function RequestsPage() {
                           : 'Standard'}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     {request.entity ? (
                       <div>
                         <span className="text-sm text-gray-900">
@@ -758,12 +758,12 @@ export default function RequestsPage() {
                       <span className="text-sm text-gray-500">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-600">
                       {request.entity?.companyName || "—"}
                     </span>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     {request.job?.owner ? (
                       <span className="text-sm text-gray-900">
                         {request.job.owner.name || request.job.owner.email}
@@ -772,7 +772,7 @@ export default function RequestsPage() {
                       <span className="text-sm text-gray-500">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <StatusDropdown 
                         taskId={request.id}
@@ -785,7 +785,7 @@ export default function RequestsPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     {request.hasAttachments ? (
                       <span className="inline-flex items-center gap-1 text-sm text-purple-700">
                         <Paperclip className="w-3.5 h-3.5" />
@@ -795,7 +795,7 @@ export default function RequestsPage() {
                       <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-900">
                       {format(new Date(request.createdAt), "MMM d, yyyy")}
                     </span>

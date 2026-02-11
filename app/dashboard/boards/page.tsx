@@ -467,19 +467,7 @@ export default function BoardsPage() {
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Boards</h1>
-          <p className="text-gray-500 mt-1">Organize your tasks by time period</p>
-        </div>
-        <Button onClick={() => setIsCreateBoardOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Board
-        </Button>
-      </div>
-
-      {/* Filters */}
+      {/* Filters + Action */}
       <div className="flex items-center gap-4 mb-6 flex-wrap">
         <div className="relative flex-1 max-w-sm min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -531,6 +519,13 @@ export default function BoardsPage() {
             <SelectItem value="name">Name A-Z</SelectItem>
           </SelectContent>
         </Select>
+
+        <div className="ml-auto">
+          <Button onClick={() => setIsCreateBoardOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Board
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
