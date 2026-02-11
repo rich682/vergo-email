@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { normalizeAccessValue, ALL_ACTION_KEYS, type ModuleAccess, type ModuleKey, type ModuleAccessValue, type ActionKey } from "@/lib/permissions"
+import { normalizeAccessValue, ALL_ACTION_KEYS, deriveModuleAccessFromActions, type ModuleAccess, type ModuleKey, type ModuleAccessValue, type ActionKey } from "@/lib/permissions"
 
 const VALID_MODULE_KEYS: ModuleKey[] = [
   "boards", "inbox", "requests", "collection", "reports",
@@ -155,9 +155,31 @@ export async function PUT(request: NextRequest) {
 
     const existingFeatures = (organization?.features as Record<string, any>) || {}
 
+    // If action permissions include module:* keys, derive roleDefaultModuleAccess
+    // from them server-side to ensure consistency
+    let finalModuleAccess = sanitized
+    if (sanitizedActions) {
+      const derived: Record<string, ModuleAccess> = {}
+      for (const role of CONFIGURABLE_ROLES) {
+        if (sanitizedActions[role]) {
+          const hasModuleKeys = Object.keys(sanitizedActions[role]!).some(k => k.startsWith("module:"))
+          if (hasModuleKeys) {
+            derived[role] = deriveModuleAccessFromActions(sanitizedActions[role]!)
+          } else if (sanitized[role]) {
+            derived[role] = sanitized[role]
+          }
+        } else if (sanitized[role]) {
+          derived[role] = sanitized[role]
+        }
+      }
+      if (Object.keys(derived).length > 0) {
+        finalModuleAccess = derived
+      }
+    }
+
     const updateData: Record<string, any> = {
       ...existingFeatures,
-      roleDefaultModuleAccess: sanitized,
+      roleDefaultModuleAccess: finalModuleAccess,
     }
     if (sanitizedActions !== undefined) {
       updateData.roleActionPermissions = sanitizedActions

@@ -579,6 +579,16 @@ export function getBoardAccessFilter(
  * Format: "module:action" for readability and grouping.
  */
 export type ActionKey =
+  // Module Visibility
+  | "module:boards"
+  | "module:inbox"
+  | "module:requests"
+  | "module:collection"
+  | "module:reports"
+  | "module:forms"
+  | "module:databases"
+  | "module:reconciliations"
+  | "module:contacts"
   // Contacts
   | "contacts:view"
   | "contacts:manage"
@@ -659,6 +669,7 @@ export interface ActionDefinition {
  * All valid action keys as an array (for validation).
  */
 export const ALL_ACTION_KEYS: ActionKey[] = [
+  "module:boards", "module:inbox", "module:requests", "module:collection", "module:reports", "module:forms", "module:databases", "module:reconciliations", "module:contacts",
   "contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types",
   "tasks:view_all", "boards:view_all", "tasks:create", "tasks:edit_any", "tasks:delete", "tasks:import", "boards:manage", "boards:edit_columns",
   "labels:manage", "labels:apply_contacts", "attachments:upload",
@@ -676,6 +687,15 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
  */
 export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolean>> = {
   MANAGER: {
+    "module:boards": true,
+    "module:inbox": true,
+    "module:requests": true,
+    "module:collection": true,
+    "module:reports": true,
+    "module:forms": true,
+    "module:databases": true,
+    "module:reconciliations": true,
+    "module:contacts": true,
     "contacts:view": true,
     "contacts:manage": true,
     "contacts:import": true,
@@ -714,6 +734,15 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "reconciliations:resolve": true,
   },
   MEMBER: {
+    "module:boards": true,
+    "module:inbox": false,
+    "module:requests": false,
+    "module:collection": false,
+    "module:reports": false,
+    "module:forms": false,
+    "module:databases": false,
+    "module:reconciliations": false,
+    "module:contacts": false,
     "contacts:view": true,
     "contacts:manage": false,
     "contacts:import": false,
@@ -757,6 +786,21 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
  * Action categories for the settings UI.
  */
 export const ACTION_CATEGORIES: ActionCategory[] = [
+  {
+    key: "module_visibility",
+    label: "Module Visibility",
+    actions: [
+      { key: "module:boards", label: "Show Tasks module" },
+      { key: "module:inbox", label: "Show Inbox module" },
+      { key: "module:requests", label: "Show Requests module" },
+      { key: "module:collection", label: "Show Documents module" },
+      { key: "module:reports", label: "Show Reports module" },
+      { key: "module:forms", label: "Show Forms module" },
+      { key: "module:databases", label: "Show Databases module" },
+      { key: "module:reconciliations", label: "Show Reconciliations module" },
+      { key: "module:contacts", label: "Show Contacts module" },
+    ],
+  },
   {
     key: "contacts",
     label: "Contacts",
@@ -913,4 +957,49 @@ export function getEffectiveActionPermissions(
   }
 
   return defaults
+}
+
+// ─── Module Access ↔ Action Permission Bridges ────────────────────────────────
+
+const MODULE_KEYS_LIST: ModuleKey[] = [
+  "boards", "inbox", "requests", "collection", "reports",
+  "forms", "databases", "reconciliations", "contacts"
+]
+
+/**
+ * Derive roleDefaultModuleAccess from action permission booleans.
+ * Used when saving settings: the action keys are the source of truth,
+ * and roleDefaultModuleAccess is derived for middleware/sidebar consumption.
+ *
+ * module:X = true  → "edit" (action permissions handle granular write restrictions)
+ * module:X = false → false
+ */
+export function deriveModuleAccessFromActions(
+  actionPermissions: Partial<Record<ActionKey, boolean>>
+): ModuleAccess {
+  const result: ModuleAccess = {}
+  for (const mod of MODULE_KEYS_LIST) {
+    const key = `module:${mod}` as ActionKey
+    result[mod] = actionPermissions[key] === true ? "edit" : false
+  }
+  return result
+}
+
+/**
+ * Derive module action key booleans from existing roleDefaultModuleAccess.
+ * Used when loading settings: backfills module action keys from legacy config.
+ *
+ * Any non-false access level ("edit", "view", "task-edit", "task-view") → true
+ * false → false
+ */
+export function deriveActionsFromModuleAccess(
+  moduleAccess: ModuleAccess
+): Partial<Record<ActionKey, boolean>> {
+  const result: Partial<Record<ActionKey, boolean>> = {}
+  for (const mod of MODULE_KEYS_LIST) {
+    const key = `module:${mod}` as ActionKey
+    const level = normalizeAccessValue(moduleAccess[mod])
+    result[key] = level !== false
+  }
+  return result
 }
