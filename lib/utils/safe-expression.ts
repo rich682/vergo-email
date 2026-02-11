@@ -316,11 +316,18 @@ export function parseNumericValue(value: unknown): number | null {
     return isFinite(value) ? value : null
   }
   if (typeof value === "string") {
+    let str = value.trim()
+    // Handle accounting format: ($1,234.56) or (1,234.56) → negative
+    const isAccounting = /^\(.*\)$/.test(str)
+    if (isAccounting) {
+      str = str.slice(1, -1) // Remove parentheses
+    }
     // Remove currency symbols, commas, and whitespace
-    const cleaned = value.replace(/[$£€,\s]/g, "")
+    const cleaned = str.replace(/[$£€¥,\s]/g, "")
     if (cleaned === "") return null
     const num = Number(cleaned)
-    return isFinite(num) ? num : null
+    if (!isFinite(num)) return null
+    return isAccounting ? -num : num
   }
   return null
 }

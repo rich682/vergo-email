@@ -355,11 +355,23 @@ export function inferDataType(values: (string | number | boolean | null)[]): Dat
     return "boolean"
   }
   
-  // Check for currency (has $ or exactly 2 decimal places)
-  const currencyPattern = /^[$£€¥]?\s*-?\d{1,3}(,\d{3})*(\.\d{2})?$|^-?\d+\.\d{2}$/
-  const currencyCount = nonEmptyValues.filter(v => 
-    currencyPattern.test(String(v).trim())
-  ).length
+  // Check for currency (has currency symbol, commas with decimals, or accounting format)
+  const currencyCount = nonEmptyValues.filter(v => {
+    const str = String(v).trim()
+    // Match: $1,234.56, £1234.56, -$500, $-500, ($1,234.56), €1 234,56, ¥1234
+    // Currency symbol present (with optional negative sign, commas, decimals)
+    if (/^[-]?[$£€¥]\s*-?\d[\d,\s]*(\.\d{1,2})?$/.test(str)) return true
+    if (/^[$£€¥]\s*-?\d[\d,\s]*(\.\d{1,2})?$/.test(str)) return true
+    // Negative sign before currency symbol: -$500.00
+    if (/^-[$£€¥]\s*\d[\d,\s]*(\.\d{1,2})?$/.test(str)) return true
+    // Accounting format: ($1,234.56) or (1,234.56)
+    if (/^\([$£€¥]?\s*\d[\d,\s]*(\.\d{1,2})?\)$/.test(str)) return true
+    // Number with exactly 2 decimal places and commas (likely currency): 1,234.56
+    if (/^-?\d{1,3}(,\d{3})+\.\d{2}$/.test(str)) return true
+    // Plain number with exactly 2 decimal places: 1234.56
+    if (/^-?\d+\.\d{2}$/.test(str)) return true
+    return false
+  }).length
   if (currencyCount >= nonEmptyValues.length * 0.7) {
     return "currency"
   }

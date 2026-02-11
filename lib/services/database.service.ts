@@ -142,18 +142,27 @@ export function getRowDiff(
  * Normalize a value for comparison.
  * Strips currency symbols & commas from numeric-looking strings
  * so "$1,234.56" and "1234.56" compare as equal.
+ * Normalizes dates to ISO format so "01/15/2024" and "2024-01-15" compare as equal.
  */
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return ""
   if (typeof value === "number") return String(value)
   const str = String(value).trim()
-  // Try to parse as a number (handles $, £, €, commas, whitespace)
+  if (str === "") return ""
+  // Try to parse as a number (handles $, £, €, ¥, commas, accounting format)
   const num = parseNumericValue(str)
   if (num !== null) return String(num)
   // Boolean normalization
   const lower = str.toLowerCase()
   if (["true", "yes", "1", "y"].includes(lower)) return "true"
   if (["false", "no", "0", "n"].includes(lower)) return "false"
+  // Date normalization — try to parse common date formats to YYYY-MM-DD
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(str) || /^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const parsed = new Date(str)
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split("T")[0]
+    }
+  }
   return str
 }
 

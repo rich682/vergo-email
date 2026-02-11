@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BulkActionToolbar } from "./bulk-action-toolbar"
-import { X, Check } from "lucide-react"
+import { X, Check, AlertTriangle } from "lucide-react"
 
 interface Group {
   id: string
@@ -57,20 +57,23 @@ export function ContactList({
 }: ContactListProps) {
   // Always show selection column
   const showSelectionColumn = true
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this contact? This action cannot be undone.")) {
-      return
-    }
     try {
+      setDeleting(true)
       const res = await fetch(`/api/entities/${id}`, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Failed to delete contact")
       }
+      setDeleteConfirm(null)
       onDelete()
     } catch (err) {
       console.error(err)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -382,7 +385,7 @@ export function ContactList({
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => handleDelete(entity.id)}
+                      onClick={() => setDeleteConfirm({ id: entity.id, name: entity.firstName || entity.email })}
                     >
                       Delete
                     </Button>
@@ -402,6 +405,46 @@ export function ContactList({
         onClearSelection={clearEntitySelection}
         onActionComplete={handleBulkActionComplete}
       />
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete contact?</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              <strong>{deleteConfirm.name}</strong> and all their associated data will be permanently deleted.
+            </p>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1"
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDelete(deleteConfirm.id)}
+                className="flex-1"
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
