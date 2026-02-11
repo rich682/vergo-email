@@ -94,7 +94,7 @@ interface FormRequestData {
   }
 }
 
-type PageState = "loading" | "unauthorized" | "not_found" | "expired" | "submitted" | "ready" | "submitting" | "success" | "error"
+type PageState = "loading" | "unauthorized" | "invalid_token" | "not_found" | "expired" | "submitted" | "ready" | "submitting" | "success" | "error"
 
 export default function FormFillPage() {
   const params = useParams()
@@ -137,7 +137,8 @@ export default function FormFillPage() {
           window.location.href = `/auth/signin?callbackUrl=/forms/${requestId}`
           return
         }
-        setPageState("unauthorized")
+        // Token was invalid
+        setPageState("invalid_token")
         return
       }
 
@@ -428,7 +429,24 @@ export default function FormFillPage() {
     )
   }
 
-  // Unauthorized
+  // Invalid token (external stakeholder with bad/expired token)
+  if (pageState === "invalid_token") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8 text-red-500" />
+          </div>
+          <h1 className="mt-4 text-xl font-semibold text-gray-900">Invalid Link</h1>
+          <p className="mt-2 text-gray-600">
+            This form link is invalid or has expired. Please contact the person who sent it to request a new link.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Unauthorized (logged in but not the intended recipient)
   if (pageState === "unauthorized") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -438,7 +456,7 @@ export default function FormFillPage() {
           </div>
           <h1 className="mt-4 text-xl font-semibold text-gray-900">Access Denied</h1>
           <p className="mt-2 text-gray-600">
-            You don't have permission to view this form. Please contact the person who sent it.
+            You don't have permission to view this form. This form was sent to a different recipient. Please contact the person who sent it.
           </p>
         </div>
       </div>

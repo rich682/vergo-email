@@ -257,9 +257,9 @@ function RolePermissionsContent() {
               Admin users always have full access. These defaults apply to Employee and Manager roles.
             </p>
             <div className="mt-2 text-xs text-blue-600 space-y-1">
-              <p><strong>Sidebar</strong> — Module appears in the left navigation.</p>
-              <p><strong>Task Tab</strong> — Module appears as a tab inside tasks. Only applies to Requests, Collection, Reports, and Reconciliations. Always on when Sidebar is enabled.</p>
-              <p><strong>Can Edit</strong> — User can create, edit, and delete. Otherwise read-only.</p>
+              <p><strong>Can See Module</strong> — Module appears in the left navigation.</p>
+              <p><strong>View in Tasks</strong> — Module appears as a tab inside tasks. Always on when Can See Module is enabled.</p>
+              <p><strong>Can Edit in Task</strong> — User can create, edit, and delete within tasks. Otherwise read-only.</p>
             </div>
           </div>
         </div>
@@ -304,17 +304,14 @@ function RolePermissionsContent() {
                       <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Module
                       </th>
-                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
-                        Sidebar
-                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Show in nav</span>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
+                        Can See Module
                       </th>
-                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
-                        Task Tab
-                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Show in tasks</span>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
+                        View in Tasks
                       </th>
-                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
-                        Can Edit
-                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Create, edit, delete</span>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">
+                        Can Edit in Task
                       </th>
                     </tr>
                   </thead>
@@ -361,7 +358,6 @@ function RolePermissionsContent() {
                         <tr key={mod.key} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3">
                             <div className="text-sm font-medium text-gray-900">{mod.label}</div>
-                            <div className="text-xs text-gray-500">{mod.description}</div>
                           </td>
                           <td className="text-center px-4 py-3">
                             <Checkbox

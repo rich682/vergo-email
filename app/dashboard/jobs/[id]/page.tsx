@@ -63,7 +63,6 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 import { FormRequestsPanel } from "@/components/jobs/form-requests-panel"
 
 // Draft Request Review Modal
-import { DraftRequestReviewModal } from "@/components/jobs/draft-request-review-modal"
 
 // Task AI Summary
 import { TaskAISummary } from "@/components/jobs/task-ai-summary"
@@ -278,7 +277,6 @@ export default function JobDetailPage() {
   const [tasks, setTasks] = useState<JobTask[]>([])
   const [requests, setRequests] = useState<JobRequest[]>([])
   const [formRequestCount, setFormRequestCount] = useState(0)
-  const [draftRequests, setDraftRequests] = useState<any[]>([])
   const [comments, setComments] = useState<JobComment[]>([])
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
 
@@ -317,10 +315,6 @@ export default function JobDetailPage() {
 
   // Send Request Modal
   const [isSendRequestOpen, setIsSendRequestOpen] = useState(false)
-
-  // Draft Request Review Modal
-  const [isDraftReviewOpen, setIsDraftReviewOpen] = useState(false)
-  const [selectedDraft, setSelectedDraft] = useState<any>(null)
 
   // Notes
   const [notes, setNotes] = useState("")
@@ -415,19 +409,6 @@ export default function JobDetailPage() {
     }
   }, [jobId])
 
-  const fetchDraftRequests = useCallback(async () => {
-    try {
-      // Use consolidated requests endpoint with includeDrafts param
-      const response = await fetch(`/api/task-instances/${jobId}/requests?includeDrafts=true`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setDraftRequests(data.draftRequests || [])
-      }
-    } catch (error) {
-      console.error("Error fetching draft requests:", error)
-    }
-  }, [jobId])
-
   const fetchFormRequestCount = useCallback(async () => {
     try {
       const response = await fetch(`/api/task-instances/${jobId}/form-requests`, { credentials: "include" })
@@ -494,12 +475,11 @@ export default function JobDetailPage() {
     Promise.all([
       fetchJob(),
       fetchRequests(),
-      fetchDraftRequests(),
       fetchFormRequestCount(),
       fetchCollaborators(),
       fetchTeamMembers(),
     ])
-  }, [fetchJob, fetchRequests, fetchDraftRequests, fetchFormRequestCount, fetchCollaborators, fetchTeamMembers])
+  }, [fetchJob, fetchRequests, fetchFormRequestCount, fetchCollaborators, fetchTeamMembers])
 
   // Tier 2: Lazy-load data only when the overview tab is active
   useEffect(() => {
@@ -756,8 +736,19 @@ export default function JobDetailPage() {
     setShowMentionSuggestions(false)
   }
 
-  const filteredTeamMembers = teamMembers.filter(m => {
-    if (!m) return false
+  // Merge team members and collaborators for mention suggestions (deduped by user id)
+  const mentionableUsers = useMemo(() => {
+    const userMap = new Map<string, { id: string; name: string | null; email: string }>()
+    for (const m of teamMembers) {
+      if (m) userMap.set(m.id, m)
+    }
+    for (const c of collaborators) {
+      if (c?.user) userMap.set(c.user.id, c.user)
+    }
+    return Array.from(userMap.values())
+  }, [teamMembers, collaborators])
+
+  const filteredMentionUsers = mentionableUsers.filter(m => {
     if (!mentionFilter) return true
     const name = (m.name || "").toLowerCase()
     const email = (m.email || "").toLowerCase()
@@ -848,11 +839,6 @@ export default function JobDetailPage() {
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
               Requests ({requests.length + formRequestCount})
-              {draftRequests.length > 0 && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
-                  {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''}
-                </span>
-              )}
             </button>
           )}
 
@@ -866,7 +852,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {(job.reportDefinitionId || permissions?.isAdmin) && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
+          {hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -966,20 +952,6 @@ export default function JobDetailPage() {
                           </div>
                         ) : (
                           <StatusBadge status={job.status} />
-                        )}
-                        {/* Draft Request Badge - shown in header when drafts exist */}
-                        {draftRequests.length > 0 && (
-                          <button
-                            onClick={() => {
-                              setSelectedDraft(draftRequests[0])
-                              setIsDraftReviewOpen(true)
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
-                            title="Review draft requests copied from prior period"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            {draftRequests.length} draft{draftRequests.length > 1 ? 's' : ''} to review
-                          </button>
                         )}
                       </div>
                       {editingDescription ? (
@@ -1237,6 +1209,25 @@ export default function JobDetailPage() {
                         </div>
                         <div className="flex-1 relative">
                           <Textarea placeholder="Add a comment..." value={newComment} onChange={handleCommentChange} className="min-h-[80px] resize-none text-sm" />
+                          {showMentionSuggestions && filteredMentionUsers.length > 0 && (
+                            <div className="absolute left-0 right-0 z-20 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                              {filteredMentionUsers.slice(0, 8).map(user => (
+                                <button
+                                  key={user.id}
+                                  onClick={() => handleMentionSelect(user)}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                  <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[10px] font-medium text-gray-600 flex-shrink-0">
+                                    {getInitials(user.name, user.email)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="font-medium text-gray-900">{user.name || user.email.split("@")[0]}</span>
+                                    {user.name && <span className="text-gray-500 ml-1.5">{user.email}</span>}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div className="flex items-center justify-between mt-2">
                             <p className="text-[10px] text-gray-400">Type @ to mention team members</p>
                             <button onClick={handleAddComment} disabled={!newComment.trim() || submittingComment} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors">
@@ -1270,61 +1261,6 @@ export default function JobDetailPage() {
 
             {activeTab === "requests" && hasTaskTabAccess(userModuleAccess?.requests ?? false) && (
               <div className="space-y-4">
-                {/* Draft Requests Banner — only show to users who can edit requests */}
-                {permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) && draftRequests.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <FileText className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium text-amber-900">
-                          {draftRequests.length} Draft Request{draftRequests.length > 1 ? 's' : ''} from Prior Period
-                        </h4>
-                        <p className="text-xs text-amber-700 mt-1">
-                          These requests were copied from the previous period. Review recipients and content before sending.
-                        </p>
-                        <div className="mt-3 space-y-2">
-                          {draftRequests.slice(0, 3).map((draft: any) => (
-                            <button
-                              key={draft.id}
-                              onClick={() => {
-                                setSelectedDraft(draft)
-                                setIsDraftReviewOpen(true)
-                              }}
-                              className="w-full flex items-center justify-between bg-white rounded-md px-3 py-2 border border-amber-100 hover:border-amber-300 hover:bg-amber-50 transition-colors cursor-pointer text-left"
-                            >
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="font-medium text-gray-900">
-                                  {draft.entity ? `${draft.entity.firstName} ${draft.entity.lastName || ''}`.trim() : 'No recipient'}
-                                </span>
-                                {draft.entity?.email && (
-                                  <span className="text-gray-500 text-xs">{draft.entity.email}</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-amber-600 truncate max-w-[200px]">
-                                  {draft.subject ? draft.subject.substring(0, 40) + (draft.subject.length > 40 ? '...' : '') : 'No subject'}
-                                </span>
-                                <span className="text-xs text-gray-400">Click to review</span>
-                              </div>
-                            </button>
-                          ))}
-                          {draftRequests.length > 3 && (
-                            <button
-                              onClick={() => {
-                                setSelectedDraft(draftRequests[0])
-                                setIsDraftReviewOpen(true)
-                              }}
-                              className="text-xs text-amber-700 hover:text-amber-900 underline"
-                            >
-                              + {draftRequests.length - 3} more - click to review all
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
                 <SectionHeader title="Requests" count={requests.reduce((sum: number, r: any) => sum + (r.recipients?.length || 0), 0)} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
                 {requests.length === 0 ? (
                   <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
@@ -1419,7 +1355,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "report" && (job.reportDefinitionId || permissions?.isAdmin) && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
+            {activeTab === "report" && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1551,21 +1487,7 @@ export default function JobDetailPage() {
           } : null
         }}
         stakeholderContacts={[]}
-        onSuccess={() => { fetchJob(); fetchRequests(); fetchFormRequestCount(); fetchTasks(); fetchTimeline(); fetchDraftRequests(); }}
-      />
-
-      <DraftRequestReviewModal
-        open={isDraftReviewOpen}
-        onOpenChange={setIsDraftReviewOpen}
-        taskInstanceId={jobId}
-        draft={selectedDraft}
-        availableContacts={[]}
-        onSuccess={() => { 
-          fetchDraftRequests()
-          fetchRequests()
-          fetchFormRequestCount()
-          setSelectedDraft(null)
-        }}
+        onSuccess={() => { fetchJob(); fetchRequests(); fetchFormRequestCount(); fetchTasks(); fetchTimeline(); }}
       />
     </div>
   )

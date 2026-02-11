@@ -54,7 +54,7 @@ export type ModuleKey =
  * the standard false / "view" / "edit".
  */
 export const TASK_SCOPED_MODULES: ModuleKey[] = [
-  "requests", "collection", "reports", "reconciliations"
+  "requests", "collection", "reports", "forms", "reconciliations"
 ]
 
 /**
@@ -219,10 +219,23 @@ const ADMIN_ONLY_ROUTES = [
 ]
 
 /**
- * Routes that are exempt from access checks (even if parent is restricted)
+ * Routes that are exempt from access checks (even if parent is restricted).
+ * Form-filling routes are exempt because "can fill a form sent to you" is
+ * separate from "can manage form templates". Recipient validation happens
+ * at the route handler level, not the middleware level.
  */
 const EXEMPT_ROUTES: string[] = [
-  // Add any sub-routes that should be accessible to non-admins
+  "/api/form-requests/token",  // External stakeholder token-based access
+]
+
+/**
+ * Regex patterns for exempt routes that need dynamic segment matching.
+ */
+const EXEMPT_ROUTE_PATTERNS: RegExp[] = [
+  /^\/api\/form-requests\/[^/]+\/request$/,      // GET form for filling
+  /^\/api\/form-requests\/[^/]+\/submit$/,        // POST submit filled form
+  /^\/api\/form-requests\/[^/]+\/attachments/,    // POST upload files during fill
+  /^\/api\/form-requests\/[^/]+\/remind$/,        // POST send reminder (task owner)
 ]
 
 // ─── Module Access Resolution ────────────────────────────────────────────────
@@ -392,10 +405,10 @@ export function canAccessRoute(
     return true
   }
 
-  // Check exemptions first
+  // Check exemptions first (static paths and regex patterns)
   const isExempt = EXEMPT_ROUTES.some(
     exempt => path === exempt || path.startsWith(exempt + "/")
-  )
+  ) || EXEMPT_ROUTE_PATTERNS.some(pattern => pattern.test(path))
   if (isExempt) {
     return true
   }

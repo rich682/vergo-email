@@ -2,8 +2,9 @@
 
 /**
  * Form Requests Panel
- * 
- * Displays form request progress and individual recipient status within a task view.
+ *
+ * Displays form request progress, individual recipient status, and
+ * expandable response data within a task view.
  */
 
 import { useState, useEffect, useCallback } from "react"
@@ -16,6 +17,7 @@ import {
   Loader2,
   Bell,
   Eye,
+  EyeOff,
   Database,
   ChevronDown,
   ChevronUp,
@@ -34,6 +36,14 @@ interface FormAttachment {
   fieldKey: string
 }
 
+interface FormField {
+  key: string
+  label: string
+  type: string
+  required?: boolean
+  order?: number
+}
+
 interface FormRequestItem {
   id: string
   status: string
@@ -41,9 +51,12 @@ interface FormRequestItem {
   deadlineDate: string | null
   remindersSent: number
   remindersMaxCount: number
+  responseData: Record<string, unknown> | null
   formDefinition: {
     id: string
     name: string
+    databaseId: string | null
+    fields: FormField[] | string
   }
   recipientUser: {
     id: string
@@ -71,6 +84,33 @@ interface FormRequestsPanelProps {
   onRefresh?: () => void
 }
 
+function parseFields(fields: FormField[] | string | null | undefined): FormField[] {
+  if (!fields) return []
+  if (typeof fields === "string") {
+    try { return JSON.parse(fields) } catch { return [] }
+  }
+  return Array.isArray(fields) ? fields : []
+}
+
+function formatResponseValue(value: unknown, fieldType?: string): string {
+  if (value === null || value === undefined || value === "") return "—"
+  if (fieldType === "currency" && typeof value === "number") {
+    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+  if (fieldType === "checkbox") return value ? "Yes" : "No"
+  if (fieldType === "date" && typeof value === "string") {
+    try {
+      return new Date(value).toLocaleDateString()
+    } catch {
+      return String(value)
+    }
+  }
+  if (typeof value === "object") {
+    try { return JSON.stringify(value) } catch { return "[object]" }
+  }
+  return String(value)
+}
+
 export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) {
   const [loading, setLoading] = useState(true)
   const [formRequests, setFormRequests] = useState<FormRequestItem[]>([])
@@ -82,6 +122,19 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
   })
   const [expanded, setExpanded] = useState(true)
   const [sendingReminder, setSendingReminder] = useState<string | null>(null)
+  const [expandedResponses, setExpandedResponses] = useState<Set<string>>(new Set())
+
+  const toggleResponse = (requestId: string) => {
+    setExpandedResponses(prev => {
+      const next = new Set(prev)
+      if (next.has(requestId)) {
+        next.delete(requestId)
+      } else {
+        next.add(requestId)
+      }
+      return next
+    })
+  }
 
   const fetchFormRequests = useCallback(async () => {
     try {
@@ -141,8 +194,8 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
     return null // Don't show panel if no form requests
   }
 
-  const progressPercent = progress.total > 0 
-    ? Math.round((progress.submitted / progress.total) * 100) 
+  const progressPercent = progress.total > 0
+    ? Math.round((progress.submitted / progress.total) * 100)
     : 0
 
   // Group by form definition
@@ -152,12 +205,14 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
     if (!acc[formId]) {
       acc[formId] = {
         formName: req.formDefinition.name || 'Unnamed Form',
+        databaseId: req.formDefinition.databaseId || null,
+        fields: parseFields(req.formDefinition.fields),
         requests: [],
       }
     }
     acc[formId].requests.push(req)
     return acc
-  }, {} as Record<string, { formName: string; requests: FormRequestItem[] }>)
+  }, {} as Record<string, { formName: string; databaseId: string | null; fields: FormField[]; requests: FormRequestItem[] }>)
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -206,9 +261,11 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
               <div className="divide-y divide-gray-100">
                 {(group.requests || []).filter(req => req != null).map((req) => {
                   // Get recipient name and email from either user or entity
-                  const recipientName = req.recipientUser?.name || 
+                  const recipientName = req.recipientUser?.name ||
                     (req.recipientEntity ? `${req.recipientEntity.firstName}${req.recipientEntity.lastName ? ` ${req.recipientEntity.lastName}` : ''}` : null)
                   const recipientEmail = req.recipientUser?.email || req.recipientEntity?.email
+                  const isResponseExpanded = expandedResponses.has(req.id)
+                  const hasResponseData = req.status === "SUBMITTED" && req.responseData && Object.keys(req.responseData).length > 0
 
                   return (
                   <div key={req.id} className="px-4 py-3">
@@ -245,11 +302,27 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                       {/* Status/action */}
                       <div className="flex items-center gap-2">
                         {req.status === "SUBMITTED" ? (
-                          <span className="text-xs text-gray-500">
-                            Submitted{" "}
-                            {req.submittedAt &&
-                              new Date(req.submittedAt).toLocaleDateString()}
-                          </span>
+                          <>
+                            <span className="text-xs text-gray-500">
+                              Submitted{" "}
+                              {req.submittedAt &&
+                                new Date(req.submittedAt).toLocaleDateString()}
+                            </span>
+                            {hasResponseData && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleResponse(req.id)}
+                                className="h-7 text-xs"
+                              >
+                                {isResponseExpanded ? (
+                                  <><EyeOff className="w-3 h-3 mr-1" />Hide</>
+                                ) : (
+                                  <><Eye className="w-3 h-3 mr-1" />View</>
+                                )}
+                              </Button>
+                            )}
+                          </>
                         ) : req.status === "PENDING" ? (
                           <>
                             {req.remindersSent > 0 && (
@@ -283,6 +356,42 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                       </div>
                     </div>
 
+                    {/* Expandable response data */}
+                    {isResponseExpanded && hasResponseData && req.responseData && (
+                      <div className="mt-3 ml-9 bg-gray-50 rounded-lg p-3">
+                        <div className="space-y-2">
+                          {group.fields.length > 0 ? (
+                            // Use field definitions for labels and ordering
+                            group.fields
+                              .sort((a, b) => (a.order || 0) - (b.order || 0))
+                              .filter(field => field.key in (req.responseData || {}))
+                              .map(field => (
+                                <div key={field.key} className="flex items-start gap-2">
+                                  <span className="text-xs font-medium text-gray-500 min-w-[120px] flex-shrink-0">
+                                    {field.label}
+                                  </span>
+                                  <span className="text-xs text-gray-900">
+                                    {formatResponseValue(req.responseData![field.key], field.type)}
+                                  </span>
+                                </div>
+                              ))
+                          ) : (
+                            // Fallback: show raw keys if no field definitions
+                            Object.entries(req.responseData).map(([key, value]) => (
+                              <div key={key} className="flex items-start gap-2">
+                                <span className="text-xs font-medium text-gray-500 min-w-[120px] flex-shrink-0">
+                                  {key}
+                                </span>
+                                <span className="text-xs text-gray-900">
+                                  {formatResponseValue(value)}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Attachments for submitted forms */}
                     {req.status === "SUBMITTED" && req.attachments && req.attachments.length > 0 && (
                       <div className="mt-2 ml-9 flex flex-wrap gap-2">
@@ -309,18 +418,23 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
             </div>
           ))}
 
-          {/* View in database link if applicable */}
-          {formRequests[0]?.formDefinition && (
-            <div className="px-4 py-3 bg-gray-50 text-center">
-              <Link
-                href={`/dashboard/databases`}
-                className="text-sm text-orange-600 hover:underline inline-flex items-center gap-1"
-              >
-                <Database className="w-4 h-4" />
-                View responses in database
-              </Link>
-            </div>
-          )}
+          {/* View in database link - deep link to specific database */}
+          {(() => {
+            // Find the first form group with a databaseId
+            const groupWithDb = Object.values(groupedByForm).find(g => g.databaseId)
+            if (!groupWithDb) return null
+            return (
+              <div className="px-4 py-3 bg-gray-50 text-center">
+                <Link
+                  href={`/dashboard/databases/${groupWithDb.databaseId}`}
+                  className="text-sm text-orange-600 hover:underline inline-flex items-center gap-1"
+                >
+                  <Database className="w-4 h-4" />
+                  View all responses in database
+                </Link>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>

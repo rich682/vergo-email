@@ -3,7 +3,6 @@ import { Board, BoardStatus, BoardCadence, JobStatus } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 import { formatInTimeZone } from "date-fns-tz"
 import { TaskInstanceService } from "./task-instance.service"
-import { RequestDraftCopyService } from "./request-draft-copy.service"
 import { ReportGenerationService } from "./report-generation.service"
 import {
   calculateNextPeriodStart,
@@ -579,7 +578,6 @@ export class BoardService {
 
   /**
    * Spawn task instances for the next period based on lineages active in the previous period.
-   * Also copies requests as drafts for recurring request workflows.
    * For REPORTS tasks, generates report output for the completed period and copies config to next period.
    */
   private static async spawnTaskInstancesForNextPeriod(
@@ -597,17 +595,6 @@ export class BoardService {
       include: {
         collaborators: true,
         taskInstanceLabels: { include: { contactLabels: true } },
-        // Include requests with their first outbound message for draft copying
-        requests: {
-          where: { isDraft: false }, // Only copy from active (non-draft) requests
-          include: {
-            messages: {
-              where: { direction: "OUTBOUND" },
-              orderBy: { createdAt: "asc" },
-              take: 1
-            }
-          }
-        }
       }
     })
 
@@ -644,25 +631,6 @@ export class BoardService {
             addedBy: c.addedBy
           }))
         })
-      }
-
-      // Copy requests as drafts (recurring request drafts feature)
-      if (prev.requests.length > 0) {
-        try {
-          const copiedCount = await RequestDraftCopyService.copyRequestsAsDrafts({
-            previousTaskInstanceId: prev.id,
-            newTaskInstanceId: newInstance.id,
-            newBoardId: nextBoardId,
-            organizationId,
-            previousRequests: prev.requests
-          })
-          if (copiedCount > 0) {
-            console.log(`[BoardService] Copied ${copiedCount} request(s) as drafts for task instance ${newInstance.id}`)
-          }
-        } catch (error) {
-          // Log but don't fail the entire operation if draft copying fails
-          console.error(`[BoardService] Failed to copy requests as drafts for task instance ${newInstance.id}:`, error)
-        }
       }
 
       // Generate report for tasks with a report linked (snapshot the completed period)

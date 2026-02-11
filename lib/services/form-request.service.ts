@@ -411,6 +411,8 @@ export class FormRequestService {
           select: {
             id: true,
             name: true,
+            databaseId: true,
+            fields: true,
           },
         },
         recipientUser: {

@@ -20,6 +20,7 @@ import {
   CheckSquare,
   FileUp,
   Loader2,
+  Database,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -131,6 +132,9 @@ export default function FormBuilderPage() {
   // Track selected columns and their required status for bulk add
   const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>({})
   const [columnRequired, setColumnRequired] = useState<Record<string, boolean>>({})
+  // Database options for linking
+  const [databases, setDatabases] = useState<Array<{ id: string; name: string; schema: { columns: Array<{ key: string; label: string; dataType: string; dropdownOptions?: string[] }> } }>>([])
+  const [loadingDatabases, setLoadingDatabases] = useState(false)
 
   // Fetch form data
   const fetchForm = useCallback(async () => {
@@ -214,6 +218,22 @@ export default function FormBuilderPage() {
     fetchForm()
   }, [fetchForm])
 
+  // Fetch available databases for linking
+  const fetchDatabases = useCallback(async () => {
+    try {
+      setLoadingDatabases(true)
+      const response = await fetch("/api/databases", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setDatabases(data.databases || [])
+      }
+    } catch (error) {
+      console.error("Error fetching databases:", error)
+    } finally {
+      setLoadingDatabases(false)
+    }
+  }, [])
+
   // Refs for debounced auto-save
   const savingRef = useRef(false)
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -254,6 +274,7 @@ export default function FormBuilderPage() {
           description: currentForm.description,
           fields: fieldsToSave,
           settings: currentForm.settings,
+          databaseId: currentForm.databaseId,
         }),
       })
 
@@ -851,7 +872,10 @@ export default function FormBuilderPage() {
       </Dialog>
 
       {/* Settings Dialog */}
-      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+      <Dialog open={showSettingsDialog} onOpenChange={(open) => {
+        setShowSettingsDialog(open)
+        if (open) fetchDatabases()
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Form Settings</DialogTitle>
@@ -888,6 +912,70 @@ export default function FormBuilderPage() {
                   })
                 }
               />
+            </div>
+
+            {/* Database Linking */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-4 h-4 text-gray-500" />
+                <Label>Link to Database</Label>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">
+                Form responses will be stored as rows in the linked database.
+              </p>
+              {loadingDatabases ? (
+                <div className="flex items-center gap-2 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                  <span className="text-sm text-gray-500">Loading databases...</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={form.databaseId || "none"}
+                    onValueChange={(value) => {
+                      const newDatabaseId = value === "none" ? null : value
+                      const selectedDb = databases.find(db => db.id === value)
+                      updateForm({
+                        databaseId: newDatabaseId,
+                        database: selectedDb ? {
+                          id: selectedDb.id,
+                          name: selectedDb.name,
+                          schema: selectedDb.schema,
+                        } : null,
+                      })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a database" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No database</SelectItem>
+                      {databases.map((db) => (
+                        <SelectItem key={db.id} value={db.id}>
+                          {db.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {form.databaseId && form.database && (
+                <div className="mt-2 bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1.5">
+                    Database columns available as form fields:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.database.schema?.columns?.map((col) => (
+                      <span
+                        key={col.key}
+                        className="px-2 py-0.5 bg-white rounded border text-xs text-gray-600"
+                      >
+                        {col.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
