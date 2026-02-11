@@ -375,7 +375,7 @@ export default function CollectionPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="w-10 px-4 py-3">
+                <th className="w-10 px-4 py-2">
                   <input
                     type="checkbox"
                     checked={selectedIds.length === items.length && items.length > 0}
@@ -383,16 +383,16 @@ export default function CollectionPage() {
                     className="rounded border-gray-300"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
-                <th className="w-16 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">View</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                <th className="w-20 px-4 py-3"></th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Board</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                <th className="w-16 px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">View</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Received By</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Submitted By</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th className="w-20 px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -412,7 +412,7 @@ export default function CollectionPage() {
                     }
                   }}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(item.id)}
@@ -420,7 +420,7 @@ export default function CollectionPage() {
                       className="rounded border-gray-300"
                     />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
                       {getFileIcon(item.mimeType)}
                       <div>
@@ -433,7 +433,7 @@ export default function CollectionPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                       item.source === 'EMAIL_REPLY' 
                         ? 'bg-blue-100 text-blue-700' 
@@ -448,7 +448,7 @@ export default function CollectionPage() {
                           : 'Manual'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     {item.job?.board ? (
                       <span className="text-sm text-gray-900">
                         {item.job.board.name}
@@ -457,7 +457,7 @@ export default function CollectionPage() {
                       <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     {item.job ? (
                       <span className="text-sm text-gray-900">
                         {item.job.name}
@@ -466,7 +466,7 @@ export default function CollectionPage() {
                       <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-2 text-center">
                     {item.message?.id ? (
                       <Link
                         href={`/dashboard/review/${item.message.id}?tab=attachments`}
@@ -479,7 +479,7 @@ export default function CollectionPage() {
                       <span className="text-gray-300">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     {item.job?.owner ? (
                       <div className="text-sm text-gray-600">
                         {item.job.owner.email}
@@ -488,12 +488,12 @@ export default function CollectionPage() {
                       <span className="text-sm text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <div className="text-sm text-gray-900">
                       {item.submittedBy || "—"}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <span className="text-sm text-gray-600">
                       {item.task?.entity?.companyName || "—"}
                     </span>
@@ -501,7 +501,7 @@ export default function CollectionPage() {
                       <div className="text-xs text-gray-500">{item.submittedByName}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <div className="text-sm text-gray-900">
                       {format(new Date(item.receivedAt), "MMM d, yyyy")}
                     </div>
@@ -509,7 +509,7 @@ export default function CollectionPage() {
                       {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2">
                     <Button
                       variant="ghost"
                       size="sm"

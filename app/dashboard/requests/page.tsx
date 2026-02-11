@@ -522,8 +522,8 @@ export default function RequestsPage() {
   return (
     <div className="p-8">
       {/* Toolbar */}
-      <div className="space-y-3 mb-4">
-        {/* First row - Main filters */}
+      <div className="mb-4">
+        {/* Filters - single row with wrap */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Board Filter */}
           {boards.length > 0 && (
@@ -646,27 +646,27 @@ export default function RequestsPage() {
               Clear
             </Button>
           )}
-        </div>
 
-        {/* Second row - Date filters */}
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-gray-400" />
-          <span className="text-sm text-gray-500">Sent:</span>
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-[140px] h-8 text-sm"
-            placeholder="From"
-          />
-          <span className="text-gray-400">—</span>
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-[140px] h-8 text-sm"
-            placeholder="To"
-          />
+          {/* Date filters */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-500 whitespace-nowrap">Sent:</span>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-[140px] h-8 text-sm"
+              placeholder="From"
+            />
+            <span className="text-gray-400">—</span>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-[140px] h-8 text-sm"
+              placeholder="To"
+            />
+          </div>
         </div>
       </div>
 

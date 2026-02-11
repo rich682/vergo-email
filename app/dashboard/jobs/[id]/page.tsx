@@ -58,7 +58,6 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 
 
 // Request card with expandable recipient grid
-import { RequestCardExpandable } from "@/components/jobs/request-card-expandable"
 
 // Form requests panel
 import { FormRequestsPanel } from "@/components/jobs/form-requests-panel"
@@ -1326,10 +1325,85 @@ export default function JobDetailPage() {
                   </div>
                 )}
                 
-                <SectionHeader title="Requests" count={requests.length} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
-                <div className="space-y-3">
-                  {requests.length === 0 ? <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200"><p className="text-sm text-gray-500">No requests sent yet</p></div> : requests.map(r => <RequestCardExpandable key={r.id} request={r} onRefresh={fetchRequests} />)}
-                </div>
+                <SectionHeader title="Requests" count={requests.reduce((sum: number, r: any) => sum + (r.recipients?.length || 0), 0)} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
+                {requests.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                    <p className="text-sm text-gray-500">No requests sent yet</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Risk</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sent</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {requests.flatMap((r: any) =>
+                          (r.recipients || []).map((recipient: any) => (
+                            <tr
+                              key={recipient.id}
+                              className="hover:bg-gray-50 cursor-pointer"
+                              onClick={() => {
+                                if (recipient.latestReply) {
+                                  router.push(`/dashboard/review/${recipient.id}`)
+                                }
+                              }}
+                            >
+                              <td className="px-3 py-2">
+                                <span className="text-sm text-gray-900 truncate max-w-[250px] block">
+                                  {r.generatedSubject || "Untitled"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div>
+                                  <span className="text-sm font-medium text-gray-900">{recipient.name}</span>
+                                  {recipient.email && recipient.email !== "Unknown" && (
+                                    <span className="text-xs text-gray-400 ml-1">({recipient.email})</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <StatusBadge
+                                  status={
+                                    ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"].includes(recipient.status) && recipient.readStatus === "read"
+                                      ? "READ"
+                                      : recipient.status || "NO_REPLY"
+                                  }
+                                  size="sm"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                {recipient.riskLevel === "high" ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">High</span>
+                                ) : recipient.riskLevel === "medium" ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Medium</span>
+                                ) : recipient.riskLevel === "low" ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Low</span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="text-sm text-gray-600">
+                                  {recipient.sentMessage?.sentAt
+                                    ? format(new Date(recipient.sentMessage.sentAt), "MMM d, yyyy")
+                                    : r.sentAt
+                                    ? format(new Date(r.sentAt), "MMM d, yyyy")
+                                    : "—"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 
                 {/* Form Requests */}
                 <div className="mt-6">

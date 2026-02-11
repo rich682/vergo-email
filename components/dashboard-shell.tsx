@@ -65,7 +65,7 @@ export function DashboardShell({
 
       {/* Main content area - padding adjusts based on pinned state only */}
       <div
-        className="transition-[padding-left] duration-200 ease-in-out"
+        className="transition-[padding-left] duration-200 ease-in-out overflow-x-hidden"
         style={{ paddingLeft: pinned ? 208 : 52 }}
       >
         {/* Top header bar */}

@@ -568,6 +568,18 @@ export default function BoardsPage() {
         )
       ) : (
         <div className="space-y-6">
+          {/* Column Headers */}
+          <div className="flex items-center gap-4 px-4 py-2 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+            {visibleColumns.map((col) => (
+              <div key={col.id} className="flex-shrink-0" style={{ width: col.width }}>
+                {col.label}
+              </div>
+            ))}
+            <div className="flex-shrink-0">Tasks</div>
+            <div className="flex-shrink-0 w-6" />
+            <div className="flex-shrink-0 w-8" />
+          </div>
+
           {/* Recurring Boards Section */}
           {recurringBoards.length > 0 && (
             <div className="space-y-2">
@@ -824,7 +836,7 @@ function BoardRow({
 
   return (
     <div 
-      className="border rounded-lg bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+      className="hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100"
       onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
     >
       {/* Board Row */}

@@ -319,28 +319,6 @@ export function Sidebar({
             </Link>
           </li>
 
-          {/* Inbox */}
-          <li>
-            <Link
-              href="/dashboard/inbox"
-              title={collapsed ? "Inbox" : undefined}
-              className={navCls(isOnInboxPage)}
-            >
-              <div className="relative flex-shrink-0">
-                <InboxIcon className="w-[18px] h-[18px]" />
-                {inboxUnread > 0 && collapsed && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-600 rounded-full" />
-                )}
-              </div>
-              <span className={labelCls}>Inbox</span>
-              {inboxUnread > 0 && !collapsed && (
-                <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[16px] h-[16px] rounded-full flex items-center justify-center px-1">
-                  {inboxUnread > 99 ? "99+" : inboxUnread}
-                </span>
-              )}
-            </Link>
-          </li>
-
           {/* Requests */}
           {hasSidebarAccess(modules.requests) && (() => {
             const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
@@ -367,6 +345,30 @@ export function Sidebar({
         )}
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
+          {/* Inbox */}
+          {hasSidebarAccess(modules.inbox) && (
+            <li>
+              <Link
+                href="/dashboard/inbox"
+                title={collapsed ? "Inbox" : undefined}
+                className={navCls(isOnInboxPage)}
+              >
+                <div className="relative flex-shrink-0">
+                  <InboxIcon className="w-[18px] h-[18px]" />
+                  {inboxUnread > 0 && collapsed && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-600 rounded-full" />
+                  )}
+                </div>
+                <span className={labelCls}>Inbox</span>
+                {inboxUnread > 0 && !collapsed && (
+                  <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[16px] h-[16px] rounded-full flex items-center justify-center px-1">
+                    {inboxUnread > 99 ? "99+" : inboxUnread}
+                  </span>
+                )}
+              </Link>
+            </li>
+          )}
+
           {/* Documents */}
           {hasSidebarAccess(modules.collection) && (() => {
             const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")

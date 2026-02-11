@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, Database, Search, MoreHorizontal, Trash2, FileSpreadsheet } from "lucide-react"
+import { Plus, Database, Search, MoreHorizontal, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -154,68 +154,68 @@ export default function DatabasesPage() {
             )}
           </div>
         ) : (
-          /* Database grid */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDatabases.map((db) => (
-              <div
-                key={db.id}
-                className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group"
-              >
-                <Link href={`/dashboard/databases/${db.id}`} className="block p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-orange-50 rounded-lg">
-                        <FileSpreadsheet className="w-5 h-5 text-orange-600" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                            {db.name}
-                          </h3>
-                          {db.sourceType && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded">
-                              Synced
-                            </span>
-                          )}
-                        </div>
-                        {db.description && (
-                          <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
-                            {db.description}
-                          </p>
+          /* Database table */
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rows</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Columns</th>
+                  <th className="w-10 px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredDatabases.map((db) => (
+                  <tr
+                    key={db.id}
+                    className="hover:bg-gray-50 cursor-pointer group"
+                    onClick={() => router.push(`/dashboard/databases/${db.id}`)}
+                  >
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 truncate max-w-[250px]">{db.name}</span>
+                        {db.sourceType && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded flex-shrink-0">
+                            Synced
+                          </span>
                         )}
                       </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.preventDefault()
-                            handleDelete(db.id, db.name)
-                          }}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
-                    <span>{db.rowCount.toLocaleString()} rows</span>
-                    <span>{db.columnCount} columns</span>
-                  </div>
-                </Link>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="text-sm text-gray-500 truncate block max-w-[250px]">
+                        {db.description || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-500">{db.rowCount.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-sm text-gray-500">{db.columnCount}</td>
+                    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(db.id, db.name)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

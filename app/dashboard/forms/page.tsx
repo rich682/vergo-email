@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Plus, ClipboardList, Search, MoreHorizontal, Trash2, Database } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ interface FormItem {
 }
 
 export default function FormsPage() {
+  const router = useRouter()
   const [forms, setForms] = useState<FormItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -193,67 +195,78 @@ export default function FormsPage() {
             )}
           </div>
         ) : (
-          /* Form grid */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredForms.map((form) => (
-              <div
-                key={form.id}
-                className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group"
-              >
-                <Link href={`/dashboard/forms/${form.id}`} className="block p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-orange-50 rounded-lg">
-                        <ClipboardList className="w-5 h-5 text-orange-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-gray-900 group-hover:text-orange-600 transition-colors">
-                          {safeString(form.name)}
-                        </h3>
-                        {form.description && (
-                          <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">
-                            {safeString(form.description)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDelete(form.id, safeString(form.name))
-                          }}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
-                    <span>{Array.isArray(form.fields) ? form.fields.length : 0} fields</span>
-                    <span>{typeof form._count?.formRequests === 'number' ? form._count.formRequests : 0} responses</span>
-                    {form.database && (
-                      <span className="flex items-center gap-1">
-                        <Database className="w-3 h-3" />
-                        {safeString(form.database.name)}
+          /* Form table */
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fields</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Responses</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Database</th>
+                  <th className="w-10 px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredForms.map((form) => (
+                  <tr
+                    key={form.id}
+                    className="hover:bg-gray-50 cursor-pointer group"
+                    onClick={() => router.push(`/dashboard/forms/${form.id}`)}
+                  >
+                    <td className="px-4 py-2">
+                      <span className="font-medium text-gray-900 truncate block max-w-[250px]">
+                        {safeString(form.name)}
                       </span>
-                    )}
-                  </div>
-                </Link>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="text-sm text-gray-500 truncate block max-w-[250px]">
+                        {form.description ? safeString(form.description) : "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-500">
+                      {Array.isArray(form.fields) ? form.fields.length : 0}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-gray-500">
+                      {typeof form._count?.formRequests === 'number' ? form._count.formRequests : 0}
+                    </td>
+                    <td className="px-4 py-2">
+                      {form.database ? (
+                        <span className="text-sm text-gray-700 flex items-center gap-1">
+                          <Database className="w-3 h-3 text-gray-400" />
+                          {safeString(form.database.name)}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(form.id, safeString(form.name))}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
