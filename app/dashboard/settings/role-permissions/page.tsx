@@ -2,9 +2,9 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useRouter } from "next/navigation"
-import { Label } from "@/components/ui/label"
 import { ArrowLeft, Shield, Info } from "lucide-react"
 import Link from "next/link"
+import { Checkbox } from "@/components/ui/checkbox"
 import { DEFAULT_MODULE_ACCESS, TASK_SCOPED_MODULES, normalizeAccessValue, type ModuleAccess, type ModuleKey, type ModuleAccessLevel } from "@/lib/permissions"
 
 const MODULE_LABELS: { key: ModuleKey; label: string; description: string }[] = [
@@ -28,95 +28,29 @@ type AccessValue = ModuleAccessLevel | false
 type RoleDefaults = Record<string, Record<ModuleKey, AccessValue>>
 
 /**
- * 3-state segmented control for sidebar-only modules: Off / View / Full Access
+ * Convert a stored AccessValue into 3 checkbox booleans
  */
-function AccessLevelControl({
-  value,
-  onChange,
-}: {
-  value: AccessValue
-  onChange: (val: AccessValue) => void
-}) {
-  const options: { label: string; val: AccessValue }[] = [
-    { label: "Off", val: false },
-    { label: "View", val: "view" },
-    { label: "Full Access", val: "edit" },
-  ]
-
-  return (
-    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-      {options.map((opt) => {
-        const isActive = value === opt.val
-        return (
-          <button
-            key={String(opt.val)}
-            onClick={() => onChange(opt.val)}
-            className={`
-              px-3 py-1 text-xs font-medium rounded-md transition-all duration-150
-              ${isActive
-                ? opt.val === false
-                  ? "bg-white text-gray-700 shadow-sm"
-                  : opt.val === "view"
-                  ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-200"
-                  : "bg-green-50 text-green-700 shadow-sm border border-green-200"
-                : "text-gray-500 hover:text-gray-700"
-              }
-            `}
-          >
-            {opt.label}
-          </button>
-        )
-      })}
-    </div>
-  )
+function valueToCheckboxes(value: AccessValue): { sidebar: boolean; taskTab: boolean; canEdit: boolean } {
+  switch (value) {
+    case "edit":      return { sidebar: true,  taskTab: true,  canEdit: true }
+    case "view":      return { sidebar: true,  taskTab: true,  canEdit: false }
+    case "task-edit":  return { sidebar: false, taskTab: true,  canEdit: true }
+    case "task-view":  return { sidebar: false, taskTab: true,  canEdit: false }
+    default:          return { sidebar: false, taskTab: false, canEdit: false }
+  }
 }
 
 /**
- * 5-state segmented control for task-scoped modules:
- * Off / Task View / Task Edit / View / Full Access
+ * Convert 3 checkbox booleans back to a stored AccessValue
  */
-function TaskScopeAccessLevelControl({
-  value,
-  onChange,
-}: {
-  value: AccessValue
-  onChange: (val: AccessValue) => void
-}) {
-  const options: { label: string; val: AccessValue; shortLabel?: string }[] = [
-    { label: "Off", val: false },
-    { label: "Task View", val: "task-view" },
-    { label: "Task Edit", val: "task-edit" },
-    { label: "View All", val: "view" },
-    { label: "Full Access", val: "edit" },
-  ]
-
-  const getActiveStyles = (val: AccessValue) => {
-    if (val === false) return "bg-white text-gray-700 shadow-sm"
-    if (val === "task-view") return "bg-amber-50 text-amber-700 shadow-sm border border-amber-200"
-    if (val === "task-edit") return "bg-orange-50 text-orange-700 shadow-sm border border-orange-200"
-    if (val === "view") return "bg-blue-50 text-blue-700 shadow-sm border border-blue-200"
-    return "bg-green-50 text-green-700 shadow-sm border border-green-200"
+function checkboxesToValue(sidebar: boolean, taskTab: boolean, canEdit: boolean, isTaskScoped: boolean): AccessValue {
+  if (!isTaskScoped) {
+    if (!sidebar) return false
+    return canEdit ? "edit" : "view"
   }
-
-  return (
-    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-      {options.map((opt) => {
-        const isActive = value === opt.val
-        return (
-          <button
-            key={String(opt.val)}
-            onClick={() => onChange(opt.val)}
-            className={`
-              px-2 py-1 text-[11px] font-medium rounded-md transition-all duration-150
-              ${isActive ? getActiveStyles(opt.val) : "text-gray-500 hover:text-gray-700"}
-            `}
-          >
-            {opt.label}
-          </button>
-        )
-      })}
-    </div>
-  )
+  if (sidebar) return canEdit ? "edit" : "view"
+  if (taskTab) return canEdit ? "task-edit" : "task-view"
+  return false
 }
 
 function RolePermissionsContent() {
@@ -162,7 +96,6 @@ function RolePermissionsContent() {
       if (response.ok) {
         const data = await response.json()
         if (data.roleDefaultModuleAccess) {
-          // Merge org defaults with hardcoded defaults (org overrides hardcoded)
           const merged: RoleDefaults = {
             MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
             MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
@@ -181,7 +114,6 @@ function RolePermissionsContent() {
           setRoleDefaults(merged)
           setOriginalDefaults(JSON.parse(JSON.stringify(merged)))
         } else {
-          // No org overrides - use hardcoded defaults
           const defaults: RoleDefaults = {
             MEMBER: normalizeRole(DEFAULT_MODULE_ACCESS.MEMBER || {}),
             MANAGER: normalizeRole(DEFAULT_MODULE_ACCESS.MANAGER || {}),
@@ -322,34 +254,33 @@ function RolePermissionsContent() {
           <div className="text-sm text-blue-800">
             <p className="font-medium">How permissions work</p>
             <p className="mt-1">
-              Admin users always have access to everything. These defaults apply to Employee and Manager roles.
+              Admin users always have full access. These defaults apply to Employee and Manager roles.
             </p>
-            <p className="mt-2 text-xs text-blue-600">
-              <strong>Task-scoped modules</strong> (Requests, Collection, Reports, Reconciliations) support task-level access:
-              <strong> Task View</strong> shows the tab within tasks the user is linked to (read-only),
-              <strong> Task Edit</strong> allows modifications within those tasks.
-              <strong> View All</strong> and <strong>Full Access</strong> also show the module in the sidebar.
-            </p>
+            <div className="mt-2 text-xs text-blue-600 space-y-1">
+              <p><strong>Sidebar</strong> — Module appears in the left navigation.</p>
+              <p><strong>Task Tab</strong> — Module appears as a tab inside tasks. Only applies to Requests, Collection, Reports, and Reconciliations. Always on when Sidebar is enabled.</p>
+              <p><strong>Can Edit</strong> — User can create, edit, and delete. Otherwise read-only.</p>
+            </div>
           </div>
         </div>
 
-        <div className="max-w-5xl space-y-6">
-          {/* Role columns */}
-          {CONFIGURABLE_ROLES.map(role => (
-            <div key={role.key} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-gray-500" />
-                  <div>
-                    <h2 className="text-sm font-medium text-gray-900">{role.label} Role</h2>
-                    <p className="text-xs text-gray-500">{role.description}</p>
+        <div className="max-w-4xl space-y-6">
+          {/* Role tables */}
+          {CONFIGURABLE_ROLES.map(role => {
+            const allFull = MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === "edit")
+            return (
+              <div key={role.key} className="border border-gray-200 rounded-lg overflow-hidden">
+                {/* Role header */}
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-gray-500" />
+                    <div>
+                      <h2 className="text-sm font-medium text-gray-900">{role.label} Role</h2>
+                      <p className="text-xs text-gray-500">{role.description}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
-                      // Set all to "edit" (full access) or false (off)
-                      const allFull = MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === "edit")
                       const newVal: AccessValue = allFull ? false : "edit"
                       setRoleDefaults(prev => {
                         const updated = { ...prev[role.key] }
@@ -362,44 +293,111 @@ function RolePermissionsContent() {
                     }}
                     className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
                   >
-                    {MODULE_LABELS.every(m => roleDefaults[role.key]?.[m.key] === "edit")
-                      ? "Disable all"
-                      : "Enable all"}
+                    {allFull ? "Disable all" : "Enable all"}
                   </button>
                 </div>
-              </div>
 
-              <div className="divide-y divide-gray-100">
-                {MODULE_LABELS.map(mod => {
-                  const isTaskScoped = TASK_SCOPED_MODULES.includes(mod.key)
-                  return (
-                    <div
-                      key={mod.key}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                    >
-                      <div>
-                        <Label className="text-sm font-medium text-gray-900 cursor-pointer">
-                          {mod.label}
-                        </Label>
-                        <p className="text-xs text-gray-500">{mod.description}</p>
-                      </div>
-                      {isTaskScoped ? (
-                        <TaskScopeAccessLevelControl
-                          value={roleDefaults[role.key]?.[mod.key] ?? false}
-                          onChange={(val) => handleAccessChange(role.key, mod.key, val)}
-                        />
-                      ) : (
-                        <AccessLevelControl
-                          value={roleDefaults[role.key]?.[mod.key] ?? false}
-                          onChange={(val) => handleAccessChange(role.key, mod.key, val)}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
+                {/* Permissions table */}
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Module
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                        Sidebar
+                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Show in nav</span>
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                        Task Tab
+                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Show in tasks</span>
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                        Can Edit
+                        <span className="block text-[10px] font-normal normal-case tracking-normal text-gray-400 mt-0.5">Create, edit, delete</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {MODULE_LABELS.map(mod => {
+                      const isTaskScoped = TASK_SCOPED_MODULES.includes(mod.key)
+                      const storedValue = roleDefaults[role.key]?.[mod.key] ?? false
+                      const { sidebar, taskTab, canEdit } = valueToCheckboxes(storedValue)
+
+                      // Task Tab is disabled when: not task-scoped (N/A) or sidebar is on (implied)
+                      const taskTabDisabled = !isTaskScoped || sidebar
+                      // Can Edit is disabled when: module is completely off (no visibility scope)
+                      const canEditDisabled = isTaskScoped ? (!sidebar && !taskTab) : !sidebar
+
+                      const handleSidebarChange = (checked: boolean) => {
+                        if (checked) {
+                          // Sidebar ON: taskTab implicitly true
+                          handleAccessChange(role.key, mod.key, checkboxesToValue(true, true, canEdit, isTaskScoped))
+                        } else {
+                          if (isTaskScoped) {
+                            // Sidebar OFF: keep taskTab and canEdit (downgrade edit→task-edit, view→task-view)
+                            handleAccessChange(role.key, mod.key, checkboxesToValue(false, taskTab, canEdit, isTaskScoped))
+                          } else {
+                            // Sidebar-only: off means everything off
+                            handleAccessChange(role.key, mod.key, false)
+                          }
+                        }
+                      }
+
+                      const handleTaskTabChange = (checked: boolean) => {
+                        if (!checked) {
+                          // Task Tab OFF: also force canEdit off
+                          handleAccessChange(role.key, mod.key, false)
+                        } else {
+                          handleAccessChange(role.key, mod.key, checkboxesToValue(false, true, canEdit, isTaskScoped))
+                        }
+                      }
+
+                      const handleCanEditChange = (checked: boolean) => {
+                        handleAccessChange(role.key, mod.key, checkboxesToValue(sidebar, isTaskScoped ? taskTab : sidebar, checked, isTaskScoped))
+                      }
+
+                      return (
+                        <tr key={mod.key} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-gray-900">{mod.label}</div>
+                            <div className="text-xs text-gray-500">{mod.description}</div>
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            <Checkbox
+                              checked={sidebar}
+                              onCheckedChange={handleSidebarChange}
+                            />
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            {isTaskScoped ? (
+                              <Checkbox
+                                checked={taskTab}
+                                disabled={taskTabDisabled}
+                                onCheckedChange={handleTaskTabChange}
+                                className={taskTabDisabled && taskTab ? "opacity-60 cursor-not-allowed" : ""}
+                                title={sidebar ? "Always enabled when Sidebar is on" : undefined}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-300 select-none">N/A</span>
+                            )}
+                          </td>
+                          <td className="text-center px-4 py-3">
+                            <Checkbox
+                              checked={canEdit}
+                              disabled={canEditDisabled}
+                              onCheckedChange={handleCanEditChange}
+                              className={canEditDisabled ? "opacity-40 cursor-not-allowed" : ""}
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* Reset to defaults */}
           <div className="flex items-center justify-between pt-2 pb-8">
