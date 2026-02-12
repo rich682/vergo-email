@@ -240,6 +240,7 @@ model User {
   importedDatabases          Database[]                 @relation("DatabaseImporter")
   createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
   reportViewerPermissions    GeneratedReportViewer[]
+  reportDefinitionViewerPermissions  ReportDefinitionViewer[] @relation("ReportDefinitionViewerUser")
   createdFormDefinitions     FormDefinition[]           @relation("FormDefinitionCreator")
   formRequests               FormRequest[]              @relation("FormRequestRecipient")
   completedReconciliations   ReconciliationRun[]        @relation("ReconciliationCompleter")
@@ -1316,8 +1317,13 @@ model ReportDefinition {
   
   // Filter configuration - which database columns to expose as filters
   // Array of column keys: ["location", "brand", "pm"]
-  // If empty, no filters are shown (explicit opt-in)
+  // Auto-derived from filterBindings keys when filterBindings is set
   filterColumnKeys Json    @default("[]")
+
+  // Baked-in filter values for this report definition
+  // Record<string, string[]> e.g. { "location": ["Bixby, OK"], "pm": ["Caleb"] }
+  // When set, these filters are enforced server-side for all viewers
+  filterBindings   Json?
   
   // Metadata
   createdAt       DateTime @default(now())
@@ -1329,7 +1335,8 @@ model ReportDefinition {
   createdBy        User             @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
   taskInstances    TaskInstance[]   // Tasks that use this report template
   generatedReports GeneratedReport[] // Reports generated from this template
-  
+  viewers          ReportDefinitionViewer[] // Users with viewer access to reports from this builder
+
   @@index([organizationId])
   @@index([databaseId])
 }
@@ -1377,6 +1384,22 @@ model GeneratedReportViewer {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@unique([generatedReportId, userId])
+  @@index([userId])
+}
+
+// ReportDefinitionViewer - join table for report builder viewer permissions
+// Admins can see all reports; non-admins must be explicit viewers of the report builder
+model ReportDefinitionViewer {
+  id                   String   @id @default(cuid())
+  reportDefinitionId   String
+  userId               String
+  addedAt              DateTime @default(now())
+  addedBy              String
+
+  reportDefinition     ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
+  user                 User             @relation("ReportDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reportDefinitionId, userId])
   @@index([userId])
 }
 

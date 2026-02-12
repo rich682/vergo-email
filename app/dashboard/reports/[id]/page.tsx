@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   GripVertical,
   Check,
+  Users,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,6 +48,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  ReportFilterSelector,
+  type FilterableProperty,
+  type FilterBindings,
+} from "@/components/reports/report-filter-selector"
 
 // Types
 interface ReportColumn {
@@ -116,6 +123,9 @@ interface ReportDefinition {
   // Accounting layout fields
   rowColumnKey: string | null
   valueColumnKey: string | null
+  // Filter configuration
+  filterColumnKeys: string[]
+  filterBindings: Record<string, string[]> | null
   database: {
     id: string
     name: string
@@ -200,9 +210,17 @@ export default function ReportBuilderPage() {
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
   const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
 
-  // Filter column configuration - which database columns are exposed as filters
-  const [filterColumnKeys, setFilterColumnKeys] = useState<string[]>([])
+  // Filter configuration - baked-in filter values
+  const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
+  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
+  const [loadingFilterProps, setLoadingFilterProps] = useState(false)
   const [filterConfigOpen, setFilterConfigOpen] = useState(false)
+
+  // Viewer management
+  const [viewers, setViewers] = useState<Array<{ userId: string; name: string | null; email: string }>>([])
+  const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([])
+  const [viewersSaving, setViewersSaving] = useState(false)
+  const [viewerSearch, setViewerSearch] = useState("")
 
   // Settings dialog state
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -234,8 +252,16 @@ export default function ReportBuilderPage() {
       setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
-      // Filter column configuration
-      setFilterColumnKeys(data.report.filterColumnKeys || [])
+      // Filter configuration
+      setFilterBindings(data.report.filterBindings || {})
+      // Viewers
+      if (data.report.viewers) {
+        setViewers(data.report.viewers.map((v: any) => ({
+          userId: v.user.id,
+          name: v.user.name,
+          email: v.user.email,
+        })))
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -314,6 +340,100 @@ export default function ReportBuilderPage() {
     }
   }, [report, currentPeriodKey, effectiveCompareMode, fetchPreview])
 
+  // Fetch all filterable column values for the filter builder
+  const fetchFilterProperties = useCallback(async () => {
+    if (!id) return
+    try {
+      setLoadingFilterProps(true)
+      const response = await fetch(`/api/reports/${id}/filter-properties?all=true`, {
+        credentials: "include",
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFilterProperties(data.properties || [])
+      }
+    } catch (err) {
+      console.error("Error fetching filter properties:", err)
+    } finally {
+      setLoadingFilterProps(false)
+    }
+  }, [id])
+
+  // Fetch filter properties when filter config panel opens
+  useEffect(() => {
+    if (filterConfigOpen && filterProperties.length === 0) {
+      fetchFilterProperties()
+    }
+  }, [filterConfigOpen, filterProperties.length, fetchFilterProperties])
+
+  // Fetch org users for viewer selector (on mount)
+  useEffect(() => {
+    async function fetchOrgUsers() {
+      try {
+        const response = await fetch("/api/users", { credentials: "include" })
+        if (response.ok) {
+          const data = await response.json()
+          setOrgUsers((data.users || data || []).map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+          })))
+        }
+      } catch (err) {
+        console.error("Error fetching org users:", err)
+      }
+    }
+    fetchOrgUsers()
+  }, [])
+
+  // Save viewers (immediate, not auto-save)
+  const saveViewers = useCallback(async (newViewerIds: string[]) => {
+    setViewersSaving(true)
+    try {
+      const response = await fetch(`/api/reports/${id}/viewers`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userIds: newViewerIds }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setViewers(data.viewers.map((v: any) => ({
+          userId: v.userId,
+          name: v.name,
+          email: v.email,
+        })))
+      }
+    } catch (err) {
+      console.error("Error saving viewers:", err)
+    } finally {
+      setViewersSaving(false)
+    }
+  }, [id])
+
+  const addViewer = useCallback((userId: string) => {
+    const newViewerIds = [...viewers.map(v => v.userId), userId]
+    saveViewers(newViewerIds)
+    setViewerSearch("")
+  }, [viewers, saveViewers])
+
+  const removeViewer = useCallback((userId: string) => {
+    const newViewerIds = viewers.filter(v => v.userId !== userId).map(v => v.userId)
+    saveViewers(newViewerIds)
+  }, [viewers, saveViewers])
+
+  // Filtered org users for viewer dropdown (exclude existing viewers)
+  const availableUsers = useMemo(() => {
+    const viewerIds = new Set(viewers.map(v => v.userId))
+    return orgUsers
+      .filter(u => !viewerIds.has(u.id))
+      .filter(u => {
+        if (!viewerSearch) return true
+        const search = viewerSearch.toLowerCase()
+        return (u.name?.toLowerCase().includes(search) || u.email.toLowerCase().includes(search))
+      })
+  }, [orgUsers, viewers, viewerSearch])
+
   // Save changes
   const handleSave = useCallback(async () => {
     if (!report) return
@@ -337,8 +457,9 @@ export default function ReportBuilderPage() {
           pivotFormulaColumns,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
-          // Filter configuration
-          filterColumnKeys,
+          // Filter configuration — derive filterColumnKeys from filterBindings
+          filterColumnKeys: Object.keys(filterBindings).filter(k => filterBindings[k]?.length > 0),
+          filterBindings: Object.keys(filterBindings).length > 0 ? filterBindings : null,
         }),
       })
 
@@ -356,7 +477,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterColumnKeys])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -385,7 +506,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterColumnKeys, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -571,72 +692,160 @@ export default function ReportBuilderPage() {
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <span className="font-medium text-sm text-gray-700">Filters</span>
-                  {filterColumnKeys.length > 0 && (
+                  {Object.keys(filterBindings).filter(k => filterBindings[k]?.length > 0).length > 0 && (
                     <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                      {filterColumnKeys.length}
+                      {Object.keys(filterBindings).filter(k => filterBindings[k]?.length > 0).length}
                     </span>
                   )}
                 </div>
                 <button
                   onClick={() => setFilterConfigOpen(!filterConfigOpen)}
                   className="p-1 hover:bg-gray-200 rounded"
-                  title="Configure filterable columns"
+                  title="Configure report filters"
                 >
                   <Settings2 className="w-3.5 h-3.5 text-gray-500" />
                 </button>
               </div>
-              
-              {/* Filter Configuration Panel */}
+
+              {/* Filter Value Selector */}
               {filterConfigOpen && (
-                <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
-                  <p className="text-xs text-blue-700 font-medium mb-2">
-                    Select columns to expose as filters:
+                <div className="px-3 py-3 border-b border-gray-100">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Select filter values to restrict this report&apos;s data. These filters are baked into the report and enforced for all viewers.
                   </p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {databaseColumns
-                      .filter(col => col.key !== report.dateColumnKey) // Exclude date column
-                      .map((col) => (
-                        <label
-                          key={col.key}
-                          className="flex items-center gap-2 px-2 py-1 hover:bg-blue-100 rounded cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filterColumnKeys.includes(col.key)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFilterColumnKeys([...filterColumnKeys, col.key])
-                              } else {
-                                setFilterColumnKeys(filterColumnKeys.filter(k => k !== col.key))
-                              }
-                              setHasUnsavedChanges(true)
-                            }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-xs text-gray-700">{col.label}</span>
-                          <span className="text-xs text-gray-400">({col.dataType})</span>
-                        </label>
-                      ))}
-                  </div>
+                  {loadingFilterProps ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                      <span className="text-xs text-gray-400 ml-2">Loading filter options...</span>
+                    </div>
+                  ) : filterProperties.length > 0 ? (
+                    <ReportFilterSelector
+                      properties={filterProperties}
+                      value={filterBindings}
+                      onChange={(newBindings) => {
+                        setFilterBindings(newBindings)
+                        setHasUnsavedChanges(true)
+                      }}
+                      loading={false}
+                      disabled={saving}
+                    />
+                  ) : (
+                    <p className="text-xs text-gray-400 italic py-2">
+                      No filterable columns available. Ensure the database has columns with multiple unique values.
+                    </p>
+                  )}
                 </div>
               )}
-              
-              {/* Display configured filter columns */}
+
+              {/* Display active filter summary */}
               <div className="p-3">
-                {filterColumnKeys.length > 0 ? (
+                {Object.keys(filterBindings).filter(k => filterBindings[k]?.length > 0).length > 0 ? (
                   <div>
-                    <p className="text-xs text-gray-500 mb-1.5">
-                      Columns available as filters:
-                    </p>
-                    <p className="text-sm text-gray-700">
-                      {filterColumnKeys
-                        .map(key => databaseColumns.find(c => c.key === key)?.label || key)
-                        .join(", ")}
-                    </p>
+                    <p className="text-xs text-gray-500 mb-1.5">Active filters:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(filterBindings)
+                        .filter(([_, values]) => values.length > 0)
+                        .map(([key, values]) => {
+                          const label = databaseColumns.find(c => c.key === key)?.label || key
+                          return (
+                            <span
+                              key={key}
+                              className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200"
+                            >
+                              {label}: {values.length === 1 ? values[0] : `${values.length} selected`}
+                            </span>
+                          )
+                        })}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 italic">
-                    No filter columns configured. Click the gear icon to select columns.
+                    No filters configured. This report shows all data. Click the gear icon to add filters.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* === VIEWERS CONFIGURATION === */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-sm text-gray-700">Viewers</span>
+                  {viewers.length > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                      {viewers.length}
+                    </span>
+                  )}
+                </div>
+                {viewersSaving && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                )}
+              </div>
+
+              <div className="p-3 space-y-2">
+                {/* Add viewer dropdown */}
+                <div className="relative">
+                  <Input
+                    placeholder="Search users to add..."
+                    value={viewerSearch}
+                    onChange={(e) => setViewerSearch(e.target.value)}
+                    className="h-8 text-xs"
+                    disabled={viewersSaving}
+                  />
+                  {viewerSearch && availableUsers.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-auto">
+                      {availableUsers.slice(0, 8).map((user) => (
+                        <button
+                          key={user.id}
+                          className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                          onClick={() => addViewer(user.id)}
+                          disabled={viewersSaving}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                            {(user.name || user.email)[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-gray-700 truncate">{user.name || user.email}</p>
+                            {user.name && <p className="text-[10px] text-gray-400 truncate">{user.email}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Current viewers list */}
+                {viewers.length > 0 ? (
+                  <div className="space-y-1">
+                    {viewers.map((viewer) => (
+                      <div
+                        key={viewer.userId}
+                        className="flex items-center justify-between px-2 py-1.5 bg-gray-50 rounded"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                            {(viewer.name || viewer.email)[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-gray-700 truncate">{viewer.name || viewer.email}</p>
+                            {viewer.name && <p className="text-[10px] text-gray-400 truncate">{viewer.email}</p>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeViewer(viewer.userId)}
+                          className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
+                          disabled={viewersSaving}
+                          title="Remove viewer"
+                        >
+                          <X className="w-3.5 h-3.5 text-gray-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">
+                    No viewers. Only admins can access reports from this builder.
                   </p>
                 )}
               </div>

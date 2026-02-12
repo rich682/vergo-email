@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, rowColumnKey, valueColumnKey } = body
+    const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, filterBindings, rowColumnKey, valueColumnKey } = body
 
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
@@ -100,6 +100,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         rowColumnKey,
         valueColumnKey,
         filterColumnKeys,
+        filterBindings: filterBindings as Record<string, string[]> | null | undefined,
       }
     )
 

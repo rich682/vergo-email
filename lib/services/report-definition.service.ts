@@ -113,6 +113,8 @@ export interface UpdateReportDefinitionInput {
   valueColumnKey?: string
   // Filter configuration - which database columns to expose as filters
   filterColumnKeys?: string[]
+  // Baked-in filter values: { "location": ["Bixby, OK"], "pm": ["Caleb"] }
+  filterBindings?: Record<string, string[]> | null
 }
 
 export interface ReportPreviewResult {
@@ -190,6 +192,18 @@ export class ReportDefinitionService {
             name: true,
             email: true,
           },
+        },
+        viewers: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { addedAt: "asc" },
         },
       },
     })
@@ -330,6 +344,7 @@ export class ReportDefinitionService {
         ...(input.valueColumnKey !== undefined && { valueColumnKey: input.valueColumnKey }),
         // Filter configuration
         ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys }),
+        ...(input.filterBindings !== undefined && { filterBindings: input.filterBindings as any }),
       },
       include: {
         database: {
@@ -367,6 +382,66 @@ export class ReportDefinitionService {
     })
 
     return { deleted: true }
+  }
+
+  /**
+   * Set viewers for a report definition (replaces full list)
+   */
+  static async setViewers(
+    reportDefinitionId: string,
+    organizationId: string,
+    userIds: string[],
+    addedBy: string
+  ) {
+    // Verify report exists
+    const report = await prisma.reportDefinition.findFirst({
+      where: { id: reportDefinitionId, organizationId },
+    })
+    if (!report) {
+      throw new Error("Report definition not found")
+    }
+
+    // Replace all viewers in a transaction
+    await prisma.$transaction([
+      prisma.reportDefinitionViewer.deleteMany({
+        where: { reportDefinitionId },
+      }),
+      ...(userIds.length > 0
+        ? [
+            prisma.reportDefinitionViewer.createMany({
+              data: userIds.map((userId) => ({
+                reportDefinitionId,
+                userId,
+                addedBy,
+              })),
+            }),
+          ]
+        : []),
+    ])
+
+    // Return updated viewers
+    const viewers = await prisma.reportDefinitionViewer.findMany({
+      where: { reportDefinitionId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { addedAt: "asc" },
+    })
+
+    return viewers
+  }
+
+  /**
+   * Check if a user is a viewer of a report definition
+   */
+  static async isViewer(reportDefinitionId: string, userId: string): Promise<boolean> {
+    const viewer = await prisma.reportDefinitionViewer.findFirst({
+      where: { reportDefinitionId, userId },
+      select: { id: true },
+    })
+    return !!viewer
   }
 
   /**

@@ -84,6 +84,8 @@ interface ReportInsightsPanelProps {
   onClose: () => void
   // For generated reports - enables caching
   generatedReportId?: string
+  // Task context - server reads filters from DB when provided
+  taskInstanceId?: string
 }
 
 // ============================================
@@ -97,6 +99,7 @@ export function ReportInsightsPanel({
   compareMode = "mom",
   onClose,
   generatedReportId,
+  taskInstanceId,
 }: ReportInsightsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -146,8 +149,9 @@ export function ReportInsightsPanel({
           credentials: "include",
           body: JSON.stringify({
             periodKey,
-            filterBindings,
             compareMode,
+            // Pass taskInstanceId for server-side filter enforcement; fall back to filterBindings for admin builder
+            ...(taskInstanceId ? { taskInstanceId } : { filterBindings }),
           }),
         })
       }
@@ -167,7 +171,7 @@ export function ReportInsightsPanel({
     } finally {
       setLoading(false)
     }
-  }, [reportId, periodKey, filterBindings, compareMode, generatedReportId])
+  }, [reportId, periodKey, filterBindings, compareMode, generatedReportId, taskInstanceId])
 
   // Initial fetch on mount
   useEffect(() => {

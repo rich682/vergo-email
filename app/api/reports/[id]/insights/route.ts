@@ -1,6 +1,6 @@
 /**
  * Report Insights API
- * 
+ *
  * POST /api/reports/[id]/insights - Generate AI-powered insights for a report
  */
 
@@ -9,10 +9,15 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportInsightsService } from "@/lib/services/report-insights.service"
+import { canPerformAction } from "@/lib/permissions"
+
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -22,26 +27,27 @@ export async function POST(
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, role: true },
     })
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    const reportId = params.id
-    
+    const { id: reportId } = await params
+
     let body: Record<string, unknown>
     try {
       body = await request.json()
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
     }
-    
-    const { periodKey, filterBindings, compareMode } = body as {
+
+    const { periodKey, filterBindings, compareMode, taskInstanceId } = body as {
       periodKey: string
       filterBindings?: Record<string, string[]>
       compareMode?: "none" | "mom" | "yoy"
+      taskInstanceId?: string
     }
 
     // Validate required fields
@@ -50,6 +56,77 @@ export async function POST(
         { error: "periodKey is required" },
         { status: 400 }
       )
+    }
+
+    // Determine effective filters based on context
+    let effectiveFilterBindings: Record<string, string[]> | undefined
+
+    if (taskInstanceId) {
+      // Task-scoped insights: read filters from the task record (server-side enforcement)
+      const task = await prisma.taskInstance.findFirst({
+        where: { id: taskInstanceId, organizationId: user.organizationId },
+        select: {
+          id: true,
+          reportDefinitionId: true,
+          reportFilterBindings: true,
+          ownerId: true,
+          collaborators: { select: { userId: true } },
+        },
+      })
+
+      if (!task) {
+        return NextResponse.json({ error: "Task not found" }, { status: 404 })
+      }
+
+      // Verify the report definition matches what's configured on the task
+      if (task.reportDefinitionId !== reportId) {
+        return NextResponse.json(
+          { error: "Report definition does not match task configuration" },
+          { status: 403 }
+        )
+      }
+
+      // Verify user has access to this task
+      const isOwner = task.ownerId === user.id
+      const isCollaborator = task.collaborators.some(c => c.userId === user.id)
+      const isAdmin = user.role === "ADMIN"
+      if (!isOwner && !isCollaborator && !isAdmin) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 })
+      }
+
+      // Strict viewer check: admin bypasses, everyone else must be a report definition viewer
+      if (!isAdmin) {
+        const isReportViewer = await prisma.reportDefinitionViewer.findFirst({
+          where: { reportDefinitionId: reportId, userId: user.id },
+        })
+        if (!isReportViewer) {
+          return NextResponse.json(
+            { error: "You do not have viewer access to this report" },
+            { status: 403 }
+          )
+        }
+      }
+
+      // Resolve filters: ReportDefinition.filterBindings takes priority over task-level (legacy)
+      const reportDef = await prisma.reportDefinition.findUnique({
+        where: { id: reportId },
+        select: { filterBindings: true },
+      })
+      const reportDefFilters = reportDef?.filterBindings as Record<string, string[]> | null
+      effectiveFilterBindings = (reportDefFilters && Object.keys(reportDefFilters).length > 0)
+        ? reportDefFilters
+        : (task.reportFilterBindings as Record<string, string[]>) || undefined
+
+    } else {
+      // No task context: admin/manager using report builder
+      if (!canPerformAction(user.role, "reports:manage", session.user.orgActionPermissions)) {
+        return NextResponse.json(
+          { error: "Permission denied — reports:manage required for standalone insights" },
+          { status: 403 }
+        )
+      }
+      // Admin can use any filters
+      effectiveFilterBindings = filterBindings
     }
 
     // Verify report exists and belongs to org
@@ -77,14 +154,14 @@ export async function POST(
       reportDefinitionId: reportId,
       organizationId: user.organizationId,
       periodKey,
-      filterBindings,
+      filterBindings: effectiveFilterBindings,
       compareMode: compareMode || "mom",
     })
 
     // Build filter summary for response context
     let filterSummary = "All Data"
-    if (filterBindings && Object.keys(filterBindings).length > 0) {
-      const parts = Object.entries(filterBindings)
+    if (effectiveFilterBindings && Object.keys(effectiveFilterBindings).length > 0) {
+      const parts = Object.entries(effectiveFilterBindings)
         .filter(([_, values]) => values.length > 0)
         .map(([key, values]) => values.length === 1 ? values[0] : `${values.length} ${key}`)
       if (parts.length > 0) {

@@ -62,7 +62,8 @@ export interface UpdateTaskInstanceInput {
   lineageId?: string | null  // For linking to lineage
   // Report configuration
   reportDefinitionId?: string | null
-  reportFilterBindings?: Record<string, string[]> | null  // Dynamic filters { columnKey: [values] }
+  /** @deprecated Filters now live on ReportDefinition.filterBindings */
+  reportFilterBindings?: Record<string, string[]> | null
   // Reconciliation configuration
   reconciliationConfigId?: string | null
 }

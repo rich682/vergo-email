@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -58,11 +59,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
     }
 
+    // Check for ?all=true — returns all database columns (for report builder filter config)
+    const url = new URL(request.url)
+    const showAll = url.searchParams.get("all") === "true"
+
+    if (showAll) {
+      // Require reports:manage permission for all-columns mode
+      if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
+        return NextResponse.json({ error: "Permission denied" }, { status: 403 })
+      }
+    }
+
     // Get the configured filter column keys (explicit opt-in)
     const filterColumnKeys = (report as any).filterColumnKeys as string[] || []
-    
-    // If no filter columns configured, return empty
-    if (filterColumnKeys.length === 0) {
+
+    // If not showing all and no filter columns configured, return empty
+    if (!showAll && filterColumnKeys.length === 0) {
       return NextResponse.json({ properties: [] })
     }
 
@@ -80,10 +92,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const rows = (report.database.rows || []) as Array<Record<string, unknown>>
 
-    // Build filter properties only for explicitly configured columns
+    // Build filter properties for configured columns (or all columns if showAll)
     const filterableProperties = []
+    const columnsToProcess = showAll
+      ? schema.filter(c => c.key !== (report as any).dateColumnKey).map(c => c.key)
+      : filterColumnKeys
 
-    for (const columnKey of filterColumnKeys) {
+    for (const columnKey of columnsToProcess) {
       // Find the column in schema
       const column = schema.find(c => c.key === columnKey)
       if (!column) continue

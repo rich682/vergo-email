@@ -619,6 +619,7 @@ export class BoardService {
       const prevAnyReport = prev as any
       if (prevAnyReport.reportDefinitionId) {
         createData.reportDefinitionId = prevAnyReport.reportDefinitionId
+        createData.reportFilterBindings = prevAnyReport.reportFilterBindings || null
       }
       
       const newInstance = await prisma.taskInstance.create({ data: createData })

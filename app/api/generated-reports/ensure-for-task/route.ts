@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
         id: true,
         boardId: true,
         ownerId: true,
+        reportDefinitionId: true,
+        reportFilterBindings: true,
         collaborators: { select: { userId: true } },
       },
     })
@@ -106,6 +108,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Strict viewer check: admin bypasses, everyone else must be a report definition viewer
+    if (!isAdmin) {
+      const isReportViewer = await prisma.reportDefinitionViewer.findFirst({
+        where: { reportDefinitionId, userId: user.id },
+      })
+      if (!isReportViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this report" },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Verify the report definition matches what's configured on the task
+    if (taskInstance.reportDefinitionId !== reportDefinitionId) {
+      return NextResponse.json(
+        { error: "Report definition does not match task configuration" },
+        { status: 403 }
+      )
+    }
+
+    // Resolve filters: ReportDefinition.filterBindings takes priority over task-level (legacy)
+    const reportDef = await prisma.reportDefinition.findUnique({
+      where: { id: reportDefinitionId },
+      select: { filterBindings: true },
+    })
+    const reportDefFilters = reportDef?.filterBindings as Record<string, string[]> | null
+    const effectiveFilterBindings = (reportDefFilters && Object.keys(reportDefFilters).length > 0)
+      ? reportDefFilters
+      : (taskInstance.reportFilterBindings as Record<string, string[]>) || undefined
+
     // Check if a generated report already exists for this task+period
     const existingReport = await (prisma as any).generatedReport.findFirst({
       where: {
@@ -126,11 +159,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Generate and store the report
+    // Generate and store the report using server-side filters
     const report = await ReportGenerationService.generateForPeriod({
       organizationId: user.organizationId,
       reportDefinitionId,
-      filterBindings: filterBindings || undefined,
+      filterBindings: effectiveFilterBindings,
       taskInstanceId,
       boardId: taskInstance.boardId!,
       periodKey,

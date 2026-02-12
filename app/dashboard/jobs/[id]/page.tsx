@@ -1367,7 +1367,6 @@ export default function JobDetailPage() {
                 <ReportTab
                   jobId={jobId}
                   reportDefinitionId={job.reportDefinitionId || null}
-                  reportFilterBindings={job.reportFilterBindings || null}
                   boardPeriodStart={job.board?.periodStart}
                   boardCadence={job.board?.cadence}
                   isAdmin={permissions?.isAdmin}
@@ -1376,7 +1375,6 @@ export default function JobDetailPage() {
                     setJob(prev => prev ? {
                       ...prev,
                       reportDefinitionId: config.reportDefinitionId,
-                      reportFilterBindings: config.reportFilterBindings,
                     } : null)
                   }}
                 />

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { FileText, Filter, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X, FunctionSquare, TrendingUp, Download } from "lucide-react"
+import { FileText, Loader2, LayoutGrid, Table2, RefreshCw, Calendar, Lock, Settings, X, FunctionSquare, TrendingUp, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -11,14 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  ReportFilterSelector, 
-  type FilterableProperty, 
-  type FilterBindings 
-} from "@/components/reports/report-filter-selector"
-import { 
-  ReportInsightsPanel, 
-  InsightsButton 
+import {
+  ReportInsightsPanel,
+  InsightsButton
 } from "@/components/reports/report-insights-panel"
 // XLSX is lazy-loaded in handleExportExcel to reduce initial bundle size
 
@@ -32,6 +27,7 @@ interface ReportDefinition {
   description: string | null
   cadence: string
   layout: "standard" | "pivot"
+  filterBindings: Record<string, string[]> | null
   database: {
     id: string
     name: string
@@ -52,10 +48,9 @@ interface PreviewResult {
 interface ReportTabProps {
   jobId: string
   reportDefinitionId: string | null
-  reportFilterBindings: FilterBindings | null  // Dynamic filters instead of slice reference
   boardPeriodStart?: string | null
   boardCadence?: string | null
-  onConfigChange?: (config: { reportDefinitionId: string | null; reportFilterBindings: FilterBindings | null }) => void
+  onConfigChange?: (config: { reportDefinitionId: string | null }) => void
   isAdmin?: boolean  // Controls whether configuration UI is shown (only admins can configure)
 }
 
@@ -73,7 +68,6 @@ const CADENCE_LABELS: Record<string, string> = {
 export function ReportTab({
   jobId,
   reportDefinitionId,
-  reportFilterBindings,
   boardPeriodStart,
   boardCadence,
   onConfigChange,
@@ -85,21 +79,21 @@ export function ReportTab({
   // Config editing state
   const [isEditingConfig, setIsEditingConfig] = useState(!isConfigured && isAdmin)
   const [editReportId, setEditReportId] = useState<string | null>(reportDefinitionId)
-  const [editFilterBindings, setEditFilterBindings] = useState<FilterBindings>(reportFilterBindings || {})
 
   // Data state
   const [reports, setReports] = useState<ReportDefinition[]>([])
-  const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
   const [loadingReports, setLoadingReports] = useState(true)
-  const [loadingFilters, setLoadingFilters] = useState(false)
-  
+
   // Preview state - uses SAVED config (props), not editing state
   const [previewData, setPreviewData] = useState<PreviewResult | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [currentPeriodKey, setCurrentPeriodKey] = useState<string>("")
-  
+
   const [saving, setSaving] = useState(false)
-  
+
+  // Access denied state (viewer check failed)
+  const [viewerDenied, setViewerDenied] = useState(false)
+
   // AI Insights state
   const [insightsOpen, setInsightsOpen] = useState(false)
 
@@ -108,21 +102,34 @@ export function ReportTab({
     return reports.find(r => r.id === reportDefinitionId) || null
   }, [reports, reportDefinitionId])
 
-  // Get active filter summary for display
+  // Get filter summary from the report definition's baked-in filters
   const savedFilterSummary = useMemo(() => {
-    if (!reportFilterBindings) return null
-    const activeFilters = Object.entries(reportFilterBindings)
+    const fb = savedReport?.filterBindings
+    if (!fb) return null
+    const activeFilters = Object.entries(fb)
       .filter(([_, values]) => values.length > 0)
     if (activeFilters.length === 0) return null
     return activeFilters
       .map(([key, values]) => values.length === 1 ? values[0] : `${values.length} ${key}`)
       .join(", ")
-  }, [reportFilterBindings])
+  }, [savedReport])
 
   // Get editing report details
   const editReport = useMemo(() => {
     return reports.find(r => r.id === editReportId) || null
   }, [reports, editReportId])
+
+  // Get filter summary for the report being edited (read-only display)
+  const editFilterSummary = useMemo(() => {
+    const fb = editReport?.filterBindings
+    if (!fb) return null
+    const activeFilters = Object.entries(fb)
+      .filter(([_, values]) => values.length > 0)
+    if (activeFilters.length === 0) return null
+    return activeFilters
+      .map(([key, values]) => values.length === 1 ? values[0] : `${values.length} ${key}`)
+      .join(", ")
+  }, [editReport])
 
   // Fetch available report definitions
   const fetchReports = useCallback(async () => {
@@ -140,27 +147,12 @@ export function ReportTab({
     }
   }, [])
 
-  // Fetch filterable properties for a report
-  const fetchFilterProperties = useCallback(async (reportId: string) => {
-    try {
-      setLoadingFilters(true)
-      const response = await fetch(`/api/reports/${reportId}/filter-properties`, { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setFilterProperties(data.properties || [])
-      }
-    } catch (error) {
-      console.error("Error fetching filter properties:", error)
-    } finally {
-      setLoadingFilters(false)
-    }
-  }, [])
-
   // Fetch report preview using SAVED config
   const fetchPreview = useCallback(async () => {
     if (!reportDefinitionId) return
-    
+
     setPreviewLoading(true)
+    setViewerDenied(false)
     try {
       const response = await fetch(`/api/reports/${reportDefinitionId}/preview`, {
         method: "POST",
@@ -168,22 +160,21 @@ export function ReportTab({
         credentials: "include",
         body: JSON.stringify({
           currentPeriodKey: currentPeriodKey || undefined,
-          compareMode: "mom",  // Enable month-over-month comparison for comparison rows
-          filters: reportFilterBindings,
+          compareMode: "mom",
+          taskInstanceId: jobId,
         }),
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setPreviewData(data)
-        
+
         // Auto-select first period if none selected
         if (!currentPeriodKey && data.availablePeriods?.length > 0) {
           setCurrentPeriodKey(data.availablePeriods[0].key)
         }
-        
+
         // Auto-store as GeneratedReport so it appears in Reports page
-        // This is idempotent - won't create duplicates if already exists
         const effectivePeriodKey = data.current?.periodKey || currentPeriodKey
         if (effectivePeriodKey) {
           fetch("/api/generated-reports/ensure-for-task", {
@@ -194,12 +185,15 @@ export function ReportTab({
               taskInstanceId: jobId,
               reportDefinitionId,
               periodKey: effectivePeriodKey,
-              filterBindings: reportFilterBindings,
             }),
           }).catch(err => {
-            // Don't block preview on ensure failure
             console.error("Error ensuring task report:", err)
           })
+        }
+      } else if (response.status === 403) {
+        const data = await response.json().catch(() => ({}))
+        if (data.error?.includes("viewer access")) {
+          setViewerDenied(true)
         }
       }
     } catch (error) {
@@ -207,23 +201,14 @@ export function ReportTab({
     } finally {
       setPreviewLoading(false)
     }
-  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey, jobId])
+  }, [reportDefinitionId, currentPeriodKey, jobId])
 
-  // Save configuration
+  // Save configuration — only links a report definition to the task
   const saveConfig = useCallback(async () => {
     if (!editReportId) {
       alert("Please select a report template")
       return
     }
-
-    // Clean up filter bindings (remove empty arrays)
-    const cleanedFilters: FilterBindings = {}
-    for (const [key, values] of Object.entries(editFilterBindings)) {
-      if (values.length > 0) {
-        cleanedFilters[key] = values
-      }
-    }
-    const filtersToSave = Object.keys(cleanedFilters).length > 0 ? cleanedFilters : null
 
     setSaving(true)
     try {
@@ -233,20 +218,19 @@ export function ReportTab({
         credentials: "include",
         body: JSON.stringify({
           reportDefinitionId: editReportId,
-          reportFilterBindings: filtersToSave,
         }),
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error("Failed to save report config:", response.status, errorData)
         alert(`Failed to save report configuration: ${errorData.error || response.statusText}`)
         return
       }
-      
+
       // Update parent state
-      onConfigChange?.({ reportDefinitionId: editReportId, reportFilterBindings: filtersToSave })
-      
+      onConfigChange?.({ reportDefinitionId: editReportId })
+
       // Close config panel
       setIsEditingConfig(false)
     } catch (error) {
@@ -255,34 +239,24 @@ export function ReportTab({
     } finally {
       setSaving(false)
     }
-  }, [jobId, editReportId, editFilterBindings, onConfigChange])
+  }, [jobId, editReportId, onConfigChange])
 
   // Cancel editing
   const cancelEditing = useCallback(() => {
-    // Reset to saved values
     setEditReportId(reportDefinitionId)
-    setEditFilterBindings(reportFilterBindings || {})
     setIsEditingConfig(false)
-  }, [reportDefinitionId, reportFilterBindings])
+  }, [reportDefinitionId])
 
   // Open config panel for editing
   const openConfigPanel = useCallback(() => {
     setEditReportId(reportDefinitionId)
-    setEditFilterBindings(reportFilterBindings || {})
     setIsEditingConfig(true)
-  }, [reportDefinitionId, reportFilterBindings])
+  }, [reportDefinitionId])
 
   // Initial fetch
   useEffect(() => {
     fetchReports()
   }, [fetchReports])
-
-  // Fetch filter properties when editing report changes
-  useEffect(() => {
-    if (editReportId && isEditingConfig) {
-      fetchFilterProperties(editReportId)
-    }
-  }, [editReportId, isEditingConfig, fetchFilterProperties])
 
   // Fetch preview when saved config or period changes
   useEffect(() => {
@@ -291,15 +265,14 @@ export function ReportTab({
     } else {
       setPreviewData(null)
     }
-  }, [reportDefinitionId, reportFilterBindings, currentPeriodKey, fetchPreview])
+  }, [reportDefinitionId, currentPeriodKey, fetchPreview])
 
   // Sync editing state when props change
   useEffect(() => {
     if (!isEditingConfig) {
       setEditReportId(reportDefinitionId)
-      setEditFilterBindings(reportFilterBindings || {})
     }
-  }, [reportDefinitionId, reportFilterBindings, isEditingConfig])
+  }, [reportDefinitionId, isEditingConfig])
 
   // Auto-open config panel for admin when unconfigured
   useEffect(() => {
@@ -312,26 +285,21 @@ export function ReportTab({
   const handleEditReportChange = (value: string) => {
     const newReportId = value === "_none" ? null : value
     setEditReportId(newReportId)
-    setEditFilterBindings({}) // Clear filters when report changes
-    
-    // Filter properties will be fetched by useEffect
   }
 
   // Format cell value for display with proper formatting
   const formatCellValue = (value: unknown, format?: string): string => {
     if (value === null || value === undefined) return "—"
-    
-    // Coerce string numbers to actual numbers for formatting
+
     let numValue: number | null = null
     if (typeof value === "number") {
       numValue = value
     } else if (typeof value === "string" && !isNaN(Number(value)) && value.trim() !== "") {
       numValue = Number(value)
     }
-    
-    // Normalize format to lowercase
+
     const fmt = (format || "").toLowerCase()
-    
+
     if (fmt === "currency" && numValue !== null) {
       return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
     }
@@ -348,15 +316,12 @@ export function ReportTab({
   const handleExportExcel = useCallback(async () => {
     const XLSX = await import("xlsx")
     if (!previewData || !previewData.table.columns.length) return
-    
-    // Build worksheet data
+
     const wsData: unknown[][] = []
-    
-    // Add header row
+
     const headers = previewData.table.columns.map(col => col.label || col.key)
     wsData.push(headers)
-    
-    // Add data rows
+
     for (const row of previewData.table.rows) {
       const rowData = previewData.table.columns.map(col => {
         const value = row[col.key]
@@ -365,10 +330,9 @@ export function ReportTab({
       })
       wsData.push(rowData)
     }
-    
-    // Add formula rows if present
+
     if (previewData.table.formulaRows && previewData.table.formulaRows.length > 0) {
-      wsData.push([]) // Empty row separator
+      wsData.push([])
       for (const formulaRow of previewData.table.formulaRows) {
         const rowData = previewData.table.columns.map((col, idx) => {
           if (idx === 0) return formulaRow.label
@@ -379,12 +343,10 @@ export function ReportTab({
         wsData.push(rowData)
       }
     }
-    
-    // Create workbook and worksheet
+
     const workbook = XLSX.utils.book_new()
     const worksheet = XLSX.utils.aoa_to_sheet(wsData)
-    
-    // Set column widths
+
     const colWidths = headers.map((header, idx) => {
       let maxWidth = String(header).length
       for (const row of wsData) {
@@ -394,26 +356,20 @@ export function ReportTab({
       return { wch: Math.min(maxWidth + 2, 50) }
     })
     worksheet["!cols"] = colWidths
-    
-    // Add worksheet
+
     const sheetName = (savedReport?.name || "Report").substring(0, 31)
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
-    
-    // Generate filename
+
     const filename = `${savedReport?.name || "Report"} - ${currentPeriodKey || "Report"}.xlsx`
       .replace(/[/\\?%*:|"<>]/g, "-")
-    
-    // Download
+
     XLSX.writeFile(workbook, filename)
   }, [previewData, savedReport, currentPeriodKey])
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
-    if (editReportId !== reportDefinitionId) return true
-    const savedFilters = reportFilterBindings || {}
-    const editFilters = editFilterBindings || {}
-    return JSON.stringify(savedFilters) !== JSON.stringify(editFilters)
-  }, [editReportId, reportDefinitionId, reportFilterBindings, editFilterBindings])
+    return editReportId !== reportDefinitionId
+  }, [editReportId, reportDefinitionId])
 
   return (
     <div className="space-y-6">
@@ -432,8 +388,8 @@ export function ReportTab({
               </button>
             )}
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="space-y-4">
             {/* Report Template Selector */}
             <div className="space-y-2">
               <Label>Report Template</Label>
@@ -471,21 +427,18 @@ export function ReportTab({
               )}
             </div>
 
+            {/* Read-only filter summary from selected report definition */}
+            {editReport && (
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-medium text-gray-600 mb-1">Filters (configured in report template)</p>
+                {editFilterSummary ? (
+                  <p className="text-sm text-gray-700">{editFilterSummary}</p>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">No filters — this report shows all data</p>
+                )}
+              </div>
+            )}
           </div>
-
-          {/* Filter Selector - Full width below */}
-          {editReportId && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <Label className="mb-2 block">Filters (optional)</Label>
-              <ReportFilterSelector
-                properties={filterProperties}
-                value={editFilterBindings}
-                onChange={setEditFilterBindings}
-                loading={loadingFilters}
-                disabled={saving}
-              />
-            </div>
-          )}
 
           {/* Action Buttons */}
           <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
@@ -536,7 +489,7 @@ export function ReportTab({
                 </span>
               )}
             </div>
-            
+
             <div className="flex items-center gap-3">
               {/* Period Selector */}
               {previewData?.availablePeriods && previewData.availablePeriods.length > 0 && (
@@ -557,7 +510,7 @@ export function ReportTab({
                   </SelectContent>
                 </Select>
               )}
-              
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -606,6 +559,14 @@ export function ReportTab({
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
+            ) : viewerDenied ? (
+              <div className="text-center py-12 text-gray-500">
+                <Lock className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm font-medium">You don&apos;t have access to this report</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Contact your administrator to request viewer access.
+                </p>
+              </div>
             ) : !previewData || !previewData.table.columns.length ? (
               <div className="text-center py-12 text-gray-500">
                 <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
@@ -625,12 +586,12 @@ export function ReportTab({
                           <th
                             key={col.key}
                             className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ${
-                              isLabelColumn 
-                                ? "text-left whitespace-nowrap" 
+                              isLabelColumn
+                                ? "text-left whitespace-nowrap"
                                 : "text-center border-l border-gray-200"
                             }`}
-                            style={{ 
-                              width: isLabelColumn ? 200 : 120, 
+                            style={{
+                              width: isLabelColumn ? 200 : 120,
                               minWidth: isLabelColumn ? 200 : 120,
                               maxWidth: isLabelColumn ? 200 : 120
                             }}
@@ -643,27 +604,26 @@ export function ReportTab({
                   </thead>
                   <tbody>
                     {previewData.table.rows.slice(0, 20).map((row, rowIndex) => (
-                      <tr 
-                        key={rowIndex} 
+                      <tr
+                        key={rowIndex}
                         className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
                       >
                         {previewData.table.columns.map((col, colIndex) => {
-                          // For pivot layouts, use row's _format if available (except for label column)
-                          const effectiveFormat = col.key === "_label" 
-                            ? "text" 
+                          const effectiveFormat = col.key === "_label"
+                            ? "text"
                             : ((row._format as string) || col.dataType)
                           const rowType = row._type as string | undefined
                           const isLabelColumn = col.key === "_label"
                           return (
-                            <td 
-                              key={col.key} 
+                            <td
+                              key={col.key}
                               className={`px-4 py-3 border-b border-gray-100 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                isLabelColumn 
-                                  ? "font-medium text-gray-900" 
+                                isLabelColumn
+                                  ? "font-medium text-gray-900"
                                   : "text-center border-l border-gray-100 text-gray-700"
                               }`}
-                              style={{ 
-                                width: isLabelColumn ? 200 : 120, 
+                              style={{
+                                width: isLabelColumn ? 200 : 120,
                                 minWidth: isLabelColumn ? 200 : 120,
                                 maxWidth: isLabelColumn ? 200 : 120
                               }}
@@ -693,12 +653,12 @@ export function ReportTab({
                               <td
                                 key={col.key}
                                 className={`px-4 py-3 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                  isLabelColumn 
-                                    ? "font-medium text-gray-900" 
+                                  isLabelColumn
+                                    ? "font-medium text-gray-900"
                                     : "text-center border-l border-blue-100 text-gray-900"
                                 }`}
-                                style={{ 
-                                  width: isLabelColumn ? 200 : 120, 
+                                style={{
+                                  width: isLabelColumn ? 200 : 120,
                                   minWidth: isLabelColumn ? 200 : 120,
                                   maxWidth: isLabelColumn ? 200 : 120
                                 }}
@@ -741,7 +701,7 @@ export function ReportTab({
           reportId={reportDefinitionId}
           periodKey={currentPeriodKey}
           compareMode="mom"
-          filterBindings={reportFilterBindings || undefined}
+          taskInstanceId={jobId}
           onClose={() => setInsightsOpen(false)}
         />
       )}
