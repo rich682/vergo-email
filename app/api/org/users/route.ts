@@ -43,9 +43,9 @@ export async function GET(request: NextRequest) {
     // Admins: all users in org
     // Non-admins: only themselves
     const users = await prisma.user.findMany({
-      where: isAdmin 
-        ? { organizationId }
-        : { organizationId, id: currentUserId },
+      where: isAdmin
+        ? { organizationId, isDebugUser: false }
+        : { organizationId, id: currentUserId, isDebugUser: false },
       select: {
         id: true,
         email: true,

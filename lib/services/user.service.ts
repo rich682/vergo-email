@@ -38,10 +38,14 @@ export class UserService {
   }
 
   static async findByOrganization(
-    organizationId: string
+    organizationId: string,
+    includeDebugUsers = false
   ): Promise<User[]> {
     return prisma.user.findMany({
-      where: { organizationId }
+      where: {
+        organizationId,
+        ...(includeDebugUsers ? {} : { isDebugUser: false })
+      }
     })
   }
 

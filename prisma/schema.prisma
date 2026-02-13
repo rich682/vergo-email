@@ -222,6 +222,9 @@ model User {
   onboardingCompleted Boolean @default(false)
   onboardingDismissed Boolean @default(false)
 
+  // Debug/test user flag — hidden from customer-facing UIs, visible in admin dashboard
+  isDebugUser         Boolean  @default(false)
+
   organization               Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   emailDrafts                EmailDraft[]
   ownedTaskInstances         TaskInstance[]             @relation("TaskInstanceOwner")

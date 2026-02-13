@@ -14,6 +14,7 @@ async function getCompanyDetail(id: string) {
     where: { id },
     include: {
       users: {
+        where: { isDebugUser: false },
         orderBy: { lastLoginAt: "desc" },
         select: {
           id: true,
@@ -41,6 +42,13 @@ async function getCompanyDetail(id: string) {
   const weekStart = new Date()
   weekStart.setDate(weekStart.getDate() - 7)
 
+  // Fetch debug users separately for the credentials card
+  const debugUsers = await prisma.user.findMany({
+    where: { organizationId: id, isDebugUser: true },
+    select: { id: true, email: true, role: true, name: true },
+    orderBy: { role: "asc" },
+  })
+
   const [requestCount, requestsThisWeek, emailsSent, recentErrors] = await Promise.all([
     prisma.request.count({ where: { organizationId: id } }),
     prisma.request.count({ where: { organizationId: id, createdAt: { gte: weekStart } } }),
@@ -62,6 +70,7 @@ async function getCompanyDetail(id: string) {
 
   return {
     org,
+    debugUsers,
     requestCount,
     requestsThisWeek,
     emailsSent,
@@ -77,7 +86,7 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
     notFound()
   }
 
-  const { org, requestCount, requestsThisWeek, emailsSent, recentErrors } = data
+  const { org, debugUsers, requestCount, requestsThisWeek, emailsSent, recentErrors } = data
 
   return (
     <DashboardLayout>
@@ -120,6 +129,34 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
             : {}
         }
       />
+
+      {/* Debug Login Credentials */}
+      {debugUsers.length > 0 && (
+        <div className="bg-amber-950/30 rounded-xl border border-amber-800/50 overflow-hidden mb-8">
+          <div className="px-5 py-4 border-b border-amber-800/50">
+            <h2 className="text-sm font-semibold text-amber-400">Debug Login Credentials</h2>
+            <p className="text-xs text-amber-600 mt-0.5">Hidden from customer UI. Password for all: <code className="bg-amber-900/40 px-1.5 py-0.5 rounded text-amber-300">VergoDebug2026!</code></p>
+          </div>
+          <div className="divide-y divide-amber-800/30">
+            {debugUsers.map((user: any) => (
+              <div key={user.id} className="flex items-center gap-4 px-5 py-3">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium min-w-[70px] justify-center ${
+                    user.role === "ADMIN"
+                      ? "bg-orange-900/30 text-orange-400"
+                      : user.role === "MANAGER"
+                      ? "bg-blue-900/30 text-blue-400"
+                      : "bg-gray-800 text-gray-400"
+                  }`}
+                >
+                  {user.role}
+                </span>
+                <span className="text-sm text-amber-200 font-mono">{user.email}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Users Table */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mb-8">

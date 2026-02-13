@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch all users in the organization (minimal info only)
     const users = await prisma.user.findMany({
-      where: { organizationId },
+      where: { organizationId, isDebugUser: false },
       select: {
         id: true,
         email: true,

@@ -26,8 +26,9 @@ export async function GET(request: NextRequest) {
 
     // Fetch all active users in the organization
     const users = await prisma.user.findMany({
-      where: { 
+      where: {
         organizationId,
+        isDebugUser: false,
         // Only include users who have completed registration (have a password)
         NOT: { passwordHash: "" }
       },

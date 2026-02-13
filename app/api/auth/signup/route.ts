@@ -209,6 +209,24 @@ export async function POST(request: NextRequest) {
         }
       })
 
+      // Create debug/test users for each role (hidden from customer UI, visible in admin dashboard)
+      const debugPasswordHash = await bcrypt.hash("VergoDebug2026!", 10)
+      const debugRoles = ["ADMIN", "MANAGER", "MEMBER"] as const
+      for (const debugRole of debugRoles) {
+        await tx.user.create({
+          data: {
+            email: `debug-${debugRole.toLowerCase()}@${organization.id}.vergo.local`,
+            passwordHash: debugPasswordHash,
+            name: `Debug ${debugRole.charAt(0) + debugRole.slice(1).toLowerCase()}`,
+            role: debugRole,
+            organizationId: organization.id,
+            emailVerified: true,
+            isDebugUser: true,
+            onboardingCompleted: true,
+          }
+        })
+      }
+
       return { organization, user, onboardingGroup, userEntity }
     })
 
