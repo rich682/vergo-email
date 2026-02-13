@@ -796,37 +796,6 @@ export default function JobDetailPage() {
               {job?.board ? `Back to ${job.board.name || 'Board'}` : "Back to Boards"}
             </span>
           </Link>
-          <div className="flex items-center gap-3">
-            {permissions?.canEdit && canPerformAction(sessionRole, "inbox:send_emails", orgActionPermissions) && (
-              <Button
-                onClick={() => setIsSendRequestOpen(true)}
-                size="sm"
-                className="bg-orange-500 hover:bg-orange-600 text-white"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Send Request
-              </Button>
-            )}
-            {permissions?.canEdit && canPerformAction(sessionRole, "tasks:delete", orgActionPermissions) && (
-              <button
-                onClick={handleDelete}
-                className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1.5"
-                title={(job?.taskCount || 0) > 0 ? "Archive task (has requests)" : "Delete task permanently"}
-              >
-                {(job?.taskCount || 0) > 0 ? (
-                  <>
-                    <Archive className="w-4 h-4" />
-                    <span className="text-xs">Archive</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span className="text-xs">Delete</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
         </div>
       </div>
 

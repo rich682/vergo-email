@@ -16,9 +16,11 @@ import {
   Bell,
   Loader2,
   Paperclip,
+  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
+import * as XLSX from "xlsx"
 import { formatResponseValue } from "@/lib/utils/form-formatting"
 import type { FormField } from "@/lib/types/form"
 
@@ -112,6 +114,53 @@ export function FormSubmissionsTable({
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
+  const handleExportExcel = () => {
+    const headers = ["Recipient", "Email", "Status", ...sortedFields.map(f => f.label), "Submitted"]
+    const data: (string | number | boolean | null)[][] = [headers]
+
+    for (const req of sortedRequests) {
+      const row = [
+        getRecipientName(req),
+        getRecipientEmail(req) || "",
+        req.status,
+        ...sortedFields.map(f =>
+          req.status === "SUBMITTED" && req.responseData
+            ? formatResponseValue(req.responseData[f.key], f.type)
+            : ""
+        ),
+        req.submittedAt ? format(new Date(req.submittedAt), "MMM d, yyyy") : "",
+      ]
+      data.push(row)
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(data)
+
+    // Auto-size columns
+    ws["!cols"] = headers.map((header, i) => {
+      let maxLen = header.length
+      for (const row of data.slice(1)) {
+        const val = row[i]
+        if (val != null) maxLen = Math.max(maxLen, String(val).length)
+      }
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 50) }
+    })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Submissions")
+
+    const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" })
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const safeName = formName.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50)
+    link.href = url
+    link.download = `${safeName}_submissions.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-3">
       {/* Form header */}
@@ -122,16 +171,28 @@ export function FormSubmissionsTable({
             {submitted}/{total} submitted
           </span>
         </div>
-        {total > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="w-24 bg-gray-200 rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full ${submitted === total ? "bg-green-500" : "bg-blue-500"}`}
-                style={{ width: `${total > 0 ? Math.round((submitted / total) * 100) : 0}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {total > 0 && (
+            <>
+              <div className="w-24 bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full ${submitted === total ? "bg-green-500" : "bg-blue-500"}`}
+                  style={{ width: `${total > 0 ? Math.round((submitted / total) * 100) : 0}%` }}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                className="h-7 text-xs"
+                title="Download as Excel"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Excel
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Table */}

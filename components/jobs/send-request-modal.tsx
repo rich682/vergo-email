@@ -1092,7 +1092,7 @@ export function SendRequestModal({
               Choose how you want to send this request
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
               {/* Standard Mode */}
               <button
                 onClick={() => handleModeSelect("standard")}
