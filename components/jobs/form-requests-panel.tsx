@@ -27,6 +27,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { usePermissions } from "@/components/permissions-context"
+import { parseFields, formatResponseValue } from "@/lib/utils/form-formatting"
+import type { FormField } from "@/lib/types/form"
 
 interface FormAttachment {
   id: string
@@ -35,14 +37,6 @@ interface FormAttachment {
   mimeType: string | null
   sizeBytes: number | null
   fieldKey: string
-}
-
-interface FormField {
-  key: string
-  label: string
-  type: string
-  required?: boolean
-  order?: number
 }
 
 interface FormRequestItem {
@@ -83,33 +77,6 @@ interface FormRequestProgress {
 interface FormRequestsPanelProps {
   jobId: string
   onRefresh?: () => void
-}
-
-function parseFields(fields: FormField[] | string | null | undefined): FormField[] {
-  if (!fields) return []
-  if (typeof fields === "string") {
-    try { return JSON.parse(fields) } catch { return [] }
-  }
-  return Array.isArray(fields) ? fields : []
-}
-
-function formatResponseValue(value: unknown, fieldType?: string): string {
-  if (value === null || value === undefined || value === "") return "—"
-  if (fieldType === "currency" && typeof value === "number") {
-    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-  if (fieldType === "checkbox") return value ? "Yes" : "No"
-  if (fieldType === "date" && typeof value === "string") {
-    try {
-      return new Date(value).toLocaleDateString()
-    } catch {
-      return String(value)
-    }
-  }
-  if (typeof value === "object") {
-    try { return JSON.stringify(value) } catch { return "[object]" }
-  }
-  return String(value)
 }
 
 export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) {

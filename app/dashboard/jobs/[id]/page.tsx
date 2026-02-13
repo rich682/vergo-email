@@ -31,7 +31,7 @@ import {
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
-  FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale
+  FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale, ClipboardList
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO, startOfDay } from "date-fns"
 import { parseDateOnly } from "@/lib/utils/timezone"
@@ -60,8 +60,9 @@ import { CollectionTab } from "@/components/jobs/collection/collection-tab"
 
 // Request card with expandable recipient grid
 
-// Form requests panel
-import { FormRequestsPanel } from "@/components/jobs/form-requests-panel"
+// Forms tab
+import { FormsTab } from "@/components/jobs/forms-tab"
+import { SendFormModal } from "@/components/jobs/send-form-modal"
 
 // Draft Request Review Modal
 
@@ -267,7 +268,7 @@ export default function JobDetailPage() {
   const { role: sessionRole, orgActionPermissions } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report" | "reconciliation">(initialTab || "overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "forms" | "collection" | "report" | "reconciliation">(initialTab || "overview")
   
   // Inline editing states
   const [editingName, setEditingName] = useState(false)
@@ -316,6 +317,8 @@ export default function JobDetailPage() {
 
   // Send Request Modal
   const [isSendRequestOpen, setIsSendRequestOpen] = useState(false)
+  // Send Form Modal
+  const [isSendFormOpen, setIsSendFormOpen] = useState(false)
 
   // Notes
   const [notes, setNotes] = useState("")
@@ -842,7 +845,17 @@ export default function JobDetailPage() {
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
-              Requests ({requests.length + formRequestCount})
+              Requests ({requests.length})
+            </button>
+          )}
+
+          {/* Forms tab - visible with forms module access */}
+          {hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
+            <button
+              onClick={() => setActiveTab("forms")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "forms" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Forms ({formRequestCount})
             </button>
           )}
 
@@ -1345,10 +1358,20 @@ export default function JobDetailPage() {
                   </div>
                 )}
                 
-                {/* Form Requests */}
-                <div className="mt-6">
-                  <FormRequestsPanel jobId={jobId} />
-                </div>
+              </div>
+            )}
+
+            {activeTab === "forms" && hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
+              <div className="space-y-4">
+                <SectionHeader
+                  title="Forms"
+                  count={formRequestCount}
+                  icon={<ClipboardList className="w-4 h-4 text-purple-500" />}
+                  action={permissions?.canEdit && !!canPerformAction(sessionRole, "forms:send", orgActionPermissions)
+                    ? <Button size="sm" variant="outline" onClick={() => setIsSendFormOpen(true)}><Plus className="w-3 h-3 mr-1" /> Send Form</Button>
+                    : undefined}
+                />
+                <FormsTab jobId={jobId} onFormsSent={() => fetchFormRequestCount()} />
               </div>
             )}
 
@@ -1490,6 +1513,22 @@ export default function JobDetailPage() {
         }}
         stakeholderContacts={[]}
         onSuccess={() => { fetchJob(); fetchRequests(); fetchFormRequestCount(); fetchTasks(); fetchTimeline(); }}
+      />
+
+      <SendFormModal
+        open={isSendFormOpen}
+        onOpenChange={setIsSendFormOpen}
+        jobId={job.id}
+        jobName={job.name}
+        dueDate={job.dueDate}
+        board={job.board ? {
+          id: job.board.id,
+          name: job.board.name,
+          cadence: job.board.cadence,
+          periodStart: job.board.periodStart,
+          periodEnd: job.board.periodEnd
+        } : null}
+        onSuccess={() => { fetchFormRequestCount(); }}
       />
     </div>
   )
