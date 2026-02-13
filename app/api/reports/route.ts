@@ -29,13 +29,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)) {
       return NextResponse.json({ reports: [] })
     }
 
     const reports = await ReportDefinitionService.listReportDefinitions(user.organizationId)
 
-    return NextResponse.json({ reports })
+    // If user can view all definitions, return everything; otherwise filter to owned/viewable
+    if (canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
+      return NextResponse.json({ reports })
+    }
+
+    // Get report definition IDs where the user is an explicit viewer
+    const viewerEntries = await prisma.reportDefinitionViewer.findMany({
+      where: { userId: session.user.id },
+      select: { reportDefinitionId: true },
+    })
+    const viewableIds = new Set(viewerEntries.map(v => v.reportDefinitionId))
+
+    // Filter to reports the user created or is a viewer of
+    const filteredReports = reports.filter(
+      (r: any) => r.createdById === session.user.id || viewableIds.has(r.id)
+    )
+
+    return NextResponse.json({ reports: filteredReports })
   } catch (error) {
     console.error("Error listing reports:", error)
     return NextResponse.json(

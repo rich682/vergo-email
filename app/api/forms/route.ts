@@ -20,15 +20,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "forms:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "forms:view_templates", session.user.orgActionPermissions)) {
       return NextResponse.json({ forms: [] })
     }
 
     const forms = await FormDefinitionService.findAll(session.user.organizationId)
 
-    // Non-admin users only see forms they are viewers of
-    const isAdmin = session.user.role === "ADMIN"
-    const filteredForms = isAdmin
+    // view_all_templates: bypass viewer filter; otherwise only see created + viewer-assigned forms
+    const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)
+    const filteredForms = canViewAll
       ? forms
       : await (async () => {
           const viewerEntries = await prisma.formDefinitionViewer.findMany({
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
             select: { formDefinitionId: true },
           })
           const viewableIds = new Set(viewerEntries.map((v) => v.formDefinitionId))
-          return forms.filter((f) => viewableIds.has(f.id))
+          return forms.filter((f) => viewableIds.has(f.id) || f.createdById === session.user.id)
         })()
 
     return NextResponse.json({ forms: filteredForms })

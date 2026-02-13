@@ -33,8 +33,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to view databases" }, { status: 403 })
+    if (!canPerformAction(session.user.role, "databases:view_data", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view database data" }, { status: 403 })
     }
 
     // Get the database with all data

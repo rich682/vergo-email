@@ -142,22 +142,30 @@ export type ActionKey =
   | "requests:view"
   | "requests:manage"
   // Reports
-  | "reports:view"
+  | "reports:view_definitions"
+  | "reports:view_all_definitions"
+  | "reports:view_generated"
   | "reports:manage"
   | "reports:generate"
   // Forms
-  | "forms:view"
+  | "forms:view_templates"
+  | "forms:view_all_templates"
+  | "forms:view_submissions"
   | "forms:manage"
   | "forms:send"
   // Databases
-  | "databases:view"
+  | "databases:view_databases"
+  | "databases:view_all_databases"
+  | "databases:view_data"
   | "databases:manage"
   | "databases:import"
   // Collection
   | "collection:view_all"
   | "collection:manage"
   // Reconciliations
-  | "reconciliations:view"
+  | "reconciliations:view_configs"
+  | "reconciliations:view_all_configs"
+  | "reconciliations:view_runs"
   | "reconciliations:manage"
   | "reconciliations:resolve"
 
@@ -200,11 +208,11 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "labels:manage", "labels:apply_contacts", "attachments:upload",
   "inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review",
   "requests:view", "requests:manage",
-  "reports:view", "reports:manage", "reports:generate",
-  "forms:view", "forms:manage", "forms:send",
-  "databases:view", "databases:manage", "databases:import",
+  "reports:view_definitions", "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate",
+  "forms:view_templates", "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send",
+  "databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import",
   "collection:view_all", "collection:manage",
-  "reconciliations:view", "reconciliations:manage", "reconciliations:resolve",
+  "reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
 ]
 
 /**
@@ -241,18 +249,26 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "inbox:review": true,
     "requests:view": true,
     "requests:manage": true,
-    "reports:view": true,
+    "reports:view_definitions": true,
+    "reports:view_all_definitions": true,
+    "reports:view_generated": true,
     "reports:manage": true,
     "reports:generate": true,
-    "forms:view": true,
+    "forms:view_templates": true,
+    "forms:view_all_templates": true,
+    "forms:view_submissions": true,
     "forms:manage": true,
     "forms:send": true,
-    "databases:view": true,
+    "databases:view_databases": true,
+    "databases:view_all_databases": true,
+    "databases:view_data": true,
     "databases:manage": true,
     "databases:import": true,
     "collection:view_all": true,
     "collection:manage": true,
-    "reconciliations:view": true,
+    "reconciliations:view_configs": true,
+    "reconciliations:view_all_configs": true,
+    "reconciliations:view_runs": true,
     "reconciliations:manage": true,
     "reconciliations:resolve": true,
   },
@@ -281,18 +297,26 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "inbox:review": false,
     "requests:view": false,
     "requests:manage": false,
-    "reports:view": false,
+    "reports:view_definitions": false,
+    "reports:view_all_definitions": false,
+    "reports:view_generated": false,
     "reports:manage": false,
     "reports:generate": false,
-    "forms:view": false,
+    "forms:view_templates": false,
+    "forms:view_all_templates": false,
+    "forms:view_submissions": false,
     "forms:manage": false,
     "forms:send": false,
-    "databases:view": false,
+    "databases:view_databases": false,
+    "databases:view_all_databases": false,
+    "databases:view_data": false,
     "databases:manage": false,
     "databases:import": false,
     "collection:view_all": false,
     "collection:manage": false,
-    "reconciliations:view": false,
+    "reconciliations:view_configs": false,
+    "reconciliations:view_all_configs": false,
+    "reconciliations:view_runs": false,
     "reconciliations:manage": false,
     "reconciliations:resolve": false,
   },
@@ -360,7 +384,9 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "reports",
     label: "Reports",
     actions: [
-      { key: "reports:view", label: "View generated reports & export" },
+      { key: "reports:view_definitions", label: "View report definitions (own/assigned)" },
+      { key: "reports:view_all_definitions", label: "View all report definitions" },
+      { key: "reports:view_generated", label: "View generated reports & export" },
       { key: "reports:manage", label: "Create, edit & delete report definitions" },
       { key: "reports:generate", label: "Generate reports" },
     ],
@@ -369,7 +395,9 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "forms",
     label: "Forms",
     actions: [
-      { key: "forms:view", label: "View form templates & submissions" },
+      { key: "forms:view_templates", label: "View form templates (own/assigned)" },
+      { key: "forms:view_all_templates", label: "View all form templates" },
+      { key: "forms:view_submissions", label: "View form submissions" },
       { key: "forms:manage", label: "Create, edit & delete form templates" },
       { key: "forms:send", label: "Send form requests to recipients" },
     ],
@@ -378,7 +406,9 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "databases",
     label: "Databases",
     actions: [
-      { key: "databases:view", label: "View databases & data" },
+      { key: "databases:view_databases", label: "View databases (own/assigned)" },
+      { key: "databases:view_all_databases", label: "View all databases" },
+      { key: "databases:view_data", label: "View database data & export" },
       { key: "databases:manage", label: "Create, edit & delete databases" },
       { key: "databases:import", label: "Import data & edit schema" },
     ],
@@ -395,7 +425,9 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "reconciliations",
     label: "Reconciliations",
     actions: [
-      { key: "reconciliations:view", label: "View reconciliations & run results" },
+      { key: "reconciliations:view_configs", label: "View reconciliation configs (own/assigned)" },
+      { key: "reconciliations:view_all_configs", label: "View all reconciliation configs" },
+      { key: "reconciliations:view_runs", label: "View reconciliation runs & results" },
       { key: "reconciliations:manage", label: "Create, edit & delete reconciliations" },
       { key: "reconciliations:resolve", label: "Resolve exceptions in runs" },
     ],
@@ -414,10 +446,10 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   inbox:           ["inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review"],
   requests:        ["requests:view", "requests:manage"],
   collection:      ["collection:view_all", "collection:manage"],
-  reports:         ["reports:view", "reports:manage", "reports:generate"],
-  forms:           ["forms:view", "forms:manage", "forms:send"],
-  databases:       ["databases:view", "databases:manage", "databases:import"],
-  reconciliations: ["reconciliations:view", "reconciliations:manage", "reconciliations:resolve"],
+  reports:         ["reports:view_definitions", "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate"],
+  forms:           ["forms:view_templates", "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send"],
+  databases:       ["databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import"],
+  reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   contacts:        ["contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types"],
 }
 

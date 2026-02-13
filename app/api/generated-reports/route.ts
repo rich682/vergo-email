@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
       return NextResponse.json({ reports: [], periods: [] })
     }
 
@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
     const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
     const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
 
-    // Determine viewer filter: admins and managers see all, members only see reports they're viewers of
-    const viewerUserId = (user.role === "ADMIN" || user.role === "MANAGER") ? undefined : user.id
+    // Determine viewer filter: users with view_all_definitions see all, others only see reports they're viewers of
+    const viewerUserId = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions) ? undefined : user.id
 
     // Fetch reports
     const reports = await ReportGenerationService.list({

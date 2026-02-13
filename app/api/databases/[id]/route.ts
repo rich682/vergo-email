@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view databases" }, { status: 403 })
     }
 
@@ -44,15 +44,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    // Non-admin must be a viewer
-    const isAdmin = session.user.role === "ADMIN"
-    if (!isAdmin) {
-      const isViewer = await DatabaseService.isViewer(params.id, session.user.id)
-      if (!isViewer) {
-        return NextResponse.json(
-          { error: "You do not have viewer access to this database" },
-          { status: 403 }
-        )
+    // Users with view_all_databases bypass viewer check; creators also bypass
+    const canViewAll = canPerformAction(session.user.role, "databases:view_all_databases", session.user.orgActionPermissions)
+    if (!canViewAll) {
+      if (database.createdById !== session.user.id) {
+        const isViewer = await DatabaseService.isViewer(params.id, session.user.id)
+        if (!isViewer) {
+          return NextResponse.json(
+            { error: "You do not have viewer access to this database" },
+            { status: 403 }
+          )
+        }
       }
     }
 

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:view_runs", session.user.orgActionPermissions)) {
       return NextResponse.json({ runs: [] })
     }
 

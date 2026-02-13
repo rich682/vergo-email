@@ -19,21 +19,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "forms:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "forms:view_submissions", session.user.orgActionPermissions)) {
       return NextResponse.json({ tasks: [] })
     }
 
     const orgId = session.user.organizationId
-    const isAdmin = session.user.role === "ADMIN"
+    const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)
 
-    // Non-admin users only see forms they are viewers of
+    // Users without view_all_templates only see forms they are viewers of or created
     let formIdFilter: { in: string[] } | undefined = undefined
-    if (!isAdmin) {
-      const viewerEntries = await prisma.formDefinitionViewer.findMany({
-        where: { userId: session.user.id },
-        select: { formDefinitionId: true },
-      })
-      formIdFilter = { in: viewerEntries.map(v => v.formDefinitionId) }
+    if (!canViewAll) {
+      const [viewerEntries, createdForms] = await Promise.all([
+        prisma.formDefinitionViewer.findMany({
+          where: { userId: session.user.id },
+          select: { formDefinitionId: true },
+        }),
+        prisma.formDefinition.findMany({
+          where: { createdById: session.user.id, organizationId: orgId },
+          select: { id: true },
+        }),
+      ])
+      const viewerIds = viewerEntries.map(v => v.formDefinitionId)
+      const createdIds = createdForms.map(f => f.id)
+      formIdFilter = { in: [...new Set([...viewerIds, ...createdIds])] }
     }
 
     // Group form requests by (taskInstanceId, formDefinitionId, status)

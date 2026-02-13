@@ -29,15 +29,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
       return NextResponse.json({ databases: [] })
     }
 
     const databases = await DatabaseService.listDatabases(user.organizationId)
 
-    // Non-admin users only see databases they are viewers of
-    const isAdmin = session.user.role === "ADMIN"
-    const filteredDatabases = isAdmin
+    // Users with view_all_databases see everything; others only see databases they created or are viewers of
+    const canViewAll = canPerformAction(session.user.role, "databases:view_all_databases", session.user.orgActionPermissions)
+    const filteredDatabases = canViewAll
       ? databases
       : await (async () => {
           const viewerEntries = await prisma.databaseViewer.findMany({
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
             select: { databaseId: true },
           })
           const viewableIds = new Set(viewerEntries.map((v) => v.databaseId))
-          return databases.filter((d) => viewableIds.has(d.id))
+          return databases.filter((d) => viewableIds.has(d.id) || d.createdById === session.user.id)
         })()
 
     return NextResponse.json({ databases: filteredDatabases })

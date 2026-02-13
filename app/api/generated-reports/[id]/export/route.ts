@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
@@ -47,8 +47,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
     }
 
-    // Access check: admins see all, non-admins must be an explicit viewer
-    if (user.role !== "ADMIN") {
+    // Access check: users with view_all_definitions see all, others must be an explicit viewer
+    if (!canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
       const isViewer = await prisma.generatedReportViewer.findUnique({
         where: { generatedReportId_userId: { generatedReportId: id, userId: user.id } }
       })

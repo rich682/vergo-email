@@ -5,7 +5,7 @@
  * PUT /api/org/role-permissions - Update org-level action permissions (admin only)
  *
  * Stored in Organization.features JSON as:
- * { roleActionPermissions: { MEMBER: { "reports:view": true, ... }, MANAGER: { ... } } }
+ * { roleActionPermissions: { MEMBER: { "reports:view_definitions": true, ... }, MANAGER: { ... } } }
  *
  * Module visibility is derived automatically from action permissions —
  * if a user has ANY action permission for a module, they can see/access it.
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
  * PUT - Update org-level role action permissions
  * Admin-only endpoint
  *
- * Body: { roleActionPermissions: { MEMBER: { "reports:view": true, ... }, MANAGER: { ... } } }
+ * Body: { roleActionPermissions: { MEMBER: { "reports:view_definitions": true, ... }, MANAGER: { ... } } }
  */
 export async function PUT(request: NextRequest) {
   try {

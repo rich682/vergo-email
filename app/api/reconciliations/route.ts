@@ -16,7 +16,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reconciliations:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:view_configs", session.user.orgActionPermissions)) {
       return NextResponse.json({ configs: [] })
     }
 
@@ -30,9 +30,9 @@ export async function GET() {
 
     const configs = await ReconciliationService.listConfigs(user.organizationId)
 
-    // Non-admin users only see configs they are viewers of
-    const isAdmin = session.user.role === "ADMIN"
-    const filteredConfigs = isAdmin
+    // Users with view_all_configs see everything; others see only configs they created or are viewers of
+    const canViewAll = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)
+    const filteredConfigs = canViewAll
       ? configs
       : await (async () => {
           const viewerEntries = await prisma.reconciliationConfigViewer.findMany({
@@ -40,7 +40,7 @@ export async function GET() {
             select: { reconciliationConfigId: true },
           })
           const viewableIds = new Set(viewerEntries.map((v) => v.reconciliationConfigId))
-          return configs.filter((c) => viewableIds.has(c.id))
+          return configs.filter((c) => viewableIds.has(c.id) || c.createdById === session.user.id)
         })()
 
     return NextResponse.json({ configs: filteredConfigs })

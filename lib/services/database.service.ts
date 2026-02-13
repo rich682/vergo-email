@@ -356,6 +356,7 @@ export class DatabaseService {
         isReadOnly: true,
         createdAt: true,
         updatedAt: true,
+        createdById: true,
         createdBy: {
           select: {
             name: true,

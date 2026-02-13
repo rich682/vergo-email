@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
