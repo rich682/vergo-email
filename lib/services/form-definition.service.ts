@@ -109,6 +109,14 @@ export class FormDefinitionService {
             email: true,
           },
         },
+        viewers: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { addedAt: "asc" as const },
+        },
         _count: {
           select: {
             formRequests: true,
@@ -359,5 +367,62 @@ export class FormDefinitionService {
     return prisma.formDefinition.count({
       where: { organizationId },
     })
+  }
+
+  /**
+   * Set viewers for a form definition (replaces full list)
+   */
+  static async setViewers(
+    formDefinitionId: string,
+    organizationId: string,
+    userIds: string[],
+    addedBy: string
+  ) {
+    const form = await prisma.formDefinition.findFirst({
+      where: { id: formDefinitionId, organizationId },
+    })
+    if (!form) {
+      throw new Error("Form definition not found")
+    }
+
+    await prisma.$transaction([
+      prisma.formDefinitionViewer.deleteMany({
+        where: { formDefinitionId },
+      }),
+      ...(userIds.length > 0
+        ? [
+            prisma.formDefinitionViewer.createMany({
+              data: userIds.map((userId) => ({
+                formDefinitionId,
+                userId,
+                addedBy,
+              })),
+            }),
+          ]
+        : []),
+    ])
+
+    const viewers = await prisma.formDefinitionViewer.findMany({
+      where: { formDefinitionId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { addedAt: "asc" },
+    })
+
+    return viewers
+  }
+
+  /**
+   * Check if a user is a viewer of a form definition
+   */
+  static async isViewer(formDefinitionId: string, userId: string): Promise<boolean> {
+    const viewer = await prisma.formDefinitionViewer.findFirst({
+      where: { formDefinitionId, userId },
+      select: { id: true },
+    })
+    return !!viewer
   }
 }

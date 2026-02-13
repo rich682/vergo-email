@@ -46,6 +46,14 @@ export class ReconciliationService {
             completedAt: true,
           },
         },
+        viewers: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { addedAt: "asc" as const },
+        },
       },
       orderBy: { updatedAt: "desc" },
     })
@@ -76,6 +84,14 @@ export class ReconciliationService {
             createdAt: true,
             completedAt: true,
           },
+        },
+        viewers: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { addedAt: "asc" as const },
         },
       },
     })
@@ -108,6 +124,7 @@ export class ReconciliationService {
     sourceAConfig: SourceConfig
     sourceBConfig: SourceConfig
     matchingRules: MatchingRules
+    createdById?: string
   }) {
     return prisma.reconciliationConfig.create({
       data: {
@@ -116,6 +133,7 @@ export class ReconciliationService {
         sourceAConfig: data.sourceAConfig as any,
         sourceBConfig: data.sourceBConfig as any,
         matchingRules: data.matchingRules as any,
+        ...(data.createdById && { createdById: data.createdById }),
       },
     })
   }
@@ -269,5 +287,62 @@ export class ReconciliationService {
         completedBy: userId,
       },
     })
+  }
+
+  /**
+   * Set viewers for a reconciliation config (replaces full list)
+   */
+  static async setViewers(
+    reconciliationConfigId: string,
+    organizationId: string,
+    userIds: string[],
+    addedBy: string
+  ) {
+    const config = await prisma.reconciliationConfig.findFirst({
+      where: { id: reconciliationConfigId, organizationId },
+    })
+    if (!config) {
+      throw new Error("Reconciliation config not found")
+    }
+
+    await prisma.$transaction([
+      prisma.reconciliationConfigViewer.deleteMany({
+        where: { reconciliationConfigId },
+      }),
+      ...(userIds.length > 0
+        ? [
+            prisma.reconciliationConfigViewer.createMany({
+              data: userIds.map((userId) => ({
+                reconciliationConfigId,
+                userId,
+                addedBy,
+              })),
+            }),
+          ]
+        : []),
+    ])
+
+    const viewers = await prisma.reconciliationConfigViewer.findMany({
+      where: { reconciliationConfigId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { addedAt: "asc" },
+    })
+
+    return viewers
+  }
+
+  /**
+   * Check if a user is a viewer of a reconciliation config
+   */
+  static async isViewer(reconciliationConfigId: string, userId: string): Promise<boolean> {
+    const viewer = await prisma.reconciliationConfigViewer.findFirst({
+      where: { reconciliationConfigId, userId },
+      select: { id: true },
+    })
+    return !!viewer
   }
 }

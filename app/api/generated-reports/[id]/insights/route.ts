@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportInsightsService } from "@/lib/services/report-insights.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 30
 interface CachedInsights {
@@ -41,6 +42,10 @@ export async function GET(
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(user.role, "reports:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
     const generatedReportId = params.id
@@ -117,6 +122,10 @@ export async function POST(
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(user.role, "reports:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
     const generatedReportId = params.id

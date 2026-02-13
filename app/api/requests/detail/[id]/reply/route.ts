@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 60
 /**
@@ -35,6 +36,10 @@ export async function POST(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:send_emails", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to send emails" }, { status: 403 })
   }
 
   try {

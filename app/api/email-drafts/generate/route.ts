@@ -6,6 +6,7 @@ import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.ser
 import { prisma } from "@/lib/prisma"
 import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 30
 export async function POST(request: NextRequest) {
@@ -17,6 +18,10 @@ export async function POST(request: NextRequest) {
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (!canPerformAction(session.user.role, "inbox:manage_drafts", session.user.orgActionPermissions)) {
+    return NextResponse.json({ error: "You do not have permission to generate email drafts" }, { status: 403 })
   }
 
   // Check rate limit

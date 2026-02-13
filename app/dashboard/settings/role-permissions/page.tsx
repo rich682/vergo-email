@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Info } from "lucide-react"
 import Link from "next/link"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ACTION_CATEGORIES, DEFAULT_ACTION_PERMISSIONS, deriveModuleAccessFromActions, deriveActionsFromModuleAccess, type ModuleAccess, type ActionKey } from "@/lib/permissions"
+import { ACTION_CATEGORIES, DEFAULT_ACTION_PERMISSIONS, type ActionKey } from "@/lib/permissions"
 
 type ActionPermissions = Record<string, Partial<Record<ActionKey, boolean>>>
 
@@ -16,7 +16,7 @@ function RolePermissionsContent() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
 
-  // Action permissions state (includes module visibility keys)
+  // Action permissions state
   const [actionPermissions, setActionPermissions] = useState<ActionPermissions>(() => ({
     MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
     MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
@@ -45,25 +45,9 @@ function RolePermissionsContent() {
           for (const role of ["MEMBER", "MANAGER"]) {
             if (data.roleActionPermissions[role]) {
               for (const [key, val] of Object.entries(data.roleActionPermissions[role])) {
+                // Skip legacy module:* keys
+                if (key.startsWith("module:")) continue
                 if (typeof val === "boolean") {
-                  mergedActions[role][key as ActionKey] = val
-                }
-              }
-            }
-          }
-        }
-
-        // Backfill module visibility action keys from roleDefaultModuleAccess
-        // This ensures existing orgs that configured module access before the
-        // action-based system see their settings correctly in the unified table
-        if (data.roleDefaultModuleAccess) {
-          for (const role of ["MEMBER", "MANAGER"]) {
-            const moduleAccess = data.roleDefaultModuleAccess[role] as ModuleAccess | undefined
-            if (moduleAccess) {
-              const derived = deriveActionsFromModuleAccess(moduleAccess)
-              for (const [key, val] of Object.entries(derived)) {
-                // Only backfill if this key was NOT explicitly set in roleActionPermissions
-                if (!data.roleActionPermissions?.[role] || !(key in (data.roleActionPermissions[role] || {}))) {
                   mergedActions[role][key as ActionKey] = val
                 }
               }
@@ -87,19 +71,10 @@ function RolePermissionsContent() {
       setSaving(true)
       setMessage(null)
 
-      // Derive roleDefaultModuleAccess from module action keys
-      const derivedModuleAccess: Record<string, ModuleAccess> = {}
-      for (const role of ["MEMBER", "MANAGER"]) {
-        derivedModuleAccess[role] = deriveModuleAccessFromActions(
-          actionPermissions[role] || {}
-        )
-      }
-
       const response = await fetch("/api/org/role-permissions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          roleDefaultModuleAccess: derivedModuleAccess,
           roleActionPermissions: actionPermissions,
         })
       })
@@ -165,7 +140,7 @@ function RolePermissionsContent() {
           <div>
             <h1 className="text-lg font-semibold text-gray-900">Role Permissions</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Configure what each role can see and do. Admin always has full access.
+              Configure what each role can see and do. Enabling any permission for a module automatically makes that module visible. Admin always has full access.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -206,13 +181,14 @@ function RolePermissionsContent() {
           <div className="text-sm text-blue-800">
             <p>
               Admin users always have full access. These settings apply to <strong>Employee</strong> and <strong>Manager</strong> roles.
+              Enabling any permission for a module will automatically make that module visible in the sidebar.
               Changes take effect within 1 minute.
             </p>
           </div>
         </div>
 
         <div className="max-w-4xl space-y-6">
-          {/* Unified Action Permissions Table */}
+          {/* Action Permissions Table */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full">
               <thead>

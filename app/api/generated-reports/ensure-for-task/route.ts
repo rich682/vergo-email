@@ -15,6 +15,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 30
 export async function POST(request: NextRequest) {
@@ -31,6 +32,10 @@ export async function POST(request: NextRequest) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(session.user.role, "reports:generate", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to generate reports" }, { status: 403 })
     }
 
     let body: Record<string, unknown>

@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
+import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    if (!canPerformAction(user.role, "reports:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
     const report = await ReportGenerationService.getById(id, user.organizationId)

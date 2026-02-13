@@ -392,25 +392,31 @@ export function getDayInTimezone(date: Date, timezone: string): number {
 
 /**
  * Generate a board name based on cadence and period start.
+ *
+ * IMPORTANT: periodStart is a date-only field stored as UTC midnight.
+ * Uses parseDateOnly to avoid timezone shift (e.g., Feb 13 UTC becoming Feb 12 in US timezones).
  */
 export function generatePeriodBoardName(
   cadence: BoardCadence,
   periodStart: Date,
-  timezone: string,
+  _timezone: string,
   options?: { fiscalYearStartMonth?: number }
 ): string {
   const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
 
+  // Parse as date-only to avoid timezone shift on UTC midnight dates
+  const date = parseDateOnly(periodStart.toISOString())
+
   switch (cadence) {
     case "DAILY":
-      return formatDateInTimezone(periodStart, timezone)
+      return format(date, "MMM d, yyyy")
     case "WEEKLY":
-      return `Week of ${formatDateInTimezone(periodStart, timezone)}`
+      return `Week of ${format(date, "MMM d, yyyy")}`
     case "MONTHLY":
-      return formatMonthYearInTimezone(periodStart, timezone)
+      return format(date, "MMMM yyyy")
     case "QUARTERLY": {
-      const month = getMonthInTimezone(periodStart, timezone)
-      const year = getYearInTimezone(periodStart, timezone)
+      const month = date.getMonth()
+      const year = date.getFullYear()
       let quarterIndex = Math.floor(month / 3)
       let fiscalQuarter = quarterIndex + 1
       if (fiscalYearStartMonth !== 1) {
@@ -421,7 +427,7 @@ export function generatePeriodBoardName(
       return `Q${fiscalQuarter} ${year}`
     }
     case "YEAR_END":
-      return `Year-End ${getYearInTimezone(periodStart, timezone)}`
+      return `Year-End ${date.getFullYear()}`
     case "AD_HOC":
       return ""
     default:

@@ -635,7 +635,6 @@ Use plain language. Be concise.`
     }
   ),
   // Scheduled function to execute standing (recurring) quests
-  // Feature Flag: QUEST_STANDING
   inngest.createFunction(
     {
       id: "quest/execute-standing",
@@ -645,11 +644,6 @@ Use plain language. Be concise.`
       cron: "*/5 * * * *" // Check every 5 minutes
     },
     async () => {
-      // Check feature flag
-      if (process.env.QUEST_STANDING !== "true") {
-        return { success: true, skipped: true, reason: "QUEST_STANDING feature flag is disabled" }
-      }
-
       try {
         const { QuestService } = await import("@/lib/services/quest.service")
         

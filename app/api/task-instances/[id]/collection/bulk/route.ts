@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
 import { CollectedItemStatus } from "@prisma/client"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 120;
 export const dynamic = "force-dynamic"
@@ -31,6 +32,10 @@ export async function POST(
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const jobId = params.id
+
+    if (!canPerformAction(session.user.role, "collection:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage collected items" }, { status: 403 })
+    }
 
     // Verify job exists and belongs to organization
     const job = await prisma.taskInstance.findFirst({

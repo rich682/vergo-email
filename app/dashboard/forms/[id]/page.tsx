@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
+import { usePermissions } from "@/components/permissions-context"
 import {
   ArrowLeft,
   Plus,
@@ -42,6 +43,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import type { FormField, FormFieldType, FormSettings } from "@/lib/types/form"
+import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 
 // Helper to safely render any value as a string (prevents React error #438)
 function safeString(value: unknown): string {
@@ -109,7 +111,9 @@ interface FormData {
 export default function FormBuilderPage() {
   const router = useRouter()
   const params = useParams()
-  
+  const { can } = usePermissions()
+  const canManage = can("forms:manage")
+
   // Safely extract ID from params
   const rawId = params?.id
   const id = typeof rawId === 'string' ? rawId : Array.isArray(rawId) ? rawId[0] || '' : ''
@@ -135,6 +139,14 @@ export default function FormBuilderPage() {
   // Database options for linking
   const [databases, setDatabases] = useState<Array<{ id: string; name: string; schema: { columns: Array<{ key: string; label: string; dataType: string; dropdownOptions?: string[] }> } }>>([])
   const [loadingDatabases, setLoadingDatabases] = useState(false)
+  const [viewers, setViewers] = useState<Viewer[]>([])
+
+  // Redirect if user lacks manage permission
+  useEffect(() => {
+    if (!canManage) {
+      router.replace("/dashboard/forms")
+    }
+  }, [canManage, router])
 
   // Fetch form data
   const fetchForm = useCallback(async () => {
@@ -202,6 +214,13 @@ export default function FormBuilderPage() {
         }
         console.log('[FormBuilder] Setting form state:', JSON.stringify(formState, null, 2))
         setForm(formState)
+        if (data.form?.viewers) {
+          setViewers(data.form.viewers.map((v: any) => ({
+            userId: v.user.id,
+            name: v.user.name,
+            email: v.user.email,
+          })))
+        }
       } else if (response.status === 404) {
         router.push("/dashboard/forms")
       } else if (response.status === 401) {
@@ -611,8 +630,9 @@ export default function FormBuilderPage() {
             )}
           </div>
 
-          {/* Right: Preview */}
-          <div className="lg:sticky lg:top-24 lg:self-start">
+          {/* Right: Preview & Viewers */}
+          <div className="lg:sticky lg:top-24 lg:self-start space-y-6">
+            <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-medium text-gray-900 flex items-center gap-2">
                 <Eye className="w-4 h-4" />
@@ -700,6 +720,14 @@ export default function FormBuilderPage() {
                 </div>
               )}
             </div>
+            </div>
+
+            <ViewerManagement
+              entityType="forms"
+              entityId={id}
+              viewers={viewers}
+              onViewersChange={setViewers}
+            />
           </div>
         </div>
       </div>

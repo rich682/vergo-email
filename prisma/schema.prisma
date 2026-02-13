@@ -245,6 +245,10 @@ model User {
   formRequests               FormRequest[]              @relation("FormRequestRecipient")
   completedReconciliations   ReconciliationRun[]        @relation("ReconciliationCompleter")
   notifications              Notification[]             @relation("NotificationRecipient")
+  formDefinitionViewerPermissions       FormDefinitionViewer[]          @relation("FormDefinitionViewerUser")
+  reconciliationConfigViewerPermissions ReconciliationConfigViewer[]    @relation("ReconciliationConfigViewerUser")
+  databaseViewerPermissions             DatabaseViewer[]                @relation("DatabaseViewerUser")
+  createdReconciliationConfigs          ReconciliationConfig[]          @relation("ReconciliationConfigCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1151,6 +1155,7 @@ model Database {
   lastImportedBy     User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
   reportDefinitions  ReportDefinition[]
   formDefinitions    FormDefinition[]
+  viewers            DatabaseViewer[]
 
   @@index([organizationId])
   @@index([organizationId, name])
@@ -1188,7 +1193,8 @@ model FormDefinition {
   database        Database?     @relation(fields: [databaseId], references: [id], onDelete: SetNull)
   createdBy       User          @relation("FormDefinitionCreator", fields: [createdById], references: [id])
   formRequests    FormRequest[]
-  
+  viewers         FormDefinitionViewer[]
+
   @@index([organizationId])
   @@index([databaseId])
 }
@@ -1403,6 +1409,51 @@ model ReportDefinitionViewer {
   @@index([userId])
 }
 
+// FormDefinitionViewer - join table for form builder viewer permissions
+model FormDefinitionViewer {
+  id                 String   @id @default(cuid())
+  formDefinitionId   String
+  userId             String
+  addedAt            DateTime @default(now())
+  addedBy            String
+
+  formDefinition     FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
+  user               User           @relation("FormDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([formDefinitionId, userId])
+  @@index([userId])
+}
+
+// ReconciliationConfigViewer - join table for reconciliation config viewer permissions
+model ReconciliationConfigViewer {
+  id                       String   @id @default(cuid())
+  reconciliationConfigId   String
+  userId                   String
+  addedAt                  DateTime @default(now())
+  addedBy                  String
+
+  reconciliationConfig     ReconciliationConfig @relation(fields: [reconciliationConfigId], references: [id], onDelete: Cascade)
+  user                     User                 @relation("ReconciliationConfigViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reconciliationConfigId, userId])
+  @@index([userId])
+}
+
+// DatabaseViewer - join table for database viewer permissions
+model DatabaseViewer {
+  id          String   @id @default(cuid())
+  databaseId  String
+  userId      String
+  addedAt     DateTime @default(now())
+  addedBy     String
+
+  database    Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  user        User     @relation("DatabaseViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([databaseId, userId])
+  @@index([userId])
+}
+
 // AppError - Frontend error tracking for admin dashboard
 model AppError {
   id             String   @id @default(cuid())
@@ -1451,10 +1502,13 @@ model ReconciliationConfig {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  createdById    String?
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User?           @relation("ReconciliationConfigCreator", fields: [createdById], references: [id])
   taskInstances  TaskInstance[]   // Tasks that use this config
   runs           ReconciliationRun[]
+  viewers        ReconciliationConfigViewer[]
 
   @@index([organizationId])
 }

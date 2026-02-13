@@ -20,6 +20,13 @@ export async function GET(
     )
   }
 
+  if (!canPerformAction(session.user.role, "requests:view", session.user.orgActionPermissions)) {
+    return NextResponse.json(
+      { error: "You do not have permission to view requests" },
+      { status: 403 }
+    )
+  }
+
   const task = await prisma.request.findFirst({
     where: {
       id: params.id,

@@ -1,13 +1,11 @@
 /**
  * Quest Execute Endpoint
- * 
+ *
  * POST /api/quests/[id]/execute - Execute a quest (send emails)
- * 
+ *
  * Accepts optional edited subject/body to update the draft before sending.
  * When subject/body are provided, the quest status is transitioned to "ready"
  * to allow immediate execution (used by Item-initiated Send Request flow).
- * 
- * Feature Flag: QUEST_UI (bypassed when quest has jobId for Item-initiated requests)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -15,13 +13,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
-import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
-
-// Feature flag check
-function isQuestUIEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
-}
 
 export async function POST(
   request: NextRequest,
@@ -43,23 +35,6 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const { id } = await params
-
-    // Check if this quest has a taskInstanceId (Item-initiated request)
-    // If so, bypass the feature flag check
-    const emailDraft = await prisma.emailDraft.findFirst({
-      where: { id, organizationId },
-      select: { taskInstanceId: true }
-    })
-
-    const hasTaskInstanceId = !!emailDraft?.taskInstanceId
-
-    // Check feature flag - bypass if quest has taskInstanceId (Item-initiated request)
-    if (!isQuestUIEnabled() && !hasTaskInstanceId) {
-      return NextResponse.json(
-        { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
-        { status: 404 }
-      )
-    }
 
     // Parse request body for optional edits and attachments
     let editedSubject: string | undefined

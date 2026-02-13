@@ -21,6 +21,7 @@ const CORE_FIELDS = new Set([
 type ImportSummary = {
   contactsCreated: number
   contactsUpdated: number
+  contactsSkipped?: number
   groupsCreated: number
   typesCreated: number
   skipped: number
@@ -292,6 +293,12 @@ export function ImportModal({ onClose, onSuccess }: Props) {
                 <span>Updated contacts:</span>
                 <span className="font-medium">{summary.contactsUpdated}</span>
               </div>
+              {(summary.contactsSkipped ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span>Unchanged (skipped):</span>
+                  <span className="font-medium">{summary.contactsSkipped}</span>
+                </div>
+              )}
               {summary.groupsCreated > 0 && (
                 <div className="flex justify-between">
                   <span>New groups created:</span>

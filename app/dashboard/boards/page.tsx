@@ -34,6 +34,7 @@ import {
   formatPeriodDisplay 
 } from "@/lib/utils/timezone"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
+import { usePermissions } from "@/components/permissions-context"
 
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -179,6 +180,9 @@ const STATUS_ORDER: Record<BoardStatus, number> = {
 
 export default function BoardsPage() {
   const router = useRouter()
+  const { can } = usePermissions()
+  const canManageBoards = can("boards:manage")
+  const canEditColumns = can("boards:edit_columns")
   const [boards, setBoards] = useState<Board[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -520,12 +524,14 @@ export default function BoardsPage() {
           </SelectContent>
         </Select>
 
+        {canManageBoards && (
         <div className="ml-auto">
           <Button onClick={() => setIsCreateBoardOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             New Board
           </Button>
         </div>
+        )}
       </div>
 
       {/* Table */}
@@ -552,13 +558,15 @@ export default function BoardsPage() {
             <p className="text-gray-400 text-sm mb-6 max-w-md mx-auto">
               Create your first board to start tracking tasks, sending requests, and collecting documents.
             </p>
-            <Button 
+            {canManageBoards && (
+            <Button
               size="lg"
               onClick={() => setIsCreateBoardOpen(true)}
             >
               <Plus className="w-4 h-4 mr-2" />
               Create Your First Board
             </Button>
+            )}
           </div>
         )
       ) : (
@@ -600,6 +608,8 @@ export default function BoardsPage() {
                   handleRestoreBoard={handleRestoreBoard}
                   handleDeleteBoard={handleDeleteBoard}
                   canDeleteBoard={canDeleteBoard}
+                  canManageBoards={canManageBoards}
+                  canEditColumns={canEditColumns}
                   onBoardUpdate={handleBoardUpdate}
                   organizationTimezone={organizationTimezone}
                   router={router}
@@ -633,6 +643,8 @@ export default function BoardsPage() {
                   handleRestoreBoard={handleRestoreBoard}
                   handleDeleteBoard={handleDeleteBoard}
                   canDeleteBoard={canDeleteBoard}
+                  canManageBoards={canManageBoards}
+                  canEditColumns={canEditColumns}
                   onBoardUpdate={handleBoardUpdate}
                   organizationTimezone={organizationTimezone}
                   router={router}
@@ -666,6 +678,8 @@ export default function BoardsPage() {
                   handleRestoreBoard={handleRestoreBoard}
                   handleDeleteBoard={handleDeleteBoard}
                   canDeleteBoard={canDeleteBoard}
+                  canManageBoards={canManageBoards}
+                  canEditColumns={canEditColumns}
                   onBoardUpdate={handleBoardUpdate}
                   organizationTimezone={organizationTimezone}
                   router={router}
@@ -740,6 +754,8 @@ interface BoardRowProps {
   handleRestoreBoard: (boardId: string) => void
   handleDeleteBoard: (board: Board) => void
   canDeleteBoard: (board: Board) => boolean
+  canManageBoards: boolean
+  canEditColumns: boolean
   onBoardUpdate: (updatedBoard: Board) => void
   organizationTimezone: string
   router: ReturnType<typeof useRouter>
@@ -760,6 +776,8 @@ function BoardRow({
   handleRestoreBoard,
   handleDeleteBoard,
   canDeleteBoard,
+  canManageBoards,
+  canEditColumns,
   onBoardUpdate,
   organizationTimezone,
   router
@@ -853,10 +871,12 @@ function BoardRow({
           <BoardColumnHeader
             columns={columns}
             onColumnsChange={onColumnsChange}
+            canEditColumns={canEditColumns}
           />
         </div>
 
         {/* Actions */}
+        {canManageBoards && (
         <div className="relative flex-shrink-0">
           <button
             onClick={(e) => {
@@ -960,6 +980,7 @@ function BoardRow({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

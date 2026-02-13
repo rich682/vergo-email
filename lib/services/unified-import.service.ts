@@ -18,6 +18,7 @@ type ParsedRow = {
 export type ImportSummary = {
   contactsCreated: number
   contactsUpdated: number
+  contactsSkipped: number
   groupsCreated: number
   typesCreated: number
   customFieldsCreated: number
@@ -217,6 +218,7 @@ export class UnifiedImportService {
     const summary: ImportSummary = {
       contactsCreated: 0,
       contactsUpdated: 0,
+      contactsSkipped: 0,
       groupsCreated: 0,
       typesCreated: 0,
       customFieldsCreated: 0,
@@ -304,15 +306,34 @@ export class UnifiedImportService {
                   normalizedType.contactTypeCustomLabel ?? null
               }
             : {}
-        await EntityService.update(existing.id, organizationId, {
+
+        // Build the resolved update payload
+        const updatePayload = {
           firstName: row.firstName || existing.firstName,
           lastName: row.lastName || existing.lastName || undefined,
           phone: row.phone || existing.phone,
           companyName: row.companyName || existing.companyName || undefined,
           ...contactTypeData
-        })
+        }
+
+        // Only update and count if something actually changed
+        const hasChanges =
+          updatePayload.firstName !== existing.firstName ||
+          (updatePayload.lastName ?? null) !== (existing.lastName ?? null) ||
+          (updatePayload.phone ?? null) !== (existing.phone ?? null) ||
+          (updatePayload.companyName ?? null) !== (existing.companyName ?? null) ||
+          (normalizedType.provided && (
+            (updatePayload as any).contactType !== existing.contactType ||
+            ((updatePayload as any).contactTypeCustomLabel ?? null) !== (existing.contactTypeCustomLabel ?? null)
+          ))
+
+        if (hasChanges) {
+          await EntityService.update(existing.id, organizationId, updatePayload)
+          summary.contactsUpdated += 1
+        } else {
+          summary.contactsSkipped += 1
+        }
         entity = existing
-        summary.contactsUpdated += 1
       }
 
       if (!entity) continue

@@ -8,8 +8,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
+import { DatabaseService, DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
 import { exportToExcel } from "@/lib/utils/excel-utils"
+import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 45;
 interface RouteParams {
@@ -32,6 +33,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
+    if (!canPerformAction(session.user.role, "databases:view", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to view databases" }, { status: 403 })
+    }
+
     // Get the database with all data
     const database = await prisma.database.findFirst({
       where: {
@@ -47,6 +52,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!database) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
+    }
+
+    // Non-admin must be a viewer
+    const isAdmin = session.user.role === "ADMIN"
+    if (!isAdmin) {
+      const isViewer = await DatabaseService.isViewer(params.id, session.user.id)
+      if (!isViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this database" },
+          { status: 403 }
+        )
+      }
     }
 
     const schema = database.schema as unknown as DatabaseSchema

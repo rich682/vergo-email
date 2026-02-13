@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Loader2, Plus, Scale, Link2Off, Search, ChevronRight } from "lucide-react"
+import { Loader2, Plus, Scale, Link2Off, Search, ChevronRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
@@ -50,6 +50,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   const [activeRun, setActiveRun] = useState<ReconciliationRun | null>(null)
   const [matching, setMatching] = useState(false)
   const [error, setError] = useState("")
+  const [viewerDenied, setViewerDenied] = useState(false)
 
   // Config picker state
   const [allConfigs, setAllConfigs] = useState<ReconciliationConfigSummary[]>([])
@@ -68,6 +69,10 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
       if (configId) {
         // Fetch the full config details
         const configRes = await fetch(`/api/reconciliations/${configId}`)
+        if (configRes.status === 403) {
+          setViewerDenied(true)
+          return
+        }
         if (configRes.ok) {
           const configData = await configRes.json()
           setLinkedConfig(configData.config)
@@ -213,6 +218,19 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  // ── Viewer access denied ───────────────────────────────────────────
+  if (viewerDenied) {
+    return (
+      <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+        <Lock className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+        <h3 className="text-sm font-medium text-gray-700 mb-1">Access restricted</h3>
+        <p className="text-xs text-gray-500 max-w-sm mx-auto">
+          You don&apos;t have viewer access to this reconciliation. Ask an admin to add you as a viewer.
+        </p>
       </div>
     )
   }

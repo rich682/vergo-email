@@ -19,6 +19,7 @@ import {
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import { useSearchParams } from "next/navigation"
+import { usePermissions } from "@/components/permissions-context"
 
 // Types
 interface BoardOption {
@@ -260,6 +261,8 @@ export default function RequestsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const boardIdFromUrl = searchParams.get("boardId")
+  const { can } = usePermissions()
+  const canManageRequests = can("requests:manage")
   
   // State
   const [requests, setRequests] = useState<RequestTask[]>([])
@@ -774,13 +777,17 @@ export default function RequestsPage() {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <StatusDropdown 
-                        taskId={request.id}
-                        currentStatus={request.status}
-                        readStatus={request.readStatus}
-                        onStatusChange={fetchRequests}
-                      />
-                      {request.status === "SEND_FAILED" && (
+                      {canManageRequests ? (
+                        <StatusDropdown
+                          taskId={request.id}
+                          currentStatus={request.status}
+                          readStatus={request.readStatus}
+                          onStatusChange={fetchRequests}
+                        />
+                      ) : (
+                        <StatusBadge status={request.status} readStatus={request.readStatus} />
+                      )}
+                      {canManageRequests && request.status === "SEND_FAILED" && (
                         <RetryButton requestId={request.id} onRetry={fetchRequests} />
                       )}
                     </div>

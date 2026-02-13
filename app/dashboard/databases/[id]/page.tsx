@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
+import { usePermissions } from "@/components/permissions-context"
 import {
   ArrowLeft,
   Download,
@@ -45,6 +46,7 @@ import {
 } from "@/components/ui/dialog"
 import { SyncFilterEditor } from "@/components/databases/sync-filter-editor"
 import type { SyncFilter, FilterableColumn } from "@/components/databases/sync-filter-editor"
+import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 
 // ============================================
 // Types
@@ -139,10 +141,14 @@ export default function DatabaseDetailPage() {
   const router = useRouter()
   const params = useParams()
   const databaseId = params.id as string
+  const { can } = usePermissions()
+  const canManage = can("databases:manage")
+  const canImport = can("databases:import")
 
   const [database, setDatabase] = useState<DatabaseDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [viewers, setViewers] = useState<Viewer[]>([])
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("")
@@ -217,6 +223,13 @@ export default function DatabaseDetailPage() {
 
       const data = await response.json()
       setDatabase(data.database)
+      if (data.database?.viewers) {
+        setViewers(data.database.viewers.map((v: any) => ({
+          userId: v.user.id,
+          name: v.user.name,
+          email: v.user.email,
+        })))
+      }
     } catch (err) {
       console.error("Error fetching database:", err)
       setError("Failed to load database")
@@ -842,7 +855,7 @@ export default function DatabaseDetailPage() {
                 <FileSpreadsheet className="w-4 h-4 mr-1.5" />
                 Export
               </Button>
-              {!database.isReadOnly && !database.sourceType && (
+              {!database.isReadOnly && !database.sourceType && canImport && (
                 <Button
                   size="sm"
                   className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -1107,12 +1120,12 @@ export default function DatabaseDetailPage() {
                   {schemaEditMode ? "Edit the structure of this database" : "View the structure of this database"}
                 </p>
               </div>
-              {!schemaEditMode && !database.isReadOnly ? (
+              {!schemaEditMode && !database.isReadOnly && canManage ? (
                 <Button variant="outline" size="sm" onClick={startSchemaEdit}>
                   <Pencil className="w-4 h-4 mr-1.5" />
                   Edit Schema
                 </Button>
-              ) : (
+              ) : schemaEditMode ? (
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={cancelSchemaEdit} disabled={savingSchema}>
                     Cancel
@@ -1136,7 +1149,7 @@ export default function DatabaseDetailPage() {
                     )}
                   </Button>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Error/Warning messages */}
@@ -1353,6 +1366,16 @@ export default function DatabaseDetailPage() {
             )}
           </div>
         )}
+
+        {/* Viewer Management */}
+        <div className="mt-6">
+          <ViewerManagement
+            entityType="databases"
+            entityId={databaseId}
+            viewers={viewers}
+            onViewersChange={setViewers}
+          />
+        </div>
       </div>
 
       {/* Import Modal */}

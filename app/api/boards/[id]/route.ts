@@ -107,19 +107,20 @@ export async function PATCH(
     const userRole = session.user.role
     const boardId = params.id
 
-    if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to edit boards" }, { status: 403 })
-    }
-
-    // Access check: admins can modify any board, others must be owner
+    // Access check: admins can modify any board, owners can edit their own, others need boards:manage
     if (!checkIsAdmin(userRole)) {
       const existingBoard = await BoardService.getById(boardId, organizationId)
       if (!existingBoard) {
         return NextResponse.json({ error: "Board not found" }, { status: 404 })
       }
-      if (existingBoard.ownerId !== userId) {
-        return NextResponse.json({ error: "Access denied - only owner or admin can edit this board" }, { status: 403 })
+      const isOwner = existingBoard.ownerId === userId
+      if (!isOwner) {
+        // Non-owners need boards:manage permission
+        if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
+          return NextResponse.json({ error: "You do not have permission to edit boards" }, { status: 403 })
+        }
       }
+      // Owners can always edit their own boards (same pattern as tasks:edit_any)
     }
 
     const body = await request.json()

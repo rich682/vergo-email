@@ -34,6 +34,18 @@ export async function GET(
       return NextResponse.json({ error: "Form not found" }, { status: 404 })
     }
 
+    // Non-admin must be a viewer
+    const isAdmin = session.user.role === "ADMIN"
+    if (!isAdmin) {
+      const isViewer = await FormDefinitionService.isViewer(id, session.user.id)
+      if (!isViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this form" },
+          { status: 403 }
+        )
+      }
+    }
+
     return NextResponse.json({ form })
   } catch (error: any) {
     console.error("Error fetching form:", error)

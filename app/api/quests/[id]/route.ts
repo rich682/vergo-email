@@ -1,10 +1,8 @@
 /**
  * Quest Detail Endpoint
- * 
+ *
  * GET /api/quests/[id] - Get quest details
  * PATCH /api/quests/[id] - Update quest selection
- * 
- * Feature Flag: QUEST_UI
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -13,23 +11,10 @@ import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
 import { canPerformAction } from "@/lib/permissions"
 
-// Feature flag check
-function isQuestUIEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
@@ -84,14 +69,6 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)

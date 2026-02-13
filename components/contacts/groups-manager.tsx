@@ -17,9 +17,10 @@ interface Group {
 interface GroupsManagerProps {
   groups: Group[]
   onGroupsChange: () => void
+  canManage?: boolean
 }
 
-export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
+export function GroupsManager({ groups, onGroupsChange, canManage = true }: GroupsManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [newGroupName, setNewGroupName] = useState("")
@@ -118,6 +119,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
   return (
     <div className="space-y-6">
       {/* Create new tag */}
+      {canManage && (
       <div className="space-y-2">
         <Label>Create New Tag</Label>
         <div className="flex gap-2">
@@ -137,6 +139,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
           </Button>
         </div>
       </div>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
@@ -192,6 +195,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
                         </div>
                       </div>
                     </div>
+                    {canManage && (
                     <div className="flex items-center gap-1">
                       <Button
                         size="sm"
@@ -211,6 +215,7 @@ export function GroupsManager({ groups, onGroupsChange }: GroupsManagerProps) {
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
+                    )}
                   </>
                 )}
               </div>

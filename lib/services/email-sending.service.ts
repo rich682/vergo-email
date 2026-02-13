@@ -382,7 +382,35 @@ export class EmailSendingService {
 
     if (!account) {
       log.error("No active email account found", undefined, { organizationId: data.organizationId })
-      throw new Error("No active email account found")
+      throw new Error("No active email account found. Please connect an email inbox in Settings before sending.")
+    }
+
+    // Validate: if userId was provided, warn if sending from a different user's account (fallback)
+    if (account && data.userId && account.userId && account.userId !== data.userId) {
+      log.warn("Sending email from fallback account — user's inbox may be disconnected", {
+        requestedUserId: data.userId,
+        resolvedAccountUserId: account.userId,
+        resolvedAccountEmail: account.email
+      }, { organizationId: data.organizationId, operation: "sendEmail" })
+    }
+
+    // Validate token freshness for OAuth accounts
+    if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
+      try {
+        if (account.provider === "GMAIL") {
+          account = await EmailConnectionService.refreshGmailToken(account.id)
+        } else if (account.provider === "MICROSOFT") {
+          account = await EmailConnectionService.refreshMicrosoftToken(account.id)
+        }
+      } catch (refreshError: any) {
+        log.error("Token refresh failed for email account", refreshError, {
+          accountId: account.id,
+          provider: account.provider
+        })
+        throw new Error(
+          `Email account (${account.email}) is disconnected or expired. Please reconnect your inbox in Settings before sending.`
+        )
+      }
     }
 
     log.info("Sending email", {
@@ -630,7 +658,26 @@ export class EmailSendingService {
     }
 
     if (!account) {
-      throw new Error("No active email account found for reminder send")
+      throw new Error("No active email account found. Please connect an email inbox in Settings before sending.")
+    }
+
+    // Validate token freshness for OAuth accounts
+    if (account.tokenExpiresAt && account.tokenExpiresAt < new Date()) {
+      try {
+        if (account.provider === "GMAIL") {
+          account = await EmailConnectionService.refreshGmailToken(account.id)
+        } else if (account.provider === "MICROSOFT") {
+          account = await EmailConnectionService.refreshMicrosoftToken(account.id)
+        }
+      } catch (refreshError: any) {
+        log.error("Token refresh failed for email account", refreshError, {
+          accountId: account.id,
+          provider: account.provider
+        })
+        throw new Error(
+          `Email account (${account.email}) is disconnected or expired. Please reconnect your inbox in Settings before sending.`
+        )
+      }
     }
 
     const replyTo = account.email

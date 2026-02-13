@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
+import { usePermissions } from "@/components/permissions-context"
 import {
   ArrowLeft,
   Save,
@@ -25,8 +26,6 @@ import {
   AlertTriangle,
   GripVertical,
   Check,
-  Users,
-  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +52,7 @@ import {
   type FilterableProperty,
   type FilterBindings,
 } from "@/components/reports/report-filter-selector"
+import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 
 // Types
 interface ReportColumn {
@@ -163,6 +163,15 @@ export default function ReportBuilderPage() {
   const router = useRouter()
   const params = useParams()
   const id = params.id as string
+  const { can } = usePermissions()
+  const canManage = can("reports:manage")
+
+  // Redirect if user lacks manage permission (view-only users shouldn't reach the editor)
+  useEffect(() => {
+    if (!canManage) {
+      router.replace("/dashboard/reports")
+    }
+  }, [canManage, router])
 
   // Report state
   const [report, setReport] = useState<ReportDefinition | null>(null)
@@ -217,10 +226,7 @@ export default function ReportBuilderPage() {
   const [filterConfigOpen, setFilterConfigOpen] = useState(false)
 
   // Viewer management
-  const [viewers, setViewers] = useState<Array<{ userId: string; name: string | null; email: string }>>([])
-  const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([])
-  const [viewersSaving, setViewersSaving] = useState(false)
-  const [viewerSearch, setViewerSearch] = useState("")
+  const [viewers, setViewers] = useState<Viewer[]>([])
 
   // Settings dialog state
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -366,73 +372,6 @@ export default function ReportBuilderPage() {
     }
   }, [filterConfigOpen, filterProperties.length, fetchFilterProperties])
 
-  // Fetch org users for viewer selector (on mount)
-  useEffect(() => {
-    async function fetchOrgUsers() {
-      try {
-        const response = await fetch("/api/users", { credentials: "include" })
-        if (response.ok) {
-          const data = await response.json()
-          setOrgUsers((data.users || data || []).map((u: any) => ({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-          })))
-        }
-      } catch (err) {
-        console.error("Error fetching org users:", err)
-      }
-    }
-    fetchOrgUsers()
-  }, [])
-
-  // Save viewers (immediate, not auto-save)
-  const saveViewers = useCallback(async (newViewerIds: string[]) => {
-    setViewersSaving(true)
-    try {
-      const response = await fetch(`/api/reports/${id}/viewers`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ userIds: newViewerIds }),
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setViewers(data.viewers.map((v: any) => ({
-          userId: v.userId,
-          name: v.name,
-          email: v.email,
-        })))
-      }
-    } catch (err) {
-      console.error("Error saving viewers:", err)
-    } finally {
-      setViewersSaving(false)
-    }
-  }, [id])
-
-  const addViewer = useCallback((userId: string) => {
-    const newViewerIds = [...viewers.map(v => v.userId), userId]
-    saveViewers(newViewerIds)
-    setViewerSearch("")
-  }, [viewers, saveViewers])
-
-  const removeViewer = useCallback((userId: string) => {
-    const newViewerIds = viewers.filter(v => v.userId !== userId).map(v => v.userId)
-    saveViewers(newViewerIds)
-  }, [viewers, saveViewers])
-
-  // Filtered org users for viewer dropdown (exclude existing viewers)
-  const availableUsers = useMemo(() => {
-    const viewerIds = new Set(viewers.map(v => v.userId))
-    return orgUsers
-      .filter(u => !viewerIds.has(u.id))
-      .filter(u => {
-        if (!viewerSearch) return true
-        const search = viewerSearch.toLowerCase()
-        return (u.name?.toLowerCase().includes(search) || u.email.toLowerCase().includes(search))
-      })
-  }, [orgUsers, viewers, viewerSearch])
 
   // Save changes
   const handleSave = useCallback(async () => {
@@ -767,89 +706,12 @@ export default function ReportBuilderPage() {
             </div>
 
             {/* === VIEWERS CONFIGURATION === */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gray-500" />
-                  <span className="font-medium text-sm text-gray-700">Viewers</span>
-                  {viewers.length > 0 && (
-                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                      {viewers.length}
-                    </span>
-                  )}
-                </div>
-                {viewersSaving && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                )}
-              </div>
-
-              <div className="p-3 space-y-2">
-                {/* Add viewer dropdown */}
-                <div className="relative">
-                  <Input
-                    placeholder="Search users to add..."
-                    value={viewerSearch}
-                    onChange={(e) => setViewerSearch(e.target.value)}
-                    className="h-8 text-xs"
-                    disabled={viewersSaving}
-                  />
-                  {viewerSearch && availableUsers.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-auto">
-                      {availableUsers.slice(0, 8).map((user) => (
-                        <button
-                          key={user.id}
-                          className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-                          onClick={() => addViewer(user.id)}
-                          disabled={viewersSaving}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium flex-shrink-0">
-                            {(user.name || user.email)[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-gray-700 truncate">{user.name || user.email}</p>
-                            {user.name && <p className="text-[10px] text-gray-400 truncate">{user.email}</p>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Current viewers list */}
-                {viewers.length > 0 ? (
-                  <div className="space-y-1">
-                    {viewers.map((viewer) => (
-                      <div
-                        key={viewer.userId}
-                        className="flex items-center justify-between px-2 py-1.5 bg-gray-50 rounded"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-medium flex-shrink-0">
-                            {(viewer.name || viewer.email)[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-gray-700 truncate">{viewer.name || viewer.email}</p>
-                            {viewer.name && <p className="text-[10px] text-gray-400 truncate">{viewer.email}</p>}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeViewer(viewer.userId)}
-                          className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
-                          disabled={viewersSaving}
-                          title="Remove viewer"
-                        >
-                          <X className="w-3.5 h-3.5 text-gray-400" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 italic">
-                    No viewers. Only admins can access reports from this builder.
-                  </p>
-                )}
-              </div>
-            </div>
+            <ViewerManagement
+              entityType="reports"
+              entityId={id as string}
+              viewers={viewers}
+              onViewersChange={setViewers}
+            />
 
             {/* === PIVOT LAYOUT UI - Simple Row List === */}
             {report.layout === "pivot" && (

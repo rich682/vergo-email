@@ -39,6 +39,7 @@ interface ContactListProps {
   onSelectedEntitiesChange: (ids: string[]) => void
   onEdit: (entity: Entity) => void
   onDelete: () => void
+  canManage?: boolean
 }
 
 export function ContactList({
@@ -53,7 +54,8 @@ export function ContactList({
   onInternalFilterChange,
   onSelectedEntitiesChange,
   onEdit,
-  onDelete
+  onDelete,
+  canManage = true
 }: ContactListProps) {
   // Always show selection column
   const showSelectionColumn = true
@@ -377,6 +379,7 @@ export function ContactList({
                     <span className="text-xs text-gray-400">None</span>
                   )}
                 </td> */}
+                {canManage && (
                 <td className="px-4 py-2">
                   <div className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" onClick={() => onEdit(entity)}>
@@ -391,6 +394,7 @@ export function ContactList({
                     </Button>
                   </div>
                 </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -404,6 +408,7 @@ export function ContactList({
         groups={groups}
         onClearSelection={clearEntitySelection}
         onActionComplete={handleBulkActionComplete}
+        canManage={canManage}
       />
 
       {/* Delete confirmation modal */}

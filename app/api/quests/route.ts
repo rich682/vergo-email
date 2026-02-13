@@ -1,10 +1,8 @@
 /**
  * Quest List and Create Endpoint
- * 
+ *
  * GET /api/quests - List all quests for the organization
  * POST /api/quests - Create a new quest from confirmed interpretation
- * 
- * Feature Flag: QUEST_UI (bypassed when jobId is provided for Item-initiated requests)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -15,20 +13,7 @@ import { QuestService } from "@/lib/services/quest.service"
 import type { QuestCreateInput, QuestInterpretationResult } from "@/lib/types/quest"
 import { canPerformAction } from "@/lib/permissions"
 
-// Feature flag check
-function isQuestUIEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
-}
-
 export async function GET(request: NextRequest) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
@@ -41,6 +26,10 @@ export async function GET(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ success: true, quests: [] })
+    }
 
     // Get quests for the organization
     const quests = await QuestService.findByOrganization(organizationId, userId)
@@ -94,14 +83,6 @@ export async function POST(request: NextRequest) {
     confirmedSchedule?: any
     confirmedReminders?: any
     jobId?: string | null
-  }
-
-  // Check feature flag - bypass if jobId is provided (Item-initiated request)
-  if (!isQuestUIEnabled() && !jobId) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled", errorCode: "QUEST_UI_DISABLED" },
-      { status: 404 }
-    )
   }
 
   try {

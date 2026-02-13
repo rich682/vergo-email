@@ -33,10 +33,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
+    // Non-admin users only see runs for configs they are viewers of
+    let configIdFilter: { in: string[] } | undefined = undefined
+    if (user.role !== "ADMIN") {
+      const viewerEntries = await prisma.reconciliationConfigViewer.findMany({
+        where: { userId: user.id },
+        select: { reconciliationConfigId: true },
+      })
+      configIdFilter = { in: viewerEntries.map(v => v.reconciliationConfigId) }
+    }
+
     const runs = await prisma.reconciliationRun.findMany({
       where: {
         organizationId: user.organizationId,
         status: { in: ["COMPLETE", "REVIEW"] },
+        ...(configIdFilter ? { configId: configIdFilter } : {}),
       },
       select: {
         id: true,

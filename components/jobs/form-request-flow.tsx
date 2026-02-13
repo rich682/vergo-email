@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { usePermissions } from "@/components/permissions-context"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { FormField } from "@/lib/types/form"
@@ -88,6 +89,8 @@ export function FormRequestFlow({
   onSuccess,
   onCancel,
 }: FormRequestFlowProps) {
+  const { can } = usePermissions()
+  const canSendForms = can("forms:send")
   const [step, setStep] = useState<FlowStep>("select_form")
   const [error, setError] = useState<string | null>(null)
 
@@ -368,6 +371,15 @@ export function FormRequestFlow({
         >
           Try Again
         </Button>
+      </div>
+    )
+  }
+
+  if (!canSendForms) {
+    return (
+      <div className="p-6 text-center text-gray-500">
+        <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+        <p className="text-sm">You do not have permission to send form requests.</p>
       </div>
     )
   }

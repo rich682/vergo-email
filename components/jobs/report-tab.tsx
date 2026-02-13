@@ -51,7 +51,7 @@ interface ReportTabProps {
   boardPeriodStart?: string | null
   boardCadence?: string | null
   onConfigChange?: (config: { reportDefinitionId: string | null }) => void
-  isAdmin?: boolean  // Controls whether configuration UI is shown (only admins can configure)
+  canManageReports?: boolean  // Controls whether configuration UI is shown
 }
 
 const CADENCE_LABELS: Record<string, string> = {
@@ -71,13 +71,13 @@ export function ReportTab({
   boardPeriodStart,
   boardCadence,
   onConfigChange,
-  isAdmin = false,
+  canManageReports = false,
 }: ReportTabProps) {
   // Derived state
   const isConfigured = !!reportDefinitionId
 
   // Config editing state
-  const [isEditingConfig, setIsEditingConfig] = useState(!isConfigured && isAdmin)
+  const [isEditingConfig, setIsEditingConfig] = useState(!isConfigured && canManageReports)
   const [editReportId, setEditReportId] = useState<string | null>(reportDefinitionId)
 
   // Data state
@@ -276,10 +276,10 @@ export function ReportTab({
 
   // Auto-open config panel for admin when unconfigured
   useEffect(() => {
-    if (!isConfigured && isAdmin && !isEditingConfig) {
+    if (!isConfigured && canManageReports && !isEditingConfig) {
       setIsEditingConfig(true)
     }
-  }, [isConfigured, isAdmin, isEditingConfig])
+  }, [isConfigured, canManageReports, isEditingConfig])
 
   // Handle report selection in edit mode
   const handleEditReportChange = (value: string) => {
@@ -374,7 +374,7 @@ export function ReportTab({
   return (
     <div className="space-y-6">
       {/* Configuration Panel - Only visible when editing (admin only) */}
-      {isAdmin && isEditingConfig && (
+      {canManageReports && isEditingConfig && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-900">Report Configuration</h3>
@@ -540,7 +540,7 @@ export function ReportTab({
               </Button>
 
               {/* Settings gear - Admin only */}
-              {isAdmin && (
+              {canManageReports && (
                 <Button
                   variant="ghost"
                   size="sm"

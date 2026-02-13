@@ -1,33 +1,19 @@
 /**
  * Quest Generate Email Endpoint
- * 
+ *
  * POST /api/quests/[id]/generate - Generate email content for a quest
- * 
- * Feature Flag: QUEST_UI
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
-
-// Feature flag check
-function isQuestUIEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
-}
+import { canPerformAction } from "@/lib/permissions"
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check feature flag
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
@@ -40,6 +26,10 @@ export async function POST(
 
     const organizationId = session.user.organizationId
     const { id } = await params
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage quests" }, { status: 403 })
+    }
 
     console.log(`Quest generate: Starting for quest ${id}, org ${organizationId}`)
 

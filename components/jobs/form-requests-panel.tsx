@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { usePermissions } from "@/components/permissions-context"
 
 interface FormAttachment {
   id: string
@@ -112,6 +113,8 @@ function formatResponseValue(value: unknown, fieldType?: string): string {
 }
 
 export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) {
+  const { can } = usePermissions()
+  const canSendForms = can("forms:send")
   const [loading, setLoading] = useState(true)
   const [formRequests, setFormRequests] = useState<FormRequestItem[]>([])
   const [progress, setProgress] = useState<FormRequestProgress>({
@@ -123,6 +126,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
   const [expanded, setExpanded] = useState(true)
   const [sendingReminder, setSendingReminder] = useState<string | null>(null)
   const [expandedResponses, setExpandedResponses] = useState<Set<string>>(new Set())
+  const [viewerRestricted, setViewerRestricted] = useState(false)
 
   const toggleResponse = (requestId: string) => {
     setExpandedResponses(prev => {
@@ -146,6 +150,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
         const data = await response.json()
         setFormRequests(data.formRequests || [])
         setProgress(data.progress || { total: 0, submitted: 0, pending: 0, expired: 0 })
+        setViewerRestricted(!!data.viewerRestricted)
       }
     } catch (error) {
       console.error("Error fetching form requests:", error)
@@ -248,6 +253,14 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-gray-200">
+          {viewerRestricted && (
+            <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <p className="text-xs text-amber-700">
+                You&apos;re only seeing your own form requests. Ask an admin to add you as a viewer to see all responses.
+              </p>
+            </div>
+          )}
           {Object.entries(groupedByForm).map(([formId, group]) => (
             <div key={formId} className="border-b border-gray-100 last:border-b-0">
               {/* Form header */}
@@ -330,6 +343,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                                 {req.remindersSent}/{req.remindersMaxCount} reminders
                               </span>
                             )}
+                            {canSendForms && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -349,6 +363,7 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                                 </>
                               )}
                             </Button>
+                            )}
                           </>
                         ) : (
                           <span className="text-xs text-red-500">Expired</span>

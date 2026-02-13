@@ -44,7 +44,37 @@ export async function GET(
       session.user.organizationId
     )
 
-    return NextResponse.json({ formRequests, progress })
+    // Non-admin: filter form requests to only show requests for forms the user is a viewer of,
+    // PLUS the user's own form requests (recipients can always see their own)
+    const isAdmin = session.user.role === "ADMIN"
+    let filteredFormRequests = formRequests
+    let viewerRestricted = false
+
+    if (!isAdmin && formRequests.length > 0) {
+      // Get unique form definition IDs from the requests
+      const formDefIds = [...new Set(formRequests.map((fr: any) => fr.formDefinitionId))]
+
+      // Check which form definitions the user is a viewer of
+      const viewerEntries = await prisma.formDefinitionViewer.findMany({
+        where: {
+          userId: session.user.id,
+          formDefinitionId: { in: formDefIds },
+        },
+        select: { formDefinitionId: true },
+      })
+      const viewableFormIds = new Set(viewerEntries.map((v) => v.formDefinitionId))
+
+      // Filter: keep requests for viewable forms OR requests where the user is the recipient
+      filteredFormRequests = formRequests.filter((fr: any) =>
+        viewableFormIds.has(fr.formDefinitionId) || fr.recipientUserId === session.user.id
+      )
+
+      if (filteredFormRequests.length < formRequests.length) {
+        viewerRestricted = true
+      }
+    }
+
+    return NextResponse.json({ formRequests: filteredFormRequests, progress, viewerRestricted })
   } catch (error: any) {
     console.error("Error fetching form requests:", error)
     return NextResponse.json(

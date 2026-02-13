@@ -5,14 +5,15 @@ import { Sidebar } from "./sidebar"
 import { UserMenu } from "./user-menu"
 import { NotificationBell } from "./notification-bell"
 import { PageTitle } from "./page-title"
-import type { OrgRoleDefaults } from "@/lib/permissions"
+import type { OrgActionPermissions } from "@/lib/permissions"
+import { PermissionsProvider } from "./permissions-context"
 
 interface DashboardShellProps {
   children: React.ReactNode
   userEmail: string
   userName?: string
   userRole?: string
-  orgRoleDefaults?: OrgRoleDefaults
+  orgActionPermissions?: OrgActionPermissions
   orgName?: string
   orgFeatures?: Record<string, boolean>
 }
@@ -24,7 +25,7 @@ export function DashboardShell({
   userEmail,
   userName,
   userRole,
-  orgRoleDefaults,
+  orgActionPermissions,
   orgName,
   orgFeatures = {},
 }: DashboardShellProps) {
@@ -51,42 +52,44 @@ export function DashboardShell({
   const expanded = pinned || hovered
 
   return (
-    <div className="min-h-screen bg-white">
-      <Sidebar
-        userRole={userRole}
-        orgRoleDefaults={orgRoleDefaults}
-        orgFeatures={orgFeatures}
-        collapsed={!expanded}
-        pinned={pinned}
-        onTogglePin={togglePinned}
-        onMouseEnter={() => { if (!pinned) setHovered(true) }}
-        onMouseLeave={() => { if (!pinned) setHovered(false) }}
-      />
+    <PermissionsProvider role={userRole} orgActionPermissions={orgActionPermissions || null}>
+      <div className="min-h-screen bg-white">
+        <Sidebar
+          userRole={userRole}
+          orgActionPermissions={orgActionPermissions}
+          orgFeatures={orgFeatures}
+          collapsed={!expanded}
+          pinned={pinned}
+          onTogglePin={togglePinned}
+          onMouseEnter={() => { if (!pinned) setHovered(true) }}
+          onMouseLeave={() => { if (!pinned) setHovered(false) }}
+        />
 
-      {/* Main content area - padding adjusts based on pinned state only */}
-      <div
-        className="transition-[padding-left] duration-200 ease-in-out overflow-x-hidden"
-        style={{ paddingLeft: pinned ? 208 : 52 }}
-      >
-        {/* Top header bar */}
-        <header className="h-16 border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 bg-white z-30">
-          <PageTitle />
-          <div className="flex items-center gap-4">
-            <NotificationBell />
-            <UserMenu
-              userEmail={userEmail}
-              userName={userName}
-              userRole={userRole}
-              orgName={orgName}
-            />
-          </div>
-        </header>
+        {/* Main content area - padding adjusts based on pinned state only */}
+        <div
+          className="transition-[padding-left] duration-200 ease-in-out overflow-x-hidden"
+          style={{ paddingLeft: pinned ? 208 : 52 }}
+        >
+          {/* Top header bar */}
+          <header className="h-16 border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 bg-white z-30">
+            <PageTitle />
+            <div className="flex items-center gap-4">
+              <NotificationBell />
+              <UserMenu
+                userEmail={userEmail}
+                userName={userName}
+                userRole={userRole}
+                orgName={orgName}
+              />
+            </div>
+          </header>
 
-        {/* Page content */}
-        <main className="min-h-[calc(100vh-4rem)]">
-          {children}
-        </main>
+          {/* Page content */}
+          <main className="min-h-[calc(100vh-4rem)]">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </PermissionsProvider>
   )
 }

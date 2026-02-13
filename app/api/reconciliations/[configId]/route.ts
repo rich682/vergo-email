@@ -39,6 +39,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 })
     }
 
+    // Non-admin must be a viewer
+    const isAdmin = session.user.role === "ADMIN"
+    if (!isAdmin) {
+      const isViewer = await ReconciliationService.isViewer(configId, session.user.id)
+      if (!isViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this reconciliation" },
+          { status: 403 }
+        )
+      }
+    }
+
     return NextResponse.json({ config })
   } catch (error) {
     console.error("[Reconciliations] Error getting config:", error)

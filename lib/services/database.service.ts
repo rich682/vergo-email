@@ -390,6 +390,14 @@ export class DatabaseService {
             email: true,
           },
         },
+        viewers: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { addedAt: "asc" as const },
+        },
         // Include report definitions to check for generated reports
         reportDefinitions: {
           select: {
@@ -784,5 +792,62 @@ export class DatabaseService {
     })
 
     return { deleted: deletedCount }
+  }
+
+  /**
+   * Set viewers for a database (replaces full list)
+   */
+  static async setViewers(
+    databaseId: string,
+    organizationId: string,
+    userIds: string[],
+    addedBy: string
+  ) {
+    const database = await prisma.database.findFirst({
+      where: { id: databaseId, organizationId },
+    })
+    if (!database) {
+      throw new Error("Database not found")
+    }
+
+    await prisma.$transaction([
+      prisma.databaseViewer.deleteMany({
+        where: { databaseId },
+      }),
+      ...(userIds.length > 0
+        ? [
+            prisma.databaseViewer.createMany({
+              data: userIds.map((userId) => ({
+                databaseId,
+                userId,
+                addedBy,
+              })),
+            }),
+          ]
+        : []),
+    ])
+
+    const viewers = await prisma.databaseViewer.findMany({
+      where: { databaseId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { addedAt: "asc" },
+    })
+
+    return viewers
+  }
+
+  /**
+   * Check if a user is a viewer of a database
+   */
+  static async isViewer(databaseId: string, userId: string): Promise<boolean> {
+    const viewer = await prisma.databaseViewer.findFirst({
+      where: { databaseId, userId },
+      select: { id: true },
+    })
+    return !!viewer
   }
 }

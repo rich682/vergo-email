@@ -29,6 +29,7 @@ export interface BoardColumnDefinition {
 interface BoardColumnHeaderProps {
   columns: BoardColumnDefinition[]
   onColumnsChange: (columns: BoardColumnDefinition[]) => void
+  canEditColumns?: boolean
 }
 
 const COLUMN_TYPE_ICONS: Record<string, typeof Type> = {
@@ -47,7 +48,7 @@ const COLUMN_TYPE_ICONS: Record<string, typeof Type> = {
   files: Type,
 }
 
-export function BoardColumnHeader({ columns, onColumnsChange }: BoardColumnHeaderProps) {
+export function BoardColumnHeader({ columns, onColumnsChange, canEditColumns = true }: BoardColumnHeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsPosition, setSettingsPosition] = useState({ top: 0, left: 0 })
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -107,6 +108,10 @@ export function BoardColumnHeader({ columns, onColumnsChange }: BoardColumnHeade
   }
 
   const sortedColumns = [...columns].sort((a, b) => a.order - b.order)
+
+  if (!canEditColumns) {
+    return null
+  }
 
   return (
     <div className="flex items-center">

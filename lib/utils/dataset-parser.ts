@@ -79,8 +79,15 @@ const DATE_PATTERNS = [
   /^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}$/,    // January 15, 2024
 ]
 
-// Currency patterns
-const CURRENCY_REGEX = /^[$£€¥]?\s*-?\d{1,3}(,\d{3})*(\.\d{2})?$|^-?\d+(\.\d{2})?$/
+// Currency patterns (allow 1-2 decimal places)
+const CURRENCY_REGEX = /^[$£€¥]?\s*-?\d{1,3}(,\d{3})*(\.\d{1,2})?$|^-?\d+(\.\d{1,2})?$/
+
+// Column header keywords that suggest currency values
+const CURRENCY_HEADER_KEYWORDS = [
+  "amount", "price", "cost", "balance", "total", "fee",
+  "payment", "currency", "due", "revenue", "income", "expense",
+  "salary", "wage", "rate", "charge", "invoice", "budget"
+]
 
 // Boolean values
 const BOOLEAN_VALUES = new Set([
@@ -214,15 +221,18 @@ function isDateValue(value: string): boolean {
 
 /**
  * Check if a value looks like currency
- * Must have currency symbol OR decimal places to be considered currency
+ * Must have currency symbol, decimal places, or a currency-related column header
  */
-function isCurrencyValue(value: string): boolean {
+function isCurrencyValue(value: string, columnHeader?: string): boolean {
   if (!value || value.trim() === "") return false
   const trimmed = value.trim()
-  // Must have currency symbol OR have exactly 2 decimal places to be currency
   const hasCurrencySymbol = /^[$£€¥]/.test(trimmed)
-  const hasDecimalPlaces = /\.\d{2}$/.test(trimmed)
-  if (!hasCurrencySymbol && !hasDecimalPlaces) return false
+  const hasDecimalPlaces = /\.\d{1,2}$/.test(trimmed)
+  const headerSuggestsCurrency = columnHeader
+    ? CURRENCY_HEADER_KEYWORDS.some(kw => columnHeader.toLowerCase().includes(kw))
+    : false
+  // Must have at least one indicator: symbol, decimals, or header hint
+  if (!hasCurrencySymbol && !hasDecimalPlaces && !headerSuggestsCurrency) return false
   return CURRENCY_REGEX.test(trimmed)
 }
 
@@ -248,7 +258,7 @@ function isBooleanValue(value: string): boolean {
 /**
  * Infer column type from sample values
  */
-export function inferColumnType(values: string[]): DatasetColumn["type"] {
+export function inferColumnType(values: string[], columnHeader?: string): DatasetColumn["type"] {
   const nonEmptyValues = values.filter(v => v && v.trim() !== "")
   
   if (nonEmptyValues.length === 0) {
@@ -263,7 +273,7 @@ export function inferColumnType(values: string[]): DatasetColumn["type"] {
   
   for (const value of nonEmptyValues) {
     if (isDateValue(value)) dateCount++
-    else if (isCurrencyValue(value)) currencyCount++
+    else if (isCurrencyValue(value, columnHeader)) currencyCount++
     else if (isNumericValue(value)) numberCount++
     else if (isBooleanValue(value)) booleanCount++
   }
@@ -365,7 +375,7 @@ export function parseDataset(
     columns.push({
       key: keyMap.get(header)!,
       label: header,
-      type: inferColumnType(sampleValues)
+      type: inferColumnType(sampleValues, header)
     })
   }
   

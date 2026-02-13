@@ -33,6 +33,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
+    // Non-admin must be a viewer of the config
+    const isAdmin = session.user.role === "ADMIN"
+    if (!isAdmin) {
+      const isViewer = await ReconciliationService.isViewer(configId, session.user.id)
+      if (!isViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this reconciliation" },
+          { status: 403 }
+        )
+      }
+    }
+
     const runs = await ReconciliationService.listRuns(configId, user.organizationId)
     return NextResponse.json({ runs })
   } catch (error) {

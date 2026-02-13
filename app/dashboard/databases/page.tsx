@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { usePermissions } from "@/components/permissions-context"
 
 interface DatabaseItem {
   id: string
@@ -31,6 +32,8 @@ interface DatabaseItem {
 
 export default function DatabasesPage() {
   const router = useRouter()
+  const { can } = usePermissions()
+  const canManageDatabases = can("databases:manage")
   const [databases, setDatabases] = useState<DatabaseItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -101,14 +104,16 @@ export default function DatabasesPage() {
             className="pl-10"
           />
         </div>
-        <div className="ml-auto">
-          <Link href="/dashboard/databases/new">
-            <Button className="bg-orange-500 hover:bg-orange-600 text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              New Database
-            </Button>
-          </Link>
-        </div>
+        {canManageDatabases && (
+          <div className="ml-auto">
+            <Link href="/dashboard/databases/new">
+              <Button className="bg-orange-500 hover:bg-orange-600 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                New Database
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
 
         {/* Loading state */}
@@ -128,7 +133,7 @@ export default function DatabasesPage() {
                 ? "Try adjusting your search terms"
                 : "Create your first database to start managing structured data with schemas and Excel import/export."}
             </p>
-            {!searchQuery && (
+            {!searchQuery && canManageDatabases && (
               <div className="mt-6">
                 <Link href="/dashboard/databases/new">
                   <Button className="bg-orange-500 hover:bg-orange-600 text-white">
@@ -189,28 +194,30 @@ export default function DatabasesPage() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">{db.columnCount}</td>
-                    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(db.id, db.name)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+                    {canManageDatabases && (
+                      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(db.id, db.name)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

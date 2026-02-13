@@ -35,7 +35,20 @@ export async function GET(request: NextRequest) {
 
     const databases = await DatabaseService.listDatabases(user.organizationId)
 
-    return NextResponse.json({ databases })
+    // Non-admin users only see databases they are viewers of
+    const isAdmin = session.user.role === "ADMIN"
+    const filteredDatabases = isAdmin
+      ? databases
+      : await (async () => {
+          const viewerEntries = await prisma.databaseViewer.findMany({
+            where: { userId: session.user.id },
+            select: { databaseId: true },
+          })
+          const viewableIds = new Set(viewerEntries.map((v) => v.databaseId))
+          return databases.filter((d) => viewableIds.has(d.id))
+        })()
+
+    return NextResponse.json({ databases: filteredDatabases })
   } catch (error) {
     console.error("Error listing databases:", error)
     return NextResponse.json(

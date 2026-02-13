@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskLineageService } from "@/lib/services/task-lineage.service"
+import { canPerformAction } from "@/lib/permissions"
 
 /**
  * GET /api/task-lineages/[id]
@@ -75,6 +76,11 @@ export async function PATCH(
 
     const { id: lineageId } = await params
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "tasks:edit_any", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to edit task lineages" }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const lineage = await prisma.taskLineage.findFirst({
@@ -122,6 +128,10 @@ export async function DELETE(
 
     const { id: lineageId } = await params
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "tasks:delete", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to delete task lineages" }, { status: 403 })
+    }
 
     const lineage = await prisma.taskLineage.findFirst({
       where: { id: lineageId, organizationId },

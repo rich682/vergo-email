@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
 import { ArrowLeft, Plus, ClipboardList, Database, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,15 @@ interface DatabaseOption {
 
 export default function NewFormPage() {
   const router = useRouter()
+  const { can } = usePermissions()
+
+  // Redirect if user lacks manage permission
+  useEffect(() => {
+    if (!can("forms:manage")) {
+      router.replace("/dashboard/forms")
+    }
+  }, [can, router])
+
   const [loading, setLoading] = useState(false)
 
   // Form data

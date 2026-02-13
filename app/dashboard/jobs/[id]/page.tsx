@@ -39,7 +39,8 @@ import { parseDateOnly } from "@/lib/utils/timezone"
 // Alias for backward compatibility - use parseDateOnly from centralized utility
 const parseDateForDisplay = parseDateOnly
 import { UI_LABELS } from "@/lib/ui-labels"
-import { getEffectiveModuleAccess, hasTaskTabAccess, isModuleReadOnly, type ModuleAccessLevel, type ModuleKey, type OrgRoleDefaults } from "@/lib/permissions"
+import { hasModuleAccess, canPerformAction, type ModuleKey } from "@/lib/permissions"
+import { usePermissions } from "@/components/permissions-context"
 
 // Design system components
 import { Chip } from "@/components/ui/chip"
@@ -263,7 +264,7 @@ export default function JobDetailPage() {
   // Core state
   const [job, setJob] = useState<Job | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
-  const [userModuleAccess, setUserModuleAccess] = useState<Record<ModuleKey, ModuleAccessLevel | false> | null>(null)
+  const { role: sessionRole, orgActionPermissions } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<"overview" | "requests" | "collection" | "report" | "reconciliation">(initialTab || "overview")
@@ -354,9 +355,6 @@ export default function JobDetailPage() {
         const taskInstance = data.taskInstance
         setJob(taskInstance)
         setPermissions(data.permissions)
-        // Compute effective module access for tab visibility (role-based only, no per-user overrides)
-        const effectiveModules = getEffectiveModuleAccess(data.userRole, null, data.orgRoleDefaults || null)
-        setUserModuleAccess(effectiveModules)
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")
         setEditDueDate(taskInstance.dueDate ? taskInstance.dueDate.split("T")[0] : "")
@@ -796,8 +794,8 @@ export default function JobDetailPage() {
             </span>
           </Link>
           <div className="flex items-center gap-3">
-            {permissions?.canEdit && (
-              <Button 
+            {permissions?.canEdit && canPerformAction(sessionRole, "inbox:send_emails", orgActionPermissions) && (
+              <Button
                 onClick={() => setIsSendRequestOpen(true)}
                 size="sm"
                 className="bg-orange-500 hover:bg-orange-600 text-white"
@@ -806,8 +804,8 @@ export default function JobDetailPage() {
                 Send Request
               </Button>
             )}
-            {permissions?.canEdit && (
-              <button 
+            {permissions?.canEdit && canPerformAction(sessionRole, "tasks:delete", orgActionPermissions) && (
+              <button
                 onClick={handleDelete}
                 className="p-1.5 text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1.5"
                 title={(job?.taskCount || 0) > 0 ? "Archive task (has requests)" : "Delete task permanently"}
@@ -839,7 +837,7 @@ export default function JobDetailPage() {
           </button>
 
           {/* Requests tab - visible with any requests access level (including task-scoped) */}
-          {hasTaskTabAccess(userModuleAccess?.requests ?? false) && (
+          {hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -849,7 +847,7 @@ export default function JobDetailPage() {
           )}
 
           {/* Documents tab - visible with any collection access level (including task-scoped) */}
-          {hasTaskTabAccess(userModuleAccess?.collection ?? false) && (
+          {hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -858,7 +856,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
+          {hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -867,7 +865,7 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {hasTaskTabAccess(userModuleAccess?.reconciliations ?? false) && (
+          {hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -1265,9 +1263,9 @@ export default function JobDetailPage() {
               </>
             )}
 
-            {activeTab === "requests" && hasTaskTabAccess(userModuleAccess?.requests ?? false) && (
+            {activeTab === "requests" && hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
               <div className="space-y-4">
-                <SectionHeader title="Requests" count={requests.reduce((sum: number, r: any) => sum + (r.recipients?.length || 0), 0)} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !isModuleReadOnly(userModuleAccess?.requests ?? false) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
+                <SectionHeader title="Requests" count={requests.reduce((sum: number, r: any) => sum + (r.recipients?.length || 0), 0)} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !!canPerformAction(sessionRole, "requests:manage", orgActionPermissions) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
                 {requests.length === 0 ? (
                   <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-200">
                     <p className="text-sm text-gray-500">No requests sent yet</p>
@@ -1354,14 +1352,14 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "collection" && hasTaskTabAccess(userModuleAccess?.collection ?? false) && (
+            {activeTab === "collection" && hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
               <div className="space-y-4">
                 <SectionHeader title="Documents" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
-                <CollectionTab jobId={jobId} readOnly={!permissions?.canEdit || isModuleReadOnly(userModuleAccess?.collection ?? false)} />
+                <CollectionTab jobId={jobId} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "collection:manage", orgActionPermissions)} />
               </div>
             )}
 
-            {activeTab === "report" && hasTaskTabAccess(userModuleAccess?.reports ?? false) && (
+            {activeTab === "report" && hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1369,7 +1367,7 @@ export default function JobDetailPage() {
                   reportDefinitionId={job.reportDefinitionId || null}
                   boardPeriodStart={job.board?.periodStart}
                   boardCadence={job.board?.cadence}
-                  isAdmin={permissions?.isAdmin}
+                  canManageReports={canPerformAction(sessionRole, "reports:manage", orgActionPermissions)}
                   onConfigChange={(config) => {
                     // Update local state when config changes
                     setJob(prev => prev ? {
@@ -1381,10 +1379,10 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "reconciliation" && hasTaskTabAccess(userModuleAccess?.reconciliations ?? false) && (
+            {activeTab === "reconciliation" && hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
               <div className="space-y-4">
                 <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
-                <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || isModuleReadOnly(userModuleAccess?.reconciliations ?? false)} />
+                <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "reconciliations:manage", orgActionPermissions)} />
               </div>
             )}
           </div>

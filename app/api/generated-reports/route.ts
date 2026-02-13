@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
+    if (!canPerformAction(session.user.role, "reports:generate", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to generate reports" }, { status: 403 })
+    }
+
     let body: Record<string, unknown>
     try {
       body = await request.json()

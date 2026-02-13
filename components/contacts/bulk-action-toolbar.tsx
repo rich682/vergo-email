@@ -25,6 +25,7 @@ interface BulkActionToolbarProps {
   groups: Group[]
   onClearSelection: () => void
   onActionComplete: () => void
+  canManage?: boolean
 }
 
 type ActionType = "add_group" | "remove_group" | "delete" | null
@@ -34,7 +35,8 @@ export function BulkActionToolbar({
   selectedEntityIds,
   groups,
   onClearSelection,
-  onActionComplete
+  onActionComplete,
+  canManage = true
 }: BulkActionToolbarProps) {
   const [activeAction, setActiveAction] = useState<ActionType>(null)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
@@ -305,6 +307,7 @@ export function BulkActionToolbar({
             </div>
 
             {/* Delete */}
+            {canManage && (
             <Button
               variant="destructive"
               size="sm"
@@ -314,6 +317,7 @@ export function BulkActionToolbar({
               <Trash2 className="w-4 h-4" />
               Delete
             </Button>
+            )}
           </div>
 
           {/* Clear selection */}

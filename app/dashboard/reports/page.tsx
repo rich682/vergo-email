@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { usePermissions } from "@/components/permissions-context"
 import { format } from "date-fns"
 import { 
   ReportFilterSelector, 
@@ -140,9 +141,9 @@ const CADENCE_LABELS: Record<string, string> = {
 
 export default function ReportsPage() {
   const router = useRouter()
-  
-  // User role state
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { can } = usePermissions()
+  const canManageReports = can("reports:manage")
+  const canGenerateReports = can("reports:generate")
   
   // Report templates state (admin-only)
   const [reports, setReports] = useState<ReportItem[]>([])
@@ -356,21 +357,6 @@ export default function ReportsPage() {
     }
   }
 
-  // Fetch user role to determine admin status
-  const fetchUserRole = useCallback(async () => {
-    try {
-      const response = await fetch("/api/org/users", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        // The API returns isAdmin directly as a boolean
-        setIsAdmin(data.isAdmin === true)
-        return data.isAdmin === true
-      }
-    } catch (error) {
-      console.error("Error fetching user role:", error)
-    }
-    return false
-  }, [])
 
   // Fetch report templates (admin-only)
   const fetchReports = useCallback(async () => {
@@ -454,17 +440,14 @@ export default function ReportsPage() {
   }, [])
 
   useEffect(() => {
-    // Fetch user role first, then fetch appropriate data
-    fetchUserRole().then((admin) => {
-      if (admin) {
-        fetchReports() // Only admins can see report templates
-      } else {
-        setLoading(false) // Skip template loading for non-admins
-      }
-    })
+    if (canManageReports) {
+      fetchReports() // Only users with reports:manage can see report templates
+    } else {
+      setLoading(false) // Skip template loading for non-managers
+    }
     fetchGeneratedReports() // All users can see generated reports (filtered by viewer permissions)
     fetchCompletedReconRuns() // Fetch completed reconciliation runs
-  }, [fetchUserRole, fetchReports, fetchGeneratedReports, fetchCompletedReconRuns])
+  }, [canManageReports, fetchReports, fetchGeneratedReports, fetchCompletedReconRuns])
 
   // Fetch org users when create modal opens
   useEffect(() => {
@@ -552,7 +535,7 @@ export default function ReportsPage() {
         {/* ============================================ */}
         {/* SECTION 1: Report Builder (Admin Only) */}
         {/* ============================================ */}
-        {isAdmin && (
+        {canManageReports && (
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -729,24 +712,26 @@ export default function ReportsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {isAdmin && (
+              {canGenerateReports && (
                 <>
-                  <Select value={templateFilter} onValueChange={setTemplateFilter}>
-                    <SelectTrigger className="w-[160px] h-9">
-                      <Filter className="w-4 h-4 mr-2 text-gray-400" />
-                      <SelectValue placeholder="Template" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Templates</SelectItem>
-                      {reports.map((report) => (
-                        <SelectItem key={report.id} value={report.id}>
-                          {report.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button 
-                    onClick={() => setIsCreateModalOpen(true)} 
+                  {canManageReports && (
+                    <Select value={templateFilter} onValueChange={setTemplateFilter}>
+                      <SelectTrigger className="w-[160px] h-9">
+                        <Filter className="w-4 h-4 mr-2 text-gray-400" />
+                        <SelectValue placeholder="Template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Templates</SelectItem>
+                        {reports.map((report) => (
+                          <SelectItem key={report.id} value={report.id}>
+                            {report.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button
+                    onClick={() => setIsCreateModalOpen(true)}
                     className="bg-orange-500 hover:bg-orange-600 text-white"
                     disabled={reports.length === 0}
                   >
@@ -796,7 +781,7 @@ export default function ReportsPage() {
                       <Clock className="mx-auto h-8 w-8 text-gray-300" />
                       <p className="mt-2 text-sm text-gray-500">No reports or reconciliations available</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {isAdmin 
+                        {canGenerateReports
                           ? "Generate reports from templates or run reconciliations from task pages"
                           : "You don't have access to any reports yet. Ask an admin to share reports with you."
                         }

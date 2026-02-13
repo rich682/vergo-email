@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function POST(
   request: NextRequest,
@@ -31,8 +32,8 @@ export async function POST(
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    if (user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    if (!canPerformAction(user.role, "databases:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to sync databases" }, { status: 403 })
     }
 
     // Validate database exists and belongs to org

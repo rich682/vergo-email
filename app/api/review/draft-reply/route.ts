@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 import OpenAI from "openai"
 
 export const maxDuration = 30
@@ -65,6 +66,11 @@ export async function POST(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+
+    if (!canPerformAction(session.user.role, "inbox:manage_drafts", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to create drafts" }, { status: 403 })
+    }
+
     const body = await request.json()
     const { messageId, regenerate = false } = body
 

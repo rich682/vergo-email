@@ -71,19 +71,6 @@ export async function GET(
 
     const effectiveStatus = customStatus || taskInstance.status
 
-    // Fetch org role defaults for client-side module access resolution
-    let orgRoleDefaults = null
-    try {
-      const org = await prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { features: true }
-      })
-      const features = (org?.features as Record<string, any>) || {}
-      orgRoleDefaults = features.roleDefaultModuleAccess || null
-    } catch (err) {
-      // Non-critical, fall back to hardcoded defaults
-    }
-
     return NextResponse.json({
       success: true,
       taskInstance: {
@@ -100,7 +87,6 @@ export async function GET(
         isAdmin: userRole === UserRole.ADMIN
       },
       userRole: userRole,
-      orgRoleDefaults,
     })
 
   } catch (error: any) {
@@ -171,6 +157,24 @@ export async function PATCH(
       if (!canEdit) {
         return NextResponse.json(
           { error: "Access denied - only owner or admin can edit" },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Module-specific permission checks for cross-module linking
+    if (reconciliationConfigId !== undefined) {
+      if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+        return NextResponse.json(
+          { error: "You do not have permission to link reconciliations" },
+          { status: 403 }
+        )
+      }
+    }
+    if (reportDefinitionId !== undefined) {
+      if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
+        return NextResponse.json(
+          { error: "You do not have permission to configure reports" },
           { status: 403 }
         )
       }

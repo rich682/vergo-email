@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { FormNotificationService } from "@/lib/services/form-notification.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +22,10 @@ export async function POST(
     }
 
     const { id } = await params
+
+    if (!canPerformAction(session.user.role, "forms:send", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to send form reminders" }, { status: 403 })
+    }
 
     // Get the form request
     const formRequest = await prisma.formRequest.findFirst({

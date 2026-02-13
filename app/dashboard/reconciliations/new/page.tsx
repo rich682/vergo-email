@@ -1,12 +1,22 @@
 "use client"
 
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Sparkles } from "lucide-react"
+import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
 import { ReconciliationSetup } from "@/components/jobs/reconciliation/reconciliation-setup"
 
 export default function NewReconciliationPage() {
   const router = useRouter()
+  const { can } = usePermissions()
+
+  // Redirect if user lacks manage permission
+  useEffect(() => {
+    if (!can("reconciliations:manage")) {
+      router.replace("/dashboard/reconciliations")
+    }
+  }, [can, router])
 
   return (
     <div className="p-8 max-w-4xl">

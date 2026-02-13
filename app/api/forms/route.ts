@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
 import type { CreateFormDefinitionInput } from "@/lib/types/form"
 import { canPerformAction } from "@/lib/permissions"
@@ -25,7 +26,20 @@ export async function GET(request: NextRequest) {
 
     const forms = await FormDefinitionService.findAll(session.user.organizationId)
 
-    return NextResponse.json({ forms })
+    // Non-admin users only see forms they are viewers of
+    const isAdmin = session.user.role === "ADMIN"
+    const filteredForms = isAdmin
+      ? forms
+      : await (async () => {
+          const viewerEntries = await prisma.formDefinitionViewer.findMany({
+            where: { userId: session.user.id },
+            select: { formDefinitionId: true },
+          })
+          const viewableIds = new Set(viewerEntries.map((v) => v.formDefinitionId))
+          return forms.filter((f) => viewableIds.has(f.id))
+        })()
+
+    return NextResponse.json({ forms: filteredForms })
   } catch (error: any) {
     console.error("Error fetching forms:", error)
     return NextResponse.json(

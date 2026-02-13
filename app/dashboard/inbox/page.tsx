@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react"
+import { usePermissions } from "@/components/permissions-context"
 
 interface InboxData {
   items: InboxItem[]
@@ -26,6 +27,8 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const { can } = usePermissions()
+  const canManageInbox = can("inbox:manage_requests")
 
   // Filters
   const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
@@ -161,7 +164,7 @@ export default function InboxPage() {
           </select>
         </div>
 
-        {bulkEligibleCount > 0 && (
+        {canManageInbox && bulkEligibleCount > 0 && (
           <button
             onClick={handleBulkAccept}
             disabled={acceptingId === "bulk"}

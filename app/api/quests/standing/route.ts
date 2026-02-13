@@ -1,42 +1,17 @@
 /**
  * Standing Quest Create Endpoint
- * 
+ *
  * POST /api/quests/standing - Create a new standing (recurring) quest
- * 
- * Feature Flags: QUEST_UI and QUEST_STANDING
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestService } from "@/lib/services/quest.service"
+import { canPerformAction } from "@/lib/permissions"
 import type { QuestCreateInput, QuestInterpretationResult, StandingQuestSchedule } from "@/lib/types/quest"
 
-// Feature flag checks
-function isQuestUIEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_QUEST_UI === "true"
-}
-
-function isStandingQuestsEnabled(): boolean {
-  return process.env.QUEST_STANDING === "true"
-}
-
 export async function POST(request: NextRequest) {
-  // Check feature flags
-  if (!isQuestUIEnabled()) {
-    return NextResponse.json(
-      { error: "Quest UI is not enabled" },
-      { status: 404 }
-    )
-  }
-
-  if (!isStandingQuestsEnabled()) {
-    return NextResponse.json(
-      { error: "Standing quests are not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
@@ -49,6 +24,10 @@ export async function POST(request: NextRequest) {
 
     const organizationId = session.user.organizationId
     const userId = session.user.id
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage quests" }, { status: 403 })
+    }
 
     // Parse request body
     const body = await request.json()

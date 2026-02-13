@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { AttachmentService } from "@/lib/services/attachment.service"
+import { canPerformAction } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -56,6 +57,10 @@ export async function DELETE(
 
     const organizationId = session.user.organizationId
     const attachmentId = params.id
+
+    if (!canPerformAction(session.user.role, "attachments:upload", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to delete attachments" }, { status: 403 })
+    }
 
     await AttachmentService.delete(attachmentId, organizationId)
 

@@ -24,6 +24,10 @@ export async function GET(
     const organizationId = session.user.organizationId
     const { messageId } = params
 
+    if (!canPerformAction(session.user.role, "inbox:review", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to review messages" }, { status: 403 })
+    }
+
     // Fetch the message with full context (both INBOUND and OUTBOUND)
     const message = await prisma.message.findFirst({
       where: {

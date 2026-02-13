@@ -1,35 +1,21 @@
 /**
  * Quest Interpretation Endpoint
- * 
+ *
  * POST /api/quests/interpret
- * 
+ *
  * Translates natural language prompts into structured Quest intent.
  * Returns recipient selection criteria (semantic labels), schedule intent,
  * reminder configuration, and resolved recipient counts.
- * 
- * Feature Flag: QUEST_AI_INTERPRETER
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestInterpreterService } from "@/lib/services/quest-interpreter.service"
+import { canPerformAction } from "@/lib/permissions"
 import type { QuestInterpretRequest } from "@/lib/types/quest"
 
-// Feature flag check
-function isQuestInterpreterEnabled(): boolean {
-  return process.env.QUEST_AI_INTERPRETER === "true"
-}
-
 export async function POST(request: NextRequest) {
-  // Check feature flag
-  if (!isQuestInterpreterEnabled()) {
-    return NextResponse.json(
-      { error: "Quest interpreter is not enabled" },
-      { status: 404 }
-    )
-  }
-
   try {
     // Authenticate user
     const session = await getServerSession(authOptions)
@@ -41,6 +27,10 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "inbox:manage_quests", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage quests" }, { status: 403 })
+    }
 
     // Parse request body
     const body = await request.json()
@@ -93,10 +83,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET endpoint for checking feature flag status
+// GET endpoint for checking availability
 export async function GET() {
   return NextResponse.json({
-    enabled: isQuestInterpreterEnabled(),
+    enabled: true,
     feature: "QUEST_AI_INTERPRETER"
   })
 }

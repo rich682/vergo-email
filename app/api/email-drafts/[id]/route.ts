@@ -17,6 +17,13 @@ export async function GET(
     )
   }
 
+  if (!canPerformAction(session.user.role, "inbox:manage_drafts", session.user.orgActionPermissions)) {
+    return NextResponse.json(
+      { error: "You do not have permission to view drafts" },
+      { status: 403 }
+    )
+  }
+
   const draft = await EmailDraftService.findById(
     params.id,
     session.user.organizationId

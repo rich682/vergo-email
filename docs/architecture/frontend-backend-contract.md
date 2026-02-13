@@ -549,7 +549,7 @@ These routes support Quest functionality behind feature flags:
 - `/api/quests/interpret` - Natural language quest interpretation
 - `/api/quests/standing` - Standing/recurring quests
 
-**Flags**: `NEXT_PUBLIC_QUEST_UI`, `QUEST_AI_INTERPRETER`, `QUEST_STANDING`
+**Flags**: None (feature flags removed; access controlled via permissions)
 
 #### Missing Wiring (6)
 

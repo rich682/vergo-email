@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
+import { canPerformAction } from "@/lib/permissions"
 import OpenAI from "openai"
 
 export const maxDuration = 30
@@ -135,6 +136,11 @@ export async function POST(request: NextRequest) {
     }
 
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "inbox:review", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to review messages" }, { status: 403 })
+    }
+
     const body = await request.json()
     const { messageId, forceReanalyze = false } = body
 

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceLabelService, MetadataFieldSchema } from "@/lib/services/task-instance-label.service"
 import { prisma } from "@/lib/prisma"
+import { canPerformAction } from "@/lib/permissions"
 
 // GET /api/task-instances/[id]/labels/[labelId] - Get a single label
 export async function GET(
@@ -79,6 +80,10 @@ export async function PATCH(
 
     const { id: jobId, labelId } = await params
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "labels:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage labels" }, { status: 403 })
+    }
 
     // Verify job belongs to organization
     const job = await prisma.taskInstance.findFirst({
@@ -192,6 +197,10 @@ export async function DELETE(
 
     const { id: jobId, labelId } = await params
     const organizationId = session.user.organizationId
+
+    if (!canPerformAction(session.user.role, "labels:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to manage labels" }, { status: 403 })
+    }
 
     // Verify job belongs to organization
     const job = await prisma.taskInstance.findFirst({

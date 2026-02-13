@@ -7,6 +7,7 @@ import { ContactList } from "@/components/contacts/contact-list"
 import { ImportModal } from "@/components/contacts/import-modal"
 import { GroupsManager } from "@/components/contacts/groups-manager"
 import { Users, Tag, Plus, Upload } from "lucide-react"
+import { usePermissions } from "@/components/permissions-context"
 
 interface Group {
   id: string
@@ -29,6 +30,10 @@ interface Entity {
 type TabType = "contacts" | "tags"
 
 export default function ContactsPage() {
+  const { can } = usePermissions()
+  const canManageContacts = can("contacts:manage")
+  const canImportContacts = can("contacts:import")
+  const canManageGroups = can("contacts:manage_groups")
   const [activeTab, setActiveTab] = useState<TabType>("contacts")
   const [entities, setEntities] = useState<Entity[]>([])
   const [groups, setGroups] = useState<Group[]>([])
@@ -120,42 +125,46 @@ export default function ContactsPage() {
         {/* Action Row */}
         <div className="flex items-center justify-end mb-4">
           {/* Contacts Tab CTAs */}
-          {activeTab === "contacts" && (
+          {activeTab === "contacts" && (canManageContacts || canImportContacts) && (
             <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowImport(!showImport)
-                  setShowForm(false)
-                  setEditingEntity(null)
-                }}
-                className="
-                  flex items-center gap-2 px-4 py-2 
-                  border border-gray-200 rounded-full
-                  text-sm font-medium text-gray-700
-                  hover:border-gray-400 hover:bg-gray-50
-                  transition-colors
-                "
-              >
-                <Upload className="w-4 h-4" />
-                {showImport ? "Cancel" : "Import"}
-              </button>
-              <button
-                onClick={() => {
-                  setShowForm(!showForm)
-                  setShowImport(false)
-                  setEditingEntity(null)
-                }}
-                className="
-                  flex items-center gap-2 px-4 py-2 
-                  border border-gray-200 rounded-full
-                  text-sm font-medium text-gray-700
-                  hover:border-orange-500 hover:text-orange-500
-                  transition-colors
-                "
-              >
-                <Plus className="w-4 h-4 text-orange-500" />
-                {showForm ? "Cancel" : "Add Contact"}
-              </button>
+              {canImportContacts && (
+                <button
+                  onClick={() => {
+                    setShowImport(!showImport)
+                    setShowForm(false)
+                    setEditingEntity(null)
+                  }}
+                  className="
+                    flex items-center gap-2 px-4 py-2
+                    border border-gray-200 rounded-full
+                    text-sm font-medium text-gray-700
+                    hover:border-gray-400 hover:bg-gray-50
+                    transition-colors
+                  "
+                >
+                  <Upload className="w-4 h-4" />
+                  {showImport ? "Cancel" : "Import"}
+                </button>
+              )}
+              {canManageContacts && (
+                <button
+                  onClick={() => {
+                    setShowForm(!showForm)
+                    setShowImport(false)
+                    setEditingEntity(null)
+                  }}
+                  className="
+                    flex items-center gap-2 px-4 py-2
+                    border border-gray-200 rounded-full
+                    text-sm font-medium text-gray-700
+                    hover:border-orange-500 hover:text-orange-500
+                    transition-colors
+                  "
+                >
+                  <Plus className="w-4 h-4 text-orange-500" />
+                  {showForm ? "Cancel" : "Add Contact"}
+                </button>
+              )}
             </div>
           )}
 
@@ -248,6 +257,7 @@ export default function ContactsPage() {
                 onSelectedEntitiesChange={setSelectedEntityIds}
                 onEdit={handleEdit as any}
                 onDelete={handleDelete}
+                canManage={canManageContacts}
               />
             )}
           </div>
@@ -256,6 +266,7 @@ export default function ContactsPage() {
             <GroupsManager
               groups={groups}
               onGroupsChange={fetchGroups}
+              canManage={canManageGroups}
             />
           </div>
         ) : null}

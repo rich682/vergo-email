@@ -15,7 +15,7 @@ interface RouteParams {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    const { runId } = await params
+    const { configId, runId } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -31,6 +31,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     })
     if (!user?.organizationId) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    }
+
+    // Non-admin must be a viewer of the config
+    const isAdmin = session.user.role === "ADMIN"
+    if (!isAdmin) {
+      const isViewer = await ReconciliationService.isViewer(configId, session.user.id)
+      if (!isViewer) {
+        return NextResponse.json(
+          { error: "You do not have viewer access to this reconciliation" },
+          { status: 403 }
+        )
+      }
     }
 
     const body = await request.json()

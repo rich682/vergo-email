@@ -29,7 +29,21 @@ export async function GET() {
     }
 
     const configs = await ReconciliationService.listConfigs(user.organizationId)
-    return NextResponse.json({ configs })
+
+    // Non-admin users only see configs they are viewers of
+    const isAdmin = session.user.role === "ADMIN"
+    const filteredConfigs = isAdmin
+      ? configs
+      : await (async () => {
+          const viewerEntries = await prisma.reconciliationConfigViewer.findMany({
+            where: { userId: session.user.id },
+            select: { reconciliationConfigId: true },
+          })
+          const viewableIds = new Set(viewerEntries.map((v) => v.reconciliationConfigId))
+          return configs.filter((c) => viewableIds.has(c.id))
+        })()
+
+    return NextResponse.json({ configs: filteredConfigs })
   } catch (error) {
     console.error("[Reconciliations] Error listing configs:", error)
     return NextResponse.json({ error: "Failed to list reconciliations" }, { status: 500 })
@@ -72,6 +86,7 @@ export async function POST(request: NextRequest) {
         dateWindowDays: 3,
         fuzzyDescription: true,
       },
+      createdById: session.user.id,
     })
 
     return NextResponse.json({ config }, { status: 201 })

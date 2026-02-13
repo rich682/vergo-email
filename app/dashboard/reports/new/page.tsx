@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
 import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2, Rows3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -68,6 +69,15 @@ const LAYOUT_OPTIONS = [
 
 export default function NewReportPage() {
   const router = useRouter()
+  const { can } = usePermissions()
+
+  // Redirect if user lacks manage permission
+  useEffect(() => {
+    if (!can("reports:manage")) {
+      router.replace("/dashboard/reports")
+    }
+  }, [can, router])
+
   const [databases, setDatabases] = useState<DatabaseOption[]>([])
   const [loadingDatabases, setLoadingDatabases] = useState(true)
   const [creating, setCreating] = useState(false)

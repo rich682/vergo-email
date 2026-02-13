@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
 // XLSX is lazy-loaded in handleFileUpload to reduce initial bundle size
 import {
@@ -141,7 +142,15 @@ function inferDataType(values: (string | number | boolean | null)[]): SchemaColu
 
 export default function NewDatabasePage() {
   const router = useRouter()
-  
+  const { can } = usePermissions()
+
+  // Redirect if user lacks manage permission
+  useEffect(() => {
+    if (!can("databases:manage")) {
+      router.replace("/dashboard/databases")
+    }
+  }, [can, router])
+
   // Basic info state
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")

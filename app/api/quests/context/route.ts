@@ -12,11 +12,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { QuestInterpreterService } from "@/lib/services/quest-interpreter.service"
 
-// Feature flag check
-function isStandingQuestsEnabled(): boolean {
-  return process.env.QUEST_STANDING === "true"
-}
-
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user
@@ -38,7 +33,7 @@ export async function GET(request: NextRequest) {
       contactTypes: context.availableContactTypes,
       groups: context.availableGroups,
       stateKeys: context.availableStateKeys,
-      standingQuestsEnabled: isStandingQuestsEnabled()
+      standingQuestsEnabled: true
     })
 
   } catch (error: any) {

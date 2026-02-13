@@ -5,12 +5,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
 import { Calendar } from "lucide-react"
-import { getEffectiveModuleAccess, hasSidebarAccess, type OrgRoleDefaults } from "@/lib/permissions"
+import { hasModuleAccess, type OrgActionPermissions, type ModuleKey } from "@/lib/permissions"
 
 interface SidebarProps {
   className?: string
   userRole?: string  // User's role for showing/hiding admin items
-  orgRoleDefaults?: OrgRoleDefaults // Org-level role default module access
+  orgActionPermissions?: OrgActionPermissions // Org-level action permissions
   orgFeatures?: Record<string, boolean>  // Organization feature flags (e.g. { expenses: true, invoices: false })
   collapsed?: boolean
   pinned?: boolean
@@ -194,7 +194,7 @@ const settingsNavItems: NavItem[] = [
 export function Sidebar({
   className = "",
   userRole,
-  orgRoleDefaults,
+  orgActionPermissions,
   orgFeatures = {},
   collapsed = false,
   pinned = true,
@@ -208,11 +208,10 @@ export function Sidebar({
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
 
-  // Compute effective module access based on role + org role defaults (no per-user overrides)
-  const modules = useMemo(
-    () => getEffectiveModuleAccess(userRole, null, orgRoleDefaults),
-    [userRole, orgRoleDefaults]
-  )
+  // Check module access — derived from action permissions
+  const hasAccess = useMemo(() => {
+    return (module: ModuleKey) => hasModuleAccess(userRole, module, orgActionPermissions)
+  }, [userRole, orgActionPermissions])
 
   // Fetch inbox unread count
   useEffect(() => {
@@ -308,19 +307,21 @@ export function Sidebar({
         {collapsed && <div className="pt-1" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Tasks */}
-          <li>
-            <Link
-              href="/dashboard/boards"
-              title={collapsed ? UI_LABELS.jobsNavLabel : undefined}
-              className={navCls(isOnTasksPage)}
-            >
-              <TasksIcon className="w-[18px] h-[18px] flex-shrink-0" />
-              <span className={labelCls}>{UI_LABELS.jobsNavLabel}</span>
-            </Link>
-          </li>
+          {hasAccess("boards") && (
+            <li>
+              <Link
+                href="/dashboard/boards"
+                title={collapsed ? UI_LABELS.jobsNavLabel : undefined}
+                className={navCls(isOnTasksPage)}
+              >
+                <TasksIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                <span className={labelCls}>{UI_LABELS.jobsNavLabel}</span>
+              </Link>
+            </li>
+          )}
 
           {/* Requests */}
-          {hasSidebarAccess(modules.requests) && (() => {
+          {hasAccess("requests") && (() => {
             const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
             return (
               <li>
@@ -346,7 +347,7 @@ export function Sidebar({
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Inbox */}
-          {hasSidebarAccess(modules.inbox) && (
+          {hasAccess("inbox") && (
             <li>
               <Link
                 href="/dashboard/inbox"
@@ -370,7 +371,7 @@ export function Sidebar({
           )}
 
           {/* Documents */}
-          {hasSidebarAccess(modules.collection) && (() => {
+          {hasAccess("collection") && (() => {
             const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")
             return (
               <li>
@@ -387,7 +388,7 @@ export function Sidebar({
           })()}
 
           {/* Expenses - feature-flagged */}
-          {hasSidebarAccess(modules.collection) && (() => {
+          {hasAccess("collection") && (() => {
             const hasModule = !!orgFeatures.expenses
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/expenses"
             const isActive = !hasModule && pathname === "/dashboard/collection/expenses"
@@ -419,7 +420,7 @@ export function Sidebar({
           })()}
 
           {/* Invoices - feature-flagged */}
-          {hasSidebarAccess(modules.collection) && (() => {
+          {hasAccess("collection") && (() => {
             const hasModule = !!orgFeatures.invoices
             const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/invoices"
             const isActive = !hasModule && pathname === "/dashboard/collection/invoices"
@@ -460,7 +461,7 @@ export function Sidebar({
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Reports */}
-          {hasSidebarAccess(modules.reports) && (() => {
+          {hasAccess("reports") && (() => {
             const isActive = pathname === "/dashboard/reports" || pathname.startsWith("/dashboard/reports/")
             return (
               <li>
@@ -477,7 +478,7 @@ export function Sidebar({
           })()}
 
           {/* Forms */}
-          {hasSidebarAccess(modules.forms) && (() => {
+          {hasAccess("forms") && (() => {
             const isActive = pathname === "/dashboard/forms" || pathname.startsWith("/dashboard/forms/")
             return (
               <li>
@@ -494,7 +495,7 @@ export function Sidebar({
           })()}
 
           {/* Databases */}
-          {hasSidebarAccess(modules.databases) && (() => {
+          {hasAccess("databases") && (() => {
             const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
             return (
               <li>
@@ -511,7 +512,7 @@ export function Sidebar({
           })()}
 
           {/* Reconciliations */}
-          {hasSidebarAccess(modules.reconciliations) && (() => {
+          {hasAccess("reconciliations") && (() => {
             const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
             return (
               <li>
@@ -554,7 +555,7 @@ export function Sidebar({
           {settingsNavItems
             .filter((item) => {
               // Contacts uses module access check (sidebar-only module)
-              if (item.href === "/dashboard/contacts" && !hasSidebarAccess(modules.contacts)) return false
+              if (item.href === "/dashboard/contacts" && !hasAccess("contacts")) return false
               // Team and Settings are always admin-only
               if ((item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings") && !isAdmin) return false
               // Profile is available to everyone, but admins already have Settings
