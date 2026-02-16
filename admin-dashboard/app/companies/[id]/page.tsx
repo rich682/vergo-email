@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { StatCard } from "@/components/stat-card"
 import { FeatureFlagsEditor } from "@/components/feature-flags-editor"
+import { CreateDebugUsersButton } from "@/components/create-debug-users-button"
 import { formatDate, formatDateTime, timeAgo } from "@/lib/utils"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -131,7 +132,7 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
       />
 
       {/* Debug Login Credentials */}
-      {debugUsers.length > 0 && (
+      {debugUsers.length > 0 ? (
         <div className="bg-amber-950/30 rounded-xl border border-amber-800/50 overflow-hidden mb-8">
           <div className="px-5 py-4 border-b border-amber-800/50">
             <h2 className="text-sm font-semibold text-amber-400">Debug Login Credentials</h2>
@@ -156,6 +157,8 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
             ))}
           </div>
         </div>
+      ) : (
+        <CreateDebugUsersButton orgId={org.id} />
       )}
 
       {/* Users Table */}

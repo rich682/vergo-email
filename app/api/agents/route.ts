@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
 import { AgentDefinitionService } from "@/lib/agents/agent-definition.service"
 import type { AgentTaskType } from "@/lib/agents/types"
@@ -63,25 +64,64 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { taskType, name, description, configId, configType, lineageId, settings } = body
+    const { name, taskInstanceId, settings } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    if (taskType && !["reconciliation", "report", "form", "request"].includes(taskType)) {
-      return NextResponse.json({ error: "Invalid task type" }, { status: 400 })
+    if (!taskInstanceId) {
+      return NextResponse.json({ error: "taskInstanceId is required" }, { status: 400 })
     }
 
+    const organizationId = session.user.organizationId
+
+    // Look up the task to derive agent fields
+    const task = await prisma.taskInstance.findFirst({
+      where: { id: taskInstanceId, organizationId },
+      select: {
+        id: true,
+        name: true,
+        taskType: true,
+        lineageId: true,
+        reconciliationConfigId: true,
+      },
+    })
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    // Auto-create lineage if the task doesn't have one (promotes it to recurring)
+    let lineageId = task.lineageId
+    if (!lineageId) {
+      const lineage = await prisma.taskLineage.create({
+        data: {
+          organizationId,
+          name: task.name,
+          config: {},
+        },
+      })
+      lineageId = lineage.id
+      // Link the task to the new lineage
+      await prisma.taskInstance.update({
+        where: { id: task.id },
+        data: { lineageId: lineage.id },
+      })
+    }
+
+    // Derive config from the task
+    const configId = task.reconciliationConfigId || null
+    const configType = configId ? "reconciliation_config" : null
+
     const agent = await AgentDefinitionService.create({
-      organizationId: session.user.organizationId,
+      organizationId,
       createdById: session.user.id,
-      taskType: (taskType as AgentTaskType) || null,
+      taskType: (task.taskType as AgentTaskType) || null,
       name,
-      description,
-      configId,
-      configType,
-      lineageId: lineageId || null,
+      configId: configId || undefined,
+      configType: configType || undefined,
+      lineageId,
       settings,
     })
 

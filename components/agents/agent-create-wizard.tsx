@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -21,37 +22,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-interface ReconciliationConfig {
+interface TaskOption {
   id: string
   name: string
-  sourceALabel: string
-  sourceBLabel: string
-}
-
-interface TaskLineageOption {
-  id: string
-  name: string
-  description: string | null
-  latestInstance: { id: string; name: string; status: string; taskType: string | null } | null
+  status: string
+  taskType: string | null
+  lineageId: string | null
+  reconciliationConfigId: string | null
 }
 
 interface AgentCreateWizardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  prefilledLineageId?: string | null
+  prefilledTaskId?: string | null
 }
 
 const STEPS = [
-  { title: "Name & Configuration", description: "What should this agent work on?" },
-  { title: "Agent Settings", description: "How should the agent behave?" },
+  { title: "Select Task", description: "Which task should this agent automate?" },
+  { title: "Triggers & Settings", description: "When and how should the agent run?" },
   { title: "Review & Create", description: "Confirm your choices" },
-]
-
-const TASK_TYPE_OPTIONS = [
-  { value: "reconciliation", label: "Reconciliation" },
-  { value: "report", label: "Report" },
-  { value: "form", label: "Form" },
-  { value: "request", label: "Request" },
 ]
 
 const THRESHOLD_OPTIONS = [
@@ -60,82 +49,64 @@ const THRESHOLD_OPTIONS = [
   { value: "0.70", label: "Aggressive (70%)", description: "More recommendations, lower accuracy" },
 ]
 
-export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: AgentCreateWizardProps) {
+const STATUS_COLORS: Record<string, string> = {
+  NOT_STARTED: "bg-gray-100 text-gray-600",
+  IN_PROGRESS: "bg-blue-100 text-blue-700",
+  IN_REVIEW: "bg-amber-100 text-amber-700",
+  COMPLETE: "bg-emerald-100 text-emerald-700",
+}
+
+export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: AgentCreateWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Form state
-  const [taskType, setTaskType] = useState<string>("")
-  const [configId, setConfigId] = useState<string>("")
+  // Step 0: Task & Name
+  const [taskInstanceId, setTaskInstanceId] = useState<string>(prefilledTaskId || "")
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
+  const [tasks, setTasks] = useState<TaskOption[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+
+  // Step 1: Triggers & Settings
+  const [triggerMode, setTriggerMode] = useState<"automatic" | "manual">("automatic")
+  const [triggerNewPeriod, setTriggerNewPeriod] = useState(true)
+  const [triggerDataUploaded, setTriggerDataUploaded] = useState(true)
   const [customInstructions, setCustomInstructions] = useState("")
   const [threshold, setThreshold] = useState("0.85")
 
-  // Lineage (recurring task) state
-  const [lineageId, setLineageId] = useState<string>(prefilledLineageId || "")
-  const [lineages, setLineages] = useState<TaskLineageOption[]>([])
-  const [loadingLineages, setLoadingLineages] = useState(false)
-
-  // Available configs
-  const [configs, setConfigs] = useState<ReconciliationConfig[]>([])
-  const [loadingConfigs, setLoadingConfigs] = useState(false)
-
-  // Load lineages on open
+  // Load tasks on open
   useEffect(() => {
-    if (open && lineages.length === 0) {
-      setLoadingLineages(true)
+    if (open && tasks.length === 0) {
+      setLoadingTasks(true)
       fetch("/api/task-instances/lineages")
         .then(res => res.json())
-        .then(data => setLineages(data.lineages || []))
+        .then(data => setTasks(data.tasks || []))
         .catch(() => {})
-        .finally(() => setLoadingLineages(false))
+        .finally(() => setLoadingTasks(false))
     }
-  }, [open, lineages.length])
+  }, [open, tasks.length])
 
-  // Pre-fill lineageId when prop changes
+  // Pre-fill taskInstanceId when prop changes
   useEffect(() => {
-    if (prefilledLineageId) setLineageId(prefilledLineageId)
-  }, [prefilledLineageId])
+    if (prefilledTaskId) setTaskInstanceId(prefilledTaskId)
+  }, [prefilledTaskId])
 
-  // Load reconciliation configs when task type is reconciliation
+  // Auto-generate name when task is selected
   useEffect(() => {
-    if (taskType === "reconciliation" && configs.length === 0) {
-      setLoadingConfigs(true)
-      fetch("/api/reconciliations/configs")
-        .then(res => res.json())
-        .then(data => setConfigs(data.configs || []))
-        .catch(() => {})
-        .finally(() => setLoadingConfigs(false))
-    }
-  }, [taskType, configs.length])
-
-  // Auto-generate name from config selection
-  useEffect(() => {
-    if (configId && !name) {
-      const config = configs.find(c => c.id === configId)
-      if (config) {
-        setName(`${config.name} Agent`)
+    if (taskInstanceId && !name) {
+      const task = tasks.find(t => t.id === taskInstanceId)
+      if (task) {
+        setName(`${task.name} Agent`)
       }
     }
-  }, [configId, configs, name])
+  }, [taskInstanceId, tasks, name])
 
-  // Clear configId when switching away from reconciliation
-  useEffect(() => {
-    if (taskType !== "reconciliation") {
-      setConfigId("")
-    }
-  }, [taskType])
+  const selectedTask = tasks.find(t => t.id === taskInstanceId) || null
 
   const canProceed = () => {
     switch (step) {
-      case 0: {
-        if (!name) return false
-        if (taskType === "reconciliation" && !configId) return false
-        return true
-      }
+      case 0: return !!name && !!taskInstanceId
       case 1: return true
       case 2: return true
       default: return false
@@ -146,18 +117,22 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
     setCreating(true)
     setError(null)
 
+    const triggers: string[] = []
+    if (triggerMode === "automatic") {
+      if (triggerNewPeriod) triggers.push("new_period")
+      if (triggerDataUploaded) triggers.push("data_uploaded")
+    }
+
     try {
       const res = await fetch("/api/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          taskType: taskType || undefined,
           name,
-          description: description || undefined,
-          configId: configId || undefined,
-          configType: taskType === "reconciliation" && configId ? "reconciliation_config" : undefined,
-          lineageId: lineageId || undefined,
+          taskInstanceId,
           settings: {
+            triggerMode,
+            triggers,
             customInstructions: customInstructions || undefined,
             confidenceThreshold: parseFloat(threshold),
             maxIterations: 10,
@@ -184,17 +159,22 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
 
   const handleReset = () => {
     setStep(0)
-    setTaskType("")
-    setConfigId("")
-    setLineageId(prefilledLineageId || "")
+    setTaskInstanceId(prefilledTaskId || "")
     setName("")
-    setDescription("")
+    setTriggerMode("automatic")
+    setTriggerNewPeriod(true)
+    setTriggerDataUploaded(true)
     setCustomInstructions("")
     setThreshold("0.85")
     setError(null)
   }
 
-  const taskTypeLabel = TASK_TYPE_OPTIONS.find(o => o.value === taskType)?.label || "General"
+  const triggerLabel = triggerMode === "manual"
+    ? "Manual Only"
+    : [
+        triggerNewPeriod && "New period created",
+        triggerDataUploaded && "Data uploaded",
+      ].filter(Boolean).join(" + ") || "Automatic (no conditions)"
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) handleReset() }}>
@@ -215,113 +195,42 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
         </div>
 
         <div className="min-h-[280px] py-2">
-          {/* Step 0: Name & Configuration */}
+          {/* Step 0: Select Task */}
           {step === 0 && (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Agent Name</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Chase Checking Agent"
-                  className="mt-1.5"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description (optional)</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What does this agent do?"
-                  rows={2}
-                  className="mt-1.5"
-                />
-              </div>
-
-              <div>
-                <Label>Task Type (optional)</Label>
+                <Label>Linked Task</Label>
                 <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
-                  What kind of task will this agent work on?
+                  Select the task this agent will automate for future recurring periods.
                 </p>
-                <Select value={taskType} onValueChange={setTaskType}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="None — general purpose agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TASK_TYPE_OPTIONS.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Reconciliation config picker — shown only when task type is reconciliation */}
-              {taskType === "reconciliation" && (
-                <div>
-                  <Label htmlFor="config">Reconciliation Template</Label>
-                  {loadingConfigs ? (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Loading templates...
-                    </div>
-                  ) : configs.length === 0 ? (
-                    <div className="mt-2 p-4 bg-gray-50 rounded-lg text-sm text-gray-500">
-                      No reconciliation templates found. Create one in Reconciliations first.
-                    </div>
-                  ) : (
-                    <Select value={configId} onValueChange={setConfigId}>
-                      <SelectTrigger className="mt-1.5">
-                        <SelectValue placeholder="Select a reconciliation template..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {configs.map(config => (
-                          <SelectItem key={config.id} value={config.id}>
-                            <div>
-                              <div className="font-medium">{config.name}</div>
-                              <div className="text-xs text-gray-500">
-                                {config.sourceALabel} vs {config.sourceBLabel}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
-
-              {/* Linked recurring task */}
-              <div>
-                <Label>Linked Task (optional)</Label>
-                <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
-                  Link this agent to a recurring task so it works on each new period automatically.
-                </p>
-                {loadingLineages ? (
+                {loadingTasks ? (
                   <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
                     <Loader2 className="w-4 h-4 animate-spin" /> Loading tasks...
                   </div>
-                ) : lineages.length === 0 ? (
+                ) : tasks.length === 0 ? (
                   <div className="mt-1.5 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-                    No recurring tasks found. Convert a task to recurring first.
+                    No tasks found. Create a task first.
                   </div>
                 ) : (
-                  <Select value={lineageId} onValueChange={setLineageId}>
+                  <Select value={taskInstanceId} onValueChange={(v) => { setTaskInstanceId(v); if (name && name.endsWith(" Agent")) setName("") }}>
                     <SelectTrigger className="mt-1.5">
-                      <SelectValue placeholder="None — not linked to a task" />
+                      <SelectValue placeholder="Select a task..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {lineages.map(lin => (
-                        <SelectItem key={lin.id} value={lin.id}>
-                          <div>
-                            <div className="font-medium">{lin.name}</div>
-                            {lin.latestInstance && (
-                              <div className="text-xs text-gray-500">
-                                Latest: {lin.latestInstance.name} ({lin.latestInstance.status})
-                              </div>
+                      {tasks.map(task => (
+                        <SelectItem key={task.id} value={task.id}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{task.name}</span>
+                            <Badge
+                              variant="secondary"
+                              className={`text-[10px] ${STATUS_COLORS[task.status] || "bg-gray-100 text-gray-600"}`}
+                            >
+                              {task.status.replace(/_/g, " ")}
+                            </Badge>
+                            {task.taskType && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {task.taskType}
+                              </Badge>
                             )}
                           </div>
                         </SelectItem>
@@ -330,12 +239,85 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
                   </Select>
                 )}
               </div>
+
+              <div>
+                <Label htmlFor="name">Agent Name</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Auto-generated from task name"
+                  className="mt-1.5"
+                />
+              </div>
             </div>
           )}
 
-          {/* Step 1: Settings */}
+          {/* Step 1: Triggers & Settings */}
           {step === 1 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* Trigger Mode */}
+              <div>
+                <Label>When should this agent run?</Label>
+                <div className="mt-2 space-y-2">
+                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${triggerMode === "automatic" ? "border-orange-300 bg-orange-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input
+                      type="radio"
+                      name="triggerMode"
+                      value="automatic"
+                      checked={triggerMode === "automatic"}
+                      onChange={() => setTriggerMode("automatic")}
+                      className="mt-0.5 accent-orange-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">Automatic</div>
+                      <div className="text-xs text-gray-500">Run automatically when conditions are met</div>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${triggerMode === "manual" ? "border-orange-300 bg-orange-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input
+                      type="radio"
+                      name="triggerMode"
+                      value="manual"
+                      checked={triggerMode === "manual"}
+                      onChange={() => setTriggerMode("manual")}
+                      className="mt-0.5 accent-orange-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">Manual Only</div>
+                      <div className="text-xs text-gray-500">Only run when you click &quot;Run Agent&quot;</div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Trigger Conditions */}
+                {triggerMode === "automatic" && (
+                  <div className="mt-3 ml-1 space-y-2">
+                    <p className="text-xs text-gray-500 font-medium">Trigger conditions:</p>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={triggerNewPeriod}
+                        onChange={(e) => setTriggerNewPeriod(e.target.checked)}
+                        className="rounded accent-orange-500"
+                      />
+                      <span className="text-sm text-gray-700">When a new period is created for this task</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={triggerDataUploaded}
+                        onChange={(e) => setTriggerDataUploaded(e.target.checked)}
+                        className="rounded accent-orange-500"
+                      />
+                      <span className="text-sm text-gray-700">When required data is uploaded (e.g., bank statement)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Instructions */}
               <div>
                 <Label htmlFor="instructions">Agent Instructions (optional)</Label>
                 <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
@@ -346,10 +328,11 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
                   value={customInstructions}
                   onChange={(e) => setCustomInstructions(e.target.value)}
                   placeholder="e.g., Pay special attention to vendor timing differences. Bank fees are always $15/month from Chase. Flag anything over $10,000 for manual review."
-                  rows={4}
+                  rows={3}
                 />
               </div>
 
+              {/* Confidence Threshold */}
               <div>
                 <Label>Confidence Threshold</Label>
                 <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
@@ -379,15 +362,11 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: Ag
             <div className="space-y-3">
               <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                 <ReviewRow label="Name" value={name} />
-                {description && <ReviewRow label="Description" value={description} />}
-                <ReviewRow label="Task Type" value={taskType ? taskTypeLabel : "General"} />
-                {taskType === "reconciliation" && configId && (
-                  <ReviewRow label="Template" value={configs.find(c => c.id === configId)?.name || configId} />
+                <ReviewRow label="Linked Task" value={selectedTask?.name || taskInstanceId} />
+                {selectedTask?.taskType && (
+                  <ReviewRow label="Task Type" value={selectedTask.taskType.charAt(0).toUpperCase() + selectedTask.taskType.slice(1)} />
                 )}
-                {lineageId && (
-                  <ReviewRow label="Linked Task" value={lineages.find(l => l.id === lineageId)?.name || lineageId} />
-                )}
-                <ReviewRow label="Trigger" value="Manual Only" />
+                <ReviewRow label="Trigger" value={triggerLabel} />
                 <ReviewRow
                   label="Threshold"
                   value={THRESHOLD_OPTIONS.find(o => o.value === threshold)?.label || threshold}

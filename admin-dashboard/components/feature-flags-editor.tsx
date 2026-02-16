@@ -9,6 +9,7 @@ import { useState } from "react"
 const MODULE_LIST = [
   { key: "expenses", label: "Expense Management", description: "Expense tracking, approvals, and reimbursements" },
   { key: "invoices", label: "Invoices / AP", description: "Invoice processing and accounts payable" },
+  { key: "agentsEnabled", label: "AI Agents", description: "AI-powered agents for reconciliation and task automation" },
 ]
 
 interface FeatureFlagsEditorProps {

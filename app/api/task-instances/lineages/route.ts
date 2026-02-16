@@ -1,7 +1,7 @@
 /**
- * Task Lineages API
+ * Task Picker API
  *
- * GET /api/task-instances/lineages — List recurring task lineages for the org
+ * GET /api/task-instances/lineages — List all tasks for the org (used by agent wizard picker)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -16,36 +16,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const lineages = await prisma.taskLineage.findMany({
-      where: { organizationId: session.user.organizationId },
+    const tasks = await prisma.taskInstance.findMany({
+      where: {
+        organizationId: session.user.organizationId,
+        status: { not: "ARCHIVED" },
+      },
       orderBy: { updatedAt: "desc" },
+      take: 100,
       select: {
         id: true,
         name: true,
-        description: true,
-        instances: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            taskType: true,
-          },
-        },
+        status: true,
+        taskType: true,
+        lineageId: true,
+        reconciliationConfigId: true,
       },
     })
 
-    const result = lineages.map(l => ({
-      id: l.id,
-      name: l.name,
-      description: l.description,
-      latestInstance: l.instances[0] || null,
-    }))
-
-    return NextResponse.json({ lineages: result })
+    return NextResponse.json({ tasks })
   } catch (error) {
-    console.error("Error listing lineages:", error)
-    return NextResponse.json({ error: "Failed to list lineages" }, { status: 500 })
+    console.error("Error listing tasks:", error)
+    return NextResponse.json({ error: "Failed to list tasks" }, { status: 500 })
   }
 }

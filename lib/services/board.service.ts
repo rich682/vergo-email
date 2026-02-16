@@ -601,6 +601,7 @@ export class BoardService {
     })
 
     for (const prev of previousInstances) {
+      const prevAny = prev as any
       // Create new instance for next period
       const createData: any = {
         organizationId,
@@ -613,16 +614,43 @@ export class BoardService {
         status: "NOT_STARTED",
         customFields: prev.customFields,
         labels: prev.labels,
+        taskType: prevAny.taskType || null,
+        reconciliationConfigId: prevAny.reconciliationConfigId || null,
       }
-      
+
       // Carry forward report configuration if task has a report linked
-      const prevAnyReport = prev as any
-      if (prevAnyReport.reportDefinitionId) {
-        createData.reportDefinitionId = prevAnyReport.reportDefinitionId
-        createData.reportFilterBindings = prevAnyReport.reportFilterBindings || null
+      if (prevAny.reportDefinitionId) {
+        createData.reportDefinitionId = prevAny.reportDefinitionId
+        createData.reportFilterBindings = prevAny.reportFilterBindings || null
       }
-      
+
       const newInstance = await prisma.taskInstance.create({ data: createData })
+
+      // Check if this lineage has an agent that should auto-trigger
+      if (prev.lineageId) {
+        try {
+          const agent = await prisma.agentDefinition.findFirst({
+            where: { organizationId, lineageId: prev.lineageId, isActive: true },
+          })
+          if (agent) {
+            const agentSettings = agent.settings as any
+            if (agentSettings?.triggerMode === "automatic" && agentSettings?.triggers?.includes("new_period")) {
+              const { inngest } = await import("@/inngest/client")
+              await inngest.send({
+                name: "agent/run",
+                data: {
+                  agentDefinitionId: agent.id,
+                  organizationId,
+                  triggeredBy: null,
+                },
+              })
+              console.log(`[BoardService] Auto-triggered agent ${agent.id} for lineage ${prev.lineageId}`)
+            }
+          }
+        } catch (error) {
+          console.error(`[BoardService] Failed to trigger agent for lineage ${prev.lineageId}:`, error)
+        }
+      }
 
       // Copy collaborators
       if (prev.collaborators.length > 0) {
@@ -637,7 +665,6 @@ export class BoardService {
       }
 
       // Generate report for tasks with a report linked (snapshot the completed period)
-      const prevAny = prev as any
       if (prevAny.reportDefinitionId && previousBoard?.periodStart) {
         try {
           // Derive period key from board's period start date
