@@ -175,9 +175,10 @@ model TaskLineage {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   instances     TaskInstance[]
   importRecipes ImportRecipe[]
+  agents        AgentDefinition[]
 
   @@index([organizationId])
 }
@@ -1625,6 +1626,7 @@ model AgentDefinition {
   description     String?
   configId        String?  // ReconciliationConfig id, ReportDefinition id, etc.
   configType      String?  // "reconciliation_config" | "report_definition"
+  lineageId       String?  // Links agent to a recurring task lineage
   settings        Json     @default("{}")
   // { customInstructions, confidenceThreshold, maxIterations, notifyOnCompletion, notifyOnReview }
   isActive        Boolean  @default(true)
@@ -1634,11 +1636,13 @@ model AgentDefinition {
 
   organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy     User             @relation("AgentCreator", fields: [createdById], references: [id])
+  lineage       TaskLineage?     @relation(fields: [lineageId], references: [id])
   executions    AgentExecution[]
   memories      AgentMemory[]
 
-  @@unique([organizationId, configId])
+  @@unique([organizationId, configId, lineageId])
   @@index([organizationId])
+  @@index([lineageId])
 }
 
 // AgentExecution represents one run of an agent with full reasoning trace

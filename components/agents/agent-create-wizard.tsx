@@ -28,9 +28,17 @@ interface ReconciliationConfig {
   sourceBLabel: string
 }
 
+interface TaskLineageOption {
+  id: string
+  name: string
+  description: string | null
+  latestInstance: { id: string; name: string; status: string; taskType: string | null } | null
+}
+
 interface AgentCreateWizardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  prefilledLineageId?: string | null
 }
 
 const STEPS = [
@@ -52,7 +60,7 @@ const THRESHOLD_OPTIONS = [
   { value: "0.70", label: "Aggressive (70%)", description: "More recommendations, lower accuracy" },
 ]
 
-export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps) {
+export function AgentCreateWizard({ open, onOpenChange, prefilledLineageId }: AgentCreateWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [creating, setCreating] = useState(false)
@@ -66,9 +74,31 @@ export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps
   const [customInstructions, setCustomInstructions] = useState("")
   const [threshold, setThreshold] = useState("0.85")
 
+  // Lineage (recurring task) state
+  const [lineageId, setLineageId] = useState<string>(prefilledLineageId || "")
+  const [lineages, setLineages] = useState<TaskLineageOption[]>([])
+  const [loadingLineages, setLoadingLineages] = useState(false)
+
   // Available configs
   const [configs, setConfigs] = useState<ReconciliationConfig[]>([])
   const [loadingConfigs, setLoadingConfigs] = useState(false)
+
+  // Load lineages on open
+  useEffect(() => {
+    if (open && lineages.length === 0) {
+      setLoadingLineages(true)
+      fetch("/api/task-instances/lineages")
+        .then(res => res.json())
+        .then(data => setLineages(data.lineages || []))
+        .catch(() => {})
+        .finally(() => setLoadingLineages(false))
+    }
+  }, [open, lineages.length])
+
+  // Pre-fill lineageId when prop changes
+  useEffect(() => {
+    if (prefilledLineageId) setLineageId(prefilledLineageId)
+  }, [prefilledLineageId])
 
   // Load reconciliation configs when task type is reconciliation
   useEffect(() => {
@@ -126,6 +156,7 @@ export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps
           description: description || undefined,
           configId: configId || undefined,
           configType: taskType === "reconciliation" && configId ? "reconciliation_config" : undefined,
+          lineageId: lineageId || undefined,
           settings: {
             customInstructions: customInstructions || undefined,
             confidenceThreshold: parseFloat(threshold),
@@ -155,6 +186,7 @@ export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps
     setStep(0)
     setTaskType("")
     setConfigId("")
+    setLineageId(prefilledLineageId || "")
     setName("")
     setDescription("")
     setCustomInstructions("")
@@ -261,6 +293,43 @@ export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps
                   )}
                 </div>
               )}
+
+              {/* Linked recurring task */}
+              <div>
+                <Label>Linked Task (optional)</Label>
+                <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
+                  Link this agent to a recurring task so it works on each new period automatically.
+                </p>
+                {loadingLineages ? (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading tasks...
+                  </div>
+                ) : lineages.length === 0 ? (
+                  <div className="mt-1.5 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
+                    No recurring tasks found. Convert a task to recurring first.
+                  </div>
+                ) : (
+                  <Select value={lineageId} onValueChange={setLineageId}>
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue placeholder="None — not linked to a task" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lineages.map(lin => (
+                        <SelectItem key={lin.id} value={lin.id}>
+                          <div>
+                            <div className="font-medium">{lin.name}</div>
+                            {lin.latestInstance && (
+                              <div className="text-xs text-gray-500">
+                                Latest: {lin.latestInstance.name} ({lin.latestInstance.status})
+                              </div>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
           )}
 
@@ -314,6 +383,9 @@ export function AgentCreateWizard({ open, onOpenChange }: AgentCreateWizardProps
                 <ReviewRow label="Task Type" value={taskType ? taskTypeLabel : "General"} />
                 {taskType === "reconciliation" && configId && (
                   <ReviewRow label="Template" value={configs.find(c => c.id === configId)?.name || configId} />
+                )}
+                {lineageId && (
+                  <ReviewRow label="Linked Task" value={lineages.find(l => l.id === lineageId)?.name || lineageId} />
                 )}
                 <ReviewRow label="Trigger" value="Manual Only" />
                 <ReviewRow

@@ -75,6 +75,9 @@ import { ReportTab } from "@/components/jobs/report-tab"
 // Reconciliation tab
 import { ReconciliationTab } from "@/components/jobs/reconciliation/reconciliation-tab"
 
+// Agent widget
+import { AgentTaskWidget } from "@/components/agents/agent-task-widget"
+
 
 // ============================================
 // Types
@@ -309,6 +312,8 @@ export default function JobDetailPage() {
 
   // Status dropdown
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  // Task type dropdown
+  const [isTaskTypeDropdownOpen, setIsTaskTypeDropdownOpen] = useState(false)
   const [customStatusInput, setCustomStatusInput] = useState("")
 
   // Collaborators
@@ -541,6 +546,22 @@ export default function JobDetailPage() {
       })
     } catch (error) {
       console.error("Error updating status:", error)
+      fetchJob()
+    }
+  }
+
+  const handleTaskTypeChange = async (newType: string | null) => {
+    setJob(prev => prev ? { ...prev, taskType: newType } : null)
+    setIsTaskTypeDropdownOpen(false)
+    try {
+      await fetch(`/api/task-instances/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ taskType: newType })
+      })
+    } catch (error) {
+      console.error("Error updating task type:", error)
       fetchJob()
     }
   }
@@ -900,7 +921,54 @@ export default function JobDetailPage() {
                         ) : (
                           <div className="group flex items-center gap-2">
                             <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
-                            {job.taskType && (
+                            {permissions?.canEdit ? (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setIsTaskTypeDropdownOpen(!isTaskTypeDropdownOpen)}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                                    job.taskType === "reconciliation" ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" :
+                                    job.taskType === "report" ? "bg-blue-50 text-blue-700 hover:bg-blue-100" :
+                                    job.taskType === "form" ? "bg-purple-50 text-purple-700 hover:bg-purple-100" :
+                                    job.taskType === "request" ? "bg-amber-50 text-amber-700 hover:bg-amber-100" :
+                                    "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                  }`}
+                                >
+                                  {job.taskType || "Set type"}
+                                  <ChevronDown className="w-2.5 h-2.5" />
+                                </button>
+                                {isTaskTypeDropdownOpen && (
+                                  <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsTaskTypeDropdownOpen(false)} />
+                                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
+                                      <div className="py-1">
+                                        <button
+                                          onClick={() => handleTaskTypeChange(null)}
+                                          className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${!job.taskType ? "bg-gray-50 font-medium" : ""}`}
+                                        >
+                                          <span className="w-2 h-2 rounded-full bg-gray-300" />
+                                          None
+                                        </button>
+                                        {[
+                                          { value: "reconciliation", label: "Reconciliation", color: "bg-emerald-500" },
+                                          { value: "report", label: "Report", color: "bg-blue-500" },
+                                          { value: "form", label: "Form", color: "bg-purple-500" },
+                                          { value: "request", label: "Request", color: "bg-amber-500" },
+                                        ].map(opt => (
+                                          <button
+                                            key={opt.value}
+                                            onClick={() => handleTaskTypeChange(opt.value)}
+                                            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${job.taskType === opt.value ? "bg-gray-50 font-medium" : ""}`}
+                                          >
+                                            <span className={`w-2 h-2 rounded-full ${opt.color}`} />
+                                            {opt.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ) : job.taskType ? (
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider ${
                                 job.taskType === "reconciliation" ? "bg-emerald-50 text-emerald-700" :
                                 job.taskType === "report" ? "bg-blue-50 text-blue-700" :
@@ -910,7 +978,7 @@ export default function JobDetailPage() {
                               }`}>
                                 {job.taskType}
                               </span>
-                            )}
+                            ) : null}
                             {permissions?.canEdit && (
                               <button
                                 onClick={() => setEditingName(true)}
@@ -1468,6 +1536,16 @@ export default function JobDetailPage() {
                       {!editingNotes ? <button onClick={() => { setNotes(job.labels?.notes || ""); setEditingNotes(true); }} className="text-gray-400 hover:text-gray-600"><Edit2 className="w-3 h-3" /></button> : <div className="flex gap-2"><button onClick={handleSaveNotes} className="text-green-600"><Save className="w-3 h-3" /></button><button onClick={() => setEditingNotes(false)} className="text-gray-400"><X className="w-3 h-3" /></button></div>}
                     </div>
                     {editingNotes ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-[100px] text-sm" /> : <p className="text-xs text-gray-600">{job.labels?.notes || "No notes yet"}</p>}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Agent card — shown when task has a lineage (recurring task) */}
+              {job.lineageId && hasModuleAccess(sessionRole, "agents" as ModuleKey, orgActionPermissions) && (
+                <Card>
+                  <CardContent className="p-4">
+                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Agent</h4>
+                    <AgentTaskWidget lineageId={job.lineageId} readOnly={!permissions?.canEdit} showEmpty />
                   </CardContent>
                 </Card>
               )}

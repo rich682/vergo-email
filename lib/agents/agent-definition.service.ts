@@ -15,6 +15,7 @@ interface CreateAgentInput {
   description?: string
   configId?: string
   configType?: string
+  lineageId?: string | null
   settings?: AgentSettings
 }
 
@@ -39,6 +40,7 @@ export class AgentDefinitionService {
         description: input.description || null,
         configId: input.configId || null,
         configType: input.configType || null,
+        lineageId: input.lineageId || null,
         settings: (input.settings || {}) as any,
       },
     })
@@ -114,6 +116,15 @@ export class AgentDefinitionService {
   static async findByConfig(organizationId: string, configId: string) {
     return prisma.agentDefinition.findFirst({
       where: { organizationId, configId },
+    })
+  }
+
+  /**
+   * Find agent by linked task lineage.
+   */
+  static async findByLineage(organizationId: string, lineageId: string) {
+    return prisma.agentDefinition.findFirst({
+      where: { organizationId, lineageId },
     })
   }
 }

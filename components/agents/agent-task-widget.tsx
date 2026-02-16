@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 
 interface AgentTaskWidgetProps {
-  configId: string
+  configId?: string
+  lineageId?: string
   readOnly?: boolean
+  showEmpty?: boolean
 }
 
 interface AgentInfo {
@@ -23,7 +25,7 @@ interface ExecutionOutcome {
   summary?: string
 }
 
-export function AgentTaskWidget({ configId, readOnly = false }: AgentTaskWidgetProps) {
+export function AgentTaskWidget({ configId, lineageId, readOnly = false, showEmpty = false }: AgentTaskWidgetProps) {
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [executionState, setExecutionState] = useState<"idle" | "running" | "completed">("idle")
@@ -33,13 +35,15 @@ export function AgentTaskWidget({ configId, readOnly = false }: AgentTaskWidgetP
   const [triggering, setTriggering] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Fetch agent linked to this config ────────────────────────────
+  // ── Fetch agent linked to this config or lineage ────────────────
   useEffect(() => {
     let cancelled = false
+    const queryParam = configId ? `configId=${configId}` : lineageId ? `lineageId=${lineageId}` : null
+    if (!queryParam) { setLoading(false); return }
 
     async function fetchAgent() {
       try {
-        const res = await fetch(`/api/agents?configId=${configId}`)
+        const res = await fetch(`/api/agents?${queryParam}`)
         if (!res.ok || cancelled) return
         const data = await res.json()
         const found = data.agents?.[0]
@@ -71,7 +75,7 @@ export function AgentTaskWidget({ configId, readOnly = false }: AgentTaskWidgetP
 
     fetchAgent()
     return () => { cancelled = true }
-  }, [configId])
+  }, [configId, lineageId])
 
   // ── Poll running execution ───────────────────────────────────────
   const pollStatus = useCallback(async () => {
@@ -138,8 +142,23 @@ export function AgentTaskWidget({ configId, readOnly = false }: AgentTaskWidgetP
 
   // ── Render ───────────────────────────────────────────────────────
 
-  // Don't render if no agent or still loading
-  if (loading || !agent) return null
+  if (loading) return null
+
+  // No agent found
+  if (!agent) {
+    if (!showEmpty) return null
+    return (
+      <div className="text-center py-2">
+        <p className="text-xs text-gray-500">No agent linked</p>
+        <Link href="/dashboard/agents">
+          <Button size="sm" variant="ghost" className="text-xs mt-1 h-7 text-orange-600 hover:text-orange-700">
+            <Bot className="w-3 h-3 mr-1" />
+            Create Agent
+          </Button>
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center justify-between p-3 rounded-lg border border-orange-200 bg-gradient-to-r from-orange-50 to-white">

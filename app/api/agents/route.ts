@@ -25,12 +25,19 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const configId = searchParams.get("configId")
+    const lineageId = searchParams.get("lineageId")
 
     let agents
     if (configId) {
       const agent = await AgentDefinitionService.findByConfig(
         session.user.organizationId,
         configId
+      )
+      agents = agent ? [agent] : []
+    } else if (lineageId) {
+      const agent = await AgentDefinitionService.findByLineage(
+        session.user.organizationId,
+        lineageId
       )
       agents = agent ? [agent] : []
     } else {
@@ -56,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { taskType, name, description, configId, configType, settings } = body
+    const { taskType, name, description, configId, configType, lineageId, settings } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -74,6 +81,7 @@ export async function POST(request: NextRequest) {
       description,
       configId,
       configType,
+      lineageId: lineageId || null,
       settings,
     })
 
