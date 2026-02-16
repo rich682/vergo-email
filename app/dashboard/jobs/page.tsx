@@ -157,6 +157,7 @@ export default function JobsPage() {
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
+  const [newJobTaskType, setNewJobTaskType] = useState("")
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   
@@ -589,7 +590,8 @@ export default function JobsPage() {
           description: newJobDescription.trim() || undefined,
           dueDate: newJobDueDate,
           ownerId: newJobOwnerId,
-          boardId: boardId || undefined
+          boardId: boardId || undefined,
+          taskType: newJobTaskType || undefined
         })
       })
       
@@ -617,6 +619,7 @@ export default function JobsPage() {
     setNewJobDescription("")
     setNewJobDueDate("")
     setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
+    setNewJobTaskType("")
     setCreateError(null)
   }
 
@@ -1005,6 +1008,23 @@ export default function JobsPage() {
                     placeholder="Optional description..."
                     className="mt-1"
                   />
+                </div>
+
+                {/* Task Type - Optional */}
+                <div>
+                  <Label htmlFor="taskType" className="text-sm text-gray-500">Task Type (optional)</Label>
+                  <select
+                    id="taskType"
+                    value={newJobTaskType}
+                    onChange={(e) => setNewJobTaskType(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                  >
+                    <option value="">None</option>
+                    <option value="reconciliation">Reconciliation</option>
+                    <option value="report">Report</option>
+                    <option value="form">Form</option>
+                    <option value="request">Request</option>
+                  </select>
                 </div>
 
                 {/* Actions */}

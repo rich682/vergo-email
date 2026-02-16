@@ -37,6 +37,7 @@ export type ModuleKey =
   | "databases"
   | "reconciliations"
   | "contacts"
+  | "agents"
 
 /**
  * Map dashboard/API paths to module keys for access control.
@@ -66,6 +67,8 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
   { path: "/api/reconciliations", module: "reconciliations" },
   { path: "/api/contacts", module: "contacts" },
   { path: "/api/entities", module: "contacts" },
+  { path: "/dashboard/agents", module: "agents" },
+  { path: "/api/agents", module: "agents" },
 ]
 
 /**
@@ -168,6 +171,10 @@ export type ActionKey =
   | "reconciliations:view_runs"
   | "reconciliations:manage"
   | "reconciliations:resolve"
+  // Agents
+  | "agents:view"
+  | "agents:manage"
+  | "agents:execute"
 
 /**
  * Per-role action permission map. Each key is a role name (MANAGER, MEMBER),
@@ -213,6 +220,7 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import",
   "collection:view_all", "collection:manage",
   "reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
+  "agents:view", "agents:manage", "agents:execute",
 ]
 
 /**
@@ -271,6 +279,9 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "reconciliations:view_runs": true,
     "reconciliations:manage": true,
     "reconciliations:resolve": true,
+    "agents:view": true,
+    "agents:manage": true,
+    "agents:execute": true,
   },
   MEMBER: {
     "contacts:view": false,
@@ -319,6 +330,9 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "reconciliations:view_runs": false,
     "reconciliations:manage": false,
     "reconciliations:resolve": false,
+    "agents:view": false,
+    "agents:manage": false,
+    "agents:execute": false,
   },
 }
 
@@ -432,6 +446,15 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "reconciliations:resolve", label: "Resolve exceptions in runs" },
     ],
   },
+  {
+    key: "agents",
+    label: "Agents",
+    actions: [
+      { key: "agents:view", label: "View agents and execution history" },
+      { key: "agents:manage", label: "Create, edit & delete agents" },
+      { key: "agents:execute", label: "Run agents manually" },
+    ],
+  },
 ]
 
 // ─── Module → Action Key Mapping ──────────────────────────────────────────────
@@ -451,6 +474,7 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   databases:       ["databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import"],
   reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   contacts:        ["contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types"],
+  agents:          ["agents:view", "agents:manage", "agents:execute"],
 }
 
 // ─── Core Permission Functions ────────────────────────────────────────────────

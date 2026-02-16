@@ -1,4 +1,5 @@
 import { inngest } from "../client"
+import { agentRunner } from "./agent-runner"
 import { prisma } from "@/lib/prisma"
 import { runDueRemindersOnce, runDueFormRemindersOnce } from "@/lib/services/reminder-runner.service"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
@@ -996,4 +997,6 @@ Use plain language. Be concise.`
     }
   ),
 
+  // AI Agent reasoning loop with deterministic fallback
+  agentRunner,
 ]

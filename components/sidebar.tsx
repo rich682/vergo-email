@@ -138,6 +138,19 @@ function ReportsIcon({ className }: { className?: string }) {
   )
 }
 
+function AgentsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 12v2" />
+      <rect x="6" y="16" width="12" height="5" rx="1" />
+      <path d="M9 16v-2" />
+      <path d="M15 16v-2" />
+    </svg>
+  )
+}
+
 function FormsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -332,6 +345,23 @@ export function Sidebar({
                 >
                   <RequestsIcon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className={labelCls}>Requests</span>
+                </Link>
+              </li>
+            )
+          })()}
+
+          {/* Agents */}
+          {hasAccess("agents") && (() => {
+            const isActive = pathname === "/dashboard/agents" || pathname.startsWith("/dashboard/agents/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/agents"
+                  title={collapsed ? "Agents" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <AgentsIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Agents</span>
                 </Link>
               </li>
             )

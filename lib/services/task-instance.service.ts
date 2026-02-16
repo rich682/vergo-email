@@ -31,6 +31,15 @@ export interface TaskInstanceLabels {
   stakeholders?: TaskInstanceStakeholder[]
 }
 
+export type TaskType = "reconciliation" | "report" | "form" | "request"
+
+export const TASK_TYPES: { value: TaskType; label: string }[] = [
+  { value: "reconciliation", label: "Reconciliation" },
+  { value: "report", label: "Report" },
+  { value: "form", label: "Form" },
+  { value: "request", label: "Request" },
+]
+
 export interface CreateTaskInstanceInput {
   organizationId: string
   lineageId?: string
@@ -42,6 +51,7 @@ export interface CreateTaskInstanceInput {
   dueDate?: Date
   labels?: TaskInstanceLabels
   tags?: string[]
+  taskType?: TaskType
 }
 
 export interface UpdateTaskInstanceInput {
@@ -66,6 +76,8 @@ export interface UpdateTaskInstanceInput {
   reportFilterBindings?: Record<string, string[]> | null
   // Reconciliation configuration
   reconciliationConfigId?: string | null
+  // Task type for agent integration
+  taskType?: TaskType | null
 }
 
 export interface TaskInstanceOwner {
@@ -248,6 +260,7 @@ export class TaskInstanceService {
         boardId: input.boardId,
         dueDate: input.dueDate,
         labels: labels as any,
+        taskType: input.taskType || null,
         status: JobStatus.NOT_STARTED
       },
       include: {
@@ -449,6 +462,7 @@ export class TaskInstanceService {
     if (input.reportDefinitionId !== undefined) updateData.reportDefinitionId = input.reportDefinitionId
     if (input.reportFilterBindings !== undefined) updateData.reportFilterBindings = input.reportFilterBindings
     if (input.reconciliationConfigId !== undefined) updateData.reconciliationConfigId = input.reconciliationConfigId
+    if (input.taskType !== undefined) updateData.taskType = input.taskType
 
     const instance = await prisma.taskInstance.update({
       where: { id },

@@ -161,6 +161,7 @@ model Organization {
   reconciliationConfigs   ReconciliationConfig[]
   accountingIntegration   AccountingIntegration?
   notifications           Notification[]
+  agentDefinitions        AgentDefinition[]
 
   @@index([slug])
 }
@@ -252,6 +253,7 @@ model User {
   reconciliationConfigViewerPermissions ReconciliationConfigViewer[]    @relation("ReconciliationConfigViewerUser")
   databaseViewerPermissions             DatabaseViewer[]                @relation("DatabaseViewerUser")
   createdReconciliationConfigs          ReconciliationConfig[]          @relation("ReconciliationConfigCreator")
+  createdAgents                         AgentDefinition[]               @relation("AgentCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -403,6 +405,9 @@ model TaskInstance {
   
   // Reconciliation configuration - any task can point to a reusable reconciliation config
   reconciliationConfigId String?
+
+  // Task type - optional classification for agent integration
+  taskType               String?  // "reconciliation" | "report" | "form" | "request"
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1607,5 +1612,151 @@ model AccountingIntegration {
 
   @@index([organizationId])
   @@index([isActive])
+}
+
+// ── AI Agent Feature ─────────────────────────────────────────────────────
+
+// AgentDefinition represents a configured AI agent optionally linked to a task type and config
+model AgentDefinition {
+  id              String   @id @default(cuid())
+  organizationId  String
+  taskType        String?  // "reconciliation" | "report" | "form" | "request"
+  name            String   // "Chase Bank Rec Agent"
+  description     String?
+  configId        String?  // ReconciliationConfig id, ReportDefinition id, etc.
+  configType      String?  // "reconciliation_config" | "report_definition"
+  settings        Json     @default("{}")
+  // { customInstructions, confidenceThreshold, maxIterations, notifyOnCompletion, notifyOnReview }
+  isActive        Boolean  @default(true)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User             @relation("AgentCreator", fields: [createdById], references: [id])
+  executions    AgentExecution[]
+  memories      AgentMemory[]
+
+  @@unique([organizationId, configId])
+  @@index([organizationId])
+}
+
+// AgentExecution represents one run of an agent with full reasoning trace
+model AgentExecution {
+  id                String   @id @default(cuid())
+  organizationId    String
+  agentDefinitionId String
+  triggerType       String   // "manual" | "event"
+  triggeredBy       String?  // userId who triggered
+  goal              String
+  inputContext       Json    @default("{}")
+  status            String   @default("running")
+  // "running" | "completed" | "failed" | "needs_review" | "cancelled"
+  cancelled         Boolean  @default(false)
+
+  steps             Json     @default("[]")
+  // Array of { stepNumber, timestamp, reasoning, action, toolName, toolInput, toolOutput, status, model, tokensUsed }
+
+  outcome           Json?
+  // { matchRate, matchedCount, exceptionCount, recommended, flaggedForReview, variance, summary }
+
+  // Execution metadata
+  promptVersion     String?  // "recon-agent-v1.0" for debugging
+  fallbackUsed      Boolean  @default(false)
+  fallbackReason    String?
+  llmCallCount      Int      @default(0)
+  totalTokensUsed   Int      @default(0)
+  estimatedCostUsd  Float?
+  executionTimeMs   Int?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  agentDefinition  AgentDefinition       @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  feedback         AgentFeedback[]
+  metrics          AgentExecutionMetrics?
+
+  @@index([agentDefinitionId, createdAt])
+  @@index([organizationId, status])
+}
+
+// AgentMemory stores persistent knowledge the agent learns over time
+model AgentMemory {
+  id                String   @id @default(cuid())
+  organizationId    String
+  agentDefinitionId String
+  scope             String   // "entity" | "pattern" | "config"
+  entityKey         String?  // Vendor name, account number
+  category          String?  // "timing_delay" | "bank_fee" | "column_mapping"
+  content           Json     // Structured memory content
+  conditions        Json?    // When this memory applies: { vendor, amountRange, descContains }
+
+  // Bayesian confidence: confidence = correctCount / totalCount
+  confidence        Float    @default(0.5)
+  correctCount      Int      @default(1)  // Beta prior: starts at 1
+  totalCount        Int      @default(2)  // Beta prior: starts at 2 (gives 0.5)
+  usageCount        Int      @default(0)
+  lastUsedAt        DateTime?
+  isArchived        Boolean  @default(false) // Soft-deleted by TTL cleanup
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  agentDefinition  AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([agentDefinitionId, scope, confidence])
+  @@index([agentDefinitionId, entityKey])
+  @@index([agentDefinitionId, isArchived, lastUsedAt])
+}
+
+// AgentFeedback stores human corrections on agent recommendations
+model AgentFeedback {
+  id              String   @id @default(cuid())
+  organizationId  String
+  executionId     String
+  feedbackType    String   // "correction" | "approval" | "rejection"
+  originalValue   Json?    // What agent decided
+  correctedValue  Json?    // What human wanted
+  correctedBy     String
+  createdAt       DateTime @default(now())
+
+  execution  AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+}
+
+// AgentExecutionMetrics tracks improvement over time (before/after comparison)
+model AgentExecutionMetrics {
+  id                      String   @id @default(cuid())
+  organizationId          String
+  executionId             String   @unique
+  agentDefinitionId       String
+  periodKey               String?
+
+  // Before/after comparison (agent's value-add)
+  baselineMatchRate       Float?   // Deterministic-only result
+  agentMatchRate          Float?   // After agent enhancement
+  exceptionsTotal         Int?
+  exceptionsRecommended   Int?     // Agent recommendations made
+  humanCorrections        Int?     // Agent recs that were overridden
+
+  // Memory usage
+  memoriesUsed            Int?
+  memoriesCreated         Int?
+  memoriesUpdated         Int?
+
+  // Cost tracking
+  llmCallCount            Int?
+  totalTokensUsed         Int?
+  estimatedCostUsd        Float?
+  executionTimeMs         Int?
+  fallbackUsed            Boolean  @default(false)
+
+  createdAt               DateTime @default(now())
+
+  execution  AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([agentDefinitionId, createdAt])
+  @@index([agentDefinitionId, periodKey])
 }
 

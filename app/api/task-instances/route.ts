@@ -116,7 +116,8 @@ export async function POST(request: NextRequest) {
       tags,
       ownerId,
       boardId,
-      lineageId
+      lineageId,
+      taskType
     } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -137,7 +138,8 @@ export async function POST(request: NextRequest) {
       dueDate: dueDate ? new Date(dueDate) : undefined,
       labels: labels || undefined,
       tags: tags || undefined,
-      lineageId: lineageId || undefined
+      lineageId: lineageId || undefined,
+      taskType: taskType || undefined
     })
 
     return NextResponse.json({

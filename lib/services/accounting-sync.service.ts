@@ -545,6 +545,56 @@ export class AccountingSyncService {
       synced++
     }
 
+    // ── Also populate system Vendors/Customers databases for agent use ──
+    try {
+      const { VendorDatabaseService } = await import("@/lib/agents/vendor-database.service")
+
+      // Find admin user for database creation
+      const adminUser = await prisma.user.findFirst({
+        where: { organizationId, role: "ADMIN" },
+        select: { id: true },
+      })
+
+      if (adminUser) {
+        const vendorContacts = contacts
+          .filter((c) => c.is_supplier && !c.remote_was_deleted)
+          .map((c) => ({
+            name: c.name || "Unknown",
+            email: c.email_addresses?.find((e) => e.email_address)?.email_address || undefined,
+            phone: c.phone_numbers?.find((p) => p.number)?.number || undefined,
+            company: c.company || undefined,
+            merge_remote_id: c.id || undefined,
+          }))
+
+        const customerContacts = contacts
+          .filter((c) => c.is_customer && !c.remote_was_deleted)
+          .map((c) => ({
+            name: c.name || "Unknown",
+            email: c.email_addresses?.find((e) => e.email_address)?.email_address || undefined,
+            phone: c.phone_numbers?.find((p) => p.number)?.number || undefined,
+            company: c.company || undefined,
+            merge_remote_id: c.id || undefined,
+          }))
+
+        if (vendorContacts.length > 0) {
+          const { id: vendorDbId } = await VendorDatabaseService.ensureSystemDatabase(
+            organizationId, adminUser.id, "vendors"
+          )
+          await VendorDatabaseService.upsertContacts(vendorDbId, vendorContacts)
+        }
+
+        if (customerContacts.length > 0) {
+          const { id: customerDbId } = await VendorDatabaseService.ensureSystemDatabase(
+            organizationId, adminUser.id, "customers"
+          )
+          await VendorDatabaseService.upsertContacts(customerDbId, customerContacts)
+        }
+      }
+    } catch (vendorDbError) {
+      // Non-fatal: agent vendor databases are supplementary
+      console.warn("[AccountingSyncService] Failed to sync vendor/customer databases:", vendorDbError)
+    }
+
     return synced
   }
 

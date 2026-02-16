@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { ReconciliationUpload } from "./reconciliation-upload"
 import { ReconciliationResults } from "./reconciliation-results"
+import { AgentTaskWidget } from "@/components/agents/agent-task-widget"
 
 interface ReconciliationTabProps {
   jobId: string
@@ -333,6 +334,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   if (!activeRun) {
     return (
       <div className="space-y-4">
+        <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium text-gray-700">{linkedConfig.name}</h3>
@@ -374,6 +376,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   if (activeRun.status === "PENDING") {
     return (
       <div className="space-y-4">
+        <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium text-gray-700">{linkedConfig.name}</h3>
@@ -407,12 +410,15 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   // Run: PROCESSING
   if (activeRun.status === "PROCESSING" || matching) {
     return (
-      <div className="text-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-3" />
-        <p className="text-sm text-gray-700 font-medium">Running reconciliation...</p>
-        <p className="text-xs text-gray-400 mt-1">
-          Matching {activeRun.totalSourceA} x {activeRun.totalSourceB} transactions using deterministic + AI matching
-        </p>
+      <div className="space-y-4">
+        <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
+        <div className="text-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-3" />
+          <p className="text-sm text-gray-700 font-medium">Running reconciliation...</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Matching {activeRun.totalSourceA} x {activeRun.totalSourceB} transactions using deterministic + AI matching
+          </p>
+        </div>
       </div>
     )
   }
@@ -421,6 +427,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   if ((activeRun.status === "REVIEW" || activeRun.status === "COMPLETE") && activeRun.matchResults) {
     return (
       <div className="space-y-4">
+        <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-700">{linkedConfig.name}</h3>
           <div className="flex items-center gap-2">

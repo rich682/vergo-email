@@ -128,10 +128,10 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId, taskType } = body
 
     // Determine if this is a status-only update (collaborators can do this)
-    const isStatusOnlyUpdate = status && !name && !description && !clientId && !dueDate && !labels && !stakeholders && !ownerId && !notes && !customFields && !createLineage && !reportDefinitionId && !reportFilterBindings && !reconciliationConfigId
+    const isStatusOnlyUpdate = status && !name && !description && !clientId && !dueDate && !labels && !stakeholders && !ownerId && !notes && !customFields && !createLineage && !reportDefinitionId && !reportFilterBindings && !reconciliationConfigId && !taskType
 
     if (isStatusOnlyUpdate) {
       // Collaborators can update status
@@ -255,6 +255,8 @@ export async function PATCH(
       reportFilterBindings: reportFilterBindings !== undefined ? reportFilterBindings : undefined,
       // Reconciliation configuration
       reconciliationConfigId: reconciliationConfigId !== undefined ? reconciliationConfigId : undefined,
+      // Task type for agent integration
+      taskType: taskType !== undefined ? taskType : undefined,
     })
 
     if (!taskInstance) {

@@ -131,6 +131,8 @@ interface Job {
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null
+  // Task type for agent integration
+  taskType?: string | null
 }
 
 interface Permissions {
@@ -898,6 +900,17 @@ export default function JobDetailPage() {
                         ) : (
                           <div className="group flex items-center gap-2">
                             <h1 className="text-2xl font-semibold text-gray-900">{job.name}</h1>
+                            {job.taskType && (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider ${
+                                job.taskType === "reconciliation" ? "bg-emerald-50 text-emerald-700" :
+                                job.taskType === "report" ? "bg-blue-50 text-blue-700" :
+                                job.taskType === "form" ? "bg-purple-50 text-purple-700" :
+                                job.taskType === "request" ? "bg-amber-50 text-amber-700" :
+                                "bg-gray-100 text-gray-600"
+                              }`}>
+                                {job.taskType}
+                              </span>
+                            )}
                             {permissions?.canEdit && (
                               <button
                                 onClick={() => setEditingName(true)}
