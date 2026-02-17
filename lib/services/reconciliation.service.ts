@@ -22,6 +22,7 @@ export interface MatchingRules {
   amountTolerance?: number
   dateWindowDays: number
   fuzzyDescription: boolean
+  columnTolerances?: Record<string, { type: string; tolerance: number }>
 }
 
 // ── Config CRUD ────────────────────────────────────────────────────────

@@ -46,6 +46,7 @@ interface ColumnMapping {
   sourceBKey: string
   type: "date" | "amount" | "text" | "reference"
   label: string
+  tolerance?: number // ±$ for amount, ±days for date
 }
 
 interface ReconciliationSetupProps {
@@ -76,12 +77,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   const [mappings, setMappings] = useState<ColumnMapping[]>([])
   const [ignoredColsA, setIgnoredColsA] = useState<Set<string>>(new Set())
   const [ignoredColsB, setIgnoredColsB] = useState<Set<string>>(new Set())
-
-  // Matching rules
-  const [amountMatch, setAmountMatch] = useState<"exact" | "tolerance">("exact")
-  const [amountTolerance, setAmountTolerance] = useState(0)
-  const [dateWindowDays, setDateWindowDays] = useState(3)
-  const [fuzzyDescription, setFuzzyDescription] = useState(true)
 
   // Config name
   const [name, setName] = useState(taskName ? `${taskName} Reconciliation` : "")
@@ -187,7 +182,13 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   const updateMappingType = (index: number, type: ColumnMapping["type"]) => {
     const updated = [...mappings]
-    updated[index] = { ...updated[index], type }
+    updated[index] = { ...updated[index], type, tolerance: undefined }
+    setMappings(updated)
+  }
+
+  const updateMappingTolerance = (index: number, tolerance: number) => {
+    const updated = [...mappings]
+    updated[index] = { ...updated[index], tolerance }
     setMappings(updated)
   }
 
@@ -269,7 +270,20 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         })),
       }
 
-      // 1. Create the config (standalone -- no task association)
+      // Build matching rules from per-column tolerances
+      const amountMapping = mappings.find((m) => m.type === "amount")
+      const dateMapping = mappings.find((m) => m.type === "date")
+      const amountTol = amountMapping?.tolerance || 0
+      const dateTol = dateMapping?.tolerance || 0
+
+      const columnTolerances: Record<string, { type: string; tolerance: number }> = {}
+      for (const m of mappings) {
+        if (m.tolerance !== undefined && m.tolerance > 0) {
+          columnTolerances[m.sourceAKey] = { type: m.type, tolerance: m.tolerance }
+        }
+      }
+
+      // 1. Create the config
       const configRes = await fetch("/api/reconciliations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -278,10 +292,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           sourceAConfig,
           sourceBConfig,
           matchingRules: {
-            amountMatch,
-            amountTolerance: amountMatch === "tolerance" ? amountTolerance : 0,
-            dateWindowDays,
-            fuzzyDescription,
+            amountMatch: amountTol > 0 ? "tolerance" : "exact",
+            amountTolerance: amountTol,
+            dateWindowDays: dateTol,
+            fuzzyDescription: true,
+            columnTolerances: Object.keys(columnTolerances).length > 0 ? columnTolerances : undefined,
           },
         }),
       })
@@ -480,8 +495,19 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Map Columns</h3>
           <p className="text-sm text-gray-500">
-            AI has suggested how columns from each file match up. Adjust the mappings and mark columns as relevant or ignored.
+            AI has suggested how columns from each file match up. Adjust the mappings, set tolerances, and mark columns as relevant or ignored.
           </p>
+        </div>
+
+        {/* Reconciliation Name — at the top */}
+        <div>
+          <Label className="text-xs text-gray-500">Reconciliation Name</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 h-8 text-sm"
+            placeholder="e.g. Chase Checking Bank Rec"
+          />
         </div>
 
         {/* Source labels */}
@@ -515,18 +541,19 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
           <div className="space-y-2">
             {/* Header */}
-            <div className="grid grid-cols-[1fr_32px_1fr_100px_32px] gap-2 items-center px-2">
+            <div className="grid grid-cols-[1fr_32px_1fr_100px_120px_32px] gap-2 items-center px-2">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceALabel}</span>
               <span />
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceBLabel}</span>
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Type</span>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Tolerance</span>
               <span />
             </div>
 
             {mappings.map((mapping, i) => (
               <div
                 key={i}
-                className="grid grid-cols-[1fr_32px_1fr_100px_32px] gap-2 items-center bg-gray-50 rounded-lg px-2 py-1.5"
+                className="grid grid-cols-[1fr_32px_1fr_100px_120px_32px] gap-2 items-center bg-gray-50 rounded-lg px-2 py-1.5"
               >
                 {/* Source A column */}
                 <div>
@@ -587,6 +614,40 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                     <SelectItem value="reference">Reference</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {/* Tolerance — contextual per type */}
+                <div>
+                  {mapping.type === "amount" ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">±$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={mapping.tolerance ?? 0}
+                        onChange={(e) => updateMappingTolerance(i, Number(e.target.value))}
+                        className="h-7 text-xs w-full"
+                        placeholder="0"
+                      />
+                    </div>
+                  ) : mapping.type === "date" ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">±</span>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={mapping.tolerance ?? 0}
+                        onChange={(e) => updateMappingTolerance(i, Number(e.target.value))}
+                        className="h-7 text-xs w-16"
+                        placeholder="0"
+                      />
+                      <span className="text-xs text-gray-400">days</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400 px-1">Exact</span>
+                  )}
+                </div>
 
                 {/* Remove */}
                 <button
@@ -697,70 +758,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             </div>
           </div>
         )}
-
-        {/* Matching rules */}
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-3">Matching Rules</h4>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label className="text-xs text-gray-500">Amount Matching</Label>
-              <Select value={amountMatch} onValueChange={(v: "exact" | "tolerance") => setAmountMatch(v)}>
-                <SelectTrigger className="mt-1 h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="exact">Exact Match</SelectItem>
-                  <SelectItem value="tolerance">Tolerance</SelectItem>
-                </SelectContent>
-              </Select>
-              {amountMatch === "tolerance" && (
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={amountTolerance}
-                  onChange={(e) => setAmountTolerance(Number(e.target.value))}
-                  className="mt-2 h-8 text-sm"
-                  placeholder="$ tolerance"
-                />
-              )}
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">Date Window</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  type="number"
-                  value={dateWindowDays}
-                  onChange={(e) => setDateWindowDays(Number(e.target.value))}
-                  className="h-8 text-sm w-20"
-                />
-                <span className="text-xs text-gray-500">days</span>
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">AI Fuzzy Matching</Label>
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={() => setFuzzyDescription(!fuzzyDescription)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${fuzzyDescription ? "bg-orange-500" : "bg-gray-200"}`}
-                >
-                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${fuzzyDescription ? "translate-x-4" : "translate-x-0.5"}`} />
-                </button>
-                <span className="text-xs text-gray-600">{fuzzyDescription ? "Enabled" : "Disabled"}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Config name */}
-        <div>
-          <Label className="text-xs text-gray-500">Reconciliation Name</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 h-8 text-sm"
-            placeholder="e.g. Chase Checking Bank Rec"
-          />
-        </div>
 
         {error && (
           <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">

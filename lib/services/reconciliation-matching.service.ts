@@ -127,22 +127,29 @@ export class ReconciliationMatchingService {
 
         if (amountB === null) continue
 
-        // Amount check
+        // Amount check — use per-column tolerance if available, else global
         let amountMatch = false
-        if (matchingRules.amountMatch === "exact") {
-          // Check both same sign and opposite sign (bank vs GL conventions)
+        const amountCol = colsA.find((c) => c.type === "amount")
+        const amountTolerance = matchingRules.columnTolerances?.[amountCol?.key || ""]?.tolerance
+          ?? matchingRules.amountTolerance ?? 0
+        const useExactAmount = amountTolerance === 0 && matchingRules.amountMatch === "exact"
+
+        if (useExactAmount) {
           amountMatch = Math.abs(amountA - amountB) < 0.01 || Math.abs(amountA + amountB) < 0.01
         } else {
-          const tolerance = matchingRules.amountTolerance || 0
+          const tol = amountTolerance || 0
           amountMatch =
-            Math.abs(amountA - amountB) <= tolerance || Math.abs(amountA + amountB) <= tolerance
+            Math.abs(amountA - amountB) <= tol || Math.abs(amountA + amountB) <= tol
         }
 
         if (!amountMatch) continue
 
-        // Date check (if both dates available)
+        // Date check — use per-column tolerance if available, else global
         if (dateA && dateB) {
-          if (daysDiff(dateA, dateB) > matchingRules.dateWindowDays) continue
+          const dateCol = colsA.find((c) => c.type === "date")
+          const dateWindowDays = matchingRules.columnTolerances?.[dateCol?.key || ""]?.tolerance
+            ?? matchingRules.dateWindowDays ?? 0
+          if (daysDiff(dateA, dateB) > dateWindowDays) continue
         }
 
         // Match found!

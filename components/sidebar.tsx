@@ -482,10 +482,10 @@ export function Sidebar({
           })()}
         </ul>
 
-        {/* ── Data ── */}
+        {/* ── Workflows ── */}
         {!collapsed && (
           <div className="px-4 pt-4 pb-1">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Data</span>
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Workflows</span>
           </div>
         )}
         {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
@@ -524,23 +524,6 @@ export function Sidebar({
             )
           })()}
 
-          {/* Databases */}
-          {hasAccess("databases") && (() => {
-            const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
-            return (
-              <li>
-                <Link
-                  href="/dashboard/databases"
-                  title={collapsed ? "Databases" : undefined}
-                  className={navCls(isActive)}
-                >
-                  <DatabasesIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Databases</span>
-                </Link>
-              </li>
-            )
-          })()}
-
           {/* Reconciliations */}
           {hasAccess("reconciliations") && (() => {
             const isActive = pathname === "/dashboard/reconciliations" || pathname.startsWith("/dashboard/reconciliations/")
@@ -553,6 +536,32 @@ export function Sidebar({
                 >
                   <ReconciliationsIcon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className={labelCls}>Reconciliations</span>
+                </Link>
+              </li>
+            )
+          })()}
+        </ul>
+
+        {/* ── Data ── */}
+        {!collapsed && (
+          <div className="px-4 pt-4 pb-1">
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Data</span>
+          </div>
+        )}
+        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
+          {/* Databases */}
+          {hasAccess("databases") && (() => {
+            const isActive = pathname === "/dashboard/databases" || pathname.startsWith("/dashboard/databases/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/databases"
+                  title={collapsed ? "Databases" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <DatabasesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Databases</span>
                 </Link>
               </li>
             )
