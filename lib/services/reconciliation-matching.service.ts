@@ -1,7 +1,11 @@
 /**
  * ReconciliationMatchingService
- * Three-pass matching engine: deterministic → AI fuzzy → AI exception classification.
- * Follows the same pattern as risk-computation.service.ts (deterministic first, AI second, fallback).
+ * Three-pass matching engine: composite scoring → AI fuzzy → AI exception classification.
+ *
+ * Pass 1: Composite scored matching using amount + date + reference + text similarity.
+ *         Replaces the old greedy first-match approach with ranked scoring and conflict resolution.
+ * Pass 2: AI fuzzy matching with full row data + column mapping context.
+ * Pass 3: AI exception classification for remaining unmatched items.
  */
 import OpenAI from "openai"
 import type { SourceConfig, MatchingRules } from "./reconciliation.service"
@@ -14,6 +18,7 @@ export interface MatchPair {
   confidence: number  // 0-100
   method: "exact" | "fuzzy_ai"
   reasoning?: string
+  signInverted?: boolean  // true if amounts matched by sign inversion (bank vs GL)
 }
 
 export interface ExceptionClassification {
@@ -31,7 +36,29 @@ export interface MatchingResult {
   variance: number
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Internal scoring types ─────────────────────────────────────────────
+
+interface CandidateScore {
+  bIdx: number
+  totalScore: number
+  amountScore: number
+  dateScore: number
+  referenceScore: number
+  textScore: number
+  signInverted: boolean
+}
+
+interface ScoredMatch {
+  aIdx: number
+  candidates: CandidateScore[]  // sorted by totalScore descending, top 3
+}
+
+interface ReferenceMatchResult {
+  type: "exact" | "partial" | "none"
+  score: number  // 0.0 to 1.0
+}
+
+// ── Parsing Helpers ────────────────────────────────────────────────────
 
 function parseAmount(value: any): number | null {
   if (value === null || value === undefined || value === "") return null
@@ -43,8 +70,50 @@ function parseAmount(value: any): number | null {
 
 function parseDate(value: any): Date | null {
   if (!value) return null
-  if (value instanceof Date) return value
-  const d = new Date(String(value))
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+
+  // Handle Excel serial date numbers (e.g., 46053 = 2026-02-06)
+  if (typeof value === "number") {
+    if (value > 25000 && value < 60000) {
+      const excelEpoch = new Date(1899, 11, 30)
+      const d = new Date(excelEpoch.getTime() + value * 86400000)
+      return isNaN(d.getTime()) ? null : d
+    }
+    if (value > 1000000000 && value < 2000000000) {
+      return new Date(value * 1000)
+    }
+    if (value > 1000000000000) {
+      return new Date(value)
+    }
+    return null
+  }
+
+  const str = String(value).trim()
+  if (!str) return null
+
+  // MM/DD/YYYY or MM-DD-YYYY
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (m) {
+    const d = new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]))
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // DD.MM.YYYY (European dot separator)
+  m = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+  if (m) {
+    const d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]))
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD (ISO-like)
+  m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+  if (m) {
+    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // Fallback: native Date.parse for text formats ("Jan 15, 2026", "15 Feb 2026", etc.)
+  const d = new Date(str)
   return isNaN(d.getTime()) ? null : d
 }
 
@@ -52,13 +121,14 @@ function daysDiff(a: Date, b: Date): number {
   return Math.abs(Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24)))
 }
 
+// ── Column Extraction Helpers ──────────────────────────────────────────
+
 function getColumnByType(row: Record<string, any>, columns: { key: string; type: string }[], type: string): any {
   const col = columns.find((c) => c.type === type)
   return col ? row[col.key] : undefined
 }
 
 function getAmountFromRow(row: Record<string, any>, columns: { key: string; type: string }[]): number | null {
-  // Look for amount columns -- if there are separate debit/credit, net them
   const amountCols = columns.filter((c) => c.type === "amount")
   if (amountCols.length === 0) return null
 
@@ -66,13 +136,12 @@ function getAmountFromRow(row: Record<string, any>, columns: { key: string; type
     return parseAmount(row[amountCols[0].key])
   }
 
-  // Multiple amount columns: try to net debit/credit
+  // Multiple amount columns: net debit/credit
   let total = 0
   for (const col of amountCols) {
     const label = col.key.toLowerCase()
     const val = parseAmount(row[col.key])
     if (val === null) continue
-    // If it's labeled as debit, treat as positive; credit as negative (or vice versa)
     if (label.includes("debit")) {
       total += Math.abs(val)
     } else if (label.includes("credit")) {
@@ -87,6 +156,234 @@ function getAmountFromRow(row: Record<string, any>, columns: { key: string; type
 function getDescriptionFromRow(row: Record<string, any>, columns: { key: string; type: string }[]): string {
   const textCols = columns.filter((c) => c.type === "text")
   return textCols.map((c) => String(row[c.key] || "")).join(" ").trim()
+}
+
+function getReferenceFromRow(row: Record<string, any>, columns: { key: string; type: string }[]): string[] {
+  return columns
+    .filter((c) => c.type === "reference")
+    .map((c) => String(row[c.key] || "").trim())
+    .filter((v) => v.length > 0)
+}
+
+// ── Text Similarity (zero-dependency) ──────────────────────────────────
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 1)
+}
+
+/**
+ * Token-based text similarity with prefix matching for abbreviations.
+ * Uses Jaccard-like coefficient + half credit for prefix matches (e.g., "amzn" → "amazon").
+ */
+function tokenSimilarityWithPrefixes(a: string, b: string): number {
+  if (!a || !b) return 0
+  const tokensA = tokenize(a)
+  const tokensB = tokenize(b)
+  if (tokensA.length === 0 || tokensB.length === 0) return 0
+
+  const setB = new Set(tokensB)
+
+  let exactMatches = 0
+  for (const t of tokensA) {
+    if (setB.has(t)) exactMatches++
+  }
+
+  // Prefix matches for abbreviations (min 3 chars)
+  let prefixMatches = 0
+  for (const tA of tokensA) {
+    if (setB.has(tA)) continue // already counted
+    for (const tB of tokensB) {
+      if (tB === tA) continue
+      const shorter = tA.length <= tB.length ? tA : tB
+      const longer = tA.length <= tB.length ? tB : tA
+      if (shorter.length >= 3 && longer.startsWith(shorter)) {
+        prefixMatches += 0.5
+        break
+      }
+    }
+  }
+
+  const score = (exactMatches + prefixMatches) / Math.max(tokensA.length, tokensB.length)
+  return Math.min(score, 1.0)
+}
+
+// ── Reference Matching ─────────────────────────────────────────────────
+
+function referenceMatch(refsA: string[], refsB: string[]): ReferenceMatchResult {
+  if (refsA.length === 0 || refsB.length === 0) {
+    return { type: "none", score: 0 }
+  }
+
+  // Exact string match
+  for (const rA of refsA) {
+    for (const rB of refsB) {
+      if (rA === rB) return { type: "exact", score: 1.0 }
+    }
+  }
+
+  // Case-insensitive exact match
+  for (const rA of refsA) {
+    for (const rB of refsB) {
+      if (rA.toLowerCase() === rB.toLowerCase()) return { type: "exact", score: 0.95 }
+    }
+  }
+
+  // Containment (e.g., "12345" in "INV-12345")
+  for (const rA of refsA) {
+    for (const rB of refsB) {
+      const shorter = rA.length <= rB.length ? rA : rB
+      const longer = rA.length <= rB.length ? rB : rA
+      if (shorter.length >= 3 && longer.includes(shorter)) {
+        return { type: "partial", score: 0.7 }
+      }
+    }
+  }
+
+  // Numeric-only comparison (strip non-digits, compare core numbers)
+  const numA = refsA.map((r) => r.replace(/\D/g, "")).filter((r) => r.length >= 3)
+  const numB = refsB.map((r) => r.replace(/\D/g, "")).filter((r) => r.length >= 3)
+  for (const nA of numA) {
+    for (const nB of numB) {
+      if (nA === nB) return { type: "partial", score: 0.6 }
+    }
+  }
+
+  return { type: "none", score: 0 }
+}
+
+// ── Composite Scoring ──────────────────────────────────────────────────
+
+/**
+ * Score a candidate B row against an A row.
+ * Returns null if amount or date is outside tolerance (hard gate).
+ * Otherwise returns composite score with breakdown.
+ */
+function scoreCandidate(
+  aRow: Record<string, any>,
+  bRow: Record<string, any>,
+  bIdx: number,
+  colsA: { key: string; type: string }[],
+  colsB: { key: string; type: string }[],
+  matchingRules: MatchingRules,
+  hasReferenceColumns: boolean
+): CandidateScore | null {
+  const amountA = getAmountFromRow(aRow, colsA)
+  const amountB = getAmountFromRow(bRow, colsB)
+  if (amountA === null || amountB === null) return null
+
+  // ── Amount scoring (hard gate: must match within tolerance) ──
+  const amountCol = colsA.find((c) => c.type === "amount")
+  const amountTolerance = matchingRules.columnTolerances?.[amountCol?.key || ""]?.tolerance
+    ?? matchingRules.amountTolerance ?? 0
+  const useExact = amountTolerance === 0 && matchingRules.amountMatch === "exact"
+
+  let amountScore = 0
+  let signInverted = false
+  const directDiff = Math.abs(amountA - amountB)
+  const invertedDiff = Math.abs(amountA + amountB)
+
+  if (useExact) {
+    if (directDiff < 0.01) amountScore = 50
+    else if (invertedDiff < 0.01) { amountScore = 45; signInverted = true }
+    else return null
+  } else {
+    const tol = amountTolerance || 0
+    if (directDiff < 0.01) amountScore = 50
+    else if (invertedDiff < 0.01) { amountScore = 45; signInverted = true }
+    else if (directDiff <= tol) amountScore = 40
+    else if (invertedDiff <= tol) { amountScore = 35; signInverted = true }
+    else return null
+  }
+
+  // ── Date scoring (hard gate: must be within window if both present) ──
+  const dateA = parseDate(getColumnByType(aRow, colsA, "date"))
+  const dateB = parseDate(getColumnByType(bRow, colsB, "date"))
+  let dateScore = 0
+
+  if (dateA && dateB) {
+    const dateCol = colsA.find((c) => c.type === "date")
+    const dateWindowDays = matchingRules.columnTolerances?.[dateCol?.key || ""]?.tolerance
+      ?? matchingRules.dateWindowDays ?? 0
+    const diff = daysDiff(dateA, dateB)
+
+    if (diff > dateWindowDays) return null // Outside date window
+
+    if (diff === 0) dateScore = 25
+    else if (diff === 1) dateScore = 22
+    else dateScore = Math.max(15, 25 - diff * 2)
+  } else {
+    dateScore = 10 // One or both missing dates — neutral
+  }
+
+  // ── Reference scoring ──
+  let referenceScore = 0
+  if (hasReferenceColumns) {
+    const refsA = getReferenceFromRow(aRow, colsA)
+    const refsB = getReferenceFromRow(bRow, colsB)
+    const refResult = referenceMatch(refsA, refsB)
+
+    if (refResult.type === "exact") referenceScore = 30
+    else if (refResult.type === "partial") referenceScore = Math.round(refResult.score * 30)
+    else if (refsA.length > 0 && refsB.length > 0) referenceScore = -5 // Both have refs, no match — negative signal
+    // else: one side missing refs, stays 0 (neutral)
+  }
+
+  // ── Text similarity scoring (tiebreaker) ──
+  const descA = getDescriptionFromRow(aRow, colsA)
+  const descB = getDescriptionFromRow(bRow, colsB)
+  let textScore = 0
+  if (descA && descB) {
+    const sim = tokenSimilarityWithPrefixes(descA, descB)
+    if (sim >= 0.8) textScore = 10
+    else if (sim >= 0.5) textScore = 6
+    else if (sim >= 0.2) textScore = 3
+  }
+
+  const totalScore = amountScore + dateScore + referenceScore + textScore
+
+  return { bIdx, totalScore, amountScore, dateScore, referenceScore, textScore, signInverted }
+}
+
+/**
+ * Resolve scored matches: assign each A row to its best available B row.
+ * Highest-scoring pairs are assigned first; losing rows fall to their next candidate.
+ */
+function resolveMatches(scoredMatches: ScoredMatch[]): MatchPair[] {
+  const MIN_THRESHOLD = 55
+  const result: MatchPair[] = []
+  const assignedB = new Set<number>()
+  const assignedA = new Set<number>()
+
+  // Sort A rows by their best score (strongest first)
+  const sorted = [...scoredMatches].sort(
+    (a, b) => (b.candidates[0]?.totalScore ?? 0) - (a.candidates[0]?.totalScore ?? 0)
+  )
+
+  for (const sm of sorted) {
+    if (assignedA.has(sm.aIdx)) continue
+
+    for (const cand of sm.candidates) {
+      if (assignedB.has(cand.bIdx)) continue
+      if (cand.totalScore < MIN_THRESHOLD) break
+
+      result.push({
+        sourceAIdx: sm.aIdx,
+        sourceBIdx: cand.bIdx,
+        confidence: Math.min(100, Math.round((cand.totalScore / 105) * 100)),
+        method: "exact",
+        signInverted: cand.signInverted || undefined,
+      })
+      assignedA.add(sm.aIdx)
+      assignedB.add(cand.bIdx)
+      break
+    }
+  }
+
+  return result
 }
 
 // ── Main Service ───────────────────────────────────────────────────────
@@ -105,71 +402,52 @@ export class ReconciliationMatchingService {
     const colsA = sourceAConfig.columns || []
     const colsB = sourceBConfig.columns || []
 
-    // Track which rows are matched
     const matchedAIndices = new Set<number>()
     const matchedBIndices = new Set<number>()
-    const matched: MatchPair[] = []
 
-    // ── Pass 1: Deterministic exact matching ─────────────────────────
+    // ── Pass 1: Composite scored matching ──────────────────────────────
+    const hasRefColsA = colsA.some((c) => c.type === "reference")
+    const hasRefColsB = colsB.some((c) => c.type === "reference")
+    const hasReferenceColumns = hasRefColsA && hasRefColsB
+
+    const scoredMatches: ScoredMatch[] = []
+
     for (let aIdx = 0; aIdx < sourceARows.length; aIdx++) {
-      if (matchedAIndices.has(aIdx)) continue
-
       const amountA = getAmountFromRow(sourceARows[aIdx], colsA)
-      const dateA = parseDate(getColumnByType(sourceARows[aIdx], colsA, "date"))
-
       if (amountA === null) continue
 
+      const candidates: CandidateScore[] = []
+
       for (let bIdx = 0; bIdx < sourceBRows.length; bIdx++) {
-        if (matchedBIndices.has(bIdx)) continue
-
-        const amountB = getAmountFromRow(sourceBRows[bIdx], colsB)
-        const dateB = parseDate(getColumnByType(sourceBRows[bIdx], colsB, "date"))
-
-        if (amountB === null) continue
-
-        // Amount check — use per-column tolerance if available, else global
-        let amountMatch = false
-        const amountCol = colsA.find((c) => c.type === "amount")
-        const amountTolerance = matchingRules.columnTolerances?.[amountCol?.key || ""]?.tolerance
-          ?? matchingRules.amountTolerance ?? 0
-        const useExactAmount = amountTolerance === 0 && matchingRules.amountMatch === "exact"
-
-        if (useExactAmount) {
-          amountMatch = Math.abs(amountA - amountB) < 0.01 || Math.abs(amountA + amountB) < 0.01
-        } else {
-          const tol = amountTolerance || 0
-          amountMatch =
-            Math.abs(amountA - amountB) <= tol || Math.abs(amountA + amountB) <= tol
-        }
-
-        if (!amountMatch) continue
-
-        // Date check — use per-column tolerance if available, else global
-        if (dateA && dateB) {
-          const dateCol = colsA.find((c) => c.type === "date")
-          const dateWindowDays = matchingRules.columnTolerances?.[dateCol?.key || ""]?.tolerance
-            ?? matchingRules.dateWindowDays ?? 0
-          if (daysDiff(dateA, dateB) > dateWindowDays) continue
-        }
-
-        // Match found!
-        matched.push({
-          sourceAIdx: aIdx,
-          sourceBIdx: bIdx,
-          confidence: 100,
-          method: "exact",
-        })
-        matchedAIndices.add(aIdx)
-        matchedBIndices.add(bIdx)
-        break // Move to next A row
+        const score = scoreCandidate(
+          sourceARows[aIdx],
+          sourceBRows[bIdx],
+          bIdx,
+          colsA,
+          colsB,
+          matchingRules,
+          hasReferenceColumns
+        )
+        if (score) candidates.push(score)
       }
+
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => b.totalScore - a.totalScore)
+        scoredMatches.push({ aIdx, candidates: candidates.slice(0, 3) })
+      }
+    }
+
+    const matched = resolveMatches(scoredMatches)
+    for (const m of matched) {
+      matchedAIndices.add(m.sourceAIdx)
+      matchedBIndices.add(m.sourceBIdx)
     }
 
     // Collect unmatched indices
     let unmatchedA = sourceARows.map((_, i) => i).filter((i) => !matchedAIndices.has(i))
     let unmatchedB = sourceBRows.map((_, i) => i).filter((i) => !matchedBIndices.has(i))
 
-    // ── Pass 2: AI fuzzy matching (if enabled and there are unmatched items) ─
+    // ── Pass 2: AI fuzzy matching (if enabled) ─────────────────────────
     if (matchingRules.fuzzyDescription && unmatchedA.length > 0 && unmatchedB.length > 0) {
       try {
         const aiMatches = await this.runAIFuzzyMatching(
@@ -189,7 +467,6 @@ export class ReconciliationMatchingService {
           }
         }
 
-        // Recalculate unmatched
         unmatchedA = sourceARows.map((_, i) => i).filter((i) => !matchedAIndices.has(i))
         unmatchedB = sourceBRows.map((_, i) => i).filter((i) => !matchedBIndices.has(i))
       } catch (error) {
@@ -197,7 +474,7 @@ export class ReconciliationMatchingService {
       }
     }
 
-    // ── Pass 3: AI exception classification ──────────────────────────
+    // ── Pass 3: AI exception classification ────────────────────────────
     let exceptions: ExceptionClassification[] = []
     if (unmatchedA.length > 0 || unmatchedB.length > 0) {
       try {
@@ -213,7 +490,6 @@ export class ReconciliationMatchingService {
         )
       } catch (error) {
         console.error("[Reconciliation] AI exception classification failed:", error)
-        // Fallback: label all as unclassified
         exceptions = [
           ...unmatchedA.map((idx) => ({
             category: "other",
@@ -242,13 +518,7 @@ export class ReconciliationMatchingService {
     }, 0)
     const variance = Math.round((unmatchedATotal - unmatchedBTotal) * 100) / 100
 
-    return {
-      matched,
-      unmatchedA,
-      unmatchedB,
-      exceptions,
-      variance,
-    }
+    return { matched, unmatchedA, unmatchedB, exceptions, variance }
   }
 
   // ── Pass 2: AI Fuzzy Matching ──────────────────────────────────────
@@ -263,58 +533,102 @@ export class ReconciliationMatchingService {
   ): Promise<MatchPair[]> {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-    // Prepare summaries of unmatched items (batch up to 30 from each side)
-    const batchA = unmatchedA.slice(0, 30).map((idx) => ({
-      idx,
-      amount: getAmountFromRow(sourceARows[idx], colsA),
-      date: getColumnByType(sourceARows[idx], colsA, "date"),
-      description: getDescriptionFromRow(sourceARows[idx], colsA),
-      reference: getColumnByType(sourceARows[idx], colsA, "reference"),
+    // Build column mapping context for the AI
+    const columnMappings = colsA.map((colA, i) => ({
+      sourceA: colA.key,
+      sourceB: colsB[i]?.key || "N/A",
+      type: colA.type,
     }))
 
-    const batchB = unmatchedB.slice(0, 30).map((idx) => ({
-      idx,
-      amount: getAmountFromRow(sourceBRows[idx], colsB),
-      date: getColumnByType(sourceBRows[idx], colsB, "date"),
-      description: getDescriptionFromRow(sourceBRows[idx], colsB),
-      reference: getColumnByType(sourceBRows[idx], colsB, "reference"),
-    }))
+    const allAIMatches: MatchPair[] = []
+    const aiMatchedA = new Set<number>()
+    const aiMatchedB = new Set<number>()
 
-    const response = await Promise.race([
-      openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a bank reconciliation matching assistant. Match transactions between two sources based on amount similarity, date proximity, description similarity, and reference numbers.
-Amounts may differ by sign convention (bank vs GL). Dates may be off by a few days. Descriptions will be different text but refer to the same transaction.
-Respond with JSON: { "matches": [{ "sourceAIdx": number, "sourceBIdx": number, "confidence": number, "reasoning": string }] }
-Only include matches where confidence >= 70. Be conservative -- false positives are worse than missing a match.`,
-          },
-          {
-            role: "user",
-            content: `Match these unmatched transactions:\n\nSource A (unmatched):\n${JSON.stringify(batchA, null, 1)}\n\nSource B (unmatched):\n${JSON.stringify(batchB, null, 1)}`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-        max_tokens: 500,
-      }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("AI timeout")), 15000)),
-    ])
+    const BATCH_SIZE = 30
+    const MAX_BATCHES = 3
 
-    const parsed = JSON.parse(response.choices[0]?.message?.content || '{"matches":[]}')
-    const aiMatches: MatchPair[] = (parsed.matches || [])
-      .filter((m: any) => m.confidence >= 70)
-      .map((m: any) => ({
-        sourceAIdx: m.sourceAIdx,
-        sourceBIdx: m.sourceBIdx,
-        confidence: m.confidence,
-        method: "fuzzy_ai" as const,
-        reasoning: m.reasoning,
+    for (let batch = 0; batch < MAX_BATCHES; batch++) {
+      const batchAIndices = unmatchedA.filter((idx) => !aiMatchedA.has(idx)).slice(0, BATCH_SIZE)
+      const batchBIndices = unmatchedB.filter((idx) => !aiMatchedB.has(idx)).slice(0, BATCH_SIZE)
+
+      if (batchAIndices.length === 0 || batchBIndices.length === 0) break
+
+      // Send ALL column data, not just summary fields
+      const batchA = batchAIndices.map((idx) => ({
+        idx,
+        data: Object.fromEntries(colsA.map((c) => [c.key, sourceARows[idx][c.key]])),
       }))
 
-    return aiMatches
+      const batchB = batchBIndices.map((idx) => ({
+        idx,
+        data: Object.fromEntries(colsB.map((c) => [c.key, sourceBRows[idx][c.key]])),
+      }))
+
+      const columnContext = columnMappings
+        .map((m) => `  "${m.sourceA}" ↔ "${m.sourceB}" (${m.type})`)
+        .join("\n")
+
+      const response = await Promise.race([
+        openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `You are a bank reconciliation matching assistant. Match transactions between two sources.
+
+COLUMN MAPPINGS (Source A column → Source B column, type):
+${columnContext}
+
+MATCHING RULES:
+- Amounts may differ by sign convention (bank debits are negative, GL debits are positive for the same transaction)
+- Dates may be off by a few business days (processing delays, posting dates vs transaction dates)
+- Descriptions/text columns often use DIFFERENT formats for the SAME entity:
+  * "AMAZON MARKETPLACE" = "AMZN MKTP US" (merchant name abbreviations)
+  * "WIRE TRANSFER - ACME CORP" = "ACH PMT ACME" (payment method + vendor variations)
+  * "CHECK #1234" = "CK 1234" (reference format differences)
+  * "PAYROLL - JAN 2026" = "PR 01/2026 DIRECT DEP" (payroll description variations)
+- Reference numbers may have different prefixes but share the same core number (e.g., "INV-12345" = "12345")
+- Look for semantic matches, not just string matches
+
+Respond with JSON: { "matches": [{ "sourceAIdx": number, "sourceBIdx": number, "confidence": number, "reasoning": string }] }
+Only include matches where confidence >= 70. Be conservative — false positives are worse than missing a match.`,
+            },
+            {
+              role: "user",
+              content: `Match these unmatched transactions:\n\nSource A (unmatched):\n${JSON.stringify(batchA, null, 1)}\n\nSource B (unmatched):\n${JSON.stringify(batchB, null, 1)}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_tokens: 1000,
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("AI timeout")), 20000)),
+      ])
+
+      const parsed = JSON.parse(response.choices[0]?.message?.content || '{"matches":[]}')
+      const batchMatches: MatchPair[] = (parsed.matches || [])
+        .filter((m: any) => m.confidence >= 70)
+        .map((m: any) => ({
+          sourceAIdx: m.sourceAIdx,
+          sourceBIdx: m.sourceBIdx,
+          confidence: m.confidence,
+          method: "fuzzy_ai" as const,
+          reasoning: m.reasoning,
+        }))
+
+      for (const m of batchMatches) {
+        if (!aiMatchedA.has(m.sourceAIdx) && !aiMatchedB.has(m.sourceBIdx)) {
+          allAIMatches.push(m)
+          aiMatchedA.add(m.sourceAIdx)
+          aiMatchedB.add(m.sourceBIdx)
+        }
+      }
+
+      // If this batch found no matches, no point continuing
+      if (batchMatches.length === 0) break
+    }
+
+    return allAIMatches
   }
 
   // ── Pass 3: Exception Classification ───────────────────────────────

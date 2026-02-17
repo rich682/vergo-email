@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Settings,
   Trash2,
-  Plus,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 import { usePermissions } from "@/components/permissions-context"
+import { ReconciliationResults } from "@/components/jobs/reconciliation/reconciliation-results"
 
 // ============================================
 // Types
@@ -43,6 +45,7 @@ interface MatchingRules {
   amountTolerance?: number
   dateWindowDays: number
   fuzzyDescription: boolean
+  columnTolerances?: Record<string, { type: string; tolerance: number }>
 }
 
 interface Run {
@@ -59,6 +62,22 @@ interface Run {
   sourceBFileName: string | null
   createdAt: string
   completedAt: string | null
+}
+
+interface FullRunData {
+  id: string
+  status: string
+  matchResults: any
+  exceptions: Record<string, any>
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  matchedCount: number
+  exceptionCount: number
+  variance: number
+  totalSourceA: number
+  totalSourceB: number
+  completedAt: string | null
+  completedByUser?: { name?: string | null; email: string } | null
 }
 
 interface TaskInstance {
@@ -104,6 +123,14 @@ export default function ReconciliationDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Selected run for viewing results
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [selectedRunData, setSelectedRunData] = useState<FullRunData | null>(null)
+  const [loadingRun, setLoadingRun] = useState(false)
+
+  // Show/hide config section
+  const [configExpanded, setConfigExpanded] = useState(false)
+
   // Viewer dialog
   const [viewerDialogOpen, setViewerDialogOpen] = useState(false)
   const [viewers, setViewers] = useState<Viewer[]>([])
@@ -134,6 +161,15 @@ export default function ReconciliationDetailPage() {
           email: v.user.email,
         }))
       )
+
+      // Auto-select the latest run that has results
+      const runs = data.config.runs || []
+      const latestWithResults = runs.find(
+        (r: Run) => r.status === "REVIEW" || r.status === "COMPLETE"
+      )
+      if (latestWithResults) {
+        setSelectedRunId(latestWithResults.id)
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -141,9 +177,44 @@ export default function ReconciliationDetailPage() {
     }
   }, [configId])
 
+  // Fetch full run data when selectedRunId changes
+  const fetchRunData = useCallback(async (runId: string) => {
+    setLoadingRun(true)
+    try {
+      const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}`)
+      if (!res.ok) throw new Error("Failed to load run data")
+      const data = await res.json()
+      setSelectedRunData({
+        id: data.run.id,
+        status: data.run.status,
+        matchResults: data.run.matchResults,
+        exceptions: data.run.exceptions || {},
+        sourceARows: data.run.sourceARows || [],
+        sourceBRows: data.run.sourceBRows || [],
+        matchedCount: data.run.matchedCount,
+        exceptionCount: data.run.exceptionCount,
+        variance: data.run.variance,
+        totalSourceA: data.run.totalSourceA,
+        totalSourceB: data.run.totalSourceB,
+        completedAt: data.run.completedAt,
+        completedByUser: data.run.completedByUser,
+      })
+    } catch {
+      setSelectedRunData(null)
+    } finally {
+      setLoadingRun(false)
+    }
+  }, [configId])
+
   useEffect(() => {
     fetchConfig()
   }, [fetchConfig])
+
+  useEffect(() => {
+    if (selectedRunId) {
+      fetchRunData(selectedRunId)
+    }
+  }, [selectedRunId, fetchRunData])
 
   const handleDelete = async () => {
     setDeleting(true)
@@ -154,6 +225,13 @@ export default function ReconciliationDetailPage() {
     } catch {
       setDeleting(false)
     }
+  }
+
+  const handleRefreshRun = async () => {
+    if (selectedRunId) {
+      await fetchRunData(selectedRunId)
+    }
+    await fetchConfig()
   }
 
   // ── Loading / Error ──────────────────────────────────────────────
@@ -198,7 +276,7 @@ export default function ReconciliationDetailPage() {
   const sourceB = config.sourceBConfig as SourceConfig
 
   return (
-    <div className="p-8 max-w-5xl space-y-8">
+    <div className="p-8 max-w-6xl space-y-6">
       {/* Back */}
       <Link
         href="/dashboard/reconciliations"
@@ -248,64 +326,72 @@ export default function ReconciliationDetailPage() {
         )}
       </div>
 
-      {/* Configuration Summary */}
+      {/* Configuration Summary — collapsible */}
       <section className="border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b">
+        <button
+          onClick={() => setConfigExpanded(!configExpanded)}
+          className="w-full px-4 py-3 bg-gray-50 border-b flex items-center justify-between hover:bg-gray-100 transition-colors"
+        >
           <h2 className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <Settings className="w-4 h-4 text-gray-400" />
             Configuration
           </h2>
-        </div>
-        <div className="p-4 space-y-4">
-          {/* Sources */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
-                {sourceA.label || "Source A"}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {sourceA.columns.map((col) => (
-                  <span
-                    key={col.key}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700"
-                  >
-                    {col.label}
-                    <span className="text-blue-400 text-[10px]">({col.type})</span>
-                  </span>
-                ))}
+          {configExpanded ? (
+            <ChevronUp className="w-4 h-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+        {configExpanded && (
+          <div className="p-4 space-y-4">
+            {/* Sources */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
+                  {sourceA.label || "Source A"}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {sourceA.columns.map((col) => (
+                    <span
+                      key={col.key}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700"
+                    >
+                      {col.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
+                  {sourceB.label || "Source B"}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {sourceB.columns.map((col) => (
+                    <span
+                      key={col.key}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700"
+                    >
+                      {col.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
-                {sourceB.label || "Source B"}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {sourceB.columns.map((col) => (
-                  <span
-                    key={col.key}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700"
-                  >
-                    {col.label}
-                    <span className="text-purple-400 text-[10px]">({col.type})</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
 
-          {/* Matching Rules */}
-          <div className="flex items-center gap-6 text-xs text-gray-600">
-            <span>
-              Amount: <span className="font-medium">{matchingRules.amountMatch === "exact" ? "Exact match" : `±$${matchingRules.amountTolerance || 0}`}</span>
-            </span>
-            <span>
-              Date window: <span className="font-medium">{matchingRules.dateWindowDays} days</span>
-            </span>
-            <span>
-              AI fuzzy matching: <span className="font-medium">{matchingRules.fuzzyDescription ? "Enabled" : "Disabled"}</span>
-            </span>
+            {/* Matching Rules */}
+            <div className="flex items-center gap-6 text-xs text-gray-600">
+              <span>
+                Amount: <span className="font-medium">{matchingRules.amountMatch === "exact" ? "Exact match" : `±$${matchingRules.amountTolerance || 0}`}</span>
+              </span>
+              <span>
+                Date window: <span className="font-medium">{matchingRules.dateWindowDays} days</span>
+              </span>
+              <span>
+                AI fuzzy matching: <span className="font-medium">{matchingRules.fuzzyDescription ? "Enabled" : "Disabled"}</span>
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {/* Linked Tasks */}
@@ -336,21 +422,13 @@ export default function ReconciliationDetailPage() {
       )}
 
       {/* Run History */}
-      <section className="border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b">
-          <h2 className="text-sm font-medium text-gray-700">
-            Run History ({config.runs.length})
-          </h2>
-        </div>
-        {config.runs.length === 0 ? (
-          <div className="text-center py-10">
-            <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No runs yet</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Link this reconciliation to a task and run it to see results here.
-            </p>
+      {config.runs.length > 0 && config.runs.length > 1 && (
+        <section className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b">
+            <h2 className="text-sm font-medium text-gray-700">
+              Run History ({config.runs.length})
+            </h2>
           </div>
-        ) : (
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
@@ -364,13 +442,21 @@ export default function ReconciliationDetailPage() {
             <tbody className="divide-y divide-gray-100">
               {config.runs.map((run) => {
                 const runStatus = STATUS_STYLES[run.status] || STATUS_STYLES.PENDING
+                const isSelected = selectedRunId === run.id
+                const hasResults = run.status === "REVIEW" || run.status === "COMPLETE"
                 return (
                   <tr
                     key={run.id}
-                    className={`${run.taskInstanceId ? "hover:bg-gray-50 cursor-pointer" : ""}`}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? "bg-orange-50 hover:bg-orange-50"
+                        : hasResults
+                          ? "hover:bg-gray-50"
+                          : "opacity-60"
+                    }`}
                     onClick={() => {
-                      if (run.taskInstanceId) {
-                        router.push(`/dashboard/jobs/${run.taskInstanceId}?tab=reconciliation`)
+                      if (hasResults) {
+                        setSelectedRunId(isSelected ? null : run.id)
                       }
                     }}
                   >
@@ -416,8 +502,58 @@ export default function ReconciliationDetailPage() {
               })}
             </tbody>
           </table>
-        )}
-      </section>
+        </section>
+      )}
+
+      {/* Results Panel — shows when a run is selected */}
+      {selectedRunId && (
+        <section>
+          {loadingRun ? (
+            <div className="flex items-center justify-center py-12 border rounded-lg">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : selectedRunData?.matchResults ? (
+            <ReconciliationResults
+              configId={configId}
+              runId={selectedRunId}
+              matchResults={selectedRunData.matchResults}
+              exceptions={selectedRunData.exceptions}
+              sourceARows={selectedRunData.sourceARows}
+              sourceBRows={selectedRunData.sourceBRows}
+              sourceALabel={sourceA.label}
+              sourceBLabel={sourceB.label}
+              matchedCount={selectedRunData.matchedCount}
+              exceptionCount={selectedRunData.exceptionCount}
+              variance={selectedRunData.variance}
+              totalSourceA={selectedRunData.totalSourceA}
+              totalSourceB={selectedRunData.totalSourceB}
+              status={selectedRunData.status}
+              completedAt={selectedRunData.completedAt}
+              completedByUser={selectedRunData.completedByUser}
+              onComplete={handleRefreshRun}
+              onRefresh={handleRefreshRun}
+            />
+          ) : (
+            <div className="text-center py-12 border rounded-lg">
+              <Scale className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">No match results available for this run</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Empty state — no runs at all */}
+      {config.runs.length === 0 && (
+        <section className="border rounded-lg overflow-hidden">
+          <div className="text-center py-10">
+            <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No runs yet</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Link this reconciliation to a task and run it to see results here.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Viewer Management Dialog */}
       <Dialog open={viewerDialogOpen} onOpenChange={setViewerDialogOpen}>

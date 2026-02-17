@@ -17,6 +17,7 @@ interface MatchPair {
   confidence: number
   method: "exact" | "fuzzy_ai"
   reasoning?: string
+  signInverted?: boolean
 }
 
 interface ExceptionEntry {
@@ -67,47 +68,87 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   other: { label: "Other", color: "bg-gray-100 text-gray-700" },
 }
 
-function getAmountDisplay(row: Record<string, any>): string {
-  // Look for any key with "amount" in the name
+// ── Helpers ────────────────────────────────────────────────────────────
+
+function formatCellValue(value: any): string {
+  if (value === null || value === undefined || value === "") return "—"
+  if (typeof value === "number") {
+    // If it looks like currency (has decimals or is large)
+    if (Number.isFinite(value) && (value % 1 !== 0 || Math.abs(value) > 100)) {
+      return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+    return value.toLocaleString()
+  }
+  const str = String(value)
+  // Try to format dates
+  if (str.match(/^\d{4}-\d{2}-\d{2}/) || str.match(/^\d{1,2}\/\d{1,2}\/\d{4}/)) {
+    try {
+      const d = new Date(str)
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      }
+    } catch { /* fall through */ }
+  }
+  return str.length > 50 ? str.substring(0, 50) + "…" : str
+}
+
+function getColumnKeys(rows: Record<string, any>[]): string[] {
+  if (rows.length === 0) return []
+  // Use the first row's keys, filtering out internal/system keys
+  const INTERNAL = new Set(["__rowIndex", "__parsed", "__sourceFile"])
+  return Object.keys(rows[0]).filter((k) => !INTERNAL.has(k))
+}
+
+function getAmountValue(row: Record<string, any>): number | null {
   for (const key of Object.keys(row)) {
-    if (key.toLowerCase().includes("amount") || key.toLowerCase().includes("debit") || key.toLowerCase().includes("credit")) {
+    const k = key.toLowerCase()
+    if (k.includes("amount") || k.includes("debit") || k.includes("credit")) {
       const val = row[key]
-      if (val !== null && val !== undefined && val !== "") {
-        return typeof val === "number" ? `$${val.toFixed(2)}` : `$${val}`
+      if (typeof val === "number") return val
+      if (typeof val === "string") {
+        const num = parseFloat(val.replace(/[$,\s]/g, "").replace(/\((.+)\)/, "-$1"))
+        if (!isNaN(num)) return num
       }
     }
   }
-  return ""
+  return null
 }
 
-function getDescriptionDisplay(row: Record<string, any>): string {
-  for (const key of Object.keys(row)) {
-    if (key.toLowerCase().includes("description") || key.toLowerCase().includes("memo") || key.toLowerCase().includes("text")) {
-      return String(row[key] || "").substring(0, 60)
+// Find the closest potential match from the other source for an unmatched row
+function findSuggestedMatch(
+  row: Record<string, any>,
+  candidateRows: Record<string, any>[],
+  candidateIndices: number[]
+): { idx: number; score: string } | null {
+  const amount = getAmountValue(row)
+  if (amount === null || candidateIndices.length === 0) return null
+
+  let bestIdx = -1
+  let bestDiff = Infinity
+
+  for (const idx of candidateIndices) {
+    const candAmount = getAmountValue(candidateRows[idx])
+    if (candAmount === null) continue
+    // Check both same-sign and opposite-sign (bank vs GL convention)
+    const diff = Math.min(Math.abs(amount - candAmount), Math.abs(amount + candAmount))
+    if (diff < bestDiff) {
+      bestDiff = diff
+      bestIdx = idx
     }
   }
-  // Fallback: join all text values
-  return Object.values(row)
-    .filter((v) => typeof v === "string" && v.length > 3)
-    .join(", ")
-    .substring(0, 60)
+
+  if (bestIdx === -1) return null
+  // Only suggest if reasonably close (within 20% or $100)
+  const threshold = Math.max(Math.abs(amount) * 0.2, 100)
+  if (bestDiff > threshold) return null
+
+  return {
+    idx: bestIdx,
+    score: bestDiff < 0.01 ? "Amount match" : `±$${bestDiff.toFixed(2)} difference`,
+  }
 }
 
-function getDateDisplay(row: Record<string, any>): string {
-  for (const key of Object.keys(row)) {
-    if (key.toLowerCase().includes("date")) {
-      const val = row[key]
-      if (!val) return ""
-      try {
-        const d = new Date(val)
-        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-      } catch {
-        return String(val).substring(0, 10)
-      }
-    }
-  }
-  return ""
-}
+// ── Component ──────────────────────────────────────────────────────────
 
 export function ReconciliationResults({
   configId,
@@ -129,13 +170,16 @@ export function ReconciliationResults({
   onComplete,
   onRefresh,
 }: ReconciliationResultsProps) {
-  const [view, setView] = useState<"summary" | "matched" | "exceptions">("summary")
+  const [view, setView] = useState<"matched" | "exceptions">("matched")
   const [completing, setCompleting] = useState(false)
   const [resolvingKey, setResolvingKey] = useState<string | null>(null)
-  const [expandedMatch, setExpandedMatch] = useState<number | null>(null)
+  const [expandedRow, setExpandedRow] = useState<number | null>(null)
 
   const isComplete = status === "COMPLETE"
   const matchRate = totalSourceA > 0 ? Math.round((matchedCount / totalSourceA) * 100) : 0
+
+  const colsA = useMemo(() => getColumnKeys(sourceARows), [sourceARows])
+  const colsB = useMemo(() => getColumnKeys(sourceBRows), [sourceBRows])
 
   const exceptionsList = useMemo(() => {
     return Object.entries(exceptions || {}).map(([key, val]) => ({
@@ -143,6 +187,10 @@ export function ReconciliationResults({
       ...val,
     }))
   }, [exceptions])
+
+  // Split exceptions by source for the two-panel view
+  const exceptionsA = useMemo(() => exceptionsList.filter((e) => e.source === "A"), [exceptionsList])
+  const exceptionsB = useMemo(() => exceptionsList.filter((e) => e.source === "B"), [exceptionsList])
 
   const handleComplete = async () => {
     if (!confirm("Sign off on this reconciliation? This action cannot be undone.")) return
@@ -170,15 +218,15 @@ export function ReconciliationResults({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Summary Bar */}
+    <div className="space-y-4">
+      {/* Summary Stats */}
       <div className="grid grid-cols-5 gap-3">
-        <SummaryCard label="Source A" value={`${totalSourceA} rows`} sublabel={sourceALabel} />
-        <SummaryCard label="Source B" value={`${totalSourceB} rows`} sublabel={sourceBLabel} />
+        <SummaryCard label={sourceALabel} value={`${totalSourceA}`} sublabel="rows" />
+        <SummaryCard label={sourceBLabel} value={`${totalSourceB}`} sublabel="rows" />
         <SummaryCard
           label="Matched"
           value={`${matchedCount}`}
-          sublabel={`${matchRate}% match rate`}
+          sublabel={`${matchRate}%`}
           color={matchRate >= 90 ? "text-green-600" : matchRate >= 70 ? "text-amber-600" : "text-red-600"}
         />
         <SummaryCard
@@ -189,13 +237,13 @@ export function ReconciliationResults({
         />
         <SummaryCard
           label="Variance"
-          value={`$${Math.abs(variance).toFixed(2)}`}
+          value={`$${Math.abs(variance).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
           sublabel={variance === 0 ? "Balanced" : variance > 0 ? "Over" : "Under"}
           color={variance === 0 ? "text-green-600" : "text-red-600"}
         />
       </div>
 
-      {/* Status/Completion */}
+      {/* Status bar */}
       {isComplete ? (
         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
           <CheckCircle2 className="w-4 h-4 text-green-600" />
@@ -210,7 +258,7 @@ export function ReconciliationResults({
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
             <p className="text-sm text-amber-800">
-              Review complete. {exceptionCount > 0 ? `${exceptionCount} exceptions need resolution.` : "No exceptions found."}
+              {exceptionCount > 0 ? `${exceptionCount} exceptions need resolution.` : "No exceptions. Ready to sign off."}
             </p>
           </div>
           <Button onClick={handleComplete} disabled={completing} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
@@ -220,192 +268,330 @@ export function ReconciliationResults({
         </div>
       )}
 
-      {/* View Tabs */}
+      {/* Tabs */}
       <div className="flex items-center gap-4 border-b border-gray-200">
-        {(["summary", "matched", "exceptions"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setView(tab)}
-            className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-              view === tab
-                ? "border-orange-500 text-orange-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab === "summary" ? "Summary" : tab === "matched" ? `Matched (${matchedCount})` : `Exceptions (${exceptionCount})`}
-          </button>
-        ))}
+        <button
+          onClick={() => setView("matched")}
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+            view === "matched"
+              ? "border-orange-500 text-orange-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Matched ({matchedCount})
+        </button>
+        <button
+          onClick={() => setView("exceptions")}
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+            view === "exceptions"
+              ? "border-orange-500 text-orange-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Unmatched ({exceptionCount})
+        </button>
       </div>
 
-      {/* Tab Content */}
-      {view === "summary" && (
-        <div className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 grid grid-cols-5">
-              <span>Method</span>
-              <span>Count</span>
-              <span>% of Total</span>
-              <span>Avg Confidence</span>
-              <span>Status</span>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {/* Exact matches */}
-              <div className="px-4 py-2.5 text-sm grid grid-cols-5">
-                <span className="text-gray-900">Exact Match</span>
-                <span className="text-gray-600">{matchResults.matched.filter((m) => m.method === "exact").length}</span>
-                <span className="text-gray-600">
-                  {totalSourceA > 0 ? Math.round((matchResults.matched.filter((m) => m.method === "exact").length / totalSourceA) * 100) : 0}%
-                </span>
-                <span className="text-gray-600">100%</span>
-                <span className="text-green-600 font-medium">Verified</span>
-              </div>
-              {/* AI matches */}
-              <div className="px-4 py-2.5 text-sm grid grid-cols-5">
-                <span className="text-gray-900">AI Fuzzy Match</span>
-                <span className="text-gray-600">{matchResults.matched.filter((m) => m.method === "fuzzy_ai").length}</span>
-                <span className="text-gray-600">
-                  {totalSourceA > 0 ? Math.round((matchResults.matched.filter((m) => m.method === "fuzzy_ai").length / totalSourceA) * 100) : 0}%
-                </span>
-                <span className="text-gray-600">
-                  {matchResults.matched.filter((m) => m.method === "fuzzy_ai").length > 0
-                    ? Math.round(
-                        matchResults.matched
-                          .filter((m) => m.method === "fuzzy_ai")
-                          .reduce((sum, m) => sum + m.confidence, 0) /
-                          matchResults.matched.filter((m) => m.method === "fuzzy_ai").length
-                      ) + "%"
-                    : "N/A"}
-                </span>
-                <span className="text-amber-600 font-medium">Review</span>
-              </div>
-              {/* Unmatched */}
-              <div className="px-4 py-2.5 text-sm grid grid-cols-5">
-                <span className="text-gray-900">Unmatched / Exception</span>
-                <span className="text-gray-600">{exceptionCount}</span>
-                <span className="text-gray-600">{totalSourceA > 0 ? Math.round((exceptionCount / totalSourceA) * 100) : 0}%</span>
-                <span className="text-gray-600">N/A</span>
-                <span className="text-red-600 font-medium">{exceptionCount > 0 ? "Needs Review" : "Clean"}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* ── Matched Tab ──────────────────────────────────────────── */}
       {view === "matched" && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 grid grid-cols-7">
-            <span>{sourceALabel} Date</span>
-            <span>{sourceALabel} Desc</span>
-            <span>{sourceALabel} Amount</span>
-            <span>{sourceBLabel} Date</span>
-            <span>{sourceBLabel} Desc</span>
-            <span>{sourceBLabel} Amount</span>
-            <span>Method</span>
+          {/* Scrollable table */}
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 w-8">
+                    #
+                  </th>
+                  {/* Source A columns */}
+                  {colsA.map((col, i) => (
+                    <th
+                      key={`a-${col}`}
+                      className={`px-3 py-2 text-left text-[10px] font-semibold text-blue-600 uppercase tracking-wider whitespace-nowrap ${
+                        i === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                      }`}
+                    >
+                      {col.replace(/_/g, " ")}
+                    </th>
+                  ))}
+                  {/* Source B columns */}
+                  {colsB.map((col) => (
+                    <th
+                      key={`b-${col}`}
+                      className="px-3 py-2 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {col.replace(/_/g, " ")}
+                    </th>
+                  ))}
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-20">
+                    Match
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {matchResults.matched.map((match, i) => {
+                  const rowA = sourceARows[match.sourceAIdx]
+                  const rowB = sourceBRows[match.sourceBIdx]
+                  const isExpanded = expandedRow === i
+                  return (
+                    <tr
+                      key={i}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setExpandedRow(isExpanded ? null : i)}
+                    >
+                      <td className="px-3 py-2 text-gray-400 border-r border-gray-200 text-center">
+                        {i + 1}
+                      </td>
+                      {colsA.map((col, ci) => (
+                        <td
+                          key={`a-${col}`}
+                          className={`px-3 py-2 text-gray-700 whitespace-nowrap ${
+                            ci === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                          }`}
+                        >
+                          {rowA ? formatCellValue(rowA[col]) : "—"}
+                        </td>
+                      ))}
+                      {colsB.map((col) => (
+                        <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                          {rowB ? formatCellValue(rowB[col]) : "—"}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          match.method === "exact" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {match.method === "exact"
+                            ? `Exact${match.confidence < 100 ? ` ${match.confidence}%` : ""}${match.signInverted ? " (±)" : ""}`
+                            : `AI ${match.confidence}%`}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {matchResults.matched.length === 0 && (
+                  <tr>
+                    <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-8 text-center text-sm text-gray-400">
+                      No matched items
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-            {matchResults.matched.map((match, i) => {
-              const rowA = sourceARows[match.sourceAIdx]
-              const rowB = sourceBRows[match.sourceBIdx]
-              const isExpanded = expandedMatch === i
-              return (
-                <div key={i}>
-                  <div
-                    className="px-4 py-2 text-xs grid grid-cols-7 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => setExpandedMatch(isExpanded ? null : i)}
-                  >
-                    <span className="text-gray-600">{getDateDisplay(rowA)}</span>
-                    <span className="text-gray-900 truncate">{getDescriptionDisplay(rowA)}</span>
-                    <span className="text-gray-700 font-medium">{getAmountDisplay(rowA)}</span>
-                    <span className="text-gray-600">{getDateDisplay(rowB)}</span>
-                    <span className="text-gray-900 truncate">{getDescriptionDisplay(rowB)}</span>
-                    <span className="text-gray-700 font-medium">{getAmountDisplay(rowB)}</span>
-                    <span className="flex items-center gap-1">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        match.method === "exact" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                      }`}>
-                        {match.method === "exact" ? "Exact" : `AI ${match.confidence}%`}
-                      </span>
-                      {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
-                    </span>
-                  </div>
-                  {isExpanded && match.reasoning && (
-                    <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-t border-gray-100">
-                      AI reasoning: {match.reasoning}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-            {matchResults.matched.length === 0 && (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">No matched items</div>
-            )}
+          {/* Source legend */}
+          <div className="px-4 py-2 bg-gray-50 border-t flex items-center gap-4 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              {sourceALabel}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              {sourceBLabel}
+            </span>
+            <span className="ml-auto">
+              <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Exact</span>
+              {" = amount + date + reference match · "}
+              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AI</span>
+              {" = fuzzy match · "}
+              <span className="text-gray-500">(±)</span>
+              {" = sign-inverted amount"}
+            </span>
           </div>
         </div>
       )}
 
+      {/* ── Exceptions / Unmatched Tab ──────────────────────────── */}
       {view === "exceptions" && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b text-xs font-medium text-gray-500 grid grid-cols-7">
-            <span>Source</span>
-            <span>Date</span>
-            <span>Description</span>
-            <span>Amount</span>
-            <span>Category</span>
-            <span>Reason</span>
-            <span>Resolution</span>
-          </div>
-          <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-            {exceptionsList.map((exc) => {
-              const rows = exc.source === "A" ? sourceARows : sourceBRows
-              const row = rows[exc.rowIdx]
-              const catInfo = CATEGORY_LABELS[exc.category] || CATEGORY_LABELS.other
+        <div className="space-y-6">
+          {/* Unmatched from Source A */}
+          <div>
+            <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              Unmatched from {sourceALabel} ({exceptionsA.length})
+            </h3>
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                    <tr>
+                      {colsA.map((col) => (
+                        <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                          {col.replace(/_/g, " ")}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Suggested Match</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {exceptionsA.map((exc) => {
+                      const row = sourceARows[exc.rowIdx]
+                      const catInfo = CATEGORY_LABELS[exc.category] || CATEGORY_LABELS.other
+                      const suggestion = row ? findSuggestedMatch(row, sourceBRows, matchResults.unmatchedB) : null
 
-              return (
-                <div key={exc.key} className="px-4 py-2 text-xs grid grid-cols-7 hover:bg-gray-50">
-                  <span className={`font-medium ${exc.source === "A" ? "text-blue-600" : "text-indigo-600"}`}>
-                    {exc.source === "A" ? sourceALabel : sourceBLabel}
-                  </span>
-                  <span className="text-gray-600">{row ? getDateDisplay(row) : ""}</span>
-                  <span className="text-gray-900 truncate">{row ? getDescriptionDisplay(row) : ""}</span>
-                  <span className="text-gray-700 font-medium">{row ? getAmountDisplay(row) : ""}</span>
-                  <span>
-                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${catInfo.color}`}>
-                      {catInfo.label}
-                    </span>
-                  </span>
-                  <span className="text-gray-500 truncate">{exc.reason}</span>
-                  <span>
-                    {exc.resolution ? (
-                      <span className="text-green-600 text-[10px] font-medium">{exc.resolution}</span>
-                    ) : isComplete ? (
-                      <span className="text-gray-400 text-[10px]">N/A</span>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleResolveException(exc.key, "approved")}
-                          disabled={resolvingKey === exc.key}
-                          className="text-[10px] text-green-600 hover:text-green-700 underline"
-                        >
-                          Approve
-                        </button>
-                        <span className="text-gray-300">|</span>
-                        <button
-                          onClick={() => handleResolveException(exc.key, "flagged")}
-                          disabled={resolvingKey === exc.key}
-                          className="text-[10px] text-red-600 hover:text-red-700 underline"
-                        >
-                          Flag
-                        </button>
-                      </div>
+                      return (
+                        <tr key={exc.key} className="hover:bg-gray-50">
+                          {colsA.map((col) => (
+                            <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                              {row ? formatCellValue(row[col]) : "—"}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${catInfo.color}`}>
+                              {catInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {suggestion ? (
+                              <span className="text-[10px] text-purple-600">
+                                Row {suggestion.idx + 1} in {sourceBLabel} ({suggestion.score})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">No close match</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {exc.resolution ? (
+                              <span className={`text-[10px] font-medium ${exc.resolution === "approved" ? "text-green-600" : "text-red-600"}`}>
+                                {exc.resolution === "approved" ? "Approved" : "Flagged"}
+                              </span>
+                            ) : isComplete ? (
+                              <span className="text-gray-400 text-[10px]">—</span>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "approved") }}
+                                  disabled={resolvingKey === exc.key}
+                                  className="text-[10px] text-green-600 hover:text-green-700 underline"
+                                >
+                                  Approve
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "flagged") }}
+                                  disabled={resolvingKey === exc.key}
+                                  className="text-[10px] text-red-600 hover:text-red-700 underline"
+                                >
+                                  Flag
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {exceptionsA.length === 0 && (
+                      <tr>
+                        <td colSpan={colsA.length + 3} className="px-4 py-6 text-center text-sm text-gray-400">
+                          All {sourceALabel} rows matched
+                        </td>
+                      </tr>
                     )}
-                  </span>
-                </div>
-              )
-            })}
-            {exceptionsList.length === 0 && (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">No exceptions - clean reconciliation!</div>
-            )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
+
+          {/* Unmatched from Source B */}
+          <div>
+            <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              Unmatched from {sourceBLabel} ({exceptionsB.length})
+            </h3>
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                    <tr>
+                      {colsB.map((col) => (
+                        <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                          {col.replace(/_/g, " ")}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Suggested Match</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {exceptionsB.map((exc) => {
+                      const row = sourceBRows[exc.rowIdx]
+                      const catInfo = CATEGORY_LABELS[exc.category] || CATEGORY_LABELS.other
+                      const suggestion = row ? findSuggestedMatch(row, sourceARows, matchResults.unmatchedA) : null
+
+                      return (
+                        <tr key={exc.key} className="hover:bg-gray-50">
+                          {colsB.map((col) => (
+                            <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                              {row ? formatCellValue(row[col]) : "—"}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${catInfo.color}`}>
+                              {catInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {suggestion ? (
+                              <span className="text-[10px] text-blue-600">
+                                Row {suggestion.idx + 1} in {sourceALabel} ({suggestion.score})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">No close match</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {exc.resolution ? (
+                              <span className={`text-[10px] font-medium ${exc.resolution === "approved" ? "text-green-600" : "text-red-600"}`}>
+                                {exc.resolution === "approved" ? "Approved" : "Flagged"}
+                              </span>
+                            ) : isComplete ? (
+                              <span className="text-gray-400 text-[10px]">—</span>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "approved") }}
+                                  disabled={resolvingKey === exc.key}
+                                  className="text-[10px] text-green-600 hover:text-green-700 underline"
+                                >
+                                  Approve
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "flagged") }}
+                                  disabled={resolvingKey === exc.key}
+                                  className="text-[10px] text-red-600 hover:text-red-700 underline"
+                                >
+                                  Flag
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {exceptionsB.length === 0 && (
+                      <tr>
+                        <td colSpan={colsB.length + 3} className="px-4 py-6 text-center text-sm text-gray-400">
+                          All {sourceBLabel} rows matched
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {exceptionsList.length === 0 && (
+            <div className="text-center py-8">
+              <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Clean reconciliation — all rows matched!</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -415,7 +601,7 @@ export function ReconciliationResults({
 function SummaryCard({ label, value, sublabel, color }: { label: string; value: string; sublabel: string; color?: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-3">
-      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider truncate">{label}</p>
       <p className={`text-lg font-semibold mt-0.5 ${color || "text-gray-900"}`}>{value}</p>
       <p className="text-[10px] text-gray-400 mt-0.5">{sublabel}</p>
     </div>
