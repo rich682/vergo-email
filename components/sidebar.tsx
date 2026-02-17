@@ -350,18 +350,18 @@ export function Sidebar({
             )
           })()}
 
-          {/* Agents */}
+          {/* Automations */}
           {hasAccess("agents") && (() => {
-            const isActive = pathname === "/dashboard/agents" || pathname.startsWith("/dashboard/agents/")
+            const isActive = pathname === "/dashboard/automations" || pathname.startsWith("/dashboard/automations/")
             return (
               <li>
                 <Link
-                  href="/dashboard/agents"
-                  title={collapsed ? "Agents" : undefined}
+                  href="/dashboard/automations"
+                  title={collapsed ? "Automations" : undefined}
                   className={navCls(isActive)}
                 >
                   <AgentsIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Agents</span>
+                  <span className={labelCls}>Automations</span>
                 </Link>
               </li>
             )

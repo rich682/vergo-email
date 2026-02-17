@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormRequestService } from "@/lib/services/form-request.service"
 import { NotificationService } from "@/lib/services/notification.service"
+import { inngest } from "@/inngest/client"
 
 export async function POST(
   request: NextRequest,
@@ -50,6 +51,26 @@ export async function POST(
         `A form response has been submitted.`,
         { formRequestId: updated.id }
       ).catch((err) => console.error("Failed to send form response notifications:", err))
+    }
+
+    // Emit workflow trigger for form_submitted
+    try {
+      await inngest.send({
+        name: "workflow/trigger",
+        data: {
+          triggerType: "form_submitted",
+          triggerEventId: updated.id,
+          organizationId: session.user.organizationId,
+          metadata: {
+            formRequestId: updated.id,
+            formDefinitionId: (updated as any).formDefinitionId || null,
+            taskInstanceId: updated.taskInstanceId || null,
+            submittedBy: session.user.id,
+          },
+        },
+      })
+    } catch (triggerError) {
+      console.error("[FormSubmit] Failed to emit workflow trigger:", triggerError)
     }
 
     return NextResponse.json({

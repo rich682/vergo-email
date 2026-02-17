@@ -26,11 +26,11 @@
  */
 
 import { formatInTimeZone, toZonedTime } from "date-fns-tz"
-import { 
-  startOfDay, 
-  startOfWeek, 
-  startOfMonth, 
-  startOfQuarter, 
+import {
+  startOfDay,
+  startOfWeek,
+  startOfMonth,
+  startOfQuarter,
   startOfYear,
   endOfDay,
   endOfWeek,
@@ -40,8 +40,12 @@ import {
   addDays,
   addWeeks,
   addMonths,
+  subDays,
+  subWeeks,
+  subMonths,
   isWeekend,
   nextMonday,
+  previousFriday,
   format,
 } from "date-fns"
 
@@ -248,6 +252,71 @@ export function calculateNextPeriodStart(
         return new Date(currentYear + 1, fiscalMonthIndex, 1)
       } else {
         return new Date(currentYear, fiscalMonthIndex, 1)
+      }
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Calculate the previous period start date based on cadence.
+ * Used when creating boards for past periods.
+ */
+export function calculatePreviousPeriodStart(
+  cadence: BoardCadence | null | undefined,
+  currentPeriodStart: Date | null | undefined,
+  _timezone: string,
+  options?: { skipWeekends?: boolean; fiscalYearStartMonth?: number }
+): Date | null {
+  if (!cadence || !currentPeriodStart || cadence === "AD_HOC") return null
+
+  const dateStr = currentPeriodStart.toISOString()
+  const current = parseDateOnly(dateStr)
+
+  const skipWeekends = options?.skipWeekends ?? true
+  const fiscalYearStartMonth = options?.fiscalYearStartMonth ?? 1
+
+  switch (cadence) {
+    case "DAILY": {
+      let prevDate = subDays(current, 1)
+      if (skipWeekends && isWeekend(prevDate)) {
+        prevDate = previousFriday(prevDate)
+      }
+      return prevDate
+    }
+    case "WEEKLY":
+      return subWeeks(startOfWeek(current, { weekStartsOn: 1 }), 1)
+    case "MONTHLY":
+      return subMonths(startOfMonth(current), 1)
+    case "QUARTERLY": {
+      if (fiscalYearStartMonth === 1) {
+        const quarterMonth = Math.floor(current.getMonth() / 3) * 3
+        const currentQuarterStart = new Date(current.getFullYear(), quarterMonth, 1)
+        return subMonths(currentQuarterStart, 3)
+      }
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      const monthsFromFiscalStart = (current.getMonth() - fiscalMonthIndex + 12) % 12
+      const fiscalQuarter = Math.floor(monthsFromFiscalStart / 3)
+      const quarterStartMonthOffset = fiscalQuarter * 3
+      const currentFiscalQuarterStartMonth = (fiscalMonthIndex + quarterStartMonthOffset) % 12
+      let year = current.getFullYear()
+      if (currentFiscalQuarterStartMonth > current.getMonth() && current.getMonth() < fiscalMonthIndex) {
+        year--
+      }
+      const currentFiscalQuarterStart = new Date(year, currentFiscalQuarterStartMonth, 1)
+      return subMonths(currentFiscalQuarterStart, 3)
+    }
+    case "YEAR_END": {
+      const currentYear = current.getFullYear()
+      if (fiscalYearStartMonth === 1) {
+        return new Date(currentYear - 1, 0, 1)
+      }
+      const fiscalMonthIndex = fiscalYearStartMonth - 1
+      if (current.getMonth() >= fiscalMonthIndex) {
+        return new Date(currentYear - 1, fiscalMonthIndex, 1)
+      } else {
+        return new Date(currentYear - 2, fiscalMonthIndex, 1)
       }
     }
     default:

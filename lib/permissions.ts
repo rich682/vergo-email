@@ -448,11 +448,11 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
   },
   {
     key: "agents",
-    label: "Agents",
+    label: "Automations",
     actions: [
-      { key: "agents:view", label: "View agents and execution history" },
-      { key: "agents:manage", label: "Create, edit & delete agents" },
-      { key: "agents:execute", label: "Run agents manually" },
+      { key: "agents:view", label: "View automations and run history" },
+      { key: "agents:manage", label: "Create, edit & delete automations" },
+      { key: "agents:execute", label: "Run automations manually" },
     ],
   },
 ]

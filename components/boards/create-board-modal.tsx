@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info, Calendar, AlertTriangle, Settings } from "lucide-react"
+import { Loader2, X, Check, ChevronsUpDown, Users, Zap, Info, Calendar, AlertTriangle, Settings, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -43,6 +43,8 @@ import {
   getStartOfPeriod,
   generatePeriodBoardName,
   formatDateInTimezone,
+  calculateNextPeriodStart,
+  calculatePreviousPeriodStart,
 } from "@/lib/utils/timezone"
 
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
@@ -152,6 +154,22 @@ export function CreateBoardModal({
       setName(suggestedName)
     }
   }, [nameManuallyEdited, name, orgTimezone, fiscalYearStartMonth])
+
+  // Navigate to previous/next period
+  const handlePeriodChange = useCallback((direction: "prev" | "next") => {
+    if (!cadence || !periodStart || cadence === "AD_HOC") return
+    const timezone = orgTimezone || "UTC"
+    const opts = { fiscalYearStartMonth }
+    const newPeriodStart = direction === "prev"
+      ? calculatePreviousPeriodStart(cadence, periodStart, timezone, opts)
+      : calculateNextPeriodStart(cadence, periodStart, timezone, opts)
+    if (!newPeriodStart) return
+    setPeriodStart(newPeriodStart)
+    if (!nameManuallyEdited || !name.trim()) {
+      const suggestedName = generatePeriodBoardName(cadence, newPeriodStart, timezone, { fiscalYearStartMonth })
+      setName(suggestedName)
+    }
+  }, [cadence, periodStart, orgTimezone, fiscalYearStartMonth, nameManuallyEdited, name])
 
   // Track if name was manually edited
   const handleNameChange = useCallback((newName: string) => {
@@ -343,6 +361,24 @@ export function CreateBoardModal({
                 <div className="flex items-center gap-1 text-xs text-gray-500">
                   <Calendar className="h-3 w-3" />
                   <span>Period: {formatDateInTimezone(periodStart, orgTimezone)}</span>
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <button
+                      type="button"
+                      onClick={() => handlePeriodChange("prev")}
+                      className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Previous period"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePeriodChange("next")}
+                      className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Next period"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

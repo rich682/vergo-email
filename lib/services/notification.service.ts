@@ -10,6 +10,7 @@ export type NotificationType =
   | "request_sent"
   | "form_response"
   | "form_request"
+  | "workflow_approval"
 
 interface CreateNotificationInput {
   userId: string

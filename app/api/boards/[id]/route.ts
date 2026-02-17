@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { BoardService, derivePeriodEnd, normalizePeriodStart } from "@/lib/services/board.service"
 import { BoardStatus, BoardCadence } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { inngest } from "@/inngest/client"
 import { isAdmin as checkIsAdmin, canPerformAction } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
@@ -226,6 +227,30 @@ export async function PATCH(
       } catch (autoCreateError: any) {
         // Log but don't fail the request - the board was still updated successfully
         console.error("[API/boards/[id]] Error auto-creating next board:", autoCreateError)
+      }
+    }
+
+    // Emit workflow trigger on board status change
+    if (status && shouldTriggerAutomation) {
+      try {
+        await inngest.send({
+          name: "workflow/trigger",
+          data: {
+            triggerType: "board_status_changed",
+            triggerEventId: boardId,
+            organizationId,
+            metadata: {
+              boardId,
+              status,
+              cadence: board.cadence,
+              periodStart: board.periodStart?.toISOString(),
+              periodEnd: board.periodEnd?.toISOString(),
+              triggeredBy: userId,
+            },
+          },
+        })
+      } catch (triggerError) {
+        console.error("[API/boards/[id]] Failed to emit workflow trigger:", triggerError)
       }
     }
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { inngest } from "@/inngest/client"
 import { Board, BoardStatus, BoardCadence, JobStatus } from "@prisma/client"
 import { startOfWeek, endOfWeek, endOfMonth, endOfQuarter, endOfYear, addDays, addWeeks, addMonths, addQuarters, addYears, format, isWeekend, nextMonday } from "date-fns"
 import { formatInTimeZone } from "date-fns-tz"
@@ -574,6 +575,28 @@ export class BoardService {
 
     // Copy task lineages to the new board
     await this.spawnTaskInstancesForNextPeriod(completedBoardId, newBoard.id, organizationId)
+
+    // Emit workflow trigger for board creation
+    try {
+      await inngest.send({
+        name: "workflow/trigger",
+        data: {
+          triggerType: "board_created",
+          triggerEventId: newBoard.id,
+          organizationId,
+          metadata: {
+            boardId: newBoard.id,
+            boardName: boardName,
+            cadence: completedBoard.cadence,
+            periodStart: nextPeriodStart.toISOString(),
+            periodEnd: nextPeriodEnd?.toISOString(),
+            triggeredBy: createdById,
+          },
+        },
+      })
+    } catch (error) {
+      console.error("[BoardService] Failed to emit workflow trigger:", error)
+    }
 
     return this.getById(newBoard.id, organizationId)
   }

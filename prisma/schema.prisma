@@ -162,6 +162,7 @@ model Organization {
   accountingIntegration   AccountingIntegration?
   notifications           Notification[]
   agentDefinitions        AgentDefinition[]
+  workflowRuns            WorkflowRun[]
 
   @@index([slug])
 }
@@ -255,6 +256,7 @@ model User {
   databaseViewerPermissions             DatabaseViewer[]                @relation("DatabaseViewerUser")
   createdReconciliationConfigs          ReconciliationConfig[]          @relation("ReconciliationConfigCreator")
   createdAgents                         AgentDefinition[]               @relation("AgentCreator")
+  createdAutomationRules                AutomationRule[]                @relation("AutomationRuleCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -704,17 +706,29 @@ model AutomationRule {
   id             String   @id @default(cuid())
   organizationId String
   name           String
-  trigger        String // Event that triggers the rule
-  conditions     Json // Store conditions as JSON
-  actions        Json // Store actions as JSON
+  trigger        String // "board_created" | "board_status_changed" | "scheduled" | "data_condition" | "data_uploaded" | "form_submitted"
+  conditions     Json // Trigger-specific conditions (see lib/workflows/types.ts)
+  actions        Json // WorkflowDefinition: { version: 1, steps: WorkflowStep[] }
   isActive       Boolean  @default(true)
+
+  // Scheduling fields (for trigger = "scheduled")
+  cronExpression String?   // Cron format via cron-parser
+  timezone       String?   // IANA timezone, e.g. "America/New_York"
+  nextRunAt      DateTime? // Next scheduled execution
+  lastRunAt      DateTime? // Last successful execution
+
+  createdById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?          @relation("AutomationRuleCreator", fields: [createdById], references: [id])
+  workflowRuns WorkflowRun[]
 
   @@index([organizationId])
   @@index([isActive])
+  @@index([trigger, isActive])
+  @@index([isActive, nextRunAt])
 }
 
 model EmailDraft {
@@ -1762,5 +1776,55 @@ model AgentExecutionMetrics {
 
   @@index([agentDefinitionId, createdAt])
   @@index([agentDefinitionId, periodKey])
+}
+
+// ─── Workflow Automation ─────────────────────────────────────────────────────
+
+// WorkflowRun tracks the execution state of a single workflow invocation
+model WorkflowRun {
+  id               String   @id @default(cuid())
+  automationRuleId String
+  organizationId   String
+  status           String   @default("PENDING")
+  // "PENDING" | "RUNNING" | "WAITING_APPROVAL" | "COMPLETED" | "FAILED" | "CANCELLED"
+  currentStepId    String?  // ID of the step currently being executed
+  stepResults      Json     @default("[]") // Array of { stepId, outcome, data, completedAt }
+  triggerContext    Json     @default("{}") // Data from the trigger event (boardId, runId, periodKey, etc.)
+  idempotencyKey   String?  @unique // Prevents duplicate runs: "${ruleId}:${triggerType}:${eventId}"
+  triggeredBy      String?  // userId or "system"
+  startedAt        DateTime?
+  completedAt      DateTime?
+  failureReason    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  automationRule AutomationRule   @relation(fields: [automationRuleId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs      WorkflowAuditLog[]
+
+  @@index([automationRuleId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+}
+
+// WorkflowAuditLog records every action taken during a workflow run
+model WorkflowAuditLog {
+  id             String   @id @default(cuid())
+  workflowRunId  String
+  organizationId String
+  stepId         String?  // Step ID within the workflow definition
+  actionType     String   // "action_executed" | "condition_evaluated" | "approval_requested" | "approval_granted" | "approval_rejected" | "approval_timeout" | "step_failed" | "step_skipped"
+  targetType     String?  // "reconciliation_run" | "quest" | "form_request" | "report" | "agent_execution"
+  targetId       String?  // ID of the entity acted upon
+  outcome        String?  // "success" | "failed" | "skipped"
+  detail         Json?    // Additional context (match rate, recipient count, error message, etc.)
+  actorType      String   @default("system") // "system" | "human"
+  actorId        String?  // userId for human actors
+  createdAt      DateTime @default(now())
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([organizationId, createdAt])
 }
 

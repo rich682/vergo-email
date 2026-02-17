@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Check, MessageSquare, Mail, UserPlus, RefreshCw, ClipboardList, AtSign } from "lucide-react"
+import { Bell, Check, MessageSquare, Mail, UserPlus, RefreshCw, ClipboardList, AtSign, ShieldCheck } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
 interface Notification {
@@ -15,6 +15,7 @@ interface Notification {
   actorId: string | null
   createdAt: string
   taskInstance?: { id: string; name: string } | null
+  metadata?: Record<string, any> | null
 }
 
 export function NotificationBell() {
@@ -88,8 +89,12 @@ export function NotificationBell() {
 
     setOpen(false)
 
-    // Navigate to the task if there is one
-    if (notification.taskInstanceId) {
+    // Navigate based on notification type
+    if (notification.type === "workflow_approval" && notification.metadata?.workflowRunId) {
+      const ruleId = notification.metadata.automationRuleId || ""
+      const runId = notification.metadata.workflowRunId
+      router.push(`/dashboard/automations/${ruleId}/runs/${runId}`)
+    } else if (notification.taskInstanceId) {
       router.push(`/dashboard/jobs/${notification.taskInstanceId}`)
     }
   }
@@ -123,6 +128,8 @@ export function NotificationBell() {
         return <ClipboardList className="w-3.5 h-3.5 text-teal-500" />
       case "form_request":
         return <ClipboardList className="w-3.5 h-3.5 text-orange-500" />
+      case "workflow_approval":
+        return <ShieldCheck className="w-3.5 h-3.5 text-orange-500" />
       default:
         return <Bell className="w-3.5 h-3.5 text-gray-400" />
     }

@@ -10,6 +10,7 @@ import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { ReconciliationMatchingService } from "@/lib/services/reconciliation-matching.service"
 import { ReconciliationRunStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
+import { inngest } from "@/inngest/client"
 
 export const maxDuration = 60
 interface RouteParams {
@@ -98,6 +99,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       exceptionCount: result.unmatchedA.length + result.unmatchedB.length,
       variance: result.variance,
     })
+
+    // Emit workflow trigger for data_uploaded
+    try {
+      await inngest.send({
+        name: "workflow/trigger",
+        data: {
+          triggerType: "data_uploaded",
+          triggerEventId: runId,
+          organizationId: user.organizationId,
+          metadata: {
+            configId,
+            runId,
+            matchedCount: result.matched.length,
+            exceptionCount: result.unmatchedA.length + result.unmatchedB.length,
+            variance: result.variance,
+          },
+        },
+      })
+    } catch (triggerError) {
+      console.error("[Reconciliations] Failed to emit workflow trigger:", triggerError)
+    }
 
     return NextResponse.json({
       success: true,
