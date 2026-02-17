@@ -96,11 +96,10 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
 
   const fetchRun = async (configId: string, runId: string) => {
     try {
-      const res = await fetch(`/api/reconciliations/${configId}/runs`)
+      const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}`)
       if (!res.ok) return
       const data = await res.json()
-      const run = (data.runs || []).find((r: any) => r.id === runId)
-      if (run) setActiveRun(run)
+      if (data.run) setActiveRun(data.run)
     } catch {
       // ignore
     }
