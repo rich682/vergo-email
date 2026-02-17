@@ -136,11 +136,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         if (oldCol && oldCol.dataType !== newCol.dataType) {
           warnings.push(`Changing data type of "${newCol.label}" from ${oldCol.dataType} to ${newCol.dataType}. Existing data will not be converted.`)
         }
-        
-        // Check for required flag changes (from optional to required)
-        if (oldCol && !oldCol.required && newCol.required) {
-          warnings.push(`Marking "${newCol.label}" as required. Existing rows with empty values may fail validation on re-import.`)
-        }
       }
     }
 
