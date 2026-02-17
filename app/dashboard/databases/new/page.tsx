@@ -20,6 +20,7 @@ import {
   Loader2,
   X,
   Eye,
+  ClipboardPaste,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -64,7 +65,7 @@ interface AccountingSource {
   columns: AccountingSourceColumn[]
 }
 
-type CreateMethod = "manual" | "upload" | "accounting"
+type CreateMethod = "manual" | "upload" | "paste" | "accounting"
 
 // ============================================
 // Constants
@@ -171,6 +172,15 @@ export default function NewDatabasePage() {
   const [importSampleData, setImportSampleData] = useState(true)
   const [parseError, setParseError] = useState<string | null>(null)
   
+  // Paste state
+  const [pasteValue, setPasteValue] = useState("")
+  const [pastedHeaders, setPastedHeaders] = useState<string[]>([])
+  const [pastedSampleRows, setPastedSampleRows] = useState<Record<string, any>[]>([])
+  const [pastedColumns, setPastedColumns] = useState<SchemaColumn[]>([])
+  const [importPastedData, setImportPastedData] = useState(true)
+  const [pasteError, setPasteError] = useState<string | null>(null)
+  const [pasteParsed, setPasteParsed] = useState(false)
+
   // Accounting source state
   const [accountingSources, setAccountingSources] = useState<AccountingSource[]>([])
   const [accountingConnected, setAccountingConnected] = useState(false)
@@ -403,6 +413,121 @@ export default function NewDatabasePage() {
     }
   }, [handleFileUpload])
 
+  // ----------------------------------------
+  // Paste Handlers
+  // ----------------------------------------
+
+  const handleParsePaste = useCallback((rawText: string) => {
+    setPasteError(null)
+    setPasteParsed(false)
+
+    if (!rawText.trim()) {
+      setPastedHeaders([])
+      setPastedSampleRows([])
+      setPastedColumns([])
+      return
+    }
+
+    try {
+      // Split into lines, filter out completely empty lines
+      const lines = rawText.split("\n").filter(line => line.trim().length > 0)
+      if (lines.length === 0) {
+        throw new Error("No data found. Paste rows copied from a spreadsheet.")
+      }
+
+      // Detect delimiter: tab-separated (Excel/Sheets copy) or comma-separated
+      const firstLine = lines[0]
+      const delimiter = firstLine.includes("\t") ? "\t" : ","
+
+      // Parse all lines
+      const parsed = lines.map(line => {
+        if (delimiter === "\t") {
+          return line.split("\t").map(cell => cell.trim())
+        }
+        // Simple CSV parsing (handles basic cases)
+        const cells: string[] = []
+        let current = ""
+        let inQuotes = false
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i]
+          if (char === '"') {
+            inQuotes = !inQuotes
+          } else if (char === "," && !inQuotes) {
+            cells.push(current.trim())
+            current = ""
+          } else {
+            current += char
+          }
+        }
+        cells.push(current.trim())
+        return cells
+      })
+
+      // First row is headers
+      const headers = parsed[0].filter(h => h.length > 0)
+      if (headers.length === 0) {
+        throw new Error("No column headers detected in the first row.")
+      }
+
+      setPastedHeaders(headers)
+
+      // Remaining rows are data
+      const dataRows = parsed.slice(1).slice(0, MAX_SAMPLE_ROWS).map(row => {
+        const obj: Record<string, any> = {}
+        headers.forEach((header, index) => {
+          obj[header] = row[index] ?? null
+        })
+        return obj
+      })
+
+      setPastedSampleRows(dataRows)
+
+      // Infer columns from the data
+      const inferred: SchemaColumn[] = headers.map((header, index) => {
+        const key = generateKey(header)
+        const sampleValues = dataRows.map(row => row[header])
+        const dataType = inferDataType(sampleValues)
+
+        return {
+          key: key || `column_${index}`,
+          label: header,
+          dataType,
+          required: false,
+          order: index,
+        }
+      })
+
+      // Ensure unique keys
+      const usedKeys = new Set<string>()
+      inferred.forEach((col, idx) => {
+        let uniqueKey = col.key
+        let counter = 1
+        while (usedKeys.has(uniqueKey)) {
+          uniqueKey = `${col.key}_${counter}`
+          counter++
+        }
+        usedKeys.add(uniqueKey)
+        inferred[idx].key = uniqueKey
+      })
+
+      setPastedColumns(inferred)
+      setPasteParsed(true)
+    } catch (err: any) {
+      setPasteError(err.message || "Failed to parse pasted data")
+      setPastedHeaders([])
+      setPastedSampleRows([])
+      setPastedColumns([])
+    }
+  }, [])
+
+  const updatePastedColumn = (index: number, updates: Partial<SchemaColumn>) => {
+    setPastedColumns(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], ...updates }
+      return updated
+    })
+  }
+
   const updateInferredColumn = (index: number, updates: Partial<SchemaColumn>) => {
     setInferredColumns(prev => {
       const updated = [...prev]
@@ -463,8 +588,8 @@ export default function NewDatabasePage() {
       return
     }
 
-    // Manual or upload creation
-    const schemaColumns = method === "upload" ? inferredColumns : columns
+    // Manual, upload, or paste creation
+    const schemaColumns = method === "upload" ? inferredColumns : method === "paste" ? pastedColumns : columns
 
     if (schemaColumns.length === 0) {
       setError("At least one column is required")
@@ -499,6 +624,15 @@ export default function NewDatabasePage() {
         initialRows = sampleRows.map(row => {
           const newRow: Record<string, any> = {}
           inferredColumns.forEach(col => {
+            newRow[col.key] = row[col.label] ?? null
+          })
+          return newRow
+        })
+      } else if (method === "paste" && importPastedData && pastedSampleRows.length > 0) {
+        // Convert pasted rows to use column keys instead of labels
+        initialRows = pastedSampleRows.map(row => {
+          const newRow: Record<string, any> = {}
+          pastedColumns.forEach(col => {
             newRow[col.key] = row[col.label] ?? null
           })
           return newRow
@@ -604,7 +738,7 @@ export default function NewDatabasePage() {
           {method === null ? (
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-4">How do you want to create the database?</h2>
-              <div className={`grid gap-4 ${accountingConnected ? "grid-cols-3" : "grid-cols-2"}`}>
+              <div className={`grid gap-4 ${accountingConnected ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-3"}`}>
                 <button
                   onClick={() => setMethod("manual")}
                   className="p-6 border-2 border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all text-left group"
@@ -624,6 +758,17 @@ export default function NewDatabasePage() {
                   <h3 className="font-medium text-gray-900">Upload spreadsheet</h3>
                   <p className="text-sm text-gray-500 mt-1">
                     Import schema from Excel headers with optional sample data
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setMethod("paste")}
+                  className="p-6 border-2 border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-all text-left group"
+                >
+                  <ClipboardPaste className="w-8 h-8 text-gray-400 group-hover:text-orange-500 mb-3" />
+                  <h3 className="font-medium text-gray-900">Paste from clipboard</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Copy &amp; paste rows from Excel or Google Sheets
                   </p>
                 </button>
 
@@ -905,7 +1050,7 @@ export default function NewDatabasePage() {
                 </p>
               </div>
             </div>
-          ) : (
+          ) : method === "upload" ? (
             /* Upload-based Schema */
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -1140,7 +1285,232 @@ export default function NewDatabasePage() {
                 </div>
               )}
             </div>
-          )}
+          ) : method === "paste" ? (
+            /* Paste-based Schema */
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-medium text-gray-900">Paste from Clipboard</h2>
+                  <p className="text-sm text-gray-500">
+                    Copy rows from Excel or Google Sheets and paste below. First row should be headers.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMethod(null)
+                    setPasteValue("")
+                    setPastedHeaders([])
+                    setPastedSampleRows([])
+                    setPastedColumns([])
+                    setPasteError(null)
+                    setPasteParsed(false)
+                  }}
+                >
+                  Change method
+                </Button>
+              </div>
+
+              {!pasteParsed ? (
+                /* Paste input area */
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="paste-area">Paste your data</Label>
+                    <Textarea
+                      id="paste-area"
+                      value={pasteValue}
+                      onChange={(e) => setPasteValue(e.target.value)}
+                      placeholder={"Brand\tLocation\tProject Name\tPM\nChipotle\tNoblesville, IN\t25-044\tCaleb\nStarbucks\tDallas, TX\t25-089\tSarah"}
+                      className="mt-1.5 font-mono text-sm"
+                      rows={8}
+                    />
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Tip: Select cells in Excel or Google Sheets, copy (Ctrl+C / ⌘C), and paste here. Tab-separated and comma-separated formats are both supported.
+                    </p>
+                  </div>
+
+                  {pasteError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      {pasteError}
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={() => handleParsePaste(pasteValue)}
+                    disabled={!pasteValue.trim()}
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    <ClipboardPaste className="w-4 h-4 mr-2" />
+                    Parse Data
+                  </Button>
+                </div>
+              ) : (
+                /* Parsed results with column review */
+                <div className="space-y-6">
+                  {/* Success banner */}
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <Check className="w-5 h-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="font-medium text-green-700">Data parsed successfully</p>
+                      <p className="text-sm text-green-600">
+                        {pastedHeaders.length} columns, {pastedSampleRows.length} data rows detected
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPasteParsed(false)
+                        setPastedHeaders([])
+                        setPastedSampleRows([])
+                        setPastedColumns([])
+                      }}
+                    >
+                      Re-paste
+                    </Button>
+                  </div>
+
+                  {/* Column configuration */}
+                  <div>
+                    <h3 className="font-medium text-gray-900 mb-3">Review &amp; Configure Columns</h3>
+                    <div className="space-y-3">
+                      {/* Column headers */}
+                      <div className="grid grid-cols-[1fr,140px,80px] gap-3 px-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div>Label</div>
+                        <div>Type</div>
+                        <div>Required</div>
+                      </div>
+
+                      {/* Column rows */}
+                      {pastedColumns.map((column, index) => (
+                        <div key={index} className="bg-gray-50 rounded-lg">
+                          <div className="grid grid-cols-[1fr,140px,80px] gap-3 items-center p-2">
+                            <Input
+                              value={column.label}
+                              onChange={(e) => updatePastedColumn(index, { label: e.target.value })}
+                              className="h-9"
+                            />
+
+                            <Select
+                              value={column.dataType}
+                              onValueChange={(value) => {
+                                const updates: Partial<SchemaColumn> = { dataType: value as SchemaColumn["dataType"] }
+                                if (value === "dropdown" && !column.dropdownOptions) {
+                                  updates.dropdownOptions = []
+                                }
+                                updatePastedColumn(index, updates)
+                              }}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DATA_TYPE_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            <div className="flex justify-center">
+                              <input
+                                type="checkbox"
+                                checked={column.required}
+                                onChange={(e) => updatePastedColumn(index, { required: e.target.checked })}
+                                className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Dropdown options editor */}
+                          {column.dataType === "dropdown" && (
+                            <div className="px-2 pb-2">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Options (one per line)
+                              </label>
+                              <textarea
+                                value={(column.dropdownOptions || []).join("\n")}
+                                onChange={(e) => {
+                                  const options = e.target.value
+                                    .split("\n")
+                                    .map(o => o.trim())
+                                    .filter(o => o.length > 0)
+                                  updatePastedColumn(index, { dropdownOptions: options })
+                                }}
+                                placeholder="Option 1&#10;Option 2&#10;Option 3"
+                                rows={3}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>Uniqueness:</strong> Each row is uniquely identified by the combination of ALL column values.
+                        Duplicate rows (where every column matches) will be automatically skipped during import.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sample data preview */}
+                  {pastedSampleRows.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-medium text-gray-900">Data Preview</h3>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={importPastedData}
+                            onChange={(e) => setImportPastedData(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                          />
+                          Import these {pastedSampleRows.length} rows
+                        </label>
+                      </div>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto max-h-64">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                {pastedColumns.map(col => (
+                                  <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
+                                    {col.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {pastedSampleRows.slice(0, 5).map((row, rowIndex) => (
+                                <tr key={rowIndex}>
+                                  {pastedColumns.map(col => (
+                                    <td key={col.key} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                      {String(row[col.label] ?? "").substring(0, MAX_PREVIEW_VALUE_LENGTH)}
+                                      {String(row[col.label] ?? "").length > MAX_PREVIEW_VALUE_LENGTH && "..."}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {pastedSampleRows.length > 5 && (
+                          <div className="px-3 py-2 bg-gray-50 border-t text-xs text-gray-500">
+                            Showing 5 of {pastedSampleRows.length} rows
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {/* Divider */}
           <div className="border-t border-gray-200" />
@@ -1158,6 +1528,7 @@ export default function NewDatabasePage() {
                 method === null ||
                 (method === "manual" && columns.length === 0) ||
                 (method === "upload" && inferredColumns.length === 0) ||
+                (method === "paste" && pastedColumns.length === 0) ||
                 (method === "accounting" && !selectedSource)
               }
               className="bg-orange-500 hover:bg-orange-600 text-white"
