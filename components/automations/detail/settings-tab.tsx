@@ -68,7 +68,7 @@ export function SettingsTab({ rule, canManage, onUpdate, onDelete }: SettingsTab
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-sm text-gray-700">Active</Label>
-            <p className="text-xs text-gray-400">When active, this automation will run on its trigger.</p>
+            <p className="text-xs text-gray-400">When active, this agent will run on its trigger.</p>
           </div>
           <Switch
             checked={isActive}
@@ -105,7 +105,7 @@ export function SettingsTab({ rule, canManage, onUpdate, onDelete }: SettingsTab
         <div className="border border-red-200 rounded-lg p-4">
           <h3 className="text-xs font-medium text-red-600 uppercase tracking-wider mb-2">Danger Zone</h3>
           <p className="text-xs text-gray-500 mb-3">
-            Deactivating this automation will stop it from running. Existing run history will be preserved.
+            Deactivating this agent will stop it from running. Existing run history will be preserved.
           </p>
           <Button
             variant="destructive"
@@ -113,7 +113,7 @@ export function SettingsTab({ rule, canManage, onUpdate, onDelete }: SettingsTab
             onClick={onDelete}
           >
             <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-            Delete Automation
+            Delete Agent
           </Button>
         </div>
       )}

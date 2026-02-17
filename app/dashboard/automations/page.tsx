@@ -75,7 +75,7 @@ export default function AutomationsPage() {
   }
 
   const handleDelete = async (ruleId: string) => {
-    if (!confirm("Are you sure you want to deactivate this automation?")) return
+    if (!confirm("Are you sure you want to deactivate this agent?")) return
     try {
       await fetch(`/api/automation-rules?id=${ruleId}`, { method: "DELETE" })
       fetchData()
@@ -102,15 +102,15 @@ export default function AutomationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Automations</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Agents</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Automate recurring workflows across your accounting processes
+            Create and manage agents to automate recurring workflows
           </p>
         </div>
         {canManage && (
           <Button size="sm" onClick={() => router.push("/dashboard/automations/new")}>
             <Plus className="w-4 h-4 mr-1.5" />
-            New Automation
+            New Agent
           </Button>
         )}
       </div>
@@ -126,10 +126,10 @@ export default function AutomationsPage() {
       {!loading && rules.length === 0 && (
         <EmptyState
           icon={<Zap className="w-6 h-6" />}
-          title="No automations yet"
-          description="Set up your first automation to streamline recurring workflows like sending requests, running reconciliations, or generating reports."
+          title="No agents yet"
+          description="Set up your first agent to automate recurring workflows like sending requests, running reconciliations, or generating reports."
           action={canManage ? {
-            label: "Create Your First Automation",
+            label: "Create Your First Agent",
             onClick: () => router.push("/dashboard/automations/new"),
           } : undefined}
         />
@@ -156,11 +156,11 @@ export default function AutomationsPage() {
             </div>
           )}
 
-          {/* Active automations */}
+          {/* Active agents */}
           {activeRules.length > 0 && (
             <div>
               <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                Active Automations ({activeRules.length})
+                Active Agents ({activeRules.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {activeRules.map((rule) => (
@@ -180,7 +180,7 @@ export default function AutomationsPage() {
             </div>
           )}
 
-          {/* Paused automations */}
+          {/* Paused agents */}
           {inactiveRules.length > 0 && (
             <div>
               <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">

@@ -1,13 +1,13 @@
 "use client"
 
 import {
-  Send, ClipboardList, Scale, FileBarChart, Wrench, Workflow,
+  Send, ClipboardList, Scale, FileBarChart, Wrench,
 } from "lucide-react"
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates"
 import type { AutomationTemplate } from "@/lib/automations/types"
 
 const ICON_MAP: Record<string, typeof Send> = {
-  Send, ClipboardList, Scale, FileBarChart, Wrench, Workflow,
+  Send, ClipboardList, Scale, FileBarChart, Wrench,
 }
 
 // ── Component ─────────────────────────────────────────────────────────

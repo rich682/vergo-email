@@ -40,7 +40,7 @@ export function AutomationActivityFeed({ runs }: AutomationActivityFeedProps) {
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-100 text-xs text-gray-500 font-medium">
-            <th className="text-left py-2 px-3">Automation</th>
+            <th className="text-left py-2 px-3">Agent</th>
             <th className="text-left py-2 px-3">Status</th>
             <th className="text-left py-2 px-3 hidden sm:table-cell">Trigger</th>
             <th className="text-right py-2 px-3">Time</th>

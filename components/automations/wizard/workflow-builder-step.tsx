@@ -56,7 +56,7 @@ export function WorkflowBuilderStep({ steps, onStepsChange }: WorkflowBuilderSte
     <div>
       <h2 className="text-lg font-medium text-gray-900 mb-1">Configure steps</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Define what happens when this automation runs. Steps execute in order from top to bottom.
+        Define what happens when this agent runs. Steps execute in order from top to bottom.
       </p>
 
       <div className="space-y-3">

@@ -357,11 +357,11 @@ export function Sidebar({
               <li>
                 <Link
                   href="/dashboard/automations"
-                  title={collapsed ? "Automations" : undefined}
+                  title={collapsed ? "Agents" : undefined}
                   className={navCls(isActive)}
                 >
                   <AgentsIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Automations</span>
+                  <span className={labelCls}>Agents</span>
                 </Link>
               </li>
             )

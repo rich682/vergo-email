@@ -67,7 +67,7 @@ export default function RunDetailPage() {
           className="mt-4"
           onClick={() => router.push(`/dashboard/automations/${ruleId}`)}
         >
-          Back to Automation
+          Back to Agent
         </Button>
       </div>
     )

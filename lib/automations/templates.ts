@@ -90,60 +90,12 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     category: "reports",
   },
 
-  // ─── Period Close ─────────────────────────────────────────────────────
-
-  {
-    id: "full-period-close",
-    name: "Full period close",
-    description: "End-to-end period close: collect data, reconcile with review, then generate reports.",
-    icon: "Workflow",
-    triggerType: "board_created",
-    defaultConditions: {},
-    defaultSteps: [
-      {
-        type: "action",
-        label: "Send data requests",
-        actionType: "send_request",
-        actionParams: {},
-      },
-      {
-        type: "human_approval",
-        label: "Confirm all data received",
-        approvalMessage: "Confirm that all requested data has been received before proceeding to reconciliation.",
-        timeoutHours: 168,
-      },
-      {
-        type: "agent_run",
-        label: "Run reconciliation agent",
-      },
-      {
-        type: "human_approval",
-        label: "Review reconciliation",
-        approvalMessage: "Review reconciliation results before generating the final report.",
-        timeoutHours: 72,
-      },
-      {
-        type: "action",
-        label: "Complete reconciliation",
-        actionType: "complete_reconciliation",
-        actionParams: {},
-      },
-      {
-        type: "action",
-        label: "Generate period report",
-        actionType: "complete_report",
-        actionParams: {},
-      },
-    ],
-    category: "requests",
-  },
-
   // ─── Custom ───────────────────────────────────────────────────────────
 
   {
     id: "custom",
-    name: "Start from scratch",
-    description: "Build your own automation with any combination of actions, approvals, and agent steps.",
+    name: "Custom agent",
+    description: "Build your own agent with any combination of actions, approvals, and steps.",
     icon: "Wrench",
     triggerType: "board_created",
     defaultConditions: {},

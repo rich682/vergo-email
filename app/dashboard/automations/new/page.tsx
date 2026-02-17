@@ -103,7 +103,7 @@ export default function NewAutomationPage() {
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || "Failed to create automation")
+        throw new Error(data.error || "Failed to create agent")
       }
 
       const data = await res.json()
@@ -128,7 +128,7 @@ export default function NewAutomationPage() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">New Automation</h1>
+            <h1 className="text-lg font-semibold text-gray-900">New Agent</h1>
             <p className="text-sm text-gray-500">
               {WIZARD_STEPS[currentStep].description}
             </p>
@@ -244,7 +244,7 @@ export default function NewAutomationPage() {
                       disabled={!canProceed() || creating}
                     >
                       {creating && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
-                      Create Automation
+                      Create Agent
                     </Button>
                   )}
                 </div>

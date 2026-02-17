@@ -17,7 +17,7 @@ export function AutomationStats({
 }: AutomationStatsProps) {
   const stats = [
     {
-      label: "Active Automations",
+      label: "Active Agents",
       value: activeCount,
       icon: Zap,
       iconColor: "text-blue-600",

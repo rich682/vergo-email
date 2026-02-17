@@ -16,13 +16,13 @@ export function ReviewStep({ name, triggerType, conditions, steps }: ReviewStepP
     <div>
       <h2 className="text-lg font-medium text-gray-900 mb-1">Review & create</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Review your automation before creating it.
+        Review your agent before creating it.
       </p>
 
       <div className="space-y-4">
         {/* Name */}
         <ReviewSection label="Name">
-          <p className="text-sm text-gray-900 font-medium">{name || "Untitled Automation"}</p>
+          <p className="text-sm text-gray-900 font-medium">{name || "Untitled Agent"}</p>
         </ReviewSection>
 
         {/* Trigger */}

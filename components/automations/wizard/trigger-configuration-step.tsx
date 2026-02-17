@@ -91,17 +91,17 @@ export function TriggerConfigurationStep({
     <div>
       <h2 className="text-lg font-medium text-gray-900 mb-1">Configure trigger</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Set when this automation should run.
+        Set when this agent should run.
       </p>
 
       <div className="space-y-6">
         {/* Name */}
         <div>
-          <Label className="text-xs text-gray-500">Automation Name</Label>
+          <Label className="text-xs text-gray-500">Agent Name</Label>
           <Input
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
-            placeholder="My Automation"
+            placeholder="My Agent"
             className="mt-1"
           />
         </div>
@@ -153,26 +153,26 @@ export function TriggerConfigurationStep({
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-gray-400 mt-1">
-                The automation will run when a board transitions to this status.
+                The agent will run when a board transitions to this status.
               </p>
             </div>
           )}
 
           {triggerType === "board_created" && (
             <p className="text-sm text-gray-500">
-              This automation will run automatically whenever a new period board is created in your organization.
+              This agent will run automatically whenever a new period board is created in your organization.
             </p>
           )}
 
           {triggerType === "data_uploaded" && (
             <p className="text-sm text-gray-500">
-              This automation will run when new reconciliation data is matched and uploaded.
+              This agent will run when new reconciliation data is matched and uploaded.
             </p>
           )}
 
           {triggerType === "form_submitted" && (
             <p className="text-sm text-gray-500">
-              This automation will run when a form response is submitted.
+              This agent will run when a form response is submitted.
             </p>
           )}
 

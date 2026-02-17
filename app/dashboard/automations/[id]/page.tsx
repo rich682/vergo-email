@@ -81,7 +81,7 @@ export default function AutomationDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this automation?")) return
+    if (!confirm("Are you sure you want to delete this agent?")) return
     try {
       await fetch(`/api/automation-rules?id=${ruleId}`, { method: "DELETE" })
       router.push("/dashboard/automations")

@@ -109,7 +109,7 @@ export function RunsTab({ ruleId }: RunsTabProps) {
         </div>
       ) : runs.length === 0 ? (
         <div className="text-sm text-gray-500 text-center py-12">
-          {statusFilter ? "No runs matching this filter." : "No runs yet. Run this automation to see results here."}
+          {statusFilter ? "No runs matching this filter." : "No runs yet. Run this agent to see results here."}
         </div>
       ) : (
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
