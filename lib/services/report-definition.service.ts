@@ -366,6 +366,73 @@ export class ReportDefinitionService {
   }
 
   /**
+   * Duplicate a report definition with a new name
+   */
+  static async duplicateReportDefinition(
+    id: string,
+    organizationId: string,
+    newName: string,
+    createdById: string
+  ) {
+    const existing = await prisma.reportDefinition.findFirst({
+      where: { id, organizationId },
+    })
+
+    if (!existing) {
+      throw new Error("Report definition not found")
+    }
+
+    // Check for duplicate name within the org
+    const nameExists = await prisma.reportDefinition.findFirst({
+      where: { organizationId, name: newName },
+      select: { id: true },
+    })
+
+    if (nameExists) {
+      throw new Error(`A report with the name "${newName}" already exists`)
+    }
+
+    const report = await prisma.reportDefinition.create({
+      data: {
+        name: newName,
+        description: existing.description,
+        organizationId,
+        databaseId: existing.databaseId,
+        cadence: existing.cadence,
+        dateColumnKey: existing.dateColumnKey,
+        layout: existing.layout,
+        compareMode: existing.compareMode,
+        columns: existing.columns as any,
+        formulaRows: existing.formulaRows as any,
+        pivotColumnKey: existing.pivotColumnKey,
+        rowColumnKey: existing.rowColumnKey,
+        valueColumnKey: existing.valueColumnKey,
+        metricRows: existing.metricRows as any,
+        pivotFormulaColumns: existing.pivotFormulaColumns as any,
+        filterColumnKeys: existing.filterColumnKeys as any,
+        filterBindings: existing.filterBindings as any,
+        createdById,
+      },
+      include: {
+        database: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        createdBy: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    })
+
+    return report
+  }
+
+  /**
    * Delete a report definition
    */
   static async deleteReportDefinition(id: string, organizationId: string) {

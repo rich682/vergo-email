@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Scale, CheckCircle, AlertTriangle } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Scale, CheckCircle, AlertTriangle, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -179,6 +179,13 @@ export default function ReportsPage() {
   const [selectedViewerIds, setSelectedViewerIds] = useState<string[]>([])
   const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string | null; email: string; role: string }>>([])
   const [loadingOrgUsers, setLoadingOrgUsers] = useState(false)
+
+  // Duplicate modal state
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false)
+  const [duplicatingReport, setDuplicatingReport] = useState<ReportItem | null>(null)
+  const [duplicateName, setDuplicateName] = useState("")
+  const [duplicateLoading, setDuplicateLoading] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
 
   // Report Viewer modal state
   const [viewerOpen, setViewerOpen] = useState(false)
@@ -490,6 +497,52 @@ export default function ReportsPage() {
     }
   }
 
+  const openDuplicateModal = (report: ReportItem) => {
+    setDuplicatingReport(report)
+    setDuplicateName(`${report.name} (Copy)`)
+    setDuplicateError(null)
+    setDuplicateModalOpen(true)
+  }
+
+  const handleDuplicate = async () => {
+    if (!duplicatingReport || !duplicateName.trim()) return
+
+    // Check for duplicate name client-side
+    const nameExists = reports.some(
+      r => r.name.toLowerCase() === duplicateName.trim().toLowerCase()
+    )
+    if (nameExists) {
+      setDuplicateError(`A report with the name "${duplicateName.trim()}" already exists`)
+      return
+    }
+
+    setDuplicateLoading(true)
+    setDuplicateError(null)
+    try {
+      const response = await fetch(`/api/reports/${duplicatingReport.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: duplicateName.trim() }),
+      })
+
+      if (response.ok) {
+        setDuplicateModalOpen(false)
+        setDuplicatingReport(null)
+        setDuplicateName("")
+        fetchReports()
+      } else {
+        const data = await response.json()
+        setDuplicateError(data.error || "Failed to duplicate report")
+      }
+    } catch (error) {
+      console.error("Error duplicating report:", error)
+      setDuplicateError("Failed to duplicate report")
+    } finally {
+      setDuplicateLoading(false)
+    }
+  }
+
   const filteredReports = reports.filter(report => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
@@ -656,6 +709,12 @@ export default function ReportsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => openDuplicateModal(report)}
+                            >
+                              <Copy className="w-4 h-4 mr-2" />
+                              Duplicate
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDelete(report.id, report.name)}
                               className="text-red-600 focus:text-red-600"
@@ -1333,6 +1392,66 @@ export default function ReportsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Report Modal */}
+      <Dialog open={duplicateModalOpen} onOpenChange={(open) => {
+        if (!open) {
+          setDuplicateModalOpen(false)
+          setDuplicatingReport(null)
+          setDuplicateName("")
+          setDuplicateError(null)
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicate Report</DialogTitle>
+            <DialogDescription>
+              Create a copy of &ldquo;{duplicatingReport?.name}&rdquo; with a new name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <div className="grid gap-2">
+              <Label htmlFor="duplicateName">Report Name</Label>
+              <Input
+                id="duplicateName"
+                value={duplicateName}
+                onChange={(e) => { setDuplicateName(e.target.value); setDuplicateError(null) }}
+                placeholder="Enter a unique name..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && duplicateName.trim() && !duplicateLoading) {
+                    handleDuplicate()
+                  }
+                }}
+              />
+            </div>
+            {duplicateError && (
+              <p className="text-sm text-red-600">{duplicateError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateModalOpen(false)} disabled={duplicateLoading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDuplicate}
+              disabled={!duplicateName.trim() || duplicateLoading}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {duplicateLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Duplicating...
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Duplicate
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
