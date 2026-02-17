@@ -566,11 +566,11 @@ export class DatabaseService {
     const identifierKeys = database.identifierKeys as unknown as string[]
     const existingRows = database.rows as unknown as DatabaseRow[]
 
-    // Validate rows within import batch - now supports partial import
+    // Validate rows within import batch — all rows must pass
     const validation = validateRows(rows, schema, identifierKeys)
-    
-    // If ALL rows have errors, return the errors
-    if (validation.validRows.length === 0) {
+
+    // If ANY rows have errors, block the entire import
+    if (!validation.valid) {
       return {
         added: 0,
         updated: 0,
@@ -579,9 +579,9 @@ export class DatabaseService {
       }
     }
 
-    // Check VALID rows against existing data (partial import)
+    // Check rows against existing data
     const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
-      validation.validRows,  // Only process rows that passed validation
+      validation.validRows,
       existingRows,
       identifierKeys,
       schema
@@ -672,12 +672,13 @@ export class DatabaseService {
     const identifierKeys = database.identifierKeys as unknown as string[]
     const existingRows = database.rows as unknown as DatabaseRow[]
 
-    // Validate rows within import batch - now returns validRows for partial import
+    // Validate rows within import batch — all rows must pass
     const validation = validateRows(rows, schema, identifierKeys)
 
-    // Check VALID rows against existing data (not all rows)
+    // Only check against existing data if validation passed (no point if errors exist)
+    const rowsToCheck = validation.valid ? validation.validRows : []
     const { newRows, exactDuplicates, updateCandidates } = validateRowsAgainstExisting(
-      validation.validRows,  // Only process rows that passed validation
+      rowsToCheck,
       existingRows,
       identifierKeys,
       schema
@@ -687,29 +688,27 @@ export class DatabaseService {
     const totalAfterImport = existingRows.length + newRows.length
     const wouldExceedLimit = totalAfterImport > MAX_ROWS
 
-    // Collect validation errors as warnings (since we support partial import)
     const warnings: string[] = []
-    
-    // Add validation errors as warnings (rows will be skipped, not blocking)
-    if (validation.errors.length > 0) {
-      warnings.push(`${validation.invalidRowIndices.length} row(s) have errors and will be skipped:`)
-      // Show first few errors
-      const maxErrorsToShow = 5
-      validation.errors.slice(0, maxErrorsToShow).forEach(err => {
-        warnings.push(`  • ${err}`)
-      })
-      if (validation.errors.length > maxErrorsToShow) {
-        warnings.push(`  • ...and ${validation.errors.length - maxErrorsToShow} more`)
-      }
-    }
-    
-    // Add exact duplicate info
+
+    // Add exact duplicate info as warnings (non-blocking)
     if (exactDuplicates.length > 0) {
       warnings.push(`${exactDuplicates.length} identical row(s) will be skipped (already exist)`)
     }
 
     // Blocking errors (things that prevent ANY import)
     const errors: string[] = []
+
+    // Validation errors are blocking — all rows must pass required field checks
+    if (validation.errors.length > 0) {
+      const maxErrorsToShow = 10
+      validation.errors.slice(0, maxErrorsToShow).forEach(err => {
+        errors.push(err)
+      })
+      if (validation.errors.length > maxErrorsToShow) {
+        errors.push(`...and ${validation.errors.length - maxErrorsToShow} more errors`)
+      }
+    }
+
     if (wouldExceedLimit) {
       errors.push(
         `Adding ${newRows.length} rows would exceed the ${MAX_ROWS.toLocaleString()} row limit ` +
@@ -717,11 +716,12 @@ export class DatabaseService {
       )
     }
 
-    // The preview is valid if:
+    // The preview is valid only if:
+    // - No validation errors (all rows must pass)
     // - Not exceeding row limit
-    // - There are new rows OR there are update candidates (even if some rows had validation errors)
+    // - There are new rows OR there are update candidates
     const hasContent = newRows.length > 0 || updateCandidates.length > 0
-    const isValid = !wouldExceedLimit && hasContent
+    const isValid = errors.length === 0 && !wouldExceedLimit && hasContent
 
     return {
       valid: isValid,

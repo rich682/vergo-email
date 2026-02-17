@@ -26,6 +26,7 @@ import {
   Loader2,
   Settings,
   Eye,
+  ClipboardPaste,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -154,11 +155,17 @@ export default function DatabaseDetailPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [columnFilters, setColumnFilters] = useState<ColumnFilter[]>([])
 
+  // Row selection state (stores indices into the full database.rows array)
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
   // Tab state
   const [activeTab, setActiveTab] = useState<"data" | "schema">("data")
 
   // Import modal state
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importMode, setImportMode] = useState<"file" | "paste">("file")
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<ImportPreviewResult | null>(null)
   const [importing, setImporting] = useState(false)
@@ -166,6 +173,10 @@ export default function DatabaseDetailPage() {
   const [updateExisting, setUpdateExisting] = useState(false)
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Paste import state
+  const [importPasteValue, setImportPasteValue] = useState("")
+  const [importPasteError, setImportPasteError] = useState<string | null>(null)
 
   // Schema editing state
   const [schemaEditMode, setSchemaEditMode] = useState(false)
@@ -223,6 +234,7 @@ export default function DatabaseDetailPage() {
 
       const data = await response.json()
       setDatabase(data.database)
+      setSelectedRows(new Set())
       if (data.database?.viewers) {
         setViewers(data.database.viewers.map((v: any) => ({
           userId: v.user.id,
@@ -419,15 +431,16 @@ export default function DatabaseDetailPage() {
     setColumnFilters((prev) => prev.filter((f) => f.columnKey !== columnKey))
   }
 
-  const filteredRows = useMemo(() => {
+  // filteredRows returns rows with their original index in database.rows
+  const filteredRowsWithIndex = useMemo(() => {
     if (!database) return []
 
-    let rows = database.rows
+    let rows = database.rows.map((row, index) => ({ row, originalIndex: index }))
 
     // Apply search
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      rows = rows.filter((row) =>
+      rows = rows.filter(({ row }) =>
         Object.values(row).some((value) => {
           if (value === null || value === undefined) return false
           return String(value).toLowerCase().includes(query)
@@ -438,7 +451,7 @@ export default function DatabaseDetailPage() {
     // Apply column filters
     columnFilters.forEach((filter) => {
       if (filter.selectedValues.size > 0) {
-        rows = rows.filter((row) => {
+        rows = rows.filter(({ row }) => {
           const value = row[filter.columnKey]
           if (value === null || value === undefined) return false
           return filter.selectedValues.has(String(value))
@@ -448,6 +461,73 @@ export default function DatabaseDetailPage() {
 
     return rows
   }, [database, searchQuery, columnFilters])
+
+  const filteredRows = useMemo(() => filteredRowsWithIndex.map(r => r.row), [filteredRowsWithIndex])
+
+  // ----------------------------------------
+  // Row Selection & Delete Handlers
+  // ----------------------------------------
+
+  // Get the original indices of the currently displayed (filtered, sliced) rows
+  const displayedRowIndices = useMemo(() => {
+    return filteredRowsWithIndex.slice(0, 100).map(r => r.originalIndex)
+  }, [filteredRowsWithIndex])
+
+  const allDisplayedSelected = displayedRowIndices.length > 0 && displayedRowIndices.every(i => selectedRows.has(i))
+
+  const toggleRowSelection = (originalIndex: number) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(originalIndex)) {
+        next.delete(originalIndex)
+      } else {
+        next.add(originalIndex)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAllDisplayed = () => {
+    if (allDisplayedSelected) {
+      // Deselect all displayed rows
+      setSelectedRows(prev => {
+        const next = new Set(prev)
+        displayedRowIndices.forEach(i => next.delete(i))
+        return next
+      })
+    } else {
+      // Select all displayed rows
+      setSelectedRows(prev => {
+        const next = new Set(prev)
+        displayedRowIndices.forEach(i => next.add(i))
+        return next
+      })
+    }
+  }
+
+  const handleDeleteRows = async () => {
+    if (selectedRows.size === 0 || !database) return
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/databases/${databaseId}/rows`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ rowIndices: Array.from(selectedRows) }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to delete rows")
+      }
+      setSelectedRows(new Set())
+      setDeleteConfirmOpen(false)
+      await fetchDatabase()
+    } catch (err) {
+      console.error("Error deleting rows:", err)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // ----------------------------------------
   // Export & Template Handlers
@@ -555,6 +635,80 @@ export default function DatabaseDetailPage() {
       })
     } finally {
       setImporting(false)
+    }
+  }
+
+  // ----------------------------------------
+  // Paste Import Handler
+  // ----------------------------------------
+
+  const handlePasteImport = async (rawText: string) => {
+    setImportPasteError(null)
+
+    if (!rawText.trim()) {
+      setImportPasteError("Paste some data first")
+      return
+    }
+
+    if (!database) return
+
+    try {
+      // Parse pasted text into rows
+      const lines = rawText.split("\n").filter(line => line.trim().length > 0)
+      if (lines.length === 0) {
+        throw new Error("No data found")
+      }
+
+      const firstLine = lines[0]
+      const delimiter = firstLine.includes("\t") ? "\t" : ","
+
+      const parsed = lines.map(line => {
+        if (delimiter === "\t") {
+          return line.split("\t").map(cell => cell.trim())
+        }
+        const cells: string[] = []
+        let current = ""
+        let inQuotes = false
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i]
+          if (char === '"') {
+            inQuotes = !inQuotes
+          } else if (char === "," && !inQuotes) {
+            cells.push(current.trim())
+            current = ""
+          } else {
+            current += char
+          }
+        }
+        cells.push(current.trim())
+        return cells
+      })
+
+      const headers = parsed[0].filter(h => h.length > 0)
+      if (headers.length === 0) {
+        throw new Error("No column headers detected in the first row")
+      }
+
+      const dataRows = parsed.slice(1)
+
+      // Build a 2D array: headers + data rows for XLSX
+      const sheetData = [headers, ...dataRows]
+
+      // Dynamically import XLSX and create a file blob
+      const XLSX = await import("xlsx")
+      const ws = XLSX.utils.aoa_to_sheet(sheetData)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1")
+      const xlsxBuffer = XLSX.write(wb, { type: "array", bookType: "xlsx" })
+      const blob = new Blob([xlsxBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const file = new File([blob], "pasted-data.xlsx", { type: blob.type })
+
+      // Feed through existing file import flow
+      handleFileSelect(file)
+    } catch (err: any) {
+      setImportPasteError(err.message || "Failed to parse pasted data")
     }
   }
 
@@ -964,6 +1118,28 @@ export default function DatabaseDetailPage() {
                   Clear all filters
                 </Button>
               )}
+              {selectedRows.size > 0 && canManage && !database.isReadOnly && !database.sourceType && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-sm text-gray-600">
+                    {selectedRows.size} row{selectedRows.size !== 1 ? "s" : ""} selected
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedRows(new Set())}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1.5" />
+                    Delete
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Active filters display */}
@@ -998,6 +1174,16 @@ export default function DatabaseDetailPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
+                      {canManage && !database.isReadOnly && !database.sourceType && (
+                        <th className="px-3 py-3 w-10">
+                          <input
+                            type="checkbox"
+                            checked={allDisplayedSelected && displayedRowIndices.length > 0}
+                            onChange={toggleSelectAllDisplayed}
+                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                          />
+                        </th>
+                      )}
                       {sortedColumns.map((column) => {
                         const filter = getColumnFilter(column.key)
                         const hasFilter = filter && filter.selectedValues.size > 0
@@ -1038,29 +1224,65 @@ export default function DatabaseDetailPage() {
                                     No values
                                   </div>
                                 ) : (
-                                  uniqueValues.slice(0, 50).map((value) => (
+                                  <>
+                                    {/* Select All / Deselect All */}
                                     <DropdownMenuItem
-                                      key={value}
-                                      onClick={() =>
-                                        toggleFilterValue(column.key, value)
-                                      }
+                                      onClick={() => {
+                                        const displayedValues = uniqueValues.slice(0, 50)
+                                        const allSelected = displayedValues.every(v => filter?.selectedValues.has(v))
+                                        if (allSelected && hasFilter) {
+                                          // Deselect all
+                                          clearColumnFilter(column.key)
+                                        } else {
+                                          // Select all displayed values
+                                          setColumnFilters(prev => {
+                                            const newSelected = new Set(displayedValues)
+                                            const without = prev.filter(f => f.columnKey !== column.key)
+                                            return [...without, { columnKey: column.key, selectedValues: newSelected }]
+                                          })
+                                        }
+                                      }}
                                     >
                                       <div className="flex items-center gap-2 w-full">
                                         <div
                                           className={`w-4 h-4 border rounded flex items-center justify-center ${
-                                            filter?.selectedValues.has(value)
+                                            uniqueValues.slice(0, 50).every(v => filter?.selectedValues.has(v)) && hasFilter
                                               ? "bg-orange-500 border-orange-500"
                                               : "border-gray-300"
                                           }`}
                                         >
-                                          {filter?.selectedValues.has(value) && (
+                                          {uniqueValues.slice(0, 50).every(v => filter?.selectedValues.has(v)) && hasFilter && (
                                             <Check className="w-3 h-3 text-white" />
                                           )}
                                         </div>
-                                        <span className="truncate">{value}</span>
+                                        <span className="font-medium text-gray-700">Select All</span>
                                       </div>
                                     </DropdownMenuItem>
-                                  ))
+                                    <DropdownMenuSeparator />
+                                    {uniqueValues.slice(0, 50).map((value) => (
+                                      <DropdownMenuItem
+                                        key={value}
+                                        onClick={() =>
+                                          toggleFilterValue(column.key, value)
+                                        }
+                                      >
+                                        <div className="flex items-center gap-2 w-full">
+                                          <div
+                                            className={`w-4 h-4 border rounded flex items-center justify-center ${
+                                              filter?.selectedValues.has(value)
+                                                ? "bg-orange-500 border-orange-500"
+                                                : "border-gray-300"
+                                            }`}
+                                          >
+                                            {filter?.selectedValues.has(value) && (
+                                              <Check className="w-3 h-3 text-white" />
+                                            )}
+                                          </div>
+                                          <span className="truncate">{value}</span>
+                                        </div>
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </>
                                 )}
                                 {uniqueValues.length > 50 && (
                                   <div className="px-2 py-1.5 text-xs text-gray-400">
@@ -1075,10 +1297,10 @@ export default function DatabaseDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredRows.length === 0 ? (
+                    {filteredRowsWithIndex.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={sortedColumns.length}
+                          colSpan={sortedColumns.length + (canManage && !database.isReadOnly && !database.sourceType ? 1 : 0)}
                           className="px-4 py-8 text-center text-gray-500"
                         >
                           {database.rowCount === 0
@@ -1087,8 +1309,21 @@ export default function DatabaseDetailPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredRows.slice(0, 100).map((row, rowIndex) => (
-                        <tr key={rowIndex} className="hover:bg-gray-50">
+                      filteredRowsWithIndex.slice(0, 100).map(({ row, originalIndex }) => (
+                        <tr
+                          key={originalIndex}
+                          className={`hover:bg-gray-50 ${selectedRows.has(originalIndex) ? "bg-orange-50" : ""}`}
+                        >
+                          {canManage && !database.isReadOnly && !database.sourceType && (
+                            <td className="px-3 py-3 w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedRows.has(originalIndex)}
+                                onChange={() => toggleRowSelection(originalIndex)}
+                                className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              />
+                            </td>
+                          )}
                           {sortedColumns.map((column) => (
                             <td
                               key={column.key}
@@ -1558,14 +1793,14 @@ export default function DatabaseDetailPage() {
                   </div>
                 )}
 
-                {/* Warnings — require acknowledgment before import */}
+                {/* Warnings (e.g. duplicates that will be skipped) */}
                 {importPreview.warnings && importPreview.warnings.length > 0 && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-amber-700">
-                          Rows will be skipped
+                          Note
                         </p>
                         <ul className="mt-1 text-sm text-amber-600 space-y-0.5">
                           {importPreview.warnings.map((warn, i) => (
@@ -1574,17 +1809,6 @@ export default function DatabaseDetailPage() {
                         </ul>
                       </div>
                     </div>
-                    <label className="flex items-center gap-2 pt-2 border-t border-amber-200 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={acknowledgedWarnings}
-                        onChange={(e) => setAcknowledgedWarnings(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                      />
-                      <span className="text-sm font-medium text-amber-800">
-                        I understand that {(importPreview.invalidRowCount || 0) + (importPreview.exactDuplicateCount || 0)} row(s) will be skipped
-                      </span>
-                    </label>
                   </div>
                 )}
 
@@ -1619,8 +1843,7 @@ export default function DatabaseDetailPage() {
               disabled={
                 !importPreview?.valid ||
                 importing ||
-                ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0)) ||
-                (((importPreview?.warnings?.length || 0) > 0) && !acknowledgedWarnings)
+                ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0))
               }
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
@@ -1748,6 +1971,40 @@ export default function DatabaseDetailPage() {
                 <Save className="w-3.5 h-3.5 mr-1.5" />
               )}
               Save &amp; Clear Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Rows Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Rows</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedRows.size} row{selectedRows.size !== 1 ? "s" : ""}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteRows}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete {selectedRows.size} Row{selectedRows.size !== 1 ? "s" : ""}
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
