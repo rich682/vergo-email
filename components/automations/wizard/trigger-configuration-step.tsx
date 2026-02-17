@@ -22,7 +22,7 @@ interface TriggerConfigurationStepProps {
   onTriggerTypeChange: (type: TriggerType) => void
   conditions: Record<string, unknown>
   onConditionsChange: (conditions: Record<string, unknown>) => void
-  isCustom: boolean
+  isCustom?: boolean // Unused — kept for backward compat, trigger selector always shows
 }
 
 const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [
@@ -106,22 +106,20 @@ export function TriggerConfigurationStep({
           />
         </div>
 
-        {/* Trigger type (only for custom) */}
-        {isCustom && (
-          <div>
-            <Label className="text-xs text-gray-500">Trigger Type</Label>
-            <Select value={triggerType} onValueChange={(v) => onTriggerTypeChange(v as TriggerType)}>
-              <SelectTrigger className="mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TRIGGER_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {/* Trigger type */}
+        <div>
+          <Label className="text-xs text-gray-500">When should this agent run?</Label>
+          <Select value={triggerType} onValueChange={(v) => onTriggerTypeChange(v as TriggerType)}>
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TRIGGER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {/* Trigger-specific config */}
         <div className="border border-gray-200 rounded-lg p-4">
