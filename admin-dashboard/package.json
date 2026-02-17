@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "prisma generate --schema=../prisma/schema.prisma && next build",
+    "build": "prisma generate --schema=../prisma/schema.prisma && rm -rf node_modules/.prisma && next build",
     "start": "next start -p 3001",
-    "postinstall": "prisma generate --schema=../prisma/schema.prisma || true"
+    "postinstall": "prisma generate --schema=../prisma/schema.prisma && rm -rf node_modules/.prisma || true"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
