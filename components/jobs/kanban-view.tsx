@@ -23,6 +23,7 @@ interface JobRow {
   collectedItemCount?: number
   taskCount?: number
   respondedCount?: number
+  taskType?: string | null
 }
 
 interface KanbanViewProps {
@@ -48,6 +49,13 @@ function parseDateOnly(dateStr: string): Date {
   const datePart = dateStr.split("T")[0]
   const [year, month, day] = datePart.split("-").map(Number)
   return new Date(year, month - 1, day)
+}
+
+const TASK_TYPE_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+  reconciliation: { label: "Reconciliation", bg: "bg-emerald-50", text: "text-emerald-700" },
+  report: { label: "Report", bg: "bg-blue-50", text: "text-blue-700" },
+  form: { label: "Form", bg: "bg-purple-50", text: "text-purple-700" },
+  request: { label: "Request", bg: "bg-amber-50", text: "text-amber-700" },
 }
 
 function normalizeStatus(status: string): string {
@@ -124,11 +132,18 @@ function TaskCard({ job, onClick }: TaskCardProps) {
       onClick={onClick}
       className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-gray-300 cursor-pointer transition-all"
     >
+      {/* Task Type Badge */}
+      {job.taskType && TASK_TYPE_CONFIG[job.taskType] && (
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium mb-1.5 ${TASK_TYPE_CONFIG[job.taskType].bg} ${TASK_TYPE_CONFIG[job.taskType].text}`}>
+          {TASK_TYPE_CONFIG[job.taskType].label}
+        </span>
+      )}
+
       {/* Task Name */}
       <h4 className="font-medium text-gray-900 text-sm mb-2 line-clamp-2">
         {job.name}
       </h4>
-      
+
       {/* Metadata Row */}
       <div className="flex items-center gap-3 text-xs text-gray-500">
         {/* Owner */}
