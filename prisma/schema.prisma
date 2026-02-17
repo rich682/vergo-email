@@ -163,6 +163,7 @@ model Organization {
   notifications           Notification[]
   agentDefinitions        AgentDefinition[]
   workflowRuns            WorkflowRun[]
+  requestTemplates        RequestTemplate[]
 
   @@index([slug])
 }
@@ -257,6 +258,7 @@ model User {
   createdReconciliationConfigs          ReconciliationConfig[]          @relation("ReconciliationConfigCreator")
   createdAgents                         AgentDefinition[]               @relation("AgentCreator")
   createdAutomationRules                AutomationRule[]                @relation("AutomationRuleCreator")
+  createdRequestTemplates               RequestTemplate[]               @relation("RequestTemplateCreator")
 
   @@index([organizationId])
   @@index([email])
@@ -1826,5 +1828,25 @@ model WorkflowAuditLog {
 
   @@index([workflowRunId])
   @@index([organizationId, createdAt])
+}
+
+// ─── Request Templates ─────────────────────────────────────────────────────
+
+model RequestTemplate {
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String
+  subjectTemplate  String
+  bodyTemplate     String   @db.Text
+  htmlBodyTemplate String?  @db.Text
+  availableTags    Json?    // String[] of expected personalization tag names
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("RequestTemplateCreator", fields: [createdById], references: [id])
+
+  @@index([organizationId])
 }
 

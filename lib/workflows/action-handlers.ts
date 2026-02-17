@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma"
 import { inngest } from "@/inngest/client"
 import { canPerformAction } from "@/lib/permissions"
 import { WorkflowAuditService } from "./audit.service"
-import type { ActionType, ActionContext, StepResult } from "./types"
+import type { ActionType, ActionContext, StepResult, SendRequestActionParams } from "./types"
 
 export interface ActionResult {
   success: boolean
@@ -48,12 +48,25 @@ async function handleSendRequest(
   params: Record<string, unknown>,
   context: ActionContext
 ): Promise<ActionResult> {
-  const questId = params.questId as string
-  if (!questId) {
-    return { success: false, error: "Missing questId in actionParams" }
+  // V2 path: requestTemplateId + recipientSourceType
+  if (params.requestTemplateId) {
+    return handleSendRequestV2(params as unknown as SendRequestActionParams, context)
   }
 
-  // Re-check permission at execution time
+  // Legacy path: questId-based execution
+  return handleSendRequestLegacy(params, context)
+}
+
+/** Legacy handler — delegates to QuestService.execute() */
+async function handleSendRequestLegacy(
+  params: Record<string, unknown>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const questId = params.questId as string
+  if (!questId) {
+    return { success: false, error: "Missing questId or requestTemplateId in actionParams" }
+  }
+
   const permCheck = await checkPermissionForAction(context, "inbox:send_emails")
   if (!permCheck.allowed) {
     return { success: false, error: permCheck.reason }
@@ -74,6 +87,233 @@ async function handleSendRequest(
     }
   } catch (error: any) {
     return { success: false, error: error.message, targetType: "quest", targetId: questId }
+  }
+}
+
+/**
+ * V2 handler — uses RequestTemplate for content + flexible recipient sources.
+ *
+ * 1. Loads the RequestTemplate (subject/body with {{Tag}} placeholders)
+ * 2. Resolves recipients based on recipientSourceType
+ * 3. Renders per-recipient personalized emails
+ * 4. Sends via EmailSendingService.sendBulkEmail()
+ */
+async function handleSendRequestV2(
+  params: SendRequestActionParams,
+  context: ActionContext
+): Promise<ActionResult> {
+  const { requestTemplateId, recipientSourceType } = params
+  if (!requestTemplateId) {
+    return { success: false, error: "Missing requestTemplateId" }
+  }
+  if (!recipientSourceType) {
+    return { success: false, error: "Missing recipientSourceType" }
+  }
+
+  const permCheck = await checkPermissionForAction(context, "inbox:send_emails")
+  if (!permCheck.allowed) {
+    return { success: false, error: permCheck.reason }
+  }
+
+  try {
+    // 1. Load request template
+    const template = await prisma.requestTemplate.findFirst({
+      where: { id: requestTemplateId, organizationId: context.organizationId },
+    })
+    if (!template) {
+      return { success: false, error: `Request template ${requestTemplateId} not found` }
+    }
+
+    // 2. Resolve recipients based on source type
+    const { renderTemplate } = await import("@/lib/utils/template-renderer")
+    const { EmailSendingService } = await import("@/lib/services/email-sending.service")
+
+    let recipients: Array<{ email: string; name?: string }>
+    let perRecipientEmails: Array<{ email: string; subject: string; body: string; htmlBody: string }>
+
+    if (recipientSourceType === "database") {
+      // Database source — resolve from database rows
+      const { resolveDatabaseRecipients } = await import("@/lib/services/database-recipient.service")
+
+      if (!params.databaseId || !params.emailColumnKey) {
+        return { success: false, error: "Missing databaseId or emailColumnKey for database recipient source" }
+      }
+
+      const dbResult = await resolveDatabaseRecipients(
+        context.organizationId,
+        params.databaseId,
+        params.emailColumnKey,
+        params.nameColumnKey,
+        params.filters || []
+      )
+
+      recipients = dbResult.recipients.map((r) => ({ email: r.email, name: r.name }))
+      perRecipientEmails = dbResult.recipients.map((r) => {
+        const subjectResult = renderTemplate(template.subjectTemplate, r.personalizationData)
+        const bodyResult = renderTemplate(template.bodyTemplate, r.personalizationData)
+        const htmlResult = template.htmlBodyTemplate
+          ? renderTemplate(template.htmlBodyTemplate, r.personalizationData)
+          : null
+        return {
+          email: r.email,
+          subject: subjectResult.rendered,
+          body: bodyResult.rendered,
+          htmlBody: htmlResult?.rendered || bodyResult.rendered,
+        }
+      })
+    } else {
+      // Contact-based sources — use existing recipient resolution
+      const { resolveRecipientsWithReasons, buildRecipientPersonalizationData } = await import(
+        "@/lib/services/recipient-filter.service"
+      )
+
+      let recipientSelection: { entityIds?: string[]; groupIds?: string[]; contactTypes?: string[] } = {}
+
+      if (recipientSourceType === "contact_types" && params.contactTypes?.length) {
+        recipientSelection = { contactTypes: params.contactTypes }
+      } else if (recipientSourceType === "groups" && params.groupIds?.length) {
+        recipientSelection = { groupIds: params.groupIds }
+      } else if (recipientSourceType === "specific_contacts" && params.entityIds?.length) {
+        recipientSelection = { entityIds: params.entityIds }
+      } else if (recipientSourceType === "specific_users" && params.userIds?.length) {
+        // For users, resolve their emails directly
+        const users = await prisma.user.findMany({
+          where: {
+            id: { in: params.userIds },
+            organizationId: context.organizationId,
+          },
+          select: { id: true, email: true, name: true },
+        })
+
+        recipients = users.map((u) => ({ email: u.email, name: u.name || undefined }))
+        perRecipientEmails = users.map((u) => {
+          const data: Record<string, string> = {
+            "First Name": u.name?.split(" ")[0] || "",
+            "Email": u.email,
+          }
+          const subjectResult = renderTemplate(template.subjectTemplate, data)
+          const bodyResult = renderTemplate(template.bodyTemplate, data)
+          const htmlResult = template.htmlBodyTemplate
+            ? renderTemplate(template.htmlBodyTemplate, data)
+            : null
+          return {
+            email: u.email,
+            subject: subjectResult.rendered,
+            body: bodyResult.rendered,
+            htmlBody: htmlResult?.rendered || bodyResult.rendered,
+          }
+        })
+
+        // Skip the resolveRecipientsWithReasons call below
+        return await sendAndReturn(
+          EmailSendingService,
+          context,
+          template,
+          recipients,
+          perRecipientEmails,
+          params,
+          requestTemplateId
+        )
+      } else {
+        return { success: false, error: `No recipients configured for source type "${recipientSourceType}"` }
+      }
+
+      const resolved = await resolveRecipientsWithReasons(context.organizationId, recipientSelection)
+
+      recipients = resolved.recipients.map((r) => ({ email: r.email, name: r.firstName || r.name || undefined }))
+      perRecipientEmails = resolved.recipients.map((r) => {
+        const data = buildRecipientPersonalizationData(r)
+        const subjectResult = renderTemplate(template.subjectTemplate, data)
+        const bodyResult = renderTemplate(template.bodyTemplate, data)
+        const htmlResult = template.htmlBodyTemplate
+          ? renderTemplate(template.htmlBodyTemplate, data)
+          : null
+        return {
+          email: r.email,
+          subject: subjectResult.rendered,
+          body: bodyResult.rendered,
+          htmlBody: htmlResult?.rendered || bodyResult.rendered,
+        }
+      })
+    }
+
+    return await sendAndReturn(
+      EmailSendingService,
+      context,
+      template,
+      recipients,
+      perRecipientEmails,
+      params,
+      requestTemplateId
+    )
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message,
+      targetType: "request_template",
+      targetId: requestTemplateId,
+    }
+  }
+}
+
+/** Shared send + result builder for V2 handler */
+async function sendAndReturn(
+  EmailSendingService: any,
+  context: ActionContext,
+  template: { subjectTemplate: string; bodyTemplate: string },
+  recipients: Array<{ email: string; name?: string }>,
+  perRecipientEmails: Array<{ email: string; subject: string; body: string; htmlBody: string }>,
+  params: SendRequestActionParams,
+  requestTemplateId: string
+): Promise<ActionResult> {
+  if (recipients.length === 0) {
+    return {
+      success: true,
+      data: { emailsSent: 0, requestTemplateId, reason: "No recipients resolved" },
+      targetType: "request_template",
+      targetId: requestTemplateId,
+    }
+  }
+
+  const deadlineDate = params.deadlineDate ? new Date(params.deadlineDate) : null
+
+  // Map reminders config to the format expected by EmailSendingService
+  let remindersConfig: any = undefined
+  if (params.remindersConfig?.enabled) {
+    const frequencyHours =
+      params.remindersConfig.frequency === "daily" ? 24 :
+      params.remindersConfig.frequency === "weekly" ? 168 : 336 // biweekly
+    remindersConfig = {
+      enabled: true,
+      startDelayHours: frequencyHours,
+      frequencyHours,
+      maxCount: 10,
+      approved: true,
+    }
+  }
+
+  const results = await EmailSendingService.sendBulkEmail({
+    organizationId: context.organizationId,
+    userId: context.triggeredBy || undefined,
+    recipients,
+    subject: template.subjectTemplate,
+    body: template.bodyTemplate,
+    perRecipientEmails,
+    deadlineDate,
+    remindersConfig,
+  })
+
+  const successful = results.filter((r: any) => !r.error)
+
+  return {
+    success: true,
+    data: {
+      emailsSent: successful.length,
+      totalRecipients: recipients.length,
+      requestTemplateId,
+    },
+    targetType: "request_template",
+    targetId: requestTemplateId,
   }
 }
 

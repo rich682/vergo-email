@@ -166,6 +166,46 @@ export interface ActionContext {
   stepResults: StepResult[] // Results from previous steps
 }
 
+// ─── Send Request Action Params ──────────────────────────────────────────
+
+export type RecipientSourceType =
+  | "contact_types"
+  | "groups"
+  | "specific_contacts"
+  | "specific_users"
+  | "database"
+
+export interface SendRequestDatabaseFilter {
+  columnKey: string
+  operator: "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "contains" | "not_empty" | "is_empty"
+  value?: string | number | boolean
+}
+
+export interface SendRequestActionParams {
+  // Content (pick one)
+  requestTemplateId?: string
+  questId?: string // Legacy backward compat
+
+  // Recipients
+  recipientSourceType?: RecipientSourceType
+  contactTypes?: string[]
+  groupIds?: string[]
+  entityIds?: string[]
+  userIds?: string[]
+  databaseId?: string
+  emailColumnKey?: string
+  nameColumnKey?: string
+  filters?: SendRequestDatabaseFilter[]
+
+  // Schedule (optional)
+  deadlineDate?: string
+  remindersConfig?: {
+    enabled: boolean
+    frequency: "daily" | "weekly" | "biweekly"
+    stopCondition: "reply" | "deadline" | "reply_or_deadline"
+  }
+}
+
 // ─── Audit Log Types ─────────────────────────────────────────────────────────
 
 export type AuditActionType =
