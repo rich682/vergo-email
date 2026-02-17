@@ -306,10 +306,59 @@ function coerceValue(
       // Attempt to parse common date formats to ISO string
       const str = String(value).trim()
       if (!str) return null
+
+      // Already in YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+
+      // Handle short month-day strings without year (e.g. "26-Jan", "Jan-26", "26 Jan")
+      // These come from Excel clipboard when dates are formatted as short dates
+      const monthNames: Record<string, number> = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+        jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+        january: 0, february: 1, march: 2, april: 3, june: 5,
+        july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+      }
+
+      // Pattern: "26-Jan", "26 Jan", "26/Jan"
+      const dayFirstMatch = str.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,9})$/)
+      if (dayFirstMatch) {
+        const day = parseInt(dayFirstMatch[1])
+        const monthKey = dayFirstMatch[2].toLowerCase()
+        if (monthKey in monthNames && day >= 1 && day <= 31) {
+          const month = monthNames[monthKey]
+          const year = new Date().getFullYear()
+          const d = new Date(year, month, day)
+          if (!isNaN(d.getTime())) {
+            return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+          }
+        }
+      }
+
+      // Pattern: "Jan-26", "Jan 26", "Jan/26" (month first, no year)
+      const monthFirstMatch = str.match(/^([A-Za-z]{3,9})[\s\-\/](\d{1,2})$/)
+      if (monthFirstMatch) {
+        const monthKey = monthFirstMatch[1].toLowerCase()
+        const day = parseInt(monthFirstMatch[2])
+        if (monthKey in monthNames && day >= 1 && day <= 31) {
+          const month = monthNames[monthKey]
+          const year = new Date().getFullYear()
+          const d = new Date(year, month, day)
+          if (!isNaN(d.getTime())) {
+            return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+          }
+        }
+      }
+
+      // Standard date parsing for full dates (e.g. "1/25/2026", "January 25, 2026")
       const parsed = new Date(str)
       if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString().split("T")[0] // YYYY-MM-DD
+        // Guard against dates that default to year 2001 or similar from ambiguous input
+        const year = parsed.getFullYear()
+        if (year >= 1900 && year <= 2100) {
+          return parsed.toISOString().split("T")[0] // YYYY-MM-DD
+        }
       }
+
       // Keep original if parsing fails
       return value
     }
