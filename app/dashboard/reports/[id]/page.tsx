@@ -320,6 +320,8 @@ export default function ReportBuilderPage() {
             metricRows,
             pivotFormulaColumns,
           },
+          // Apply active filters to preview
+          filters: Object.keys(filterBindings).length > 0 ? filterBindings : undefined,
         }),
       })
 
@@ -337,7 +339,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
