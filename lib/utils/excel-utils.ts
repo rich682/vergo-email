@@ -156,52 +156,75 @@ export function exportToExcel(
  * Parse an Excel file and extract headers and rows
  */
 export function parseExcelFile(buffer: Buffer | ArrayBuffer): ExcelParseResult {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellNF: true, cellStyles: true })
-  
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, cellNF: true, cellStyles: true })
+
   // Get the first sheet
   const firstSheetName = workbook.SheetNames[0]
   if (!firstSheetName) {
     throw new Error("Excel file has no sheets")
   }
-  
+
   const worksheet = workbook.Sheets[firstSheetName]
   if (!worksheet) {
     throw new Error("Could not read worksheet")
   }
-  
-  // Get raw data as 2D array
-  const rawData: string[][] = XLSX.utils.sheet_to_json(worksheet, {
+
+  // Get raw data with raw: true to preserve native types (numbers, booleans)
+  const rawData: unknown[][] = XLSX.utils.sheet_to_json(worksheet, {
     header: 1,
     defval: "",
-    raw: false, // Convert to strings for consistency
-  }) as string[][]
-  
+    raw: true,
+  }) as unknown[][]
+
   if (rawData.length === 0) {
     throw new Error("Excel file is empty")
   }
-  
+
   // First row is headers
   const headers = rawData[0].map(h => String(h || "").trim())
-  
+
   // Remaining rows are data
-  const dataRows = rawData.slice(1).filter(row => 
+  const dataRows = rawData.slice(1).filter(row =>
     row.some(cell => cell !== null && cell !== undefined && cell !== "")
   )
-  
-  // Convert to objects
+
+  // Convert to objects, handling Date objects from cellDates: true
   const rows = dataRows.map(row => {
     const obj: Record<string, string | number | boolean | null> = {}
     headers.forEach((header, index) => {
-      const value = row[index]
-      obj[header] = value === undefined || value === "" ? null : value
+      const value = (row as unknown[])[index]
+      if (value === undefined || value === "") {
+        obj[header] = null
+      } else if (value instanceof Date) {
+        // Convert JS Date to YYYY-MM-DD string
+        const year = value.getFullYear()
+        const month = String(value.getMonth() + 1).padStart(2, "0")
+        const day = String(value.getDate()).padStart(2, "0")
+        obj[header] = `${year}-${month}-${day}`
+      } else {
+        obj[header] = value as string | number | boolean
+      }
     })
     return obj
   })
-  
+
+  // Build string version for rawRows
+  const rawRowsStr = dataRows.map(row =>
+    (row as unknown[]).map(cell => {
+      if (cell instanceof Date) {
+        const year = cell.getFullYear()
+        const month = String(cell.getMonth() + 1).padStart(2, "0")
+        const day = String(cell.getDate()).padStart(2, "0")
+        return `${year}-${month}-${day}`
+      }
+      return String(cell ?? "")
+    })
+  )
+
   return {
     headers,
     rows,
-    rawRows: dataRows,
+    rawRows: rawRowsStr,
   }
 }
 
