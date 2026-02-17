@@ -114,19 +114,89 @@ export async function POST(
     }
 
     // Identify name-like columns for greeting
-    const nameColumn = columns.find(c => 
-      c.key.includes('first_name') || c.key.includes('firstname') || 
+    const nameColumn = columns.find(c =>
+      c.key.includes('first_name') || c.key.includes('firstname') ||
       c.key.toLowerCase() === 'name' || c.label.toLowerCase().includes('first name')
     )
+
+    // Identify contact name column (for personalization/greeting)
+    const contactNameColumn = !nameColumn ? columns.find(c =>
+      c.key === 'contact_name' || c.label.toLowerCase() === 'contact'
+    ) : null
+
+    // Classify columns into email-worthy vs internal/system columns
+    const INTERNAL_COLUMN_KEYS = new Set([
+      'as_of_date', 'remote_id', 'is_overdue', 'days_overdue', 'currency',
+      'paid_on_date', 'paid_amount', 'line_id', 'invoice_remote_id',
+    ])
+    const EMAIL_COLUMN_KEYS = new Set([
+      'contact_email', 'email', 'email_address',
+    ])
+    const NAME_COLUMN_KEYS = new Set([
+      'contact_name', 'first_name', 'firstname', 'name', 'last_name', 'lastname',
+    ])
+
+    // Split columns: ones to use in email body vs ones to skip
+    const emailBodyColumns = columns.filter(c =>
+      !INTERNAL_COLUMN_KEYS.has(c.key) &&
+      !EMAIL_COLUMN_KEYS.has(c.key) &&
+      !NAME_COLUMN_KEYS.has(c.key)
+    )
+
+    // Build per-column context with data type awareness and sample values
+    const columnDescriptions = emailBodyColumns.map(col => {
+      const samples = columnSamples[col.key]
+      const sampleStr = samples.length > 0 ? samples[0] : null
+      let hint = ''
+
+      // Add formatting/usage guidance based on data type and sample
+      if (col.dataType === 'currency') {
+        hint = ' [CURRENCY - value already includes number formatting, do NOT add $ or currency symbols]'
+        if (sampleStr) hint += ` (example value: ${sampleStr})`
+      } else if (col.dataType === 'date') {
+        hint = ' [DATE - already formatted]'
+        if (sampleStr) hint += ` (example: ${sampleStr})`
+      } else if (col.dataType === 'boolean') {
+        hint = ' [BOOLEAN - true/false flag, skip unless very relevant]'
+      } else if (sampleStr) {
+        hint = ` (example: ${sampleStr})`
+      }
+
+      return `- {{${col.key}}} = "${col.label}"${hint}`
+    }).join('\n')
+
+    // Build dynamic example sentences from actual columns
+    const exampleSentences = emailBodyColumns
+      .filter(c => c.dataType !== 'boolean')
+      .slice(0, 4)
+      .map(col => {
+        const key = col.key
+        const label = col.label.toLowerCase()
+        if (col.dataType === 'currency') {
+          return `   - "${col.label}": "The ${label} is {{${key}}}."  (NO $ sign — value is pre-formatted)`
+        } else if (col.dataType === 'date') {
+          return `   - "${col.label}": "The ${label} is {{${key}}}."`
+        } else if (label.includes('number') || label.includes('#')) {
+          return `   - "${col.label}": "This is regarding ${label.replace('#', '').trim()} #{{${key}}}."`
+        } else {
+          return `   - "${col.label}": reference {{${key}}} naturally in a sentence`
+        }
+      }).join('\n')
 
     // Build job context
     const labels = job.labels as any
     const jobLabels = labels?.tags || []
 
     let prompt: string
-    
+
     if (isRefinement && currentDraft) {
       // Refinement mode
+      const refinementColumnList = emailBodyColumns.map(col => {
+        let hint = ''
+        if (col.dataType === 'currency') hint = ' [CURRENCY — do NOT add $ or currency symbols, value is pre-formatted]'
+        return `- {{${col.key}}} (${col.label})${hint}`
+      }).join('\n')
+
       prompt = `You are refining an existing email draft. Apply the user's requested changes while keeping the merge fields intact.
 
 CURRENT DRAFT:
@@ -137,64 +207,53 @@ ${currentDraft.body}
 USER'S REFINEMENT REQUEST: ${userGoal}
 
 AVAILABLE MERGE FIELDS (preserve these):
-${columns.map(col => `- {{${col.key}}} (${col.label})`).join('\n')}
+${refinementColumnList}
 
 INSTRUCTIONS:
 1. Apply the user's requested changes to the draft
-2. Keep ALL existing merge fields ({{field_name}} syntax) - do not remove them
+2. Keep ALL existing merge fields ({{field_name}} syntax) — do not remove them
 3. Maintain the same general structure unless the user asks for changes
 4. Keep the email professional and actionable
-5. Return the refined subject and body
+5. For currency fields: do NOT add $ or currency symbols — values are already formatted (e.g., "4,875.42")
+6. Return the refined subject and body
 
 Refine the email according to the user's request.`
     } else {
       // Initial generation mode
-      // Infer the topic from database name (e.g., "Outstanding Invoices" -> invoices/payments)
-      const topicHint = databaseName.toLowerCase()
-      
-      prompt = `Generate a professional email requesting action from recipients. You MUST use the merge fields provided.
+      const greetingInstruction = nameColumn
+        ? `Start with "Dear {{${nameColumn.key}}}," for personalization`
+        : contactNameColumn
+          ? `Start with "Dear {{${contactNameColumn.key}}}," for personalization`
+          : 'Start with "Dear" followed by an appropriate greeting (e.g., "Dear valued client,")'
+
+      prompt = `Generate a professional, polished email requesting action from recipients.
 
 TASK CONTEXT:
 - Task Name: ${job.name}
 - Description: ${job.description || "Not provided"}
 - Due Date: ${job.dueDate ? job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Not set"}
 
-DATA CONTEXT (use this to understand what the email is about):
-- Topic: ${databaseName}
-- This email is likely about: ${topicHint}
+DATA CONTEXT:
+- Source: ${databaseName}
 
-MERGE FIELDS YOU MUST USE (these will be replaced with actual recipient data):
-${columns.map(col => {
-  const samples = columnSamples[col.key]
-  return `- {{${col.key}}} (${col.label})${samples.length > 0 ? ` - Example: ${samples[0]}` : ''}`
-}).join('\n')}
+MERGE FIELDS TO USE IN THE EMAIL BODY (use {{column_key}} syntax exactly):
+${columnDescriptions}
 
-${userGoal ? `USER'S SPECIFIC GOAL: ${userGoal}` : ''}
-
+${userGoal ? `USER'S SPECIFIC GOAL: ${userGoal}\n` : ''}
 CRITICAL REQUIREMENTS:
-1. YOU MUST include the merge fields in the email body using {{column_key}} syntax exactly
-2. ${nameColumn ? `Start with "Dear {{${nameColumn.key}}}," for personalization` : 'Start with "Dear" followed by an appropriate greeting'}
-3. For EACH data field, write a sentence that incorporates it naturally:
-   - Invoice amount: "The outstanding amount is {{invoice_amount}}."
-   - Due date: "Payment is due by {{due_date}}."
-   - Invoice number: "This is regarding invoice #{{invoice_number}}."
-4. DO NOT literally say "database" or "${databaseName}" in the email text
-5. Reference the task "${job.name}" in the subject line
-6. Include a clear call-to-action (e.g., "Please review and confirm..." or "Please remit payment by...")
-7. ${job.dueDate ? `Mention the deadline: ${job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : 'Ask for a timely response'}
+1. ONLY use merge fields from the list above — do NOT invent fields that aren't listed
+2. ${greetingInstruction}
+3. Incorporate each relevant field naturally into a sentence. Examples using the ACTUAL fields above:
+${exampleSentences}
+4. CURRENCY FIELDS: The values are ALREADY formatted numbers (e.g., "4,875.42"). Do NOT prepend a dollar sign or any currency symbol before a merge field. Write "The balance due is {{balance}}." — NEVER put a dollar sign directly before the {{ braces.
+5. Do NOT reference the database name, internal systems, or anything that sounds like internal tooling
+6. Reference the task "${job.name}" in the subject line
+7. Include a clear, specific call-to-action relevant to the data
+8. ${job.dueDate ? `Mention the deadline: ${job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}` : 'Ask for a timely response'}
+9. Only include fields that make sense for the recipient to see. Skip internal fields, IDs, or boolean flags that would look strange in an email.
+10. Keep it concise — 3-5 sentences in the body, not more.
 
-Example structure for an invoice email:
-Subject: ${job.name} - Action Required
-
-Dear {{first_name}},
-
-I am reaching out regarding invoice #{{invoice_number}} for {{invoice_amount}}.
-
-The payment is due by {{due_date}}. Please review and let us know if you have any questions.
-
-[signature]
-
-Generate an email using ALL the merge fields listed above.`
+Generate the email now.`
     }
 
     // Generate draft using AI

@@ -129,15 +129,21 @@ export function ComposeSendStep({
     failedRecipients?: Array<{ email: string; error?: string }>
   } | null>(null)
   
-  // Filter out name columns from insertable fields
-  const insertableColumns = columns.filter(col => 
-    !col.key.includes('first_name') && 
-    !col.key.includes('firstname') && 
+  // Filter out name columns and internal/system columns from insertable fields
+  const INTERNAL_KEYS = new Set([
+    'as_of_date', 'remote_id', 'is_overdue', 'days_overdue', 'currency',
+    'paid_on_date', 'paid_amount', 'line_id', 'invoice_remote_id',
+    'contact_email', 'email', 'email_address',
+  ])
+  const insertableColumns = columns.filter(col =>
+    !col.key.includes('first_name') &&
+    !col.key.includes('firstname') &&
     !col.key.includes('last_name') &&
     !col.key.includes('lastname') &&
     !(col.key === 'name') &&
     !(col.key === 'first') &&
-    !(col.key === 'last')
+    !(col.key === 'last') &&
+    !INTERNAL_KEYS.has(col.key)
   )
   
   // Get valid rows for preview
