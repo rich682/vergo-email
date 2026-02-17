@@ -16,6 +16,8 @@ export type TriggerType =
   | "data_condition"
   | "data_uploaded"
   | "form_submitted"
+  | "compound"
+  | "database_changed" // Internal: emitted when database rows change, not user-facing
 
 /** Conditions for board_created / board_status_changed triggers */
 export interface BoardTriggerConditions {
@@ -51,12 +53,33 @@ export interface FormSubmittedTriggerConditions {
   taskInstanceId?: string
 }
 
+/** Conditions for compound triggers (time + optional database condition) */
+export interface CompoundTriggerConditions {
+  cronExpression: string
+  timezone: string
+  databaseCondition?: {
+    databaseId: string
+    columnKey: string
+    operator: "eq" | "between" | "gt" | "lt" | "gte" | "lte" | "contains"
+    value: unknown
+    boardScope?: string // "current_period" — resolves template vars from active board
+  }
+  /**
+   * Minutes to wait after data last changed before firing (settling window).
+   * When data arrives, the trigger waits this long with no further data events
+   * before executing. This prevents firing before all data is uploaded.
+   * Default: 60 minutes. Set to 0 to fire immediately on first match.
+   */
+  settlingMinutes?: number
+}
+
 export type TriggerConditions =
   | BoardTriggerConditions
   | ScheduledTriggerConditions
   | DataConditionTriggerConditions
   | DataUploadedTriggerConditions
   | FormSubmittedTriggerConditions
+  | CompoundTriggerConditions
 
 // ─── Workflow Definition ─────────────────────────────────────────────────────
 

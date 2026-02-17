@@ -1,21 +1,23 @@
 import type { TriggerType } from "@/lib/workflows/types"
 
-const TRIGGER_LABELS: Record<TriggerType, string> = {
+const TRIGGER_LABELS: Partial<Record<TriggerType, string>> = {
   board_created: "When a new period board is created",
   board_status_changed: "When a board status changes",
   scheduled: "On a schedule",
   data_condition: "When data meets a condition",
   data_uploaded: "When reconciliation data is uploaded",
   form_submitted: "When a form is submitted",
+  compound: "On a schedule + when data is available",
 }
 
-const TRIGGER_SHORT_LABELS: Record<TriggerType, string> = {
+const TRIGGER_SHORT_LABELS: Partial<Record<TriggerType, string>> = {
   board_created: "New period",
   board_status_changed: "Status change",
   scheduled: "Scheduled",
   data_condition: "Data condition",
   data_uploaded: "Data uploaded",
   form_submitted: "Form submitted",
+  compound: "Schedule + Data",
 }
 
 /**
@@ -60,6 +62,19 @@ export function getTriggerDescription(
 
     case "form_submitted": {
       return "When a form response is submitted"
+    }
+
+    case "compound": {
+      const cron = conditions.cronExpression as string | undefined
+      const dbCond = conditions.databaseCondition as { columnKey?: string; operator?: string } | undefined
+      const parts: string[] = []
+      if (cron) {
+        parts.push(describeCron(cron))
+      }
+      if (dbCond?.columnKey) {
+        parts.push(`when "${dbCond.columnKey}" ${dbCond.operator || "meets"} condition`)
+      }
+      return parts.length > 0 ? parts.join(", then ") : base
     }
 
     default:

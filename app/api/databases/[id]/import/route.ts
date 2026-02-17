@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
 import { canPerformAction } from "@/lib/permissions"
+import { inngest } from "@/inngest/client"
 
 export const maxDuration = 60
 interface RouteParams {
@@ -128,9 +129,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         messageParts.push(`${result.duplicates.toLocaleString()} identical row(s) skipped`)
       }
 
-      const message = messageParts.length > 0 
+      const message = messageParts.length > 0
         ? `Successfully: ${messageParts.join(", ")}`
         : "No changes made"
+
+      // Emit database change event for compound triggers
+      if (result.added > 0 || result.updated > 0) {
+        inngest.send({
+          name: "workflow/trigger",
+          data: {
+            triggerType: "database_changed",
+            triggerEventId: params.id,
+            organizationId: user.organizationId,
+            metadata: {
+              databaseId: params.id,
+              added: result.added,
+              updated: result.updated,
+            },
+          },
+        }).catch((err: unknown) => console.error("[DatabaseImport] Failed to emit database_changed event:", err))
+      }
 
       return NextResponse.json({
         success: true,

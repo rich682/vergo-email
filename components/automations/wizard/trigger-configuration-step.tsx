@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CronBuilder } from "./cron-builder"
+import { DatabaseConditionBuilder } from "./database-condition-builder"
 import { TriggerIcon } from "../shared/trigger-description"
 import { cronToSchedule, scheduleToCron } from "@/lib/automations/cron-helpers"
 import type { TriggerType, CronSchedule } from "@/lib/automations/types"
@@ -32,6 +33,7 @@ const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [
   { value: "data_uploaded", label: "When reconciliation data is uploaded" },
   { value: "form_submitted", label: "When a form is submitted" },
   { value: "data_condition", label: "When data meets a condition" },
+  { value: "compound", label: "On a schedule + when data is available" },
 ]
 
 const BOARD_STATUS_OPTIONS = [
@@ -58,7 +60,7 @@ export function TriggerConfigurationStep({
   isCustom,
 }: TriggerConfigurationStepProps) {
   const [schedule, setSchedule] = useState<CronSchedule>(() => {
-    if (triggerType === "scheduled" && conditions.cronExpression) {
+    if ((triggerType === "scheduled" || triggerType === "compound") && conditions.cronExpression) {
       return cronToSchedule(
         conditions.cronExpression as string,
         (conditions.timezone as string) || "UTC"
@@ -76,9 +78,9 @@ export function TriggerConfigurationStep({
     })
   }
 
-  // Initialize cron when switching to scheduled trigger
+  // Initialize cron when switching to scheduled or compound trigger
   useEffect(() => {
-    if (triggerType === "scheduled" && !conditions.cronExpression) {
+    if ((triggerType === "scheduled" || triggerType === "compound") && !conditions.cronExpression) {
       onConditionsChange({
         ...conditions,
         cronExpression: scheduleToCron(schedule),
@@ -214,6 +216,81 @@ export function TriggerConfigurationStep({
                     <SelectItem value="contains">Contains</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+          )}
+
+          {triggerType === "compound" && (
+            <div className="space-y-5">
+              {/* Time condition */}
+              <div>
+                <Label className="text-xs text-gray-500 font-medium">Time Condition</Label>
+                <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
+                  The agent becomes ready to run after this time passes each period.
+                </p>
+                <CronBuilder schedule={schedule} onChange={handleScheduleChange} />
+              </div>
+
+              <div className="border-t border-gray-100" />
+
+              {/* Database condition (optional) */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-gray-500 font-medium">Data Condition (optional)</Label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!(conditions.databaseCondition as Record<string, unknown> | undefined)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onConditionsChange({
+                            ...conditions,
+                            databaseCondition: { databaseId: "", columnKey: "", operator: "eq", value: "" },
+                          })
+                        } else {
+                          const { databaseCondition, ...rest } = conditions
+                          onConditionsChange(rest)
+                        }
+                      }}
+                      className="rounded accent-orange-500"
+                    />
+                    <span className="text-xs text-gray-500">Also wait for data</span>
+                  </label>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  When enabled, the agent will only run after the time condition is met AND the data condition is satisfied.
+                </p>
+
+                {!!conditions.databaseCondition && (
+                  <div className="mt-3 p-3 border border-gray-100 rounded-lg bg-gray-50/50">
+                    <DatabaseConditionBuilder
+                      condition={conditions.databaseCondition as any}
+                      onChange={(dc) => onConditionsChange({ ...conditions, databaseCondition: dc })}
+                    />
+                  </div>
+                )}
+
+                {/* Settling window — only visible when data condition is enabled */}
+                {!!conditions.databaseCondition && (
+                  <div className="mt-3">
+                    <Label className="text-xs text-gray-500">Settling Window (minutes)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      className="mt-1 w-32"
+                      value={(conditions.settlingMinutes as number) ?? 60}
+                      onChange={(e) =>
+                        onConditionsChange({
+                          ...conditions,
+                          settlingMinutes: Math.max(0, parseInt(e.target.value) || 0),
+                        })
+                      }
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Wait this many minutes after the last data change before running, to ensure all data has been uploaded. Set to 0 to run immediately when data matches.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

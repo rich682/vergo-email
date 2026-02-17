@@ -21,6 +21,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { CronBuilder } from "@/components/automations/wizard/cron-builder"
+import { DatabaseConditionBuilder } from "@/components/automations/wizard/database-condition-builder"
+import { cronToSchedule, scheduleToCron } from "@/lib/automations/cron-helpers"
+import type { CronSchedule } from "@/lib/automations/types"
 
 interface TaskOption {
   id: string
@@ -70,10 +74,35 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
 
   // Step 1: Triggers & Settings
   const [triggerMode, setTriggerMode] = useState<"automatic" | "manual">("automatic")
+  const [triggerKind, setTriggerKind] = useState<"simple" | "compound">("simple")
   const [triggerNewPeriod, setTriggerNewPeriod] = useState(true)
   const [triggerDataUploaded, setTriggerDataUploaded] = useState(true)
   const [customInstructions, setCustomInstructions] = useState("")
   const [threshold, setThreshold] = useState("0.85")
+
+  // Compound trigger state
+  const defaultSchedule: CronSchedule = {
+    frequency: "monthly",
+    dayOfMonth: 1,
+    hour: 9,
+    minute: 0,
+    timezone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
+  }
+  const [compoundSchedule, setCompoundSchedule] = useState<CronSchedule>(defaultSchedule)
+  const [compoundDbEnabled, setCompoundDbEnabled] = useState(false)
+  const [compoundSettlingMinutes, setCompoundSettlingMinutes] = useState(60)
+  const [compoundDbCondition, setCompoundDbCondition] = useState<{
+    databaseId: string
+    columnKey: string
+    operator: string
+    value: unknown
+    boardScope?: string
+  }>({
+    databaseId: "",
+    columnKey: "",
+    operator: "eq",
+    value: "",
+  })
 
   // Load tasks on open
   useEffect(() => {
@@ -118,9 +147,22 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
     setError(null)
 
     const triggers: string[] = []
-    if (triggerMode === "automatic") {
+    if (triggerMode === "automatic" && triggerKind === "simple") {
       if (triggerNewPeriod) triggers.push("new_period")
       if (triggerDataUploaded) triggers.push("data_uploaded")
+    }
+
+    // Build compound trigger config if selected
+    let compoundTrigger: Record<string, unknown> | undefined
+    if (triggerMode === "automatic" && triggerKind === "compound") {
+      compoundTrigger = {
+        cronExpression: scheduleToCron(compoundSchedule),
+        timezone: compoundSchedule.timezone,
+      }
+      if (compoundDbEnabled && compoundDbCondition.databaseId) {
+        compoundTrigger.databaseCondition = compoundDbCondition
+        compoundTrigger.settlingMinutes = compoundSettlingMinutes
+      }
     }
 
     try {
@@ -132,7 +174,9 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
           taskInstanceId,
           settings: {
             triggerMode,
+            triggerKind: triggerMode === "automatic" ? triggerKind : undefined,
             triggers,
+            compoundTrigger,
             customInstructions: customInstructions || undefined,
             confidenceThreshold: parseFloat(threshold),
             maxIterations: 10,
@@ -162,15 +206,22 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
     setTaskInstanceId(prefilledTaskId || "")
     setName("")
     setTriggerMode("automatic")
+    setTriggerKind("simple")
     setTriggerNewPeriod(true)
     setTriggerDataUploaded(true)
     setCustomInstructions("")
     setThreshold("0.85")
+    setCompoundSchedule(defaultSchedule)
+    setCompoundDbEnabled(false)
+    setCompoundSettlingMinutes(60)
+    setCompoundDbCondition({ databaseId: "", columnKey: "", operator: "eq", value: "" })
     setError(null)
   }
 
   const triggerLabel = triggerMode === "manual"
     ? "Manual Only"
+    : triggerKind === "compound"
+    ? `Schedule${compoundDbEnabled ? " + Data condition" : ""}`
     : [
         triggerNewPeriod && "New period created",
         triggerDataUploaded && "Data uploaded",
@@ -293,26 +344,105 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
 
                 {/* Trigger Conditions */}
                 {triggerMode === "automatic" && (
-                  <div className="mt-3 ml-1 space-y-2">
-                    <p className="text-xs text-gray-500 font-medium">Trigger conditions:</p>
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={triggerNewPeriod}
-                        onChange={(e) => setTriggerNewPeriod(e.target.checked)}
-                        className="rounded accent-orange-500"
-                      />
-                      <span className="text-sm text-gray-700">When a new period is created for this task</span>
-                    </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={triggerDataUploaded}
-                        onChange={(e) => setTriggerDataUploaded(e.target.checked)}
-                        className="rounded accent-orange-500"
-                      />
-                      <span className="text-sm text-gray-700">When required data is uploaded (e.g., bank statement)</span>
-                    </label>
+                  <div className="mt-3 space-y-3">
+                    <div className="ml-1">
+                      <Label className="text-xs text-gray-500 font-medium">Trigger type</Label>
+                      <Select value={triggerKind} onValueChange={(v: "simple" | "compound") => setTriggerKind(v)}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="simple">Simple (new period + data uploaded)</SelectItem>
+                          <SelectItem value="compound">Schedule + data condition</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {triggerKind === "simple" && (
+                      <div className="ml-1 space-y-2">
+                        <p className="text-xs text-gray-500 font-medium">Trigger conditions:</p>
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={triggerNewPeriod}
+                            onChange={(e) => setTriggerNewPeriod(e.target.checked)}
+                            className="rounded accent-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">When a new period is created for this task</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={triggerDataUploaded}
+                            onChange={(e) => setTriggerDataUploaded(e.target.checked)}
+                            className="rounded accent-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">When required data is uploaded (e.g., bank statement)</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {triggerKind === "compound" && (
+                      <div className="ml-1 space-y-4 border border-gray-200 rounded-lg p-4">
+                        {/* Time condition */}
+                        <div>
+                          <Label className="text-xs text-gray-500 font-medium">Time Condition</Label>
+                          <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
+                            The agent becomes ready to run after this time passes.
+                          </p>
+                          <CronBuilder schedule={compoundSchedule} onChange={setCompoundSchedule} />
+                        </div>
+
+                        <div className="border-t border-gray-100" />
+
+                        {/* Database condition */}
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs text-gray-500 font-medium">Data Condition (optional)</Label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={compoundDbEnabled}
+                                onChange={(e) => setCompoundDbEnabled(e.target.checked)}
+                                className="rounded accent-orange-500"
+                              />
+                              <span className="text-xs text-gray-500">Also wait for data</span>
+                            </label>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            When enabled, the agent runs only after the schedule is met AND the data is available.
+                          </p>
+
+                          {compoundDbEnabled && (
+                            <div className="mt-3 p-3 border border-gray-100 rounded-lg bg-gray-50/50">
+                              <DatabaseConditionBuilder
+                                condition={compoundDbCondition}
+                                onChange={setCompoundDbCondition}
+                              />
+                            </div>
+                          )}
+
+                          {/* Settling window */}
+                          {compoundDbEnabled && (
+                            <div className="mt-3">
+                              <Label className="text-xs text-gray-500">Settling Window (minutes)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                className="mt-1 w-32"
+                                value={compoundSettlingMinutes}
+                                onChange={(e) =>
+                                  setCompoundSettlingMinutes(Math.max(0, parseInt(e.target.value) || 0))
+                                }
+                              />
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                Wait this many minutes after the last data change before running, to ensure all data has been uploaded. Set to 0 to run immediately.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

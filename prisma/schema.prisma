@@ -708,16 +708,18 @@ model AutomationRule {
   id             String   @id @default(cuid())
   organizationId String
   name           String
-  trigger        String // "board_created" | "board_status_changed" | "scheduled" | "data_condition" | "data_uploaded" | "form_submitted"
+  trigger        String // "board_created" | "board_status_changed" | "scheduled" | "data_condition" | "data_uploaded" | "form_submitted" | "compound"
   conditions     Json // Trigger-specific conditions (see lib/workflows/types.ts)
   actions        Json // WorkflowDefinition: { version: 1, steps: WorkflowStep[] }
   isActive       Boolean  @default(true)
 
-  // Scheduling fields (for trigger = "scheduled")
+  // Scheduling fields (for trigger = "scheduled" or "compound")
   cronExpression String?   // Cron format via cron-parser
   timezone       String?   // IANA timezone, e.g. "America/New_York"
   nextRunAt      DateTime? // Next scheduled execution
   lastRunAt      DateTime? // Last successful execution
+  armedAt        DateTime? // Compound trigger: set when time condition met, cleared after workflow fires
+  dataSettledAt  DateTime? // Compound trigger: when data condition first matched (for settling window)
 
   createdById    String?
   createdAt      DateTime @default(now())
@@ -731,6 +733,7 @@ model AutomationRule {
   @@index([isActive])
   @@index([trigger, isActive])
   @@index([isActive, nextRunAt])
+  @@index([trigger, isActive, armedAt])
 }
 
 model EmailDraft {

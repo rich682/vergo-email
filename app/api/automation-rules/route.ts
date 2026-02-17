@@ -22,6 +22,7 @@ const VALID_TRIGGERS: TriggerType[] = [
   "data_condition",
   "data_uploaded",
   "form_submitted",
+  "compound",
 ]
 
 const VALID_STEP_TYPES = ["action", "condition", "human_approval", "agent_run"]
@@ -156,6 +157,40 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Validate compound trigger
+  if (trigger === "compound") {
+    if (!conditions?.cronExpression || typeof conditions.cronExpression !== "string") {
+      return NextResponse.json(
+        { error: "compound trigger requires cronExpression in conditions" },
+        { status: 400 }
+      )
+    }
+
+    const tz = conditions.timezone || "UTC"
+    try {
+      const interval = parseExpression(conditions.cronExpression, { tz: tz as string || undefined })
+      cronExpression = conditions.cronExpression
+      timezone = tz as string
+      nextRunAt = interval.next().toDate()
+    } catch {
+      return NextResponse.json(
+        { error: `Invalid cron expression: ${conditions.cronExpression}` },
+        { status: 400 }
+      )
+    }
+
+    // Validate optional database condition
+    if (conditions.databaseCondition) {
+      const dc = conditions.databaseCondition as Record<string, unknown>
+      if (!dc.databaseId || !dc.columnKey || !dc.operator) {
+        return NextResponse.json(
+          { error: "databaseCondition requires databaseId, columnKey, and operator" },
+          { status: 400 }
+        )
+      }
+    }
+  }
+
   // Validate action permissions at creation time
   const permissionErrors = validateActionPermissions(definition, session.user.role as any, session.user.orgActionPermissions ?? undefined)
   if (permissionErrors.length > 0) {
@@ -229,14 +264,18 @@ export async function PATCH(request: NextRequest) {
   if (conditions !== undefined) {
     updateData.conditions = conditions || {}
 
-    // Re-validate cron if this is a scheduled trigger and cron changed
-    if (existing.trigger === "scheduled" && conditions?.cronExpression) {
+    // Re-validate cron if this is a scheduled or compound trigger and cron changed
+    if ((existing.trigger === "scheduled" || existing.trigger === "compound") && conditions?.cronExpression) {
       const tz = conditions.timezone || existing.timezone || "UTC"
       try {
         const interval = parseExpression(conditions.cronExpression, { tz: tz || undefined })
         updateData.cronExpression = conditions.cronExpression
         updateData.timezone = tz
         updateData.nextRunAt = interval.next().toDate()
+        // Reset armed state when conditions change
+        if (existing.trigger === "compound") {
+          updateData.armedAt = null
+        }
       } catch (error) {
         return NextResponse.json({ error: `Invalid cron expression: ${conditions.cronExpression}` }, { status: 400 })
       }

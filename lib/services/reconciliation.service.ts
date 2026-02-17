@@ -278,6 +278,52 @@ export class ReconciliationService {
     })
   }
 
+  /** Accept a manual match: move an unmatched pair into the matched list */
+  static async acceptManualMatch(
+    runId: string,
+    organizationId: string,
+    sourceAIdx: number,
+    sourceBIdx: number
+  ) {
+    const run = await prisma.reconciliationRun.findFirst({
+      where: { id: runId, organizationId },
+    })
+    if (!run) throw new Error("Run not found")
+
+    const matchResults = (run.matchResults as any) || { matched: [], unmatchedA: [], unmatchedB: [] }
+    const exceptions = (run.exceptions as Record<string, any>) || {}
+
+    // Add to matched list as manual match
+    matchResults.matched.push({
+      sourceAIdx,
+      sourceBIdx,
+      confidence: 100,
+      method: "manual",
+    })
+
+    // Remove from unmatched lists
+    matchResults.unmatchedA = (matchResults.unmatchedA as number[]).filter((i: number) => i !== sourceAIdx)
+    matchResults.unmatchedB = (matchResults.unmatchedB as number[]).filter((i: number) => i !== sourceBIdx)
+
+    // Remove related exceptions
+    delete exceptions[`A-${sourceAIdx}`]
+    delete exceptions[`B-${sourceBIdx}`]
+
+    const newExceptionCount = (matchResults.unmatchedA as number[]).length + (matchResults.unmatchedB as number[]).length
+
+    await prisma.reconciliationRun.updateMany({
+      where: { id: runId, organizationId },
+      data: {
+        matchResults,
+        exceptions,
+        matchedCount: (matchResults.matched as any[]).length,
+        exceptionCount: newExceptionCount,
+      },
+    })
+
+    return { matchResults, exceptions }
+  }
+
   /** Complete a run (sign-off) */
   static async completeRun(runId: string, organizationId: string, userId: string) {
     return prisma.reconciliationRun.updateMany({

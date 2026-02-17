@@ -20,6 +20,7 @@ import type {
   TriggerContext,
   ScheduledTriggerConditions,
   DataConditionTriggerConditions,
+  CompoundTriggerConditions,
 } from "@/lib/workflows/types"
 
 export const workflowScheduler = inngest.createFunction(
@@ -38,6 +39,9 @@ export const workflowScheduler = inngest.createFunction(
 
     let scheduledDispatched = 0
     let dataConditionDispatched = 0
+    let compoundArmed = 0
+    let compoundFiredNoDb = 0
+    let compoundSettled = 0
     let errors = 0
 
     // ── 1. Process scheduled triggers ────────────────────────────────────
@@ -200,12 +204,216 @@ export const workflowScheduler = inngest.createFunction(
       errors++
     }
 
-    console.log(`[WorkflowScheduler] Done: ${scheduledDispatched} scheduled, ${dataConditionDispatched} data_condition, ${errors} errors`)
+    // ── 3. Process compound triggers (arm phase) ──────────────────────────
+    try {
+      const dueCompoundRules = await prisma.automationRule.findMany({
+        where: {
+          trigger: "compound",
+          isActive: true,
+          nextRunAt: { lte: now },
+          armedAt: null,
+        },
+        select: {
+          id: true,
+          organizationId: true,
+          cronExpression: true,
+          timezone: true,
+          conditions: true,
+          actions: true,
+          createdById: true,
+        },
+      })
+
+      if (dueCompoundRules.length > 0) {
+        console.log(`[WorkflowScheduler] Found ${dueCompoundRules.length} due compound rule(s)`)
+      }
+
+      for (const rule of dueCompoundRules) {
+        try {
+          const conditions = rule.conditions as unknown as CompoundTriggerConditions
+
+          if (!conditions.databaseCondition) {
+            // No database condition — fire immediately like a scheduled trigger
+            const scheduledTime = now.toISOString()
+            const idempotencyKey = buildIdempotencyKey(rule.id, "compound", scheduledTime)
+
+            const triggerContext: TriggerContext = {
+              triggerType: "compound",
+              triggerEventId: scheduledTime,
+              organizationId: rule.organizationId,
+              metadata: {
+                scheduledTime,
+                cronExpression: rule.cronExpression,
+                triggeredBy: rule.createdById,
+              },
+            }
+
+            const run = await createRun({
+              automationRuleId: rule.id,
+              organizationId: rule.organizationId,
+              triggerContext,
+              triggeredBy: rule.createdById,
+              idempotencyKey,
+            })
+
+            if (run) {
+              await inngest.send({
+                name: "workflow/run",
+                data: {
+                  automationRuleId: rule.id,
+                  workflowRunId: run.id,
+                  organizationId: rule.organizationId,
+                  triggerContext,
+                },
+              })
+              compoundFiredNoDb++
+              console.log(`[WorkflowScheduler] Dispatched compound (no db) run ${run.id} for rule ${rule.id}`)
+            }
+
+            const nextRunAt = calculateNextRun(rule.cronExpression!, rule.timezone || "UTC")
+            await prisma.automationRule.update({
+              where: { id: rule.id },
+              data: { lastRunAt: now, nextRunAt },
+            })
+          } else {
+            // Has database condition — arm the trigger, don't fire yet
+            const nextRunAt = calculateNextRun(rule.cronExpression!, rule.timezone || "UTC")
+            await prisma.automationRule.update({
+              where: { id: rule.id },
+              data: { armedAt: now, nextRunAt },
+            })
+            compoundArmed++
+            console.log(`[WorkflowScheduler] Armed compound rule ${rule.id}`)
+          }
+        } catch (error: any) {
+          console.error(`[WorkflowScheduler] Error processing compound rule ${rule.id}:`, error.message)
+          errors++
+        }
+      }
+    } catch (error: any) {
+      console.error("[WorkflowScheduler] Error querying compound rules:", error.message)
+      errors++
+    }
+
+    // ── 4. Fire settled compound triggers ────────────────────────────────
+    // Armed rules where dataSettledAt is set and the settling window has elapsed
+    try {
+      const settledCandidates = await prisma.automationRule.findMany({
+        where: {
+          trigger: "compound",
+          isActive: true,
+          armedAt: { not: null },
+          dataSettledAt: { not: null },
+        },
+        select: {
+          id: true,
+          organizationId: true,
+          conditions: true,
+          createdById: true,
+          armedAt: true,
+          dataSettledAt: true,
+        },
+      })
+
+      for (const rule of settledCandidates) {
+        try {
+          const conditions = rule.conditions as unknown as CompoundTriggerConditions
+          const settlingMinutes = conditions.settlingMinutes ?? 60
+          const elapsedMs = now.getTime() - rule.dataSettledAt!.getTime()
+
+          if (elapsedMs < settlingMinutes * 60 * 1000) {
+            // Not settled long enough yet
+            continue
+          }
+
+          // Re-evaluate the database condition one final time
+          const evaluation = await evaluateDataCondition(
+            conditions.databaseCondition!,
+            rule.organizationId
+          )
+
+          if (!evaluation.matched) {
+            // Data no longer matches — clear dataSettledAt, stay armed for next data event
+            await prisma.automationRule.update({
+              where: { id: rule.id },
+              data: { dataSettledAt: null },
+            })
+            console.log(`[WorkflowScheduler] Compound rule ${rule.id} data no longer matches after settling, reset`)
+            continue
+          }
+
+          // Fire the workflow
+          const armedDate = rule.armedAt!
+          const periodKey = evaluation.periodKey ||
+            `${armedDate.getFullYear()}-${String(armedDate.getMonth() + 1).padStart(2, "0")}`
+          const idempotencyKey = buildIdempotencyKey(rule.id, "compound", periodKey)
+
+          const triggerContext: TriggerContext = {
+            triggerType: "compound",
+            triggerEventId: periodKey,
+            organizationId: rule.organizationId,
+            metadata: {
+              databaseId: conditions.databaseCondition!.databaseId,
+              armedAt: armedDate.toISOString(),
+              settledAt: rule.dataSettledAt!.toISOString(),
+              settlingMinutes,
+              matchedRowCount: evaluation.matchedRowCount,
+              periodKey,
+              triggeredBy: rule.createdById,
+            },
+          }
+
+          const run = await createRun({
+            automationRuleId: rule.id,
+            organizationId: rule.organizationId,
+            triggerContext,
+            triggeredBy: rule.createdById,
+            idempotencyKey,
+          })
+
+          if (run) {
+            await inngest.send({
+              name: "workflow/run",
+              data: {
+                automationRuleId: rule.id,
+                workflowRunId: run.id,
+                organizationId: rule.organizationId,
+                triggerContext,
+              },
+            })
+
+            // Clear armed + settled state, update lastRunAt
+            await prisma.automationRule.update({
+              where: { id: rule.id },
+              data: { armedAt: null, dataSettledAt: null, lastRunAt: now },
+            })
+
+            compoundSettled++
+            console.log(`[WorkflowScheduler] Dispatched settled compound run ${run.id} for rule ${rule.id}`)
+          }
+        } catch (error: any) {
+          console.error(`[WorkflowScheduler] Error processing settled compound rule ${rule.id}:`, error.message)
+          errors++
+        }
+      }
+    } catch (error: any) {
+      console.error("[WorkflowScheduler] Error querying settled compound rules:", error.message)
+      errors++
+    }
+
+    console.log(
+      `[WorkflowScheduler] Done: ${scheduledDispatched} scheduled, ${dataConditionDispatched} data_condition, ` +
+      `${compoundArmed} compound armed, ${compoundFiredNoDb} compound fired (no db), ` +
+      `${compoundSettled} compound settled, ${errors} errors`
+    )
 
     return {
       success: true,
       scheduledDispatched,
       dataConditionDispatched,
+      compoundArmed,
+      compoundFiredNoDb,
+      compoundSettled,
       errors,
     }
   }

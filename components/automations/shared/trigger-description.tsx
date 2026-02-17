@@ -16,6 +16,7 @@ const TRIGGER_ICONS: Record<string, { icon: typeof Calendar; color: string; bg: 
   data_condition: { icon: Database, color: "text-emerald-600", bg: "bg-emerald-50" },
   data_uploaded: { icon: Upload, color: "text-emerald-600", bg: "bg-emerald-50" },
   form_submitted: { icon: ClipboardList, color: "text-amber-600", bg: "bg-amber-50" },
+  compound: { icon: Clock, color: "text-indigo-600", bg: "bg-indigo-50" },
 }
 
 interface TriggerIconProps {

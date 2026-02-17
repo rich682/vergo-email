@@ -16,7 +16,7 @@ export interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
   confidence: number  // 0-100
-  method: "exact" | "fuzzy_ai"
+  method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
   signInverted?: boolean  // true if amounts matched by sign inversion (bank vs GL)
 }

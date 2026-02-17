@@ -12,6 +12,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
+import { inngest } from "@/inngest/client"
 
 export async function POST(
   request: NextRequest,
@@ -101,6 +102,22 @@ export async function POST(
       params.id,
       asOfDate
     )
+
+    // Emit database change event for compound triggers
+    if (result.rowCount > 0) {
+      inngest.send({
+        name: "workflow/trigger",
+        data: {
+          triggerType: "database_changed",
+          triggerEventId: params.id,
+          organizationId: user.organizationId,
+          metadata: {
+            databaseId: params.id,
+            rowCount: result.rowCount,
+          },
+        },
+      }).catch((err: unknown) => console.error("[DatabaseSync] Failed to emit database_changed event:", err))
+    }
 
     return NextResponse.json({
       success: true,

@@ -79,7 +79,10 @@ function matchConditions(
       if (c.taskInstanceId && c.taskInstanceId !== metadata.taskInstanceId) return false
       return true
     }
-    // scheduled and data_condition are handled by the scheduler, not the dispatcher
+    // scheduled, data_condition, and compound are handled by scheduler/dispatcher, not event matching
+    case "compound":
+    case "database_changed":
+      return false
     default:
       return true
   }

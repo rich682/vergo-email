@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import {
   CheckCircle,
@@ -8,14 +8,15 @@ import {
   CheckCircle2,
   Loader2,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
+  FileSpreadsheet,
 } from "lucide-react"
 
 interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
   confidence: number
-  method: "exact" | "fuzzy_ai"
+  method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
   signInverted?: boolean
 }
@@ -34,6 +35,12 @@ interface MatchResults {
   matched: MatchPair[]
   unmatchedA: number[]
   unmatchedB: number[]
+}
+
+interface PotentialMatch {
+  sourceBIdx: number
+  similarity: number
+  differences: string[]
 }
 
 interface ReconciliationResultsProps {
@@ -57,35 +64,22 @@ interface ReconciliationResultsProps {
   onRefresh: () => void
 }
 
-const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
-  outstanding_check: { label: "Outstanding Check", color: "bg-blue-100 text-blue-700" },
-  deposit_in_transit: { label: "Deposit in Transit", color: "bg-indigo-100 text-indigo-700" },
-  bank_fee: { label: "Bank Fee", color: "bg-amber-100 text-amber-700" },
-  interest: { label: "Interest", color: "bg-green-100 text-green-700" },
-  timing_difference: { label: "Timing Difference", color: "bg-purple-100 text-purple-700" },
-  data_entry_error: { label: "Data Entry Error", color: "bg-red-100 text-red-700" },
-  duplicate: { label: "Duplicate", color: "bg-orange-100 text-orange-700" },
-  other: { label: "Other", color: "bg-gray-100 text-gray-700" },
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function formatCellValue(value: any): string {
   if (value === null || value === undefined || value === "") return "—"
   if (typeof value === "number") {
-    // If it looks like currency (has decimals or is large)
     if (Number.isFinite(value) && (value % 1 !== 0 || Math.abs(value) > 100)) {
-      return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     }
     return value.toLocaleString()
   }
   const str = String(value)
-  // Try to format dates
   if (str.match(/^\d{4}-\d{2}-\d{2}/) || str.match(/^\d{1,2}\/\d{1,2}\/\d{4}/)) {
     try {
       const d = new Date(str)
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        return d.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })
       }
     } catch { /* fall through */ }
   }
@@ -94,7 +88,6 @@ function formatCellValue(value: any): string {
 
 function getColumnKeys(rows: Record<string, any>[]): string[] {
   if (rows.length === 0) return []
-  // Use the first row's keys, filtering out internal/system keys
   const INTERNAL = new Set(["__rowIndex", "__parsed", "__sourceFile"])
   return Object.keys(rows[0]).filter((k) => !INTERNAL.has(k))
 }
@@ -114,39 +107,136 @@ function getAmountValue(row: Record<string, any>): number | null {
   return null
 }
 
-// Find the closest potential match from the other source for an unmatched row
-function findSuggestedMatch(
-  row: Record<string, any>,
-  candidateRows: Record<string, any>[],
-  candidateIndices: number[]
-): { idx: number; score: string } | null {
-  const amount = getAmountValue(row)
-  if (amount === null || candidateIndices.length === 0) return null
+function getDateValue(row: Record<string, any>): string | null {
+  for (const key of Object.keys(row)) {
+    const k = key.toLowerCase()
+    if (k.includes("date")) {
+      const val = row[key]
+      if (val) return String(val)
+    }
+  }
+  return null
+}
 
-  let bestIdx = -1
-  let bestDiff = Infinity
+function getTextValue(row: Record<string, any>): string {
+  for (const key of Object.keys(row)) {
+    const k = key.toLowerCase()
+    if (k.includes("merchant") || k.includes("description") || k.includes("name") || k.includes("payee") || k.includes("vendor")) {
+      if (row[key]) return String(row[key])
+    }
+  }
+  return ""
+}
 
-  for (const idx of candidateIndices) {
-    const candAmount = getAmountValue(candidateRows[idx])
-    if (candAmount === null) continue
-    // Check both same-sign and opposite-sign (bank vs GL convention)
-    const diff = Math.min(Math.abs(amount - candAmount), Math.abs(amount + candAmount))
-    if (diff < bestDiff) {
-      bestDiff = diff
-      bestIdx = idx
+function getCardValue(row: Record<string, any>): string | null {
+  for (const key of Object.keys(row)) {
+    const k = key.toLowerCase()
+    if (k.includes("card") || k.includes("account") || k.includes("reference")) {
+      if (row[key]) return String(row[key])
+    }
+  }
+  return null
+}
+
+/**
+ * Find all potential matches from Source B for an unmatched Source A row.
+ * Returns matches sorted by similarity score.
+ */
+function findPotentialMatches(
+  rowA: Record<string, any>,
+  sourceBRows: Record<string, any>[],
+  unmatchedBIndices: number[]
+): PotentialMatch[] {
+  const amountA = getAmountValue(rowA)
+  if (amountA === null || unmatchedBIndices.length === 0) return []
+
+  const matches: PotentialMatch[] = []
+
+  for (const bIdx of unmatchedBIndices) {
+    const rowB = sourceBRows[bIdx]
+    const amountB = getAmountValue(rowB)
+    if (amountB === null) continue
+
+    // Check if amounts match (within tolerance)
+    const directDiff = Math.abs(amountA - amountB)
+    const invertedDiff = Math.abs(amountA + amountB)
+    const bestDiff = Math.min(directDiff, invertedDiff)
+
+    // Must be within 20% or $100 to be a potential match
+    const threshold = Math.max(Math.abs(amountA) * 0.2, 100)
+    if (bestDiff > threshold) continue
+
+    // Calculate similarity components
+    let similarity = 0
+    const differences: string[] = []
+
+    // Amount similarity (0-50 points)
+    if (bestDiff < 0.01) similarity += 50
+    else if (bestDiff <= 1) similarity += 40
+    else similarity += Math.max(20, 50 - bestDiff)
+
+    if (bestDiff >= 0.01) differences.push("Amount")
+
+    // Date similarity (0-25 points)
+    const dateA = getDateValue(rowA)
+    const dateB = getDateValue(rowB)
+    if (dateA && dateB) {
+      try {
+        const dA = new Date(dateA)
+        const dB = new Date(dateB)
+        const daysDiff = Math.abs(Math.floor((dA.getTime() - dB.getTime()) / 86400000))
+        if (daysDiff === 0) similarity += 25
+        else if (daysDiff <= 3) similarity += 20
+        else if (daysDiff <= 7) similarity += 15
+        else similarity += 10
+        if (daysDiff > 0) differences.push("Date")
+      } catch {
+        similarity += 10
+      }
+    } else {
+      similarity += 10
+    }
+
+    // Card/reference similarity (0-15 points)
+    const cardA = getCardValue(rowA)
+    const cardB = getCardValue(rowB)
+    if (cardA && cardB) {
+      if (cardA === cardB) similarity += 15
+      else {
+        similarity += 5
+        differences.push("Card")
+      }
+    } else {
+      similarity += 5
+    }
+
+    // Text similarity (0-10 points)
+    const textA = getTextValue(rowA).toLowerCase()
+    const textB = getTextValue(rowB).toLowerCase()
+    if (textA && textB) {
+      if (textA === textB) similarity += 10
+      else if (textA.includes(textB) || textB.includes(textA)) similarity += 7
+      else {
+        const tokensA = new Set(textA.split(/\s+/))
+        const tokensB = new Set(textB.split(/\s+/))
+        let overlap = 0
+        for (const t of tokensA) if (tokensB.has(t)) overlap++
+        const jac = overlap / Math.max(tokensA.size, tokensB.size)
+        similarity += Math.round(jac * 10)
+        if (jac < 0.5) differences.push("Merchant")
+      }
+    }
+
+    const normalizedSimilarity = Math.min(100, Math.round(similarity))
+    if (normalizedSimilarity >= 40) {
+      matches.push({ sourceBIdx: bIdx, similarity: normalizedSimilarity, differences })
     }
   }
 
-  if (bestIdx === -1) return null
-  // Only suggest if reasonably close (within 20% or $100)
-  const threshold = Math.max(Math.abs(amount) * 0.2, 100)
-  if (bestDiff > threshold) return null
-
-  return {
-    idx: bestIdx,
-    score: bestDiff < 0.01 ? "Amount match" : `±$${bestDiff.toFixed(2)} difference`,
-  }
+  return matches.sort((a, b) => b.similarity - a.similarity)
 }
+
+type TabKey = "auto_matched" | "manual_match" | "not_matched" | "other"
 
 // ── Component ──────────────────────────────────────────────────────────
 
@@ -170,27 +260,56 @@ export function ReconciliationResults({
   onComplete,
   onRefresh,
 }: ReconciliationResultsProps) {
-  const [view, setView] = useState<"matched" | "exceptions">("matched")
+  const [activeTab, setActiveTab] = useState<TabKey>("auto_matched")
   const [completing, setCompleting] = useState(false)
-  const [resolvingKey, setResolvingKey] = useState<string | null>(null)
-  const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [acceptingMatch, setAcceptingMatch] = useState<string | null>(null)
+  const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
   const isComplete = status === "COMPLETE"
-  const matchRate = totalSourceA > 0 ? Math.round((matchedCount / totalSourceA) * 100) : 0
-
   const colsA = useMemo(() => getColumnKeys(sourceARows), [sourceARows])
   const colsB = useMemo(() => getColumnKeys(sourceBRows), [sourceBRows])
 
-  const exceptionsList = useMemo(() => {
-    return Object.entries(exceptions || {}).map(([key, val]) => ({
-      key,
-      ...val,
-    }))
-  }, [exceptions])
+  // Split matched items by type
+  const autoMatched = useMemo(
+    () => matchResults.matched.filter((m) => m.method !== "manual"),
+    [matchResults.matched]
+  )
+  const manualMatched = useMemo(
+    () => matchResults.matched.filter((m) => m.method === "manual"),
+    [matchResults.matched]
+  )
 
-  // Split exceptions by source for the two-panel view
-  const exceptionsA = useMemo(() => exceptionsList.filter((e) => e.source === "A"), [exceptionsList])
-  const exceptionsB = useMemo(() => exceptionsList.filter((e) => e.source === "B"), [exceptionsList])
+  // For unmatched Source A rows, compute potential matches from unmatched Source B
+  const unmatchedAWithPotentials = useMemo(() => {
+    return matchResults.unmatchedA.map((aIdx) => {
+      const rowA = sourceARows[aIdx]
+      const potentials = rowA ? findPotentialMatches(rowA, sourceBRows, matchResults.unmatchedB) : []
+      return { aIdx, potentials }
+    })
+  }, [matchResults.unmatchedA, matchResults.unmatchedB, sourceARows, sourceBRows])
+
+  // "Not Matched" = Source A rows that have at least 1 potential match
+  const notMatchedItems = useMemo(
+    () => unmatchedAWithPotentials.filter((item) => item.potentials.length > 0),
+    [unmatchedAWithPotentials]
+  )
+
+  // "Other" = Source A rows that have zero potential matches (orphans)
+  const otherItems = useMemo(
+    () => unmatchedAWithPotentials.filter((item) => item.potentials.length === 0),
+    [unmatchedAWithPotentials]
+  )
+
+  // Also count orphan Source B rows (not matched to any Source A)
+  const orphanBIndices = useMemo(() => {
+    const bWithPotentials = new Set<number>()
+    for (const item of notMatchedItems) {
+      for (const p of item.potentials) bWithPotentials.add(p.sourceBIdx)
+    }
+    return matchResults.unmatchedB.filter((bIdx) => !bWithPotentials.has(bIdx))
+  }, [matchResults.unmatchedB, notMatchedItems])
+
+  const matchRate = totalSourceA > 0 ? Math.round((matchedCount / totalSourceA) * 100) : 0
 
   const handleComplete = async () => {
     if (!confirm("Sign off on this reconciliation? This action cannot be undone.")) return
@@ -203,19 +322,69 @@ export function ReconciliationResults({
     }
   }
 
-  const handleResolveException = async (key: string, resolution: string) => {
-    setResolvingKey(key)
+  const handleAcceptMatch = useCallback(async (sourceAIdx: number, sourceBIdx: number) => {
+    const key = `${sourceAIdx}-${sourceBIdx}`
+    setAcceptingMatch(key)
     try {
-      await fetch(`/api/reconciliations/${configId}/runs/${runId}/exceptions`, {
-        method: "PATCH",
+      const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-match`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, resolution }),
+        body: JSON.stringify({ sourceAIdx, sourceBIdx }),
       })
-      onRefresh()
+      if (res.ok) {
+        setExpandedUnmatchedRow(null)
+        onRefresh()
+      }
     } finally {
-      setResolvingKey(null)
+      setAcceptingMatch(null)
     }
-  }
+  }, [configId, runId, onRefresh])
+
+  const handleDownloadExcel = useCallback(() => {
+    if (manualMatched.length === 0) return
+
+    // Build CSV content for manual matches
+    const headers = [
+      ...colsA.map((c) => `${sourceALabel} ${c.replace(/_/g, " ")}`),
+      ...colsB.map((c) => `${sourceBLabel} ${c.replace(/_/g, " ")}`),
+      "Status",
+    ]
+
+    const rows = manualMatched.map((match) => {
+      const rowA = sourceARows[match.sourceAIdx]
+      const rowB = sourceBRows[match.sourceBIdx]
+      return [
+        ...colsA.map((col) => rowA?.[col] ?? ""),
+        ...colsB.map((col) => rowB?.[col] ?? ""),
+        "Manual Match",
+      ]
+    })
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) =>
+        row.map((cell) => {
+          const str = String(cell)
+          return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str
+        }).join(",")
+      ),
+    ].join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `manual-matches-${runId.slice(0, 8)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [manualMatched, colsA, colsB, sourceARows, sourceBRows, sourceALabel, sourceBLabel, runId])
+
+  const tabs: { key: TabKey; label: string; count: number }[] = [
+    { key: "auto_matched", label: "Auto-Matched", count: autoMatched.length },
+    { key: "manual_match", label: "Manual Matches", count: manualMatched.length },
+    { key: "not_matched", label: "Not Matched", count: notMatchedItems.length },
+    { key: "other", label: "Other", count: otherItems.length + orphanBIndices.length },
+  ]
 
   return (
     <div className="space-y-4">
@@ -269,334 +438,664 @@ export function ReconciliationResults({
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-4 border-b border-gray-200">
-        <button
-          onClick={() => setView("matched")}
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-            view === "matched"
-              ? "border-orange-500 text-orange-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Matched ({matchedCount})
-        </button>
-        <button
-          onClick={() => setView("exceptions")}
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-            view === "exceptions"
-              ? "border-orange-500 text-orange-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Unmatched ({exceptionCount})
-        </button>
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
       </div>
 
-      {/* ── Matched Tab ──────────────────────────────────────────── */}
-      {view === "matched" && (
+      {/* ── Auto-Matched Tab ──────────────────────────────────────── */}
+      {activeTab === "auto_matched" && (
+        <AutoMatchedTable
+          matches={autoMatched}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+        />
+      )}
+
+      {/* ── Manual Matches Tab ────────────────────────────────────── */}
+      {activeTab === "manual_match" && (
+        <ManualMatchesTable
+          matches={manualMatched}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+          onDownload={handleDownloadExcel}
+        />
+      )}
+
+      {/* ── Not Matched Tab ───────────────────────────────────────── */}
+      {activeTab === "not_matched" && (
+        <NotMatchedTable
+          items={notMatchedItems}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+          expandedRow={expandedUnmatchedRow}
+          onToggleExpand={(aIdx) => setExpandedUnmatchedRow(expandedUnmatchedRow === aIdx ? null : aIdx)}
+          onAcceptMatch={handleAcceptMatch}
+          acceptingMatch={acceptingMatch}
+          isComplete={isComplete}
+        />
+      )}
+
+      {/* ── Other Tab ─────────────────────────────────────────────── */}
+      {activeTab === "other" && (
+        <OtherTable
+          otherAItems={otherItems}
+          orphanBIndices={orphanBIndices}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Auto-Matched Table ──────────────────────────────────────────────────
+
+function AutoMatchedTable({
+  matches,
+  sourceARows,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceALabel,
+  sourceBLabel,
+}: {
+  matches: MatchPair[]
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceALabel: string
+  sourceBLabel: string
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b sticky top-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 w-8">
+                #
+              </th>
+              {colsA.map((col, i) => (
+                <th
+                  key={`a-${col}`}
+                  className={`px-3 py-2 text-left text-[10px] font-semibold text-blue-600 uppercase tracking-wider whitespace-nowrap ${
+                    i === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                  }`}
+                >
+                  {sourceALabel} {col.replace(/_/g, " ")}
+                </th>
+              ))}
+              {colsB.map((col) => (
+                <th
+                  key={`b-${col}`}
+                  className="px-3 py-2 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider whitespace-nowrap"
+                >
+                  {sourceBLabel} {col.replace(/_/g, " ")}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-20">
+                Match
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {matches.map((match, i) => {
+              const rowA = sourceARows[match.sourceAIdx]
+              const rowB = sourceBRows[match.sourceBIdx]
+              return (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-gray-400 border-r border-gray-200 text-center">
+                    {i + 1}
+                  </td>
+                  {colsA.map((col, ci) => (
+                    <td
+                      key={`a-${col}`}
+                      className={`px-3 py-2 text-gray-700 whitespace-nowrap ${
+                        ci === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                      }`}
+                    >
+                      {rowA ? formatCellValue(rowA[col]) : "—"}
+                    </td>
+                  ))}
+                  {colsB.map((col) => (
+                    <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                      {rowB ? formatCellValue(rowB[col]) : "—"}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        match.method === "exact" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {match.method === "exact"
+                        ? `Exact${match.confidence < 100 ? ` ${match.confidence}%` : ""}${match.signInverted ? " (±)" : ""}`
+                        : `AI ${match.confidence}%`}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+            {matches.length === 0 && (
+              <tr>
+                <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No auto-matched items
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-4 py-2 bg-gray-50 border-t flex items-center gap-4 text-[10px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-blue-400" />
+          {sourceALabel}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          {sourceBLabel}
+        </span>
+        <span className="ml-auto">
+          <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Exact</span>
+          {" = deterministic match · "}
+          <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AI</span>
+          {" = fuzzy match · "}
+          <span className="text-gray-500">(±)</span>
+          {" = sign-inverted amount"}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Manual Matches Table ────────────────────────────────────────────────
+
+function ManualMatchesTable({
+  matches,
+  sourceARows,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceALabel,
+  sourceBLabel,
+  onDownload,
+}: {
+  matches: MatchPair[]
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceALabel: string
+  sourceBLabel: string
+  onDownload: () => void
+}) {
+  return (
+    <div className="space-y-3">
+      {/* Info banner + Download button */}
+      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+        <p className="text-sm text-green-800">
+          <strong>Manual Matches:</strong> These are matches you&apos;ve manually accepted from potential matches. Review and verify these matches.
+        </p>
+        {matches.length > 0 && (
+          <Button onClick={onDownload} size="sm" className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+            Download Excel
+          </Button>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                {colsA.map((col) => (
+                  <th
+                    key={`a-${col}`}
+                    className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap bg-blue-600"
+                  >
+                    {sourceALabel} {col.replace(/_/g, " ")}
+                  </th>
+                ))}
+                {colsB.map((col) => (
+                  <th
+                    key={`b-${col}`}
+                    className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap bg-purple-600"
+                  >
+                    {sourceBLabel} {col.replace(/_/g, " ")}
+                  </th>
+                ))}
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-100 whitespace-nowrap">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {matches.map((match, i) => {
+                const rowA = sourceARows[match.sourceAIdx]
+                const rowB = sourceBRows[match.sourceBIdx]
+                return (
+                  <tr key={i} className="hover:bg-gray-50">
+                    {colsA.map((col) => (
+                      <td key={`a-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                        {rowA ? formatCellValue(rowA[col]) : "—"}
+                      </td>
+                    ))}
+                    {colsB.map((col) => (
+                      <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                        {rowB ? formatCellValue(rowB[col]) : "—"}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2">
+                      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                        Manual
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {matches.length === 0 && (
+                <tr>
+                  <td colSpan={colsA.length + colsB.length + 1} className="px-4 py-8 text-center text-sm text-gray-400">
+                    No manual matches yet. Accept matches from the &quot;Not Matched&quot; tab.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Not Matched Table ───────────────────────────────────────────────────
+
+function NotMatchedTable({
+  items,
+  sourceARows,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceALabel,
+  sourceBLabel,
+  expandedRow,
+  onToggleExpand,
+  onAcceptMatch,
+  acceptingMatch,
+  isComplete,
+}: {
+  items: { aIdx: number; potentials: PotentialMatch[] }[]
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceALabel: string
+  sourceBLabel: string
+  expandedRow: number | null
+  onToggleExpand: (aIdx: number) => void
+  onAcceptMatch: (sourceAIdx: number, sourceBIdx: number) => void
+  acceptingMatch: string | null
+  isComplete: boolean
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-blue-600 sticky top-0 z-10">
+            <tr>
+              {colsA.map((col) => (
+                <th
+                  key={col}
+                  className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap"
+                >
+                  {sourceALabel} {col.replace(/_/g, " ")}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(({ aIdx, potentials }) => {
+              const rowA = sourceARows[aIdx]
+              const isExpanded = expandedRow === aIdx
+
+              return (
+                <NotMatchedRow
+                  key={aIdx}
+                  aIdx={aIdx}
+                  rowA={rowA}
+                  potentials={potentials}
+                  sourceBRows={sourceBRows}
+                  colsA={colsA}
+                  colsB={colsB}
+                  sourceBLabel={sourceBLabel}
+                  isExpanded={isExpanded}
+                  onToggleExpand={() => onToggleExpand(aIdx)}
+                  onAcceptMatch={onAcceptMatch}
+                  acceptingMatch={acceptingMatch}
+                  isComplete={isComplete}
+                />
+              )
+            })}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={colsA.length + 1} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No unmatched items with potential matches
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function NotMatchedRow({
+  aIdx,
+  rowA,
+  potentials,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceBLabel,
+  isExpanded,
+  onToggleExpand,
+  onAcceptMatch,
+  acceptingMatch,
+  isComplete,
+}: {
+  aIdx: number
+  rowA: Record<string, any>
+  potentials: PotentialMatch[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceBLabel: string
+  isExpanded: boolean
+  onToggleExpand: () => void
+  onAcceptMatch: (sourceAIdx: number, sourceBIdx: number) => void
+  acceptingMatch: string | null
+  isComplete: boolean
+}) {
+  return (
+    <>
+      {/* Source A row (pink background) */}
+      <tr className="bg-red-50 border-t border-gray-200 hover:bg-red-100">
+        {colsA.map((col) => (
+          <td key={col} className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+            {rowA ? formatCellValue(rowA[col]) : "—"}
+          </td>
+        ))}
+        <td className="px-3 py-2.5">
+          <button
+            onClick={onToggleExpand}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 border border-blue-300 rounded hover:bg-blue-50 transition-colors"
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+            {isExpanded ? "Hide" : "Show"} Potential Matches ({potentials.length})
+          </button>
+        </td>
+      </tr>
+
+      {/* Expanded: Potential matches from Source B */}
+      {isExpanded && (
+        <tr>
+          <td colSpan={colsA.length + 1} className="p-0">
+            <div className="bg-purple-50 border-t border-b border-purple-200 px-6 py-3">
+              <p className="text-xs font-semibold text-purple-700 mb-2">
+                Potential Matches ({potentials.length})
+              </p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr>
+                    {colsB.map((col) => (
+                      <th
+                        key={col}
+                        className="px-3 py-1.5 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {sourceBLabel} {col.replace(/_/g, " ")}
+                      </th>
+                    ))}
+                    <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider">
+                      Similarity
+                    </th>
+                    <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider">
+                      Differences
+                    </th>
+                    <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider w-28">
+                      &nbsp;
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {potentials.map((potential) => {
+                    const rowB = sourceBRows[potential.sourceBIdx]
+                    const matchKey = `${aIdx}-${potential.sourceBIdx}`
+                    const isAccepting = acceptingMatch === matchKey
+
+                    return (
+                      <tr key={potential.sourceBIdx} className="border-t border-purple-100 bg-white/50">
+                        {colsB.map((col) => (
+                          <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                            {rowB ? formatCellValue(rowB[col]) : "—"}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              potential.similarity >= 80
+                                ? "bg-green-100 text-green-700"
+                                : potential.similarity >= 60
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            {potential.similarity}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1">
+                            {potential.differences.map((diff) => (
+                              <span
+                                key={diff}
+                                className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-600"
+                              >
+                                {diff}
+                              </span>
+                            ))}
+                            {potential.differences.length === 0 && (
+                              <span className="text-[10px] text-green-600">Exact</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          {!isComplete && (
+                            <Button
+                              onClick={() => onAcceptMatch(aIdx, potential.sourceBIdx)}
+                              disabled={isAccepting}
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-6 px-2"
+                            >
+                              {isAccepting ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                "Accept Match"
+                              )}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+// ── Other Tab ───────────────────────────────────────────────────────────
+
+function OtherTable({
+  otherAItems,
+  orphanBIndices,
+  sourceARows,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceALabel,
+  sourceBLabel,
+}: {
+  otherAItems: { aIdx: number; potentials: PotentialMatch[] }[]
+  orphanBIndices: number[]
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceALabel: string
+  sourceBLabel: string
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Orphan Source A rows */}
+      <div>
+        <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-blue-400" />
+          Unmatched from {sourceALabel} ({otherAItems.length})
+        </h3>
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          {/* Scrollable table */}
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 w-8">
-                    #
-                  </th>
-                  {/* Source A columns */}
-                  {colsA.map((col, i) => (
-                    <th
-                      key={`a-${col}`}
-                      className={`px-3 py-2 text-left text-[10px] font-semibold text-blue-600 uppercase tracking-wider whitespace-nowrap ${
-                        i === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
-                      }`}
-                    >
+                  {colsA.map((col) => (
+                    <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       {col.replace(/_/g, " ")}
                     </th>
                   ))}
-                  {/* Source B columns */}
-                  {colsB.map((col) => (
-                    <th
-                      key={`b-${col}`}
-                      className="px-3 py-2 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider whitespace-nowrap"
-                    >
-                      {col.replace(/_/g, " ")}
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-20">
-                    Match
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {matchResults.matched.map((match, i) => {
-                  const rowA = sourceARows[match.sourceAIdx]
-                  const rowB = sourceBRows[match.sourceBIdx]
-                  const isExpanded = expandedRow === i
+                {otherAItems.map(({ aIdx }) => {
+                  const row = sourceARows[aIdx]
                   return (
-                    <tr
-                      key={i}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setExpandedRow(isExpanded ? null : i)}
-                    >
-                      <td className="px-3 py-2 text-gray-400 border-r border-gray-200 text-center">
-                        {i + 1}
-                      </td>
-                      {colsA.map((col, ci) => (
-                        <td
-                          key={`a-${col}`}
-                          className={`px-3 py-2 text-gray-700 whitespace-nowrap ${
-                            ci === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
-                          }`}
-                        >
-                          {rowA ? formatCellValue(rowA[col]) : "—"}
+                    <tr key={aIdx} className="bg-red-50 hover:bg-red-100">
+                      {colsA.map((col) => (
+                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                          {row ? formatCellValue(row[col]) : "—"}
                         </td>
                       ))}
-                      {colsB.map((col) => (
-                        <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                          {rowB ? formatCellValue(rowB[col]) : "—"}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2">
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          match.method === "exact" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                        }`}>
-                          {match.method === "exact"
-                            ? `Exact${match.confidence < 100 ? ` ${match.confidence}%` : ""}${match.signInverted ? " (±)" : ""}`
-                            : `AI ${match.confidence}%`}
-                        </span>
-                      </td>
                     </tr>
                   )
                 })}
-                {matchResults.matched.length === 0 && (
+                {otherAItems.length === 0 && (
                   <tr>
-                    <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-8 text-center text-sm text-gray-400">
-                      No matched items
+                    <td colSpan={colsA.length} className="px-4 py-6 text-center text-sm text-gray-400">
+                      No orphan {sourceALabel} rows
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-          {/* Source legend */}
-          <div className="px-4 py-2 bg-gray-50 border-t flex items-center gap-4 text-[10px] text-gray-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
-              {sourceALabel}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-purple-400" />
-              {sourceBLabel}
-            </span>
-            <span className="ml-auto">
-              <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Exact</span>
-              {" = amount + date + reference match · "}
-              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AI</span>
-              {" = fuzzy match · "}
-              <span className="text-gray-500">(±)</span>
-              {" = sign-inverted amount"}
-            </span>
+        </div>
+      </div>
+
+      {/* Orphan Source B rows */}
+      <div>
+        <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          Unmatched from {sourceBLabel} ({orphanBIndices.length})
+        </h3>
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                <tr>
+                  {colsB.map((col) => (
+                    <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      {col.replace(/_/g, " ")}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {orphanBIndices.map((bIdx) => {
+                  const row = sourceBRows[bIdx]
+                  return (
+                    <tr key={bIdx} className="bg-red-50 hover:bg-red-100">
+                      {colsB.map((col) => (
+                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                          {row ? formatCellValue(row[col]) : "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+                {orphanBIndices.length === 0 && (
+                  <tr>
+                    <td colSpan={colsB.length} className="px-4 py-6 text-center text-sm text-gray-400">
+                      No orphan {sourceBLabel} rows
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── Exceptions / Unmatched Tab ──────────────────────────── */}
-      {view === "exceptions" && (
-        <div className="space-y-6">
-          {/* Unmatched from Source A */}
-          <div>
-            <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
-              Unmatched from {sourceALabel} ({exceptionsA.length})
-            </h3>
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                    <tr>
-                      {colsA.map((col) => (
-                        <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                          {col.replace(/_/g, " ")}
-                        </th>
-                      ))}
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Suggested Match</th>
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {exceptionsA.map((exc) => {
-                      const row = sourceARows[exc.rowIdx]
-                      const catInfo = CATEGORY_LABELS[exc.category] || CATEGORY_LABELS.other
-                      const suggestion = row ? findSuggestedMatch(row, sourceBRows, matchResults.unmatchedB) : null
-
-                      return (
-                        <tr key={exc.key} className="hover:bg-gray-50">
-                          {colsA.map((col) => (
-                            <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                              {row ? formatCellValue(row[col]) : "—"}
-                            </td>
-                          ))}
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${catInfo.color}`}>
-                              {catInfo.label}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            {suggestion ? (
-                              <span className="text-[10px] text-purple-600">
-                                Row {suggestion.idx + 1} in {sourceBLabel} ({suggestion.score})
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">No close match</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {exc.resolution ? (
-                              <span className={`text-[10px] font-medium ${exc.resolution === "approved" ? "text-green-600" : "text-red-600"}`}>
-                                {exc.resolution === "approved" ? "Approved" : "Flagged"}
-                              </span>
-                            ) : isComplete ? (
-                              <span className="text-gray-400 text-[10px]">—</span>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "approved") }}
-                                  disabled={resolvingKey === exc.key}
-                                  className="text-[10px] text-green-600 hover:text-green-700 underline"
-                                >
-                                  Approve
-                                </button>
-                                <span className="text-gray-300">|</span>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "flagged") }}
-                                  disabled={resolvingKey === exc.key}
-                                  className="text-[10px] text-red-600 hover:text-red-700 underline"
-                                >
-                                  Flag
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {exceptionsA.length === 0 && (
-                      <tr>
-                        <td colSpan={colsA.length + 3} className="px-4 py-6 text-center text-sm text-gray-400">
-                          All {sourceALabel} rows matched
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Unmatched from Source B */}
-          <div>
-            <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-400" />
-              Unmatched from {sourceBLabel} ({exceptionsB.length})
-            </h3>
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                    <tr>
-                      {colsB.map((col) => (
-                        <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                          {col.replace(/_/g, " ")}
-                        </th>
-                      ))}
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Suggested Match</th>
-                      <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {exceptionsB.map((exc) => {
-                      const row = sourceBRows[exc.rowIdx]
-                      const catInfo = CATEGORY_LABELS[exc.category] || CATEGORY_LABELS.other
-                      const suggestion = row ? findSuggestedMatch(row, sourceARows, matchResults.unmatchedA) : null
-
-                      return (
-                        <tr key={exc.key} className="hover:bg-gray-50">
-                          {colsB.map((col) => (
-                            <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                              {row ? formatCellValue(row[col]) : "—"}
-                            </td>
-                          ))}
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${catInfo.color}`}>
-                              {catInfo.label}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            {suggestion ? (
-                              <span className="text-[10px] text-blue-600">
-                                Row {suggestion.idx + 1} in {sourceALabel} ({suggestion.score})
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">No close match</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {exc.resolution ? (
-                              <span className={`text-[10px] font-medium ${exc.resolution === "approved" ? "text-green-600" : "text-red-600"}`}>
-                                {exc.resolution === "approved" ? "Approved" : "Flagged"}
-                              </span>
-                            ) : isComplete ? (
-                              <span className="text-gray-400 text-[10px]">—</span>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "approved") }}
-                                  disabled={resolvingKey === exc.key}
-                                  className="text-[10px] text-green-600 hover:text-green-700 underline"
-                                >
-                                  Approve
-                                </button>
-                                <span className="text-gray-300">|</span>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleResolveException(exc.key, "flagged") }}
-                                  disabled={resolvingKey === exc.key}
-                                  className="text-[10px] text-red-600 hover:text-red-700 underline"
-                                >
-                                  Flag
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {exceptionsB.length === 0 && (
-                      <tr>
-                        <td colSpan={colsB.length + 3} className="px-4 py-6 text-center text-sm text-gray-400">
-                          All {sourceBLabel} rows matched
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {exceptionsList.length === 0 && (
-            <div className="text-center py-8">
-              <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">Clean reconciliation — all rows matched!</p>
-            </div>
-          )}
+      {otherAItems.length === 0 && orphanBIndices.length === 0 && (
+        <div className="text-center py-8">
+          <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No orphan items — all rows are accounted for.</p>
         </div>
       )}
     </div>
   )
 }
+
+// ── Summary Card ──────────────────────────────────────────────────────────
 
 function SummaryCard({ label, value, sublabel, color }: { label: string; value: string; sublabel: string; color?: string }) {
   return (
