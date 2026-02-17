@@ -1073,6 +1073,17 @@ export default function JobDetailPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Delete Button */}
+                    {(permissions?.isAdmin || permissions?.isOwner) && (
+                      <button
+                        onClick={handleDelete}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 mb-3 text-sm">
