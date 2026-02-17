@@ -1614,7 +1614,17 @@ export default function DatabaseDetailPage() {
       </div>
 
       {/* Import Modal */}
-      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+      <Dialog open={importModalOpen} onOpenChange={(open) => {
+          setImportModalOpen(open)
+          if (!open) {
+            setImportFile(null)
+            setImportPreview(null)
+            setUpdateExisting(false)
+            setImportPasteValue("")
+            setImportPasteError(null)
+            setImportMode("file")
+          }
+        }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Import Data</DialogTitle>
@@ -1624,7 +1634,54 @@ export default function DatabaseDetailPage() {
           </DialogHeader>
 
           <div className="py-4">
-            {!importFile ? (
+            {/* Mode tabs - only show when no file selected yet */}
+            {!importFile && !importPreview && (
+              <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => { setImportMode("file"); setImportPasteValue(""); setImportPasteError(null) }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    importMode === "file"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <FileUp className="w-4 h-4" />
+                  Upload File
+                </button>
+                <button
+                  onClick={() => { setImportMode("paste"); setImportFile(null); setImportPreview(null) }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    importMode === "paste"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                  Paste from Excel
+                </button>
+              </div>
+            )}
+
+            {!importFile && importMode === "paste" && !importPreview ? (
+              /* Paste from clipboard */
+              <div className="space-y-3">
+                <textarea
+                  value={importPasteValue}
+                  onChange={(e) => { setImportPasteValue(e.target.value); setImportPasteError(null) }}
+                  placeholder="Copy rows from Excel (including headers) and paste here..."
+                  className="w-full h-40 p-3 border border-gray-300 rounded-lg text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                {importPasteError && (
+                  <div className="flex items-center gap-2 text-sm text-red-600">
+                    <AlertCircle className="w-4 h-4" />
+                    {importPasteError}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">
+                  Tip: Select your data in Excel (including the header row), copy it (Ctrl+C / Cmd+C), then paste here.
+                </p>
+              </div>
+            ) : !importFile ? (
               /* File drop zone */
               <div
                 onDrop={(e) => {
@@ -1834,10 +1891,32 @@ export default function DatabaseDetailPage() {
                 setImportPreview(null)
                 setUpdateExisting(false)
                 setAcknowledgedWarnings(false)
+                setImportPasteValue("")
+                setImportPasteError(null)
+                setImportMode("file")
               }}
             >
               Cancel
             </Button>
+            {importMode === "paste" && !importFile && !importPreview && (
+              <Button
+                onClick={() => handlePasteImport(importPasteValue)}
+                disabled={!importPasteValue.trim() || previewing}
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                {previewing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Validating...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Preview Import
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               onClick={handleConfirmImport}
               disabled={
@@ -1845,7 +1924,7 @@ export default function DatabaseDetailPage() {
                 importing ||
                 ((importPreview?.newRowCount || 0) === 0 && (!updateExisting || (importPreview?.updateCandidates?.length || 0) === 0))
               }
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+              className={`bg-orange-500 hover:bg-orange-600 text-white ${importMode === "paste" && !importFile ? "hidden" : ""}`}
             >
               {importing ? (
                 <>
