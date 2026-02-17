@@ -41,6 +41,9 @@ export interface JobRow {
   taskCount?: number // Number of requests - used for delete/archive logic
   respondedCount?: number // Number of requests that received responses
   draftRequestCount?: number // Number of draft requests awaiting review
+  taskType?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 // Team member for person cells

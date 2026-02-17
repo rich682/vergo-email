@@ -293,18 +293,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
       const { config } = await configRes.json()
 
-      // In standalone mode, we're done -- config is created, no run needed
-      if (mode === "standalone") {
-        onCreated(config.id)
-        return
-      }
-
-      // In task mode, also create a run, upload files, and trigger matching
-      // 2. Create a run
+      // 2. Create a run (both standalone and task mode)
       const runRes = await fetch(`/api/reconciliations/${config.id}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskInstanceId }),
+        body: JSON.stringify(mode === "task" ? { taskInstanceId } : {}),
       })
 
       if (!runRes.ok) throw new Error("Failed to create run")
@@ -792,11 +785,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {mode === "standalone" ? "Saving..." : "Creating & matching..."}
+                Creating & matching...
               </>
             ) : (
               <>
-                {mode === "standalone" ? "Save Reconciliation" : "Run Reconciliation"} <ArrowRight className="w-4 h-4 ml-2" />
+                Run Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>

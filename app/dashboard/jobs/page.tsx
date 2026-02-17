@@ -663,7 +663,9 @@ export default function JobsPage() {
     collectedItemCount: job.collectedItemCount || 0,
     taskCount: job.taskCount || 0,
     respondedCount: job.respondedCount || 0,
-    taskType: job.taskType || null
+    taskType: job.taskType || null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
   }))
 
   // ============================================

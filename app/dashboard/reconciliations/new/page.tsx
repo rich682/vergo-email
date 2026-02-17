@@ -45,7 +45,7 @@ export default function NewReconciliationPage() {
       <ReconciliationSetup
         mode="standalone"
         onCreated={(configId) => {
-          router.push("/dashboard/reconciliations")
+          router.push(`/dashboard/reconciliations/${configId}`)
         }}
       />
     </div>

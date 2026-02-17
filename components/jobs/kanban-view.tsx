@@ -1,14 +1,23 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Calendar, MessageSquare, Paperclip } from "lucide-react"
+import { Calendar, MessageSquare, Paperclip, ArrowUpDown } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { format } from "date-fns"
 
 // ============================================
 // Types
 // ============================================
+
+type SortOption = "created_newest" | "created_oldest" | "updated_newest" | "updated_oldest" | "az" | "za" | "due_date"
 
 interface JobRow {
   id: string
@@ -24,6 +33,8 @@ interface JobRow {
   taskCount?: number
   respondedCount?: number
   taskType?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface KanbanViewProps {
@@ -126,61 +137,63 @@ interface TaskCardProps {
 
 function TaskCard({ job, onClick }: TaskCardProps) {
   const isOverdue = job.dueDate && new Date(job.dueDate) < new Date()
-  
+
   return (
     <div
       onClick={onClick}
-      className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md hover:border-gray-300 cursor-pointer transition-all"
+      className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm hover:shadow-md hover:border-gray-300 cursor-pointer transition-all"
     >
-      {/* Task Type Badge */}
-      {job.taskType && TASK_TYPE_CONFIG[job.taskType] && (
-        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium mb-1.5 ${TASK_TYPE_CONFIG[job.taskType].bg} ${TASK_TYPE_CONFIG[job.taskType].text}`}>
-          {TASK_TYPE_CONFIG[job.taskType].label}
-        </span>
-      )}
-
-      {/* Task Name */}
-      <h4 className="font-medium text-gray-900 text-sm mb-2 line-clamp-2">
-        {job.name}
-      </h4>
-
-      {/* Metadata Row */}
-      <div className="flex items-center gap-3 text-xs text-gray-500">
-        {/* Owner */}
-        <div className="flex items-center gap-1">
-          <Avatar className="h-5 w-5">
-            <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">
-              {getInitials(job.ownerName, job.ownerEmail)}
-            </AvatarFallback>
-          </Avatar>
-          <span className="truncate max-w-[60px]">
-            {job.ownerName || job.ownerEmail.split("@")[0]}
+      <div className="flex items-center gap-2">
+        {/* Task Type Badge */}
+        {job.taskType && TASK_TYPE_CONFIG[job.taskType] && (
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${TASK_TYPE_CONFIG[job.taskType].bg} ${TASK_TYPE_CONFIG[job.taskType].text}`}>
+            {TASK_TYPE_CONFIG[job.taskType].label}
           </span>
+        )}
+
+        {/* Task Name */}
+        <h4 className="font-medium text-gray-900 text-sm truncate flex-1 min-w-0">
+          {job.name}
+        </h4>
+
+        {/* Metadata */}
+        <div className="flex items-center gap-2.5 text-xs text-gray-500 flex-shrink-0">
+          {/* Owner */}
+          <div className="flex items-center gap-1">
+            <Avatar className="h-5 w-5">
+              <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">
+                {getInitials(job.ownerName, job.ownerEmail)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate max-w-[70px]">
+              {job.ownerName || job.ownerEmail.split("@")[0]}
+            </span>
+          </div>
+
+          {/* Due Date */}
+          {job.dueDate && (
+            <div className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
+              <Calendar className="w-3 h-3" />
+              <span>{format(parseDateOnly(job.dueDate), "MMM d")}</span>
+            </div>
+          )}
+
+          {/* Request Count */}
+          {(job.taskCount || 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" />
+              <span>{job.taskCount}</span>
+            </div>
+          )}
+
+          {/* Files Count */}
+          {(job.collectedItemCount || 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <Paperclip className="w-3 h-3" />
+              <span>{job.collectedItemCount}</span>
+            </div>
+          )}
         </div>
-        
-        {/* Due Date */}
-        {job.dueDate && (
-          <div className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
-            <Calendar className="w-3 h-3" />
-            <span>{format(parseDateOnly(job.dueDate), "MMM d")}</span>
-          </div>
-        )}
-        
-        {/* Request Count */}
-        {(job.taskCount || 0) > 0 && (
-          <div className="flex items-center gap-1">
-            <MessageSquare className="w-3 h-3" />
-            <span>{job.taskCount}</span>
-          </div>
-        )}
-        
-        {/* Files Count */}
-        {(job.collectedItemCount || 0) > 0 && (
-          <div className="flex items-center gap-1">
-            <Paperclip className="w-3 h-3" />
-            <span>{job.collectedItemCount}</span>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -223,7 +236,7 @@ function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask }: Kanban
   
   return (
     <div
-      className="flex-1 min-w-[280px] max-w-[320px] flex flex-col rounded-lg transition-colors"
+      className="flex-1 min-w-0 flex flex-col rounded-lg transition-colors"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -264,21 +277,64 @@ function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask }: Kanban
 }
 
 // ============================================
+// Sort Logic
+// ============================================
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "created_newest", label: "Date created (newest)" },
+  { value: "created_oldest", label: "Date created (oldest)" },
+  { value: "updated_newest", label: "Last edited (newest)" },
+  { value: "updated_oldest", label: "Last edited (oldest)" },
+  { value: "az", label: "Name (A–Z)" },
+  { value: "za", label: "Name (Z–A)" },
+  { value: "due_date", label: "Due date (soonest)" },
+]
+
+function sortJobs(jobs: JobRow[], sortBy: SortOption): JobRow[] {
+  return [...jobs].sort((a, b) => {
+    switch (sortBy) {
+      case "created_newest":
+        return (b.createdAt || "").localeCompare(a.createdAt || "")
+      case "created_oldest":
+        return (a.createdAt || "").localeCompare(b.createdAt || "")
+      case "updated_newest":
+        return (b.updatedAt || "").localeCompare(a.updatedAt || "")
+      case "updated_oldest":
+        return (a.updatedAt || "").localeCompare(b.updatedAt || "")
+      case "az":
+        return a.name.localeCompare(b.name)
+      case "za":
+        return b.name.localeCompare(a.name)
+      case "due_date": {
+        // Tasks with no due date go to the end
+        if (!a.dueDate && !b.dueDate) return 0
+        if (!a.dueDate) return 1
+        if (!b.dueDate) return -1
+        return a.dueDate.localeCompare(b.dueDate)
+      }
+      default:
+        return 0
+    }
+  })
+}
+
+// ============================================
 // Main Kanban View Component
 // ============================================
 
 export function KanbanView({ jobs, onStatusChange }: KanbanViewProps) {
   const router = useRouter()
-  
-  // Group jobs by kanban column
+  const [sortBy, setSortBy] = useState<SortOption>("created_newest")
+
+  // Group jobs by kanban column, then sort within each column
   const jobsByColumn = useMemo(() => {
     const grouped: Record<string, JobRow[]> = {}
-    
+
     // Initialize all columns
     KANBAN_COLUMNS.forEach((col) => {
       grouped[col.id] = []
     })
-    
+
     // Sort jobs into columns
     jobs.forEach((job) => {
       const normalized = normalizeStatus(job.status)
@@ -288,33 +344,59 @@ export function KanbanView({ jobs, onStatusChange }: KanbanViewProps) {
       if (column) {
         grouped[column.id].push(job)
       } else {
-        // Default to not_started if no match
         grouped["not_started"].push(job)
       }
     })
-    
+
+    // Sort each column
+    Object.keys(grouped).forEach((colId) => {
+      grouped[colId] = sortJobs(grouped[colId], sortBy)
+    })
+
     return grouped
-  }, [jobs])
-  
+  }, [jobs, sortBy])
+
   const handleTaskClick = (jobId: string) => {
     router.push(`/dashboard/jobs/${jobId}`)
   }
-  
+
   const handleDropTask = (jobId: string, newStatus: string) => {
     onStatusChange(jobId, newStatus)
   }
-  
+
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
-      {KANBAN_COLUMNS.map((column) => (
-        <KanbanColumnComponent
-          key={column.id}
-          column={column}
-          jobs={jobsByColumn[column.id]}
-          onTaskClick={handleTaskClick}
-          onDropTask={handleDropTask}
-        />
-      ))}
+    <div className="space-y-3">
+      {/* Sort Controls */}
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+            <SelectTrigger className="h-8 w-[200px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Kanban Columns */}
+      <div className="flex gap-4 pb-4">
+        {KANBAN_COLUMNS.map((column) => (
+          <KanbanColumnComponent
+            key={column.id}
+            column={column}
+            jobs={jobsByColumn[column.id]}
+            onTaskClick={handleTaskClick}
+            onDropTask={handleDropTask}
+          />
+        ))}
+      </div>
     </div>
   )
 }
