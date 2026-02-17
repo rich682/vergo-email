@@ -1,19 +1,19 @@
 "use client"
 
 import {
-  Send, ClipboardList, Scale, FileBarChart, Clock, Bot, Wrench,
-  AlertCircle, DollarSign, FileCheck, ShieldCheck, Workflow,
+  Send, ClipboardList, Scale, FileBarChart, Clock, Bot, Wrench, Workflow,
 } from "lucide-react"
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates"
-import { TriggerBadge } from "../shared/trigger-description"
 import type { AutomationTemplate } from "@/lib/automations/types"
 
 const ICON_MAP: Record<string, typeof Send> = {
-  Send, ClipboardList, Scale, FileBarChart, Clock, Bot, Wrench,
-  AlertCircle, DollarSign, FileCheck, ShieldCheck, Workflow,
+  Send, ClipboardList, Scale, FileBarChart, Clock, Bot, Wrench, Workflow,
 }
 
 // ── Template grouping ─────────────────────────────────────────────────
+// Groups represent workflow patterns, not feature domains.
+// Triggers and recipients are configured in later wizard steps.
+
 interface TemplateGroup {
   label: string
   description: string
@@ -23,38 +23,28 @@ interface TemplateGroup {
 const TEMPLATE_GROUPS: TemplateGroup[] = [
   {
     label: "Data Collection",
-    description: "Automate sending requests and forms to contacts",
-    templateIds: ["send-requests-new-period", "send-forms-new-period", "monthly-scheduled-request"],
-  },
-  {
-    label: "Overdue & Follow-ups",
-    description: "Chase outstanding invoices and balances automatically",
-    templateIds: ["chase-overdue-invoices", "outstanding-balance-follow-up"],
-  },
-  {
-    label: "Compliance & Documents",
-    description: "Collect W-9s, COIs, and other vendor documents",
-    templateIds: ["collect-w9-new-vendors", "annual-coi-renewal"],
+    description: "Send requests or forms to collect data from contacts",
+    templateIds: ["send-requests", "send-forms", "send-request-with-reminders"],
   },
   {
     label: "Reconciliation",
-    description: "Match and reconcile data across sources",
-    templateIds: ["auto-reconcile-data-uploaded", "reconcile-and-report"],
+    description: "Run AI reconciliation with human review",
+    templateIds: ["run-reconciliation"],
   },
   {
-    label: "Reports & Analysis",
-    description: "Generate reports when boards complete",
-    templateIds: ["report-on-board-complete"],
+    label: "Reports",
+    description: "Generate period reports automatically",
+    templateIds: ["generate-report"],
   },
   {
-    label: "AI Agent Workflows",
-    description: "Run AI agents on schedules or triggered by events",
-    templateIds: ["scheduled-agent-run", "agent-on-form-submission"],
+    label: "AI Agents",
+    description: "Run an AI agent with human approval gate",
+    templateIds: ["run-agent"],
   },
   {
     label: "Multi-step Workflows",
-    description: "End-to-end processes combining multiple actions",
-    templateIds: ["full-period-close"],
+    description: "Chain multiple actions and approvals into one automation",
+    templateIds: ["collect-then-reconcile", "reconcile-then-report", "full-period-close"],
   },
 ]
 
@@ -71,9 +61,9 @@ export function TemplateSelectionStep({ selectedId, onSelect }: TemplateSelectio
 
   return (
     <div>
-      <h2 className="text-lg font-medium text-gray-900 mb-1">Choose a template</h2>
+      <h2 className="text-lg font-medium text-gray-900 mb-1">Choose a workflow</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Start with a pre-built automation or build your own from scratch.
+        Pick a workflow pattern to start with. You'll configure the trigger, recipients, and details in the next steps.
       </p>
 
       <div className="space-y-6">
@@ -157,9 +147,6 @@ function TemplateCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium text-gray-900">{template.name}</h3>
-            {template.id !== "custom" && (
-              <TriggerBadge trigger={template.triggerType} />
-            )}
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
           {template.defaultSteps.length > 0 && (
