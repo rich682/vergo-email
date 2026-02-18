@@ -17,7 +17,7 @@ export type TriggerType =
   | "data_uploaded"
   | "form_submitted"
   | "compound"
-  | "database_changed" // Internal: emitted when database rows change, not user-facing
+  | "database_changed" // Run when linked dataset is updated (for database-linked agents)
 
 /** Conditions for board_created / board_status_changed triggers */
 export interface BoardTriggerConditions {

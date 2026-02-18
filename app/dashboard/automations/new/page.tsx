@@ -225,7 +225,7 @@ export default function NewAutomationPage() {
                   onTriggerTypeChange={setTriggerType}
                   conditions={conditions}
                   onConditionsChange={setConditions}
-                  isCustom={selectedTemplateId === "custom"}
+                  templateId={selectedTemplateId}
                 />
               )}
 

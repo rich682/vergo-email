@@ -10,7 +10,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Send data requests",
     description: "Collect documents, files, or information from contacts, groups, or database recipients.",
     icon: "Send",
-    triggerType: "board_created",
+    triggerType: "scheduled",
     defaultConditions: {},
     defaultSteps: [
       {
@@ -27,7 +27,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Send forms",
     description: "Send forms for data intake — onboarding, surveys, questionnaires, or any structured collection.",
     icon: "ClipboardList",
-    triggerType: "board_created",
+    triggerType: "scheduled",
     defaultConditions: {},
     defaultSteps: [
       {
@@ -47,7 +47,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Run reconciliation",
     description: "Run the AI reconciliation agent to match and reconcile data across sources.",
     icon: "Scale",
-    triggerType: "board_created",
+    triggerType: "database_changed",
     defaultConditions: {},
     defaultSteps: [
       {
@@ -77,7 +77,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Generate report",
     description: "Generate a summary report — P&L, balance sheet, or any period-end report.",
     icon: "FileBarChart",
-    triggerType: "board_created",
+    triggerType: "database_changed",
     defaultConditions: {},
     defaultSteps: [
       {
@@ -97,7 +97,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     name: "Custom agent",
     description: "Build your own agent with any combination of actions, approvals, and steps.",
     icon: "Wrench",
-    triggerType: "board_created",
+    triggerType: "scheduled",
     defaultConditions: {},
     defaultSteps: [],
     category: "requests",

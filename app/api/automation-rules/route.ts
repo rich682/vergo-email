@@ -23,6 +23,7 @@ const VALID_TRIGGERS: TriggerType[] = [
   "data_uploaded",
   "form_submitted",
   "compound",
+  "database_changed",
 ]
 
 const VALID_STEP_TYPES = ["action", "condition", "human_approval", "agent_run"]

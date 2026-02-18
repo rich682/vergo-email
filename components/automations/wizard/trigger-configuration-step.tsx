@@ -1,20 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Clock, Database } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { CronBuilder } from "./cron-builder"
-import { DatabaseConditionBuilder } from "./database-condition-builder"
-import { TriggerIcon } from "../shared/trigger-description"
 import { cronToSchedule, scheduleToCron } from "@/lib/automations/cron-helpers"
 import type { TriggerType, CronSchedule } from "@/lib/automations/types"
+
+/** Template categories that have database linkage */
+const DATABASE_LINKED_TEMPLATES = new Set([
+  "run-reconciliation",
+  "generate-report",
+  "custom",
+])
 
 interface TriggerConfigurationStepProps {
   name: string
@@ -23,24 +22,8 @@ interface TriggerConfigurationStepProps {
   onTriggerTypeChange: (type: TriggerType) => void
   conditions: Record<string, unknown>
   onConditionsChange: (conditions: Record<string, unknown>) => void
-  isCustom?: boolean // Unused — kept for backward compat, trigger selector always shows
+  templateId?: string | null
 }
-
-const TRIGGER_OPTIONS: { value: TriggerType; label: string }[] = [
-  { value: "board_created", label: "When a new period board is created" },
-  { value: "board_status_changed", label: "When a board status changes" },
-  { value: "scheduled", label: "On a schedule" },
-  { value: "data_uploaded", label: "When reconciliation data is uploaded" },
-  { value: "form_submitted", label: "When a form is submitted" },
-  { value: "data_condition", label: "When data meets a condition" },
-  { value: "compound", label: "On a schedule + when data is available" },
-]
-
-const BOARD_STATUS_OPTIONS = [
-  { value: "NOT_STARTED", label: "Not Started" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "COMPLETE", label: "Complete" },
-]
 
 const DEFAULT_SCHEDULE: CronSchedule = {
   frequency: "monthly",
@@ -57,10 +40,12 @@ export function TriggerConfigurationStep({
   onTriggerTypeChange,
   conditions,
   onConditionsChange,
-  isCustom,
+  templateId,
 }: TriggerConfigurationStepProps) {
+  const showDatabaseOption = DATABASE_LINKED_TEMPLATES.has(templateId || "")
+
   const [schedule, setSchedule] = useState<CronSchedule>(() => {
-    if ((triggerType === "scheduled" || triggerType === "compound") && conditions.cronExpression) {
+    if (triggerType === "scheduled" && conditions.cronExpression) {
       return cronToSchedule(
         conditions.cronExpression as string,
         (conditions.timezone as string) || "UTC"
@@ -78,9 +63,9 @@ export function TriggerConfigurationStep({
     })
   }
 
-  // Initialize cron when switching to scheduled or compound trigger
+  // Initialize cron when switching to scheduled trigger
   useEffect(() => {
-    if ((triggerType === "scheduled" || triggerType === "compound") && !conditions.cronExpression) {
+    if (triggerType === "scheduled" && !conditions.cronExpression) {
       onConditionsChange({
         ...conditions,
         cronExpression: scheduleToCron(schedule),
@@ -88,6 +73,19 @@ export function TriggerConfigurationStep({
       })
     }
   }, [triggerType])
+
+  const handleTriggerSelect = (type: TriggerType) => {
+    onTriggerTypeChange(type)
+    // Reset conditions when switching trigger type
+    if (type === "scheduled") {
+      onConditionsChange({
+        cronExpression: scheduleToCron(schedule),
+        timezone: schedule.timezone,
+      })
+    } else {
+      onConditionsChange({})
+    }
+  }
 
   return (
     <div>
@@ -108,193 +106,93 @@ export function TriggerConfigurationStep({
           />
         </div>
 
-        {/* Trigger type */}
+        {/* Trigger type — card selector */}
         <div>
           <Label className="text-xs text-gray-500">When should this agent run?</Label>
-          <Select value={triggerType} onValueChange={(v) => onTriggerTypeChange(v as TriggerType)}>
-            <SelectTrigger className="mt-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TRIGGER_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="mt-2 grid gap-3" style={{ gridTemplateColumns: showDatabaseOption ? "1fr 1fr" : "1fr" }}>
+            {/* Time-based */}
+            <button
+              type="button"
+              onClick={() => handleTriggerSelect("scheduled")}
+              className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+                triggerType === "scheduled"
+                  ? "border-orange-400 bg-orange-50"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
+              }`}
+            >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                triggerType === "scheduled" ? "bg-orange-100" : "bg-purple-50"
+              }`}>
+                <Clock className={`w-4 h-4 ${
+                  triggerType === "scheduled" ? "text-orange-600" : "text-purple-600"
+                }`} />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-900">Time-based</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Run on a recurring schedule
+                </div>
+              </div>
+            </button>
+
+            {/* Database update — only for templates with database linkage */}
+            {showDatabaseOption && (
+              <button
+                type="button"
+                onClick={() => handleTriggerSelect("database_changed")}
+                className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+                  triggerType === "database_changed"
+                    ? "border-orange-400 bg-orange-50"
+                    : "border-gray-200 hover:border-gray-300 bg-white"
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  triggerType === "database_changed" ? "bg-orange-100" : "bg-emerald-50"
+                }`}>
+                  <Database className={`w-4 h-4 ${
+                    triggerType === "database_changed" ? "text-orange-600" : "text-emerald-600"
+                  }`} />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Database update</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Run when linked data changes
+                  </div>
+                </div>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Trigger-specific config */}
-        <div className="border border-gray-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <TriggerIcon trigger={triggerType} size="sm" />
-            <span className="text-sm font-medium text-gray-700">
-              {TRIGGER_OPTIONS.find((o) => o.value === triggerType)?.label || triggerType}
-            </span>
-          </div>
-
-          {triggerType === "scheduled" && (
+        {triggerType === "scheduled" && (
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-3.5 h-3.5 text-purple-600" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">Schedule</span>
+            </div>
             <CronBuilder schedule={schedule} onChange={handleScheduleChange} />
-          )}
+          </div>
+        )}
 
-          {triggerType === "board_status_changed" && (
-            <div>
-              <Label className="text-xs text-gray-500">Target Status</Label>
-              <Select
-                value={(conditions.targetStatus as string) || "COMPLETE"}
-                onValueChange={(v) => onConditionsChange({ ...conditions, targetStatus: v })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOARD_STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-gray-400 mt-1">
-                The agent will run when a board transitions to this status.
-              </p>
+        {triggerType === "database_changed" && (
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                <Database className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">Database update</span>
             </div>
-          )}
-
-          {triggerType === "board_created" && (
             <p className="text-sm text-gray-500">
-              This agent will run automatically whenever a new period board is created in your organization.
+              This agent will run automatically whenever the linked dataset is updated &mdash; for example, when new rows are added or existing data is modified.
             </p>
-          )}
-
-          {triggerType === "data_uploaded" && (
-            <p className="text-sm text-gray-500">
-              This agent will run when new reconciliation data is matched and uploaded.
+            <p className="text-xs text-gray-400 mt-2">
+              The dataset linkage is determined by the task selected in the previous step.
             </p>
-          )}
-
-          {triggerType === "form_submitted" && (
-            <p className="text-sm text-gray-500">
-              This agent will run when a form response is submitted.
-            </p>
-          )}
-
-          {triggerType === "data_condition" && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-500 mb-3">
-                Configure a data condition that will be checked periodically.
-              </p>
-              <div>
-                <Label className="text-xs text-gray-500">Database ID</Label>
-                <Input
-                  value={(conditions.databaseId as string) || ""}
-                  onChange={(e) => onConditionsChange({ ...conditions, databaseId: e.target.value })}
-                  placeholder="Database ID"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500">Column Key</Label>
-                <Input
-                  value={(conditions.columnKey as string) || ""}
-                  onChange={(e) => onConditionsChange({ ...conditions, columnKey: e.target.value })}
-                  placeholder="e.g. posting_date"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500">Operator</Label>
-                <Select
-                  value={(conditions.operator as string) || "eq"}
-                  onValueChange={(v) => onConditionsChange({ ...conditions, operator: v })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="eq">Equals</SelectItem>
-                    <SelectItem value="between">Between</SelectItem>
-                    <SelectItem value="gt">Greater than</SelectItem>
-                    <SelectItem value="lt">Less than</SelectItem>
-                    <SelectItem value="contains">Contains</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {triggerType === "compound" && (
-            <div className="space-y-5">
-              {/* Time condition */}
-              <div>
-                <Label className="text-xs text-gray-500 font-medium">Time Condition</Label>
-                <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
-                  The agent becomes ready to run after this time passes each period.
-                </p>
-                <CronBuilder schedule={schedule} onChange={handleScheduleChange} />
-              </div>
-
-              <div className="border-t border-gray-100" />
-
-              {/* Database condition (optional) */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-gray-500 font-medium">Data Condition (optional)</Label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!(conditions.databaseCondition as Record<string, unknown> | undefined)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          onConditionsChange({
-                            ...conditions,
-                            databaseCondition: { databaseId: "", columnKey: "", operator: "eq", value: "" },
-                          })
-                        } else {
-                          const { databaseCondition, ...rest } = conditions
-                          onConditionsChange(rest)
-                        }
-                      }}
-                      className="rounded accent-orange-500"
-                    />
-                    <span className="text-xs text-gray-500">Also wait for data</span>
-                  </label>
-                </div>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  When enabled, the agent will only run after the time condition is met AND the data condition is satisfied.
-                </p>
-
-                {!!conditions.databaseCondition && (
-                  <div className="mt-3 p-3 border border-gray-100 rounded-lg bg-gray-50/50">
-                    <DatabaseConditionBuilder
-                      condition={conditions.databaseCondition as any}
-                      onChange={(dc) => onConditionsChange({ ...conditions, databaseCondition: dc })}
-                    />
-                  </div>
-                )}
-
-                {/* Settling window — only visible when data condition is enabled */}
-                {!!conditions.databaseCondition && (
-                  <div className="mt-3">
-                    <Label className="text-xs text-gray-500">Settling Window (minutes)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      className="mt-1 w-32"
-                      value={(conditions.settlingMinutes as number) ?? 60}
-                      onChange={(e) =>
-                        onConditionsChange({
-                          ...conditions,
-                          settlingMinutes: Math.max(0, parseInt(e.target.value) || 0),
-                        })
-                      }
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Wait this many minutes after the last data change before running, to ensure all data has been uploaded. Set to 0 to run immediately when data matches.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
