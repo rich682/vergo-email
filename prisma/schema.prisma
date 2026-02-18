@@ -1947,6 +1947,7 @@ model AnalysisMessage {
   queryRowCount    Int?
   queryDurationMs  Int?
   queryError       String?
+  chartConfig      Json?    // { type: "bar"|"line"|"pie"|"area", xKey, yKeys, title }
 
   // LLM metadata
   model            String?
