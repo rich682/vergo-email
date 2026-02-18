@@ -94,12 +94,6 @@ function ConfigSummary({
           <p className="text-amber-600">No email content configured</p>
         )}
         <p>Recipients: From task history</p>
-        {!!(configuration.remindersConfig as { enabled?: boolean })?.enabled && (
-          <p>Reminders: Enabled ({(configuration.remindersConfig as { frequency?: string })?.frequency || "weekly"})</p>
-        )}
-        {!!configuration.deadlineDate && (
-          <p>Deadline: Configured</p>
-        )}
       </div>
     )
   }
@@ -122,9 +116,6 @@ function ConfigSummary({
         <p>Recipients: From database</p>
         {!!configuration.databaseId && (
           <p className="text-xs text-gray-400">Database configured</p>
-        )}
-        {!!(configuration.remindersConfig as { enabled?: boolean })?.enabled && (
-          <p>Reminders: Enabled ({(configuration.remindersConfig as { frequency?: string })?.frequency || "weekly"})</p>
         )}
       </div>
     )

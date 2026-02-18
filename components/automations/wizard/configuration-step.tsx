@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Info, Loader2 } from "lucide-react"
 import { RequestTemplatePicker } from "../steps/send-request/request-template-picker"
-import { ScheduleConfig } from "../steps/send-request/schedule-config"
 import { DatabaseRecipientConfig } from "../steps/send-request/database-recipient-config"
 
 interface ConfigurationStepProps {
@@ -140,21 +139,12 @@ function SendStandardRequestConfig({
           </span>
         </div>
       </div>
-
-      {/* Schedule & Reminders */}
-      <div>
-        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
-          Scheduling
-        </div>
-        <ScheduleConfig params={configuration} onChange={onChange} />
-      </div>
     </div>
   )
 }
 
 function SendFormConfig({
   configuration,
-  onChange,
 }: {
   configuration: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
@@ -167,14 +157,6 @@ function SendFormConfig({
           The agent will send the same form template used in the linked task to the
           same recipients from previous periods.
         </span>
-      </div>
-
-      {/* Schedule & Reminders */}
-      <div>
-        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
-          Scheduling
-        </div>
-        <ScheduleConfig params={configuration} onChange={onChange} />
       </div>
     </div>
   )
@@ -215,13 +197,6 @@ function SendDataRequestConfig({
         <DatabaseRecipientConfig params={configuration} onChange={onChange} />
       </div>
 
-      {/* Schedule & Reminders */}
-      <div>
-        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
-          Scheduling
-        </div>
-        <ScheduleConfig params={configuration} onChange={onChange} />
-      </div>
     </div>
   )
 }
