@@ -15,6 +15,7 @@ import * as XLSX from "xlsx"
 import { put } from "@vercel/blob"
 import { prisma } from "@/lib/prisma"
 import { createLocalDuckDB, sanitizeTableName, execAsync, allAsync } from "./duckdb-manager"
+import type { DuckDBHandle } from "./duckdb-manager"
 
 export interface UploadPipelineInput {
   fileBuffer: Buffer
@@ -66,7 +67,7 @@ export async function processDatasetUpload(input: UploadPipelineInput): Promise<
     },
   })
 
-  let handle: { db: any; connection: any; cleanup: () => void } | null = null
+  let handle: DuckDBHandle | null = null
   const tmpFiles: string[] = []
 
   try {

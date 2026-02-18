@@ -4,18 +4,21 @@
  * Creates ephemeral in-memory DuckDB instances per request.
  * Each org's datasets are loaded as views from Parquet files on Vercel Blob.
  * No persistent DuckDB files — Parquet on Blob is the source of truth.
+ *
+ * Uses @duckdb/node-api (the Neo client) — fully async, compatible with Vercel serverless on Node 24.
  */
 
-import duckdb from "duckdb"
+import { DuckDBInstance } from "@duckdb/node-api"
+import type { DuckDBConnection } from "@duckdb/node-api"
 
 export interface DatasetInfo {
   tableName: string
   parquetUrl: string
 }
 
-interface DuckDBHandle {
-  db: duckdb.Database
-  connection: duckdb.Connection
+export interface DuckDBHandle {
+  instance: DuckDBInstance
+  connection: DuckDBConnection
   cleanup: () => void
 }
 
@@ -58,30 +61,6 @@ function validateParquetUrl(url: string): void {
 }
 
 /**
- * Run a SQL statement on a DuckDB connection (no result expected).
- */
-function execAsync(conn: duckdb.Connection, sql: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    conn.exec(sql, (err) => {
-      if (err) reject(err)
-      else resolve()
-    })
-  })
-}
-
-/**
- * Run a SQL query and return rows.
- */
-function allAsync(conn: duckdb.Connection, sql: string): Promise<Record<string, unknown>[]> {
-  return new Promise((resolve, reject) => {
-    conn.all(sql, (err, rows) => {
-      if (err) reject(err)
-      else resolve(rows as Record<string, unknown>[])
-    })
-  })
-}
-
-/**
  * Create an ephemeral DuckDB instance with views for the given datasets.
  * Each dataset's Parquet file is accessed via its Vercel Blob URL using httpfs.
  *
@@ -95,12 +74,15 @@ function allAsync(conn: duckdb.Connection, sql: string): Promise<Record<string, 
  *   }
  */
 export async function createOrgDuckDB(datasets: DatasetInfo[]): Promise<DuckDBHandle> {
-  const db = new duckdb.Database(":memory:")
-  const connection = db.connect()
+  const instance = await DuckDBInstance.create(":memory:")
+  const connection = await instance.connect()
+
+  // Critical for serverless: set home directory to writable path
+  await connection.run("SET home_directory = '/tmp'")
 
   // Install and load httpfs for reading remote Parquet files
-  await execAsync(connection, "INSTALL httpfs;")
-  await execAsync(connection, "LOAD httpfs;")
+  await connection.run("INSTALL httpfs;")
+  await connection.run("LOAD httpfs;")
 
   // Create a view for each dataset pointing at the remote Parquet URL
   for (const dataset of datasets) {
@@ -109,35 +91,37 @@ export async function createOrgDuckDB(datasets: DatasetInfo[]): Promise<DuckDBHa
 
     const escapedTable = sanitizeTableName(dataset.tableName)
     const escapedUrl = dataset.parquetUrl.replace(/'/g, "''")
-    await execAsync(
-      connection,
+    await connection.run(
       `CREATE VIEW "${escapedTable}" AS SELECT * FROM read_parquet('${escapedUrl}');`
     )
   }
 
   return {
-    db,
+    instance,
     connection,
     cleanup: () => {
-      try { connection.close() } catch {}
-      try { db.close() } catch {}
+      try { connection.closeSync() } catch {}
+      try { instance.closeSync() } catch {}
     },
   }
 }
 
 /**
- * Create an ephemeral DuckDB instance from local Parquet files (for upload pipeline).
+ * Create an ephemeral DuckDB instance for local processing (upload pipeline).
  */
 export async function createLocalDuckDB(): Promise<DuckDBHandle> {
-  const db = new duckdb.Database(":memory:")
-  const connection = db.connect()
+  const instance = await DuckDBInstance.create(":memory:")
+  const connection = await instance.connect()
+
+  // Critical for serverless: set home directory to writable path
+  await connection.run("SET home_directory = '/tmp'")
 
   return {
-    db,
+    instance,
     connection,
     cleanup: () => {
-      try { connection.close() } catch {}
-      try { db.close() } catch {}
+      try { connection.closeSync() } catch {}
+      try { instance.closeSync() } catch {}
     },
   }
 }
@@ -175,17 +159,8 @@ export function validateReadOnlySQL(sql: string): string | null {
   }
 
   // Check for embedded write operations in CTEs or subqueries
-  const dangerousPatterns = [
-    /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|ATTACH|DETACH|COPY|PRAGMA|CALL|EXECUTE|SET|GRANT|REVOKE|EXPORT|IMPORT)\s/i,
-  ]
-  // Only check these if they appear outside of string literals
-  // Simple heuristic: strip quoted strings first, then check
+  // Strip quoted strings first, then check
   const withoutStrings = sql.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""')
-  for (const pattern of dangerousPatterns) {
-    if (pattern.test(withoutStrings) && !/^(SELECT|WITH)\b/i.test(withoutStrings.trim())) {
-      // Only flag if the dangerous keyword is at statement level
-    }
-  }
 
   // Specific CTE injection check: WITH ... AS (INSERT/UPDATE/DELETE ...)
   if (/WITH\s+\w+\s+AS\s*\(\s*(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE)\b/i.test(withoutStrings)) {
@@ -196,10 +171,25 @@ export function validateReadOnlySQL(sql: string): string | null {
 }
 
 /**
+ * Run a SQL statement that does not return results (DDL, SET, etc).
+ */
+export async function execAsync(connection: DuckDBConnection, sql: string): Promise<void> {
+  await connection.run(sql)
+}
+
+/**
+ * Run a SQL query and return rows as plain objects.
+ */
+export async function allAsync(connection: DuckDBConnection, sql: string): Promise<Record<string, unknown>[]> {
+  const reader = await connection.runAndReadAll(sql)
+  return reader.getRowObjectsJson() as Record<string, unknown>[]
+}
+
+/**
  * Execute a SQL query with timeout and row limit.
  */
 export async function executeQuery(
-  connection: duckdb.Connection,
+  connection: DuckDBConnection,
   sql: string,
   options: { timeoutMs?: number; maxRows?: number } = {}
 ): Promise<{ rows: Record<string, unknown>[]; totalRows: number; durationMs: number }> {
@@ -215,27 +205,24 @@ export async function executeQuery(
   // Wrap in LIMIT to prevent unbounded result sets
   const limitedSql = `SELECT * FROM (${sql}) __limited_result LIMIT ${maxRows + 1}`
 
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Query timed out after ${timeoutMs}ms`))
-    }, timeoutMs)
+  // Execute with timeout
+  const queryPromise = (async () => {
+    const reader = await connection.runAndReadAll(limitedSql)
+    return reader.getRowObjectsJson() as Record<string, unknown>[]
+  })()
 
-    connection.all(limitedSql, (err, result) => {
-      clearTimeout(timer)
-      if (err) return reject(err)
-
-      const rows = result as Record<string, unknown>[]
-      const hasMore = rows.length > maxRows
-      const truncatedRows = hasMore ? rows.slice(0, maxRows) : rows
-
-      resolve({
-        rows: truncatedRows,
-        totalRows: hasMore ? -1 : rows.length, // -1 signals "more than maxRows"
-        durationMs: Date.now() - start,
-      })
-    })
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Query timed out after ${timeoutMs}ms`)), timeoutMs)
   })
-}
 
-// Re-export helpers for use in upload pipeline
-export { execAsync, allAsync }
+  const rows = await Promise.race([queryPromise, timeoutPromise])
+
+  const hasMore = rows.length > maxRows
+  const truncatedRows = hasMore ? rows.slice(0, maxRows) : rows
+
+  return {
+    rows: truncatedRows,
+    totalRows: hasMore ? -1 : rows.length, // -1 signals "more than maxRows"
+    durationMs: Date.now() - start,
+  }
+}
