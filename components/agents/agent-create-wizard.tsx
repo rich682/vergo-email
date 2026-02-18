@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clock, Database, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,8 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { CronBuilder } from "@/components/automations/wizard/cron-builder"
-import { DatabaseConditionBuilder } from "@/components/automations/wizard/database-condition-builder"
-import { cronToSchedule, scheduleToCron } from "@/lib/automations/cron-helpers"
+import { scheduleToCron } from "@/lib/automations/cron-helpers"
 import type { CronSchedule } from "@/lib/automations/types"
 
 interface TaskOption {
@@ -60,6 +59,9 @@ const STATUS_COLORS: Record<string, string> = {
   COMPLETE: "bg-emerald-100 text-emerald-700",
 }
 
+/** Task types that have database linkage */
+const DATABASE_LINKED_TASK_TYPES = new Set(["reconciliation", "report"])
+
 export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: AgentCreateWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState(0)
@@ -73,14 +75,11 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
   const [loadingTasks, setLoadingTasks] = useState(false)
 
   // Step 1: Triggers & Settings
-  const [triggerMode, setTriggerMode] = useState<"automatic" | "manual">("automatic")
-  const [triggerKind, setTriggerKind] = useState<"simple" | "compound">("simple")
-  const [triggerNewPeriod, setTriggerNewPeriod] = useState(true)
-  const [triggerDataUploaded, setTriggerDataUploaded] = useState(true)
+  const [triggerType, setTriggerType] = useState<"scheduled" | "database_changed">("scheduled")
   const [customInstructions, setCustomInstructions] = useState("")
   const [threshold, setThreshold] = useState("0.85")
 
-  // Compound trigger state
+  // Schedule state for time-based trigger
   const defaultSchedule: CronSchedule = {
     frequency: "monthly",
     dayOfMonth: 1,
@@ -88,21 +87,7 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
     minute: 0,
     timezone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
   }
-  const [compoundSchedule, setCompoundSchedule] = useState<CronSchedule>(defaultSchedule)
-  const [compoundDbEnabled, setCompoundDbEnabled] = useState(false)
-  const [compoundSettlingMinutes, setCompoundSettlingMinutes] = useState(60)
-  const [compoundDbCondition, setCompoundDbCondition] = useState<{
-    databaseId: string
-    columnKey: string
-    operator: string
-    value: unknown
-    boardScope?: string
-  }>({
-    databaseId: "",
-    columnKey: "",
-    operator: "eq",
-    value: "",
-  })
+  const [schedule, setSchedule] = useState<CronSchedule>(defaultSchedule)
 
   // Load tasks on open
   useEffect(() => {
@@ -132,6 +117,14 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
   }, [taskInstanceId, tasks, name])
 
   const selectedTask = tasks.find(t => t.id === taskInstanceId) || null
+  const hasDatabaseLinkage = DATABASE_LINKED_TASK_TYPES.has(selectedTask?.taskType || "")
+
+  // If task changes and loses database linkage, fall back to scheduled
+  useEffect(() => {
+    if (!hasDatabaseLinkage && triggerType === "database_changed") {
+      setTriggerType("scheduled")
+    }
+  }, [hasDatabaseLinkage, triggerType])
 
   const canProceed = () => {
     switch (step) {
@@ -146,25 +139,6 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
     setCreating(true)
     setError(null)
 
-    const triggers: string[] = []
-    if (triggerMode === "automatic" && triggerKind === "simple") {
-      if (triggerNewPeriod) triggers.push("new_period")
-      if (triggerDataUploaded) triggers.push("data_uploaded")
-    }
-
-    // Build compound trigger config if selected
-    let compoundTrigger: Record<string, unknown> | undefined
-    if (triggerMode === "automatic" && triggerKind === "compound") {
-      compoundTrigger = {
-        cronExpression: scheduleToCron(compoundSchedule),
-        timezone: compoundSchedule.timezone,
-      }
-      if (compoundDbEnabled && compoundDbCondition.databaseId) {
-        compoundTrigger.databaseCondition = compoundDbCondition
-        compoundTrigger.settlingMinutes = compoundSettlingMinutes
-      }
-    }
-
     try {
       const res = await fetch("/api/agents", {
         method: "POST",
@@ -173,10 +147,12 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
           name,
           taskInstanceId,
           settings: {
-            triggerMode,
-            triggerKind: triggerMode === "automatic" ? triggerKind : undefined,
-            triggers,
-            compoundTrigger,
+            triggerMode: "automatic",
+            triggerType,
+            ...(triggerType === "scheduled" ? {
+              cronExpression: scheduleToCron(schedule),
+              timezone: schedule.timezone,
+            } : {}),
             customInstructions: customInstructions || undefined,
             confidenceThreshold: parseFloat(threshold),
             maxIterations: 10,
@@ -205,27 +181,16 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
     setStep(0)
     setTaskInstanceId(prefilledTaskId || "")
     setName("")
-    setTriggerMode("automatic")
-    setTriggerKind("simple")
-    setTriggerNewPeriod(true)
-    setTriggerDataUploaded(true)
+    setTriggerType("scheduled")
     setCustomInstructions("")
     setThreshold("0.85")
-    setCompoundSchedule(defaultSchedule)
-    setCompoundDbEnabled(false)
-    setCompoundSettlingMinutes(60)
-    setCompoundDbCondition({ databaseId: "", columnKey: "", operator: "eq", value: "" })
+    setSchedule(defaultSchedule)
     setError(null)
   }
 
-  const triggerLabel = triggerMode === "manual"
-    ? "Manual Only"
-    : triggerKind === "compound"
-    ? `Schedule${compoundDbEnabled ? " + Data condition" : ""}`
-    : [
-        triggerNewPeriod && "New period created",
-        triggerDataUploaded && "Data uploaded",
-      ].filter(Boolean).join(" + ") || "Automatic (no conditions)"
+  const triggerLabel = triggerType === "database_changed"
+    ? "Database update"
+    : "Time-based (scheduled)"
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) handleReset() }}>
@@ -307,142 +272,90 @@ export function AgentCreateWizard({ open, onOpenChange, prefilledTaskId }: Agent
           {/* Step 1: Triggers & Settings */}
           {step === 1 && (
             <div className="space-y-5">
-              {/* Trigger Mode */}
+              {/* Trigger Type — card selector */}
               <div>
                 <Label>When should this agent run?</Label>
-                <div className="mt-2 space-y-2">
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${triggerMode === "automatic" ? "border-orange-300 bg-orange-50" : "border-gray-200 hover:border-gray-300"}`}>
-                    <input
-                      type="radio"
-                      name="triggerMode"
-                      value="automatic"
-                      checked={triggerMode === "automatic"}
-                      onChange={() => setTriggerMode("automatic")}
-                      className="mt-0.5 accent-orange-500"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">Automatic</div>
-                      <div className="text-xs text-gray-500">Run automatically when conditions are met</div>
+                <div className="mt-2 grid gap-3" style={{ gridTemplateColumns: hasDatabaseLinkage ? "1fr 1fr" : "1fr" }}>
+                  {/* Time-based */}
+                  <button
+                    type="button"
+                    onClick={() => setTriggerType("scheduled")}
+                    className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+                      triggerType === "scheduled"
+                        ? "border-orange-400 bg-orange-50"
+                        : "border-gray-200 hover:border-gray-300 bg-white"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                      triggerType === "scheduled" ? "bg-orange-100" : "bg-purple-50"
+                    }`}>
+                      <Clock className={`w-4 h-4 ${
+                        triggerType === "scheduled" ? "text-orange-600" : "text-purple-600"
+                      }`} />
                     </div>
-                  </label>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">Time-based</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Run on a recurring schedule
+                      </div>
+                    </div>
+                  </button>
 
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${triggerMode === "manual" ? "border-orange-300 bg-orange-50" : "border-gray-200 hover:border-gray-300"}`}>
-                    <input
-                      type="radio"
-                      name="triggerMode"
-                      value="manual"
-                      checked={triggerMode === "manual"}
-                      onChange={() => setTriggerMode("manual")}
-                      className="mt-0.5 accent-orange-500"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">Manual Only</div>
-                      <div className="text-xs text-gray-500">Only run when you click &quot;Run Agent&quot;</div>
-                    </div>
-                  </label>
+                  {/* Database update — only for tasks with database linkage */}
+                  {hasDatabaseLinkage && (
+                    <button
+                      type="button"
+                      onClick={() => setTriggerType("database_changed")}
+                      className={`flex flex-col items-start gap-2 p-4 rounded-lg border-2 text-left transition-colors ${
+                        triggerType === "database_changed"
+                          ? "border-orange-400 bg-orange-50"
+                          : "border-gray-200 hover:border-gray-300 bg-white"
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                        triggerType === "database_changed" ? "bg-orange-100" : "bg-emerald-50"
+                      }`}>
+                        <Database className={`w-4 h-4 ${
+                          triggerType === "database_changed" ? "text-orange-600" : "text-emerald-600"
+                        }`} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">Database update</div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Run when linked data changes
+                        </div>
+                      </div>
+                    </button>
+                  )}
                 </div>
 
-                {/* Trigger Conditions */}
-                {triggerMode === "automatic" && (
-                  <div className="mt-3 space-y-3">
-                    <div className="ml-1">
-                      <Label className="text-xs text-gray-500 font-medium">Trigger type</Label>
-                      <Select value={triggerKind} onValueChange={(v: "simple" | "compound") => setTriggerKind(v)}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="simple">Simple (new period + data uploaded)</SelectItem>
-                          <SelectItem value="compound">Schedule + data condition</SelectItem>
-                        </SelectContent>
-                      </Select>
+                {/* Trigger-specific config */}
+                {triggerType === "scheduled" && (
+                  <div className="mt-4 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-3.5 h-3.5 text-purple-600" />
+                      </div>
+                      <span className="text-sm font-medium text-gray-700">Schedule</span>
                     </div>
+                    <CronBuilder schedule={schedule} onChange={setSchedule} />
+                  </div>
+                )}
 
-                    {triggerKind === "simple" && (
-                      <div className="ml-1 space-y-2">
-                        <p className="text-xs text-gray-500 font-medium">Trigger conditions:</p>
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={triggerNewPeriod}
-                            onChange={(e) => setTriggerNewPeriod(e.target.checked)}
-                            className="rounded accent-orange-500"
-                          />
-                          <span className="text-sm text-gray-700">When a new period is created for this task</span>
-                        </label>
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={triggerDataUploaded}
-                            onChange={(e) => setTriggerDataUploaded(e.target.checked)}
-                            className="rounded accent-orange-500"
-                          />
-                          <span className="text-sm text-gray-700">When required data is uploaded (e.g., bank statement)</span>
-                        </label>
+                {triggerType === "database_changed" && (
+                  <div className="mt-4 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                        <Database className="w-3.5 h-3.5 text-emerald-600" />
                       </div>
-                    )}
-
-                    {triggerKind === "compound" && (
-                      <div className="ml-1 space-y-4 border border-gray-200 rounded-lg p-4">
-                        {/* Time condition */}
-                        <div>
-                          <Label className="text-xs text-gray-500 font-medium">Time Condition</Label>
-                          <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
-                            The agent becomes ready to run after this time passes.
-                          </p>
-                          <CronBuilder schedule={compoundSchedule} onChange={setCompoundSchedule} />
-                        </div>
-
-                        <div className="border-t border-gray-100" />
-
-                        {/* Database condition */}
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-gray-500 font-medium">Data Condition (optional)</Label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={compoundDbEnabled}
-                                onChange={(e) => setCompoundDbEnabled(e.target.checked)}
-                                className="rounded accent-orange-500"
-                              />
-                              <span className="text-xs text-gray-500">Also wait for data</span>
-                            </label>
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            When enabled, the agent runs only after the schedule is met AND the data is available.
-                          </p>
-
-                          {compoundDbEnabled && (
-                            <div className="mt-3 p-3 border border-gray-100 rounded-lg bg-gray-50/50">
-                              <DatabaseConditionBuilder
-                                condition={compoundDbCondition}
-                                onChange={setCompoundDbCondition}
-                              />
-                            </div>
-                          )}
-
-                          {/* Settling window */}
-                          {compoundDbEnabled && (
-                            <div className="mt-3">
-                              <Label className="text-xs text-gray-500">Settling Window (minutes)</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                className="mt-1 w-32"
-                                value={compoundSettlingMinutes}
-                                onChange={(e) =>
-                                  setCompoundSettlingMinutes(Math.max(0, parseInt(e.target.value) || 0))
-                                }
-                              />
-                              <p className="text-[10px] text-gray-400 mt-1">
-                                Wait this many minutes after the last data change before running, to ensure all data has been uploaded. Set to 0 to run immediately.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                      <span className="text-sm font-medium text-gray-700">Database update</span>
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      This agent will run automatically whenever the linked dataset is updated &mdash; for example, when new rows are added or existing data is modified.
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      The dataset linkage is determined by the task selected in the previous step.
+                    </p>
                   </div>
                 )}
               </div>
