@@ -45,6 +45,12 @@ interface PotentialMatch {
   differences: string[]
 }
 
+interface SourceColumnDef {
+  key: string
+  label: string
+  type: string
+}
+
 interface ReconciliationResultsProps {
   configId: string
   runId: string
@@ -54,6 +60,8 @@ interface ReconciliationResultsProps {
   sourceBRows: Record<string, any>[]
   sourceALabel: string
   sourceBLabel: string
+  sourceAColumns?: SourceColumnDef[]
+  sourceBColumns?: SourceColumnDef[]
   matchedCount: number
   exceptionCount: number
   variance: number
@@ -251,6 +259,8 @@ export function ReconciliationResults({
   sourceBRows,
   sourceALabel,
   sourceBLabel,
+  sourceAColumns,
+  sourceBColumns,
   matchedCount,
   exceptionCount,
   variance,
@@ -268,8 +278,21 @@ export function ReconciliationResults({
   const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
   const isComplete = status === "COMPLETE"
-  const colsA = useMemo(() => getColumnKeys(sourceARows), [sourceARows])
-  const colsB = useMemo(() => getColumnKeys(sourceBRows), [sourceBRows])
+  const allColsA = useMemo(() => getColumnKeys(sourceARows), [sourceARows])
+  const allColsB = useMemo(() => getColumnKeys(sourceBRows), [sourceBRows])
+
+  // Filter columns to only those defined in the matching config (if provided)
+  const colsA = useMemo(() => {
+    if (!sourceAColumns || sourceAColumns.length === 0) return allColsA
+    const configKeys = new Set(sourceAColumns.map((c) => c.key))
+    return allColsA.filter((k) => configKeys.has(k))
+  }, [allColsA, sourceAColumns])
+
+  const colsB = useMemo(() => {
+    if (!sourceBColumns || sourceBColumns.length === 0) return allColsB
+    const configKeys = new Set(sourceBColumns.map((c) => c.key))
+    return allColsB.filter((k) => configKeys.has(k))
+  }, [allColsB, sourceBColumns])
 
   // Split matched items by type
   const autoMatched = useMemo(
