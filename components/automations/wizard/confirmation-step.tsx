@@ -86,8 +86,12 @@ function ConfigSummary({
   if (templateId === "send-standard-request") {
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
-        {!!configuration.requestTemplateId && (
+        {configuration.subjectTemplate ? (
+          <p>Email content inherited from linked task</p>
+        ) : configuration.requestTemplateId ? (
           <p>Request template configured</p>
+        ) : (
+          <p className="text-amber-600">No email content configured</p>
         )}
         <p>Recipients: From task history</p>
         {!!(configuration.remindersConfig as { enabled?: boolean })?.enabled && (

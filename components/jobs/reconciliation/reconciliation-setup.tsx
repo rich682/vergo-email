@@ -280,8 +280,18 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       })
 
       if (!configRes.ok) {
-        const data = await configRes.json()
-        throw new Error(data.error || "Failed to create reconciliation")
+        let errorMsg = "Failed to create reconciliation"
+        try {
+          const data = await configRes.json()
+          errorMsg = data.error || errorMsg
+        } catch {
+          if (configRes.status === 409) {
+            errorMsg = "A reconciliation with this name already exists. Please choose a different name."
+          } else {
+            errorMsg = `${errorMsg} (HTTP ${configRes.status})`
+          }
+        }
+        throw new Error(errorMsg)
       }
 
       const { config } = await configRes.json()
@@ -293,7 +303,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         body: JSON.stringify(mode === "task" ? { taskInstanceId } : {}),
       })
 
-      if (!runRes.ok) throw new Error("Failed to create run")
+      if (!runRes.ok) {
+        let errorMsg = "Failed to create run"
+        try { const data = await runRes.json(); errorMsg = data.error || errorMsg } catch {}
+        throw new Error(errorMsg)
+      }
       const { run } = await runRes.json()
 
       // 3. Upload both files to the run
@@ -306,8 +320,9 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           body: fd,
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || `Failed to upload ${source}`)
+          let errorMsg = `Failed to upload source ${source}`
+          try { const data = await res.json(); errorMsg = data.error || errorMsg } catch {}
+          throw new Error(errorMsg)
         }
       }
 
@@ -328,7 +343,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
       onCreated(config.id)
     } catch (err: any) {
-      setError(err.message)
+      if (err.message === "Failed to fetch" || err.name === "TypeError") {
+        setError("Network error — please check your connection and try again. If a reconciliation with this name already exists, try a different name.")
+      } else {
+        setError(err.message)
+      }
     } finally {
       setCreating(false)
     }

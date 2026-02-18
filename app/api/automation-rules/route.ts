@@ -213,13 +213,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Auto-create RequestTemplates for send_request steps with inline content
+  await resolveInlineTemplates(definition, organizationId, userId, name.trim())
+
   const rule = await prisma.automationRule.create({
     data: {
       organizationId,
       name: name.trim(),
       trigger,
       conditions: conditions || {},
-      actions,
+      actions: definition as unknown as Record<string, unknown>,
       cronExpression,
       timezone,
       nextRunAt,
@@ -319,7 +322,14 @@ export async function PATCH(request: NextRequest) {
         { status: 403 }
       )
     }
-    updateData.actions = actions
+    // Auto-create RequestTemplates for send_request steps with inline content
+    await resolveInlineTemplates(
+      definition,
+      organizationId,
+      session.user.id,
+      (name as string)?.trim() || existing.name
+    )
+    updateData.actions = definition as unknown as Record<string, unknown>
   }
 
   const rule = await prisma.automationRule.update({
@@ -379,6 +389,52 @@ export async function DELETE(request: NextRequest) {
     data: { isActive: false },
   })
   return NextResponse.json({ success: true, deactivated: true })
+}
+
+// ─── Inline Template Resolution ──────────────────────────────────────────────
+
+/**
+ * For send_request steps that have inline template fields but no requestTemplateId,
+ * auto-create a RequestTemplate from the inline content and inject its ID back.
+ * This allows the wizard to pass email content inherited from the linked task's
+ * EmailDraft without requiring the user to manually select a RequestTemplate.
+ */
+async function resolveInlineTemplates(
+  definition: WorkflowDefinition,
+  organizationId: string,
+  userId: string,
+  agentName: string
+): Promise<void> {
+  for (const step of definition.steps) {
+    if (
+      step.type === "action" &&
+      step.actionType === "send_request" &&
+      step.actionParams &&
+      !step.actionParams.requestTemplateId &&
+      step.actionParams.subjectTemplate &&
+      step.actionParams.bodyTemplate
+    ) {
+      // Auto-create a RequestTemplate from inline fields
+      const template = await prisma.requestTemplate.create({
+        data: {
+          organizationId,
+          name: `${agentName} — Auto-generated template`,
+          subjectTemplate: step.actionParams.subjectTemplate as string,
+          bodyTemplate: step.actionParams.bodyTemplate as string,
+          htmlBodyTemplate: (step.actionParams.htmlBodyTemplate as string) || null,
+          availableTags: (step.actionParams.availableTags as unknown as string[]) || null,
+          createdById: userId,
+        },
+      })
+
+      // Inject the created template ID and clean up inline fields
+      step.actionParams.requestTemplateId = template.id
+      delete step.actionParams.subjectTemplate
+      delete step.actionParams.bodyTemplate
+      delete step.actionParams.htmlBodyTemplate
+      delete step.actionParams.availableTags
+    }
+  }
 }
 
 // ─── Validation Helpers ───────────────────────────────────────────────────────

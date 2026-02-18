@@ -98,15 +98,33 @@ function SendStandardRequestConfig({
 }) {
   return (
     <div className="space-y-5">
-      {/* Email Template */}
+      {/* Email Content — inherited from task */}
       <div>
         <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
           Email Content
         </div>
-        <RequestTemplatePicker
-          value={configuration.requestTemplateId as string | undefined}
-          onChange={(id) => onChange({ ...configuration, requestTemplateId: id })}
-        />
+        {configuration.subjectTemplate ? (
+          <div className="text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
+            <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <span>
+                Email content is inherited from the linked task. The agent will use
+                the same email template as previous periods.
+              </span>
+              <p className="mt-1.5 text-gray-500 truncate">
+                Subject: {String(configuration.subjectTemplate)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-start gap-2">
+            <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <span>
+              No email template found on the linked task. Please ensure the task has
+              sent at least one request so the agent can inherit its email content.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Recipients — read-only info */}

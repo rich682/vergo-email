@@ -323,7 +323,13 @@ function buildActionsFromConfiguration(
           label: "Send requests",
           actionType: "send_request",
           actionParams: {
-            requestTemplateId: config.requestTemplateId,
+            // If editing an existing rule, config may already have a requestTemplateId
+            requestTemplateId: config.requestTemplateId || undefined,
+            // Inline template fields — server will auto-create RequestTemplate if no requestTemplateId
+            subjectTemplate: config.subjectTemplate,
+            bodyTemplate: config.bodyTemplate,
+            htmlBodyTemplate: config.htmlBodyTemplate,
+            availableTags: config.availableTags,
             recipientSourceType: "task_history",
             lineageId,
             deadlineDate: config.deadlineDate,
