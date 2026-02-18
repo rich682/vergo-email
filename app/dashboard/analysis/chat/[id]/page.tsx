@@ -323,13 +323,10 @@ export default function AnalysisChatPage() {
             ) : (
               <div className="flex justify-start">
                 <div className="max-w-[90%] w-full space-y-3">
-                  {/* Explanation */}
-                  <div className="bg-gray-50 rounded-2xl rounded-bl-md px-4 py-3">
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                  {/* Explanation — hero element */}
+                  <div className="bg-gray-50 rounded-2xl rounded-bl-md px-5 py-4">
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                   </div>
-
-                  {/* SQL Block (collapsible) */}
-                  {msg.generatedSql && <SqlBlock sql={msg.generatedSql} />}
 
                   {/* Chart */}
                   {msg.chartConfig && msg.queryResultJson && (msg.queryResultJson as unknown[]).length > 0 && (
@@ -348,6 +345,9 @@ export default function AnalysisChatPage() {
                     />
                   )}
 
+                  {/* SQL Block — collapsed at bottom as technical detail */}
+                  {msg.generatedSql && <SqlBlock sql={msg.generatedSql} />}
+
                   {/* Error */}
                   {msg.queryError && !msg.queryResultJson && (
                     <div className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">
@@ -364,9 +364,9 @@ export default function AnalysisChatPage() {
         {streaming && (
           <div className="flex justify-start">
             <div className="max-w-[90%] w-full space-y-3">
-              {/* Status */}
+              {/* Status spinner */}
               {streaming.status && (
-                <div className="bg-gray-50 rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="bg-gray-50 rounded-2xl rounded-bl-md px-5 py-4">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
                     {streaming.status}
@@ -374,8 +374,12 @@ export default function AnalysisChatPage() {
                 </div>
               )}
 
-              {/* Streamed SQL */}
-              {streaming.sql && <SqlBlock sql={streaming.sql} />}
+              {/* Streamed explanation — show as soon as available */}
+              {streaming.explanation && (
+                <div className="bg-gray-50 rounded-2xl rounded-bl-md px-5 py-4">
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{streaming.explanation}</p>
+                </div>
+              )}
 
               {/* Streamed chart */}
               {streaming.chart && streaming.result && streaming.result.rows.length > 0 && (
@@ -391,12 +395,8 @@ export default function AnalysisChatPage() {
                 />
               )}
 
-              {/* Streamed explanation */}
-              {streaming.explanation && (
-                <div className="bg-gray-50 rounded-2xl rounded-bl-md px-4 py-3">
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{streaming.explanation}</p>
-                </div>
-              )}
+              {/* Streamed SQL — technical detail at bottom */}
+              {streaming.sql && <SqlBlock sql={streaming.sql} />}
 
               {/* Streamed error */}
               {streaming.error && (

@@ -4,10 +4,10 @@
  * Handles the full chat flow:
  * 1. Build schema context from databases
  * 2. Smart model routing (gpt-4o for complex, gpt-4o-mini for simple)
- * 3. Call LLM to generate SQL
+ * 3. Call LLM to generate SQL (primary + optional context query)
  * 4. Execute SQL against DuckDB (read-only, with timeout)
  * 5. Self-correct on error (one retry)
- * 6. Explain results + recommend chart visualization
+ * 6. Rich narrative explanation + optional chart visualization
  * 7. Stream progress events to the client
  */
 
@@ -29,11 +29,31 @@ interface ChatInput {
 export type AnalysisEventCallback = (event: string, data: unknown) => void
 
 /**
- * Extract SQL from an LLM response. Looks for ```sql code blocks.
+ * Extract SQL blocks from an LLM response.
+ * Returns the primary SQL and an optional context SQL block.
  */
+function extractSQLBlocks(response: string): { primary: string | null; context: string | null } {
+  // Match all ```sql blocks, with optional "context" label
+  const blocks = [...response.matchAll(/```sql\s*(context)?\s*\n([\s\S]*?)```/g)]
+  let primary: string | null = null
+  let context: string | null = null
+
+  for (const match of blocks) {
+    const isContext = match[1] === "context"
+    const sql = match[2]?.trim() || null
+    if (isContext && sql) {
+      context = sql
+    } else if (!primary && sql) {
+      primary = sql
+    }
+  }
+
+  return { primary, context }
+}
+
+/** Backward-compatible single SQL extraction */
 function extractSQL(response: string): string | null {
-  const match = response.match(/```sql\s*\n([\s\S]*?)```/)
-  return match?.[1]?.trim() || null
+  return extractSQLBlocks(response).primary
 }
 
 /**
@@ -98,6 +118,93 @@ function selectModelTier(
 
   // Simple query — use the faster, cheaper model
   return { tier: "tool", maxTokens: 2000 }
+}
+
+/**
+ * Generate a rich narrative explanation + optional chart recommendation.
+ *
+ * Shared by both the primary path and the retry path.
+ */
+async function generateExplanation(params: {
+  userMessage: string
+  sql: string
+  result: { rows: Record<string, unknown>[]; totalRows: number; durationMs: number }
+  contextRows: Record<string, unknown>[] | null
+  tier: ModelTier
+  emit: AnalysisEventCallback
+}): Promise<{ explanation: string; chartConfig: Record<string, unknown> | null }> {
+  const { userMessage, sql, result, contextRows, tier, emit } = params
+
+  emit("status", "Analyzing results...")
+
+  const resultSample = JSON.stringify(result.rows.slice(0, 30), null, 2)
+  const rowCountDesc = result.totalRows === -1
+    ? "more than 2,000"
+    : String(result.totalRows)
+  const columnNames = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
+
+  const contextSection = contextRows && contextRows.length > 0
+    ? `\n\nBROADER CONTEXT (full distribution from a supplementary query — use this to provide fuller context in your explanation):\n${JSON.stringify(contextRows.slice(0, 50), null, 2)}`
+    : ""
+
+  const { content: analysisJson } = await callAgentLLM(
+    [
+      {
+        role: "system",
+        content: `You are a senior data analyst writing a narrative analysis for a business user. Given query results, provide a thorough, insightful response.
+
+YOUR ANALYSIS SHOULD:
+- Lead with the direct answer to the user's question
+- Provide context: if all values are the same, say so explicitly and explain what IS different
+- Highlight key numbers with specific values formatted nicely (e.g., "$15,220.10" not "15220.1", "1,234 rows" not "1234 rows")
+- Call out patterns, outliers, or notable trends
+- If relevant, mention the total, average, or range
+- Use natural paragraphs — not bullet lists unless the data truly warrants it
+- Match length to complexity: simple lookups get 2-3 sentences, distributions or comparisons get 2-3 paragraphs
+- Write as a knowledgeable colleague would speak — confident, specific, helpful
+- Do NOT just repeat the raw data row by row — synthesize and provide insight
+
+CHART RECOMMENDATION:
+- Only recommend a chart when the data truly benefits from visualization (comparisons of 3+ numeric items, time trends, proportional breakdowns)
+- Many questions are better answered with text alone — set chart to null in those cases
+- Single-value results, text-only results, or results with only 1-2 rows usually don't need a chart
+
+The result has ${rowCountDesc} rows with columns: ${JSON.stringify(columnNames)}.
+
+Return valid JSON:
+{
+  "explanation": "Your narrative analysis here...",
+  "chart": { "type": "bar"|"line"|"pie"|"area", "xKey": "col", "yKeys": ["col"], "title": "..." } or null
+}
+
+The xKey and yKeys MUST be actual column names from the result set. Available columns: ${JSON.stringify(columnNames)}`,
+      },
+      {
+        role: "user",
+        content: `User's question: ${userMessage}\n\nSQL query: ${sql}\n\nQuery results (${rowCountDesc} rows, ${result.durationMs}ms):\n${resultSample}${contextSection}`,
+      },
+    ],
+    { tier, maxTokens: 2000, temperature: 0.3, responseFormat: "json" }
+  )
+
+  // Parse structured response
+  let explanation = ""
+  let chartConfig: Record<string, unknown> | null = null
+
+  try {
+    const parsed = JSON.parse(analysisJson)
+    explanation = parsed.explanation || analysisJson
+    if (parsed.chart && parsed.chart.type && parsed.chart.xKey && parsed.chart.yKeys) {
+      chartConfig = parsed.chart
+      emit("chart", chartConfig)
+    }
+  } catch {
+    // If JSON parsing fails, use the raw response as explanation
+    explanation = analysisJson
+  }
+
+  emit("explanation", explanation)
+  return { explanation, chartConfig }
 }
 
 /**
@@ -201,8 +308,8 @@ export async function handleAnalysisChat(
     { tier, maxTokens, temperature: 0.1 }
   )
 
-  // 6. Extract SQL from response
-  const generatedSql = extractSQL(llmResponse)
+  // 6. Extract SQL from response (supports primary + optional context block)
+  const { primary: generatedSql, context: contextSql } = extractSQLBlocks(llmResponse)
   if (generatedSql) {
     emit("sql", generatedSql)
   }
@@ -270,64 +377,32 @@ export async function handleAnalysisChat(
       durationMs: result.durationMs,
     })
 
-    // 9. Ask LLM to explain results + recommend chart
-    emit("status", "Analyzing results...")
-
-    const resultSample = JSON.stringify(result.rows.slice(0, 30), null, 2)
-    const rowCountDesc = result.totalRows === -1
-      ? "more than 2,000"
-      : String(result.totalRows)
-
-    const columnNames = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
-
-    const { content: analysisJson } = await callAgentLLM(
-      [
-        {
-          role: "system",
-          content: `You are a data analyst. Given query results, provide:
-1. A clear explanation in plain English (3-5 sentences). Highlight key numbers, trends, and business insights. If the result has multiple rows, summarize patterns rather than listing every row.
-2. A chart recommendation if the data is suitable for visualization.
-
-Return valid JSON in this exact format:
-{
-  "explanation": "Your detailed analysis here...",
-  "chart": {
-    "type": "bar",
-    "xKey": "column_name",
-    "yKeys": ["value_column"],
-    "title": "Chart Title"
-  }
-}
-
-Chart type options: "bar" (comparisons), "line" (trends over time), "pie" (proportions), "area" (volume over time).
-Set "chart" to null if the data isn't suitable for a chart (e.g., single value, text-only results).
-The xKey and yKeys MUST be actual column names from the result set. Available columns: ${JSON.stringify(columnNames)}`,
-        },
-        {
-          role: "user",
-          content: `User's question: ${userMessage}\n\nSQL query: ${generatedSql}\n\nResults (${rowCountDesc} rows, took ${result.durationMs}ms):\n${resultSample}`,
-        },
-      ],
-      { tier, maxTokens: 1000, temperature: 0.2, responseFormat: "json" }
-    )
-
-    // Parse structured response
-    let explanation = ""
-    let chartConfig: Record<string, unknown> | null = null
-
-    try {
-      const parsed = JSON.parse(analysisJson)
-      explanation = parsed.explanation || analysisJson
-      if (parsed.chart && parsed.chart.type && parsed.chart.xKey && parsed.chart.yKeys) {
-        chartConfig = parsed.chart
-        emit("chart", chartConfig)
+    // 8b. Execute optional context query for broader analysis
+    let contextRows: Record<string, unknown>[] | null = null
+    if (contextSql) {
+      const ctxValidation = validateReadOnlySQL(contextSql)
+      if (!ctxValidation) {
+        try {
+          const ctxResult = await executeQuery(handle.connection, contextSql, {
+            timeoutMs: 30_000,
+            maxRows: 500,
+          })
+          contextRows = ctxResult.rows
+        } catch {
+          // Context query failed — non-fatal, continue with primary results only
+        }
       }
-    } catch {
-      // If JSON parsing fails, use the raw response as explanation
-      explanation = analysisJson
     }
 
-    emit("explanation", explanation)
+    // 9. Rich narrative explanation + chart recommendation
+    const { explanation, chartConfig } = await generateExplanation({
+      userMessage,
+      sql: generatedSql,
+      result,
+      contextRows,
+      tier,
+      emit,
+    })
 
     const msg = await prisma.analysisMessage.create({
       data: {
@@ -383,47 +458,15 @@ The xKey and yKeys MUST be actual column names from the result set. Available co
             durationMs: retryResult.durationMs,
           })
 
-          // Explain the retried results with chart recommendation
-          emit("status", "Analyzing results...")
-          const retrySample = JSON.stringify(retryResult.rows.slice(0, 30), null, 2)
-          const retryRowCount = retryResult.totalRows === -1
-            ? "more than 2,000"
-            : String(retryResult.totalRows)
-          const retryColumnNames = retryResult.rows.length > 0 ? Object.keys(retryResult.rows[0]) : []
-
-          const { content: retryAnalysisJson } = await callAgentLLM(
-            [
-              {
-                role: "system",
-                content: `You are a data analyst. Given query results, provide:
-1. A clear explanation in plain English (3-5 sentences). Highlight key numbers, trends, and business insights.
-2. A chart recommendation if the data is suitable for visualization.
-
-Return valid JSON: { "explanation": "...", "chart": { "type": "bar"|"line"|"pie"|"area", "xKey": "col", "yKeys": ["col"], "title": "..." } }
-Set "chart" to null if not suitable. Available columns: ${JSON.stringify(retryColumnNames)}`,
-              },
-              {
-                role: "user",
-                content: `User's question: ${userMessage}\n\nSQL query: ${fixedSql}\n\nResults (${retryRowCount} rows):\n${retrySample}`,
-              },
-            ],
-            { tier, maxTokens: 1000, temperature: 0.2, responseFormat: "json" }
-          )
-
-          let retryExplanation = ""
-          let retryChartConfig: Record<string, unknown> | null = null
-          try {
-            const parsed = JSON.parse(retryAnalysisJson)
-            retryExplanation = parsed.explanation || retryAnalysisJson
-            if (parsed.chart && parsed.chart.type && parsed.chart.xKey && parsed.chart.yKeys) {
-              retryChartConfig = parsed.chart
-              emit("chart", retryChartConfig)
-            }
-          } catch {
-            retryExplanation = retryAnalysisJson
-          }
-
-          emit("explanation", retryExplanation)
+          // Use shared explanation helper for retry too
+          const { explanation: retryExplanation, chartConfig: retryChartConfig } = await generateExplanation({
+            userMessage,
+            sql: fixedSql,
+            result: retryResult,
+            contextRows: null, // No context query on retry
+            tier,
+            emit,
+          })
 
           const msg = await prisma.analysisMessage.create({
             data: {
