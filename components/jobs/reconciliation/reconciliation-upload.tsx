@@ -12,6 +12,7 @@ interface ReconciliationUploadProps {
   sourceAFileName?: string | null
   sourceBFileName?: string | null
   onBothUploaded: () => void
+  matching?: boolean
 }
 
 export function ReconciliationUpload({
@@ -22,6 +23,7 @@ export function ReconciliationUpload({
   sourceAFileName,
   sourceBFileName,
   onBothUploaded,
+  matching = false,
 }: ReconciliationUploadProps) {
   const [uploading, setUploading] = useState<"A" | "B" | null>(null)
   const [fileA, setFileA] = useState<{ name: string; rowCount: number } | null>(
@@ -171,8 +173,17 @@ export function ReconciliationUpload({
 
       {bothReady && (
         <div className="flex justify-end">
-          <Button onClick={onBothUploaded} className="bg-orange-500 hover:bg-orange-600 text-white">
-            Run Matching <ArrowRight className="w-4 h-4 ml-2" />
+          <Button onClick={onBothUploaded} disabled={matching} className="bg-orange-500 hover:bg-orange-600 text-white">
+            {matching ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Reconciling...
+              </>
+            ) : (
+              <>
+                Run Matching <ArrowRight className="w-4 h-4 ml-2" />
+              </>
+            )}
           </Button>
         </div>
       )}

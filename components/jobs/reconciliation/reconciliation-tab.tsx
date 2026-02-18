@@ -371,8 +371,8 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
     )
   }
 
-  // Run: PENDING - upload files
-  if (activeRun.status === "PENDING") {
+  // Run: PENDING - upload files (skip if matching in progress so spinner shows)
+  if (activeRun.status === "PENDING" && !matching) {
     return (
       <div className="space-y-4">
         <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
@@ -400,6 +400,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
           sourceAFileName={activeRun.sourceAFileName}
           sourceBFileName={activeRun.sourceBFileName}
           onBothUploaded={handleRunMatching}
+          matching={matching}
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
