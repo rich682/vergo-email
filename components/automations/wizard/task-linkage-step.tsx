@@ -20,6 +20,7 @@ interface TaskOption {
   lineageId: string | null
   reconciliationConfigId: string | null
   hasDbRecipients: boolean
+  hasExistingWork: boolean
   board: TaskBoard | null
 }
 
@@ -95,6 +96,9 @@ export function TaskLinkageStep({
       filtered = filtered.filter((t) => !!t.lineageId)
     }
 
+    // All agent types require existing work on the task for the AI to learn from
+    filtered = filtered.filter((t) => t.hasExistingWork)
+
     return filtered
   }, [tasks, selectedTemplateId])
 
@@ -153,8 +157,8 @@ export function TaskLinkageStep({
           </p>
           <p className="text-xs text-gray-400 mt-1">
             {selectedTemplateId && REQUIRES_LINEAGE.has(selectedTemplateId)
-              ? "This agent type requires a recurring task that repeats across periods. Create a recurring task first, then come back to set up automation."
-              : "Create a task with the appropriate type first, then come back to set up automation."}
+              ? "This agent type requires a recurring task with existing work (e.g. a sent request or form). Complete the task manually at least once so the agent can learn from it."
+              : "The agent needs a task with existing work to learn from. Complete a task manually first (e.g. send a request, run a reconciliation), then come back to set up automation."}
           </p>
         </div>
       ) : (

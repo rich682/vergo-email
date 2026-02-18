@@ -30,9 +30,13 @@ export async function GET(request: NextRequest) {
         taskType: true,
         lineageId: true,
         reconciliationConfigId: true,
+        reportDefinitionId: true,
         _count: {
           select: {
-            requests: { where: { requestType: "data" } },
+            requests: { where: { isDraft: false } },
+            formRequests: true,
+            reconciliationRuns: true,
+            generatedReports: true,
           },
         },
         board: {
@@ -47,24 +51,39 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const mapped = tasks.map((t) => ({
-      id: t.id,
-      name: t.name,
-      status: t.status,
-      taskType: t.taskType,
-      lineageId: t.lineageId,
-      reconciliationConfigId: t.reconciliationConfigId,
-      hasDbRecipients: t._count.requests > 0,
-      board: t.board
-        ? {
-            id: t.board.id,
-            name: t.board.name,
-            periodStart: t.board.periodStart,
-            periodEnd: t.board.periodEnd,
-            cadence: t.board.cadence,
-          }
-        : null,
-    }))
+    const mapped = tasks.map((t) => {
+      // Determine if the task has existing work the AI can learn from
+      const hasExistingWork =
+        t.taskType === "request"
+          ? t._count.requests > 0
+          : t.taskType === "form"
+            ? t._count.formRequests > 0
+            : t.taskType === "reconciliation"
+              ? t._count.reconciliationRuns > 0
+              : t.taskType === "report"
+                ? t._count.generatedReports > 0 || !!t.reportDefinitionId
+                : false
+
+      return {
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        taskType: t.taskType,
+        lineageId: t.lineageId,
+        reconciliationConfigId: t.reconciliationConfigId,
+        hasDbRecipients: t._count.requests > 0,
+        hasExistingWork,
+        board: t.board
+          ? {
+              id: t.board.id,
+              name: t.board.name,
+              periodStart: t.board.periodStart,
+              periodEnd: t.board.periodEnd,
+              cadence: t.board.cadence,
+            }
+          : null,
+      }
+    })
 
     return NextResponse.json({ tasks: mapped })
   } catch (error) {
