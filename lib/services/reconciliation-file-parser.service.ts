@@ -386,13 +386,28 @@ Return JSON:
       const label = col.label.toLowerCase()
       const samples = col.sampleValues.map((s) => String(s).trim())
 
-      // Check if date-like
-      if (
-        label.includes("date") ||
-        label.includes("posted") ||
-        label.includes("effective") ||
-        samples.some((s) => /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s))
-      ) {
+      // Check if date-like — comprehensive detection
+      const dateLabels = ["date", "posted", "effective", "created", "updated", "timestamp", "time", "period", "due", "issued", "paid"]
+      const isDateByLabel = dateLabels.some((d) => label.includes(d))
+      const isDateBySample = samples.some((s) => {
+        // MM/DD/YYYY, DD/MM/YYYY, MM-DD-YYYY
+        if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)) return true
+        // ISO: YYYY-MM-DD or YYYY/MM/DD (with optional time)
+        if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/.test(s)) return true
+        // European: DD.MM.YYYY
+        if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(s)) return true
+        // Month name formats: "Feb 6, 2026", "6 February 2026", "February 2026"
+        if (/^[A-Za-z]{3,9}\s+\d{1,2}[,\s]+\d{4}$/.test(s)) return true
+        if (/^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}$/.test(s)) return true
+        // Excel/JS Date object stringified: "Fri Feb 06 2026..." or ISO with T
+        if (/^\w{3}\s+\w{3}\s+\d{2}\s+\d{4}/.test(s)) return true
+        if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return true
+        // Excel serial number (range ~25000-60000 for years 1968-2064)
+        const num = parseFloat(s)
+        if (!isNaN(num) && num > 25000 && num < 60000 && Number.isInteger(num)) return true
+        return false
+      })
+      if (isDateByLabel || isDateBySample) {
         return { key: col.key, label: col.label, suggestedType: "date" as const }
       }
 

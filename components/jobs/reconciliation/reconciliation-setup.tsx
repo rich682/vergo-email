@@ -143,7 +143,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       for (const colB of sourceB.columns) {
         if (usedB.has(colB.key)) continue
 
-        // Score: exact label match = 100, case-insensitive = 80, contains = 50, type match = 30
+        // Score: exact label match = 100, case-insensitive = 80, contains = 50
         let score = 0
         if (colA.label === colB.label) score = 100
         else if (colA.label.toLowerCase() === colB.label.toLowerCase()) score = 80
@@ -152,8 +152,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           colB.label.toLowerCase().includes(colA.label.toLowerCase())
         ) score = 50
 
-        // Bonus for same suggested type
-        if (colA.suggestedType === colB.suggestedType) score += 30
+        // Bonus for same suggested type — date and amount get a higher boost
+        // so columns like "invoice_date" and "post_date" still auto-map
+        if (colA.suggestedType === colB.suggestedType) {
+          score += (colA.suggestedType === "date" || colA.suggestedType === "amount") ? 55 : 30
+        }
 
         if (score > bestScore) {
           bestScore = score
@@ -425,9 +428,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           <>
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
             <p className="text-sm font-medium text-gray-700">
-              {side === "A" ? "First file" : "Second file"}
+              {side === "A" ? "Source A — Source of Truth" : "Source B — Comparison"}
             </p>
-            <p className="text-xs text-gray-400 mt-1">Drop CSV, Excel, or PDF</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {side === "A" ? "e.g. ERP, General Ledger, AP report" : "e.g. Bank statement, card feed"}
+            </p>
+            <p className="text-[10px] text-gray-300 mt-0.5">Drop CSV, Excel, or PDF</p>
             <label className="mt-3 inline-block">
               <span className="text-xs text-orange-500 hover:text-orange-600 cursor-pointer underline">
                 Browse files
@@ -447,6 +453,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Files to Reconcile</h3>
           <p className="text-sm text-gray-500">
             Upload both reports and AI will automatically detect the columns and data types.
+            Source A is your source of truth — unmatched Source A rows will appear in the &ldquo;Not Matched&rdquo; tab.
           </p>
         </div>
 

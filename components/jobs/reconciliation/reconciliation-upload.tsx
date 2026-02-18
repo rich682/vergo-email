@@ -145,7 +145,8 @@ export function ReconciliationUpload({
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Source Files</h3>
         <p className="text-sm text-gray-500">
-          Upload the two files you want to reconcile. Supported formats: CSV, Excel (.xlsx/.xls), PDF.
+          Upload the two files you want to reconcile. {sourceALabel} is the source of truth — unmatched rows will appear in &ldquo;Not Matched&rdquo;.
+          Supported formats: CSV, Excel (.xlsx/.xls), PDF.
         </p>
       </div>
 

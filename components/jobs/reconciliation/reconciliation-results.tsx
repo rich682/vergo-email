@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback } from "react"
+import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import {
   CheckCircle,
@@ -9,6 +10,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
+  Download,
   FileSpreadsheet,
 } from "lucide-react"
 
@@ -288,26 +290,17 @@ export function ReconciliationResults({
     })
   }, [matchResults.unmatchedA, matchResults.unmatchedB, sourceARows, sourceBRows])
 
-  // "Not Matched" = Source A rows that have at least 1 potential match
+  // "Not Matched" = ALL unmatched Source A rows (source of truth backbone)
   const notMatchedItems = useMemo(
-    () => unmatchedAWithPotentials.filter((item) => item.potentials.length > 0),
+    () => unmatchedAWithPotentials,
     [unmatchedAWithPotentials]
   )
 
-  // "Other" = Source A rows that have zero potential matches (orphans)
-  const otherItems = useMemo(
-    () => unmatchedAWithPotentials.filter((item) => item.potentials.length === 0),
-    [unmatchedAWithPotentials]
+  // "Other" = Source B orphan rows only (not matched to any Source A)
+  const orphanBIndices = useMemo(
+    () => matchResults.unmatchedB,
+    [matchResults.unmatchedB]
   )
-
-  // Also count orphan Source B rows (not matched to any Source A)
-  const orphanBIndices = useMemo(() => {
-    const bWithPotentials = new Set<number>()
-    for (const item of notMatchedItems) {
-      for (const p of item.potentials) bWithPotentials.add(p.sourceBIdx)
-    }
-    return matchResults.unmatchedB.filter((bIdx) => !bWithPotentials.has(bIdx))
-  }, [matchResults.unmatchedB, notMatchedItems])
 
   const matchRate = totalSourceA > 0 ? Math.round((matchedCount / totalSourceA) * 100) : 0
 
@@ -341,49 +334,61 @@ export function ReconciliationResults({
   }, [configId, runId, onRefresh])
 
   const handleDownloadExcel = useCallback(() => {
-    if (manualMatched.length === 0) return
+    const wb = XLSX.utils.book_new()
 
-    // Build CSV content for manual matches
-    const headers = [
-      ...colsA.map((c) => `${sourceALabel} ${c.replace(/_/g, " ")}`),
-      ...colsB.map((c) => `${sourceBLabel} ${c.replace(/_/g, " ")}`),
-      "Status",
-    ]
+    // Helper to build rows for matched pairs
+    const buildMatchedRows = (matches: MatchPair[]) =>
+      matches.map((match) => {
+        const rowA = sourceARows[match.sourceAIdx]
+        const rowB = sourceBRows[match.sourceBIdx]
+        const row: Record<string, any> = {}
+        for (const col of colsA) row[`${sourceALabel} ${col.replace(/_/g, " ")}`] = rowA?.[col] ?? ""
+        for (const col of colsB) row[`${sourceBLabel} ${col.replace(/_/g, " ")}`] = rowB?.[col] ?? ""
+        row["Match Type"] = match.method === "exact" ? "Exact" : match.method === "manual" ? "Manual" : `AI ${match.confidence}%`
+        return row
+      })
 
-    const rows = manualMatched.map((match) => {
-      const rowA = sourceARows[match.sourceAIdx]
-      const rowB = sourceBRows[match.sourceBIdx]
-      return [
-        ...colsA.map((col) => rowA?.[col] ?? ""),
-        ...colsB.map((col) => rowB?.[col] ?? ""),
-        "Manual Match",
-      ]
+    // 1. Auto-Matched sheet
+    const autoRows = buildMatchedRows(autoMatched)
+    const wsAuto = XLSX.utils.json_to_sheet(autoRows.length > 0 ? autoRows : [{ "No Data": "No auto-matched items" }])
+    XLSX.utils.book_append_sheet(wb, wsAuto, "Auto-Matched")
+
+    // 2. Manual Matches sheet
+    const manualRows = buildMatchedRows(manualMatched)
+    const wsManual = XLSX.utils.json_to_sheet(manualRows.length > 0 ? manualRows : [{ "No Data": "No manual matches" }])
+    XLSX.utils.book_append_sheet(wb, wsManual, "Manual Matches")
+
+    // 3. Not Matched sheet (all unmatched Source A rows)
+    const notMatchedRows = notMatchedItems.map(({ aIdx, potentials }) => {
+      const rowA = sourceARows[aIdx]
+      const row: Record<string, any> = {}
+      for (const col of colsA) row[col.replace(/_/g, " ")] = rowA?.[col] ?? ""
+      row["Potential Matches"] = potentials.length
+      row["Best Match %"] = potentials.length > 0 ? `${potentials[0].similarity}%` : "—"
+      return row
     })
+    const wsNotMatched = XLSX.utils.json_to_sheet(notMatchedRows.length > 0 ? notMatchedRows : [{ "No Data": "All source of truth rows matched" }])
+    XLSX.utils.book_append_sheet(wb, wsNotMatched, "Not Matched")
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row) =>
-        row.map((cell) => {
-          const str = String(cell)
-          return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str
-        }).join(",")
-      ),
-    ].join("\n")
+    // 4. Other sheet (Source B orphans)
+    const otherRows = orphanBIndices.map((bIdx) => {
+      const rowB = sourceBRows[bIdx]
+      const row: Record<string, any> = {}
+      for (const col of colsB) row[col.replace(/_/g, " ")] = rowB?.[col] ?? ""
+      return row
+    })
+    const wsOther = XLSX.utils.json_to_sheet(otherRows.length > 0 ? otherRows : [{ "No Data": `No orphan ${sourceBLabel} rows` }])
+    XLSX.utils.book_append_sheet(wb, wsOther, "Other")
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `manual-matches-${runId.slice(0, 8)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [manualMatched, colsA, colsB, sourceARows, sourceBRows, sourceALabel, sourceBLabel, runId])
+    // Write and download
+    XLSX.writeFile(wb, `reconciliation-${runId.slice(0, 8)}.xlsx`)
+  }, [autoMatched, manualMatched, notMatchedItems, orphanBIndices, colsA, colsB, sourceARows, sourceBRows, sourceALabel, sourceBLabel, runId])
 
   const tabs: { key: TabKey; label: string; count: number }[] = [
     { key: "auto_matched", label: "Auto-Matched", count: autoMatched.length },
     { key: "manual_match", label: "Manual Matches", count: manualMatched.length },
     { key: "not_matched", label: "Not Matched", count: notMatchedItems.length },
-    { key: "other", label: "Other", count: otherItems.length + orphanBIndices.length },
+    { key: "other", label: "Other", count: orphanBIndices.length },
   ]
 
   return (
@@ -414,13 +419,19 @@ export function ReconciliationResults({
 
       {/* Status bar */}
       {isComplete ? (
-        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <CheckCircle2 className="w-4 h-4 text-green-600" />
-          <p className="text-sm text-green-800">
-            Reconciliation complete. Signed off by{" "}
-            <span className="font-medium">{completedByUser?.name || completedByUser?.email || "Unknown"}</span>
-            {completedAt && ` on ${new Date(completedAt).toLocaleDateString()}`}
-          </p>
+        <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <p className="text-sm text-green-800">
+              Reconciliation complete. Signed off by{" "}
+              <span className="font-medium">{completedByUser?.name || completedByUser?.email || "Unknown"}</span>
+              {completedAt && ` on ${new Date(completedAt).toLocaleDateString()}`}
+            </p>
+          </div>
+          <Button onClick={handleDownloadExcel} size="sm" variant="outline" className="flex-shrink-0">
+            <Download className="w-3 h-3 mr-1" />
+            Download Excel
+          </Button>
         </div>
       ) : (
         <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -430,10 +441,16 @@ export function ReconciliationResults({
               {exceptionCount > 0 ? `${exceptionCount} exceptions need resolution.` : "No exceptions. Ready to sign off."}
             </p>
           </div>
-          <Button onClick={handleComplete} disabled={completing} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-            {completing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-            Sign Off
-          </Button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button onClick={handleDownloadExcel} size="sm" variant="outline">
+              <Download className="w-3 h-3 mr-1" />
+              Download Excel
+            </Button>
+            <Button onClick={handleComplete} disabled={completing} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+              {completing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+              Sign Off
+            </Button>
+          </div>
         </div>
       )}
 
@@ -477,7 +494,6 @@ export function ReconciliationResults({
           colsB={colsB}
           sourceALabel={sourceALabel}
           sourceBLabel={sourceBLabel}
-          onDownload={handleDownloadExcel}
         />
       )}
 
@@ -499,16 +515,12 @@ export function ReconciliationResults({
         />
       )}
 
-      {/* ── Other Tab ─────────────────────────────────────────────── */}
+      {/* ── Other Tab (Source B orphans only) ─────────────────────── */}
       {activeTab === "other" && (
         <OtherTable
-          otherAItems={otherItems}
           orphanBIndices={orphanBIndices}
-          sourceARows={sourceARows}
           sourceBRows={sourceBRows}
-          colsA={colsA}
           colsB={colsB}
-          sourceALabel={sourceALabel}
           sourceBLabel={sourceBLabel}
         />
       )}
@@ -647,7 +659,6 @@ function ManualMatchesTable({
   colsB,
   sourceALabel,
   sourceBLabel,
-  onDownload,
 }: {
   matches: MatchPair[]
   sourceARows: Record<string, any>[]
@@ -656,21 +667,13 @@ function ManualMatchesTable({
   colsB: string[]
   sourceALabel: string
   sourceBLabel: string
-  onDownload: () => void
 }) {
   return (
     <div className="space-y-3">
-      {/* Info banner + Download button */}
-      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
         <p className="text-sm text-green-800">
           <strong>Manual Matches:</strong> These are matches you&apos;ve manually accepted from potential matches. Review and verify these matches.
         </p>
-        {matches.length > 0 && (
-          <Button onClick={onDownload} size="sm" className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">
-            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
-            Download Excel
-          </Button>
-        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -974,123 +977,68 @@ function NotMatchedRow({
   )
 }
 
-// ── Other Tab ───────────────────────────────────────────────────────────
+// ── Other Tab (Source B orphans only) ─────────────────────────────────────
 
 function OtherTable({
-  otherAItems,
   orphanBIndices,
-  sourceARows,
   sourceBRows,
-  colsA,
   colsB,
-  sourceALabel,
   sourceBLabel,
 }: {
-  otherAItems: { aIdx: number; potentials: PotentialMatch[] }[]
   orphanBIndices: number[]
-  sourceARows: Record<string, any>[]
   sourceBRows: Record<string, any>[]
-  colsA: string[]
   colsB: string[]
-  sourceALabel: string
   sourceBLabel: string
 }) {
   return (
-    <div className="space-y-6">
-      {/* Orphan Source A rows */}
-      <div>
-        <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-400" />
-          Unmatched from {sourceALabel} ({otherAItems.length})
-        </h3>
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                <tr>
-                  {colsA.map((col) => (
-                    <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      {col.replace(/_/g, " ")}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {otherAItems.map(({ aIdx }) => {
-                  const row = sourceARows[aIdx]
-                  return (
-                    <tr key={aIdx} className="bg-red-50 hover:bg-red-100">
-                      {colsA.map((col) => (
-                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                          {row ? formatCellValue(row[col]) : "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  )
-                })}
-                {otherAItems.length === 0 && (
-                  <tr>
-                    <td colSpan={colsA.length} className="px-4 py-6 text-center text-sm text-gray-400">
-                      No orphan {sourceALabel} rows
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+    <div className="space-y-3">
+      <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+        <p className="text-sm text-purple-800">
+          <strong>Orphan {sourceBLabel} rows:</strong> These rows exist in {sourceBLabel} but have no corresponding entry in the source of truth. They may represent extra transactions, duplicates, or data entry errors.
+        </p>
       </div>
 
-      {/* Orphan Source B rows */}
-      <div>
-        <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-purple-400" />
-          Unmatched from {sourceBLabel} ({orphanBIndices.length})
-        </h3>
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                <tr>
-                  {colsB.map((col) => (
-                    <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      {col.replace(/_/g, " ")}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {orphanBIndices.map((bIdx) => {
-                  const row = sourceBRows[bIdx]
-                  return (
-                    <tr key={bIdx} className="bg-red-50 hover:bg-red-100">
-                      {colsB.map((col) => (
-                        <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                          {row ? formatCellValue(row[col]) : "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  )
-                })}
-                {orphanBIndices.length === 0 && (
-                  <tr>
-                    <td colSpan={colsB.length} className="px-4 py-6 text-center text-sm text-gray-400">
-                      No orphan {sourceBLabel} rows
-                    </td>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-purple-600 sticky top-0 z-10">
+              <tr>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider w-8">
+                  #
+                </th>
+                {colsB.map((col) => (
+                  <th key={col} className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    {col.replace(/_/g, " ")}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {orphanBIndices.map((bIdx, i) => {
+                const row = sourceBRows[bIdx]
+                return (
+                  <tr key={bIdx} className="hover:bg-purple-50">
+                    <td className="px-3 py-2 text-gray-400 text-center">{i + 1}</td>
+                    {colsB.map((col) => (
+                      <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                        {row ? formatCellValue(row[col]) : "—"}
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                )
+              })}
+              {orphanBIndices.length === 0 && (
+                <tr>
+                  <td colSpan={colsB.length + 1} className="px-4 py-8 text-center text-sm text-gray-400">
+                    <CheckCircle2 className="w-6 h-6 text-green-400 mx-auto mb-1" />
+                    No orphan {sourceBLabel} rows — all rows are accounted for.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
-
-      {otherAItems.length === 0 && orphanBIndices.length === 0 && (
-        <div className="text-center py-8">
-          <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">No orphan items — all rows are accounted for.</p>
-        </div>
-      )}
     </div>
   )
 }
