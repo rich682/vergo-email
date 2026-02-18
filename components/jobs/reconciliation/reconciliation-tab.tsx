@@ -413,9 +413,9 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
         <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
         <div className="text-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-3" />
-          <p className="text-sm text-gray-700 font-medium">Running reconciliation...</p>
+          <p className="text-sm text-gray-700 font-medium">Reconciling...</p>
           <p className="text-xs text-gray-400 mt-1">
-            Matching {activeRun.totalSourceA} x {activeRun.totalSourceB} transactions using deterministic + AI matching
+            Matching {activeRun.totalSourceA} &times; {activeRun.totalSourceB} transactions using deterministic + AI matching
           </p>
         </div>
       </div>
@@ -456,6 +456,8 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
           sourceBRows={(activeRun.sourceBRows || []) as Record<string, any>[]}
           sourceALabel={linkedConfig.sourceAConfig.label}
           sourceBLabel={linkedConfig.sourceBConfig.label}
+          sourceAColumns={linkedConfig.sourceAConfig.columns}
+          sourceBColumns={linkedConfig.sourceBConfig.columns}
           matchedCount={activeRun.matchedCount}
           exceptionCount={activeRun.exceptionCount}
           variance={activeRun.variance}

@@ -75,8 +75,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   // Column mappings (set after AI detection)
   const [mappings, setMappings] = useState<ColumnMapping[]>([])
-  const [ignoredColsA, setIgnoredColsA] = useState<Set<string>>(new Set())
-  const [ignoredColsB, setIgnoredColsB] = useState<Set<string>>(new Set())
 
   // Config name
   const [name, setName] = useState(taskName ? `${taskName} Reconciliation` : "")
@@ -176,8 +174,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     }
 
     setMappings(newMappings)
-    setIgnoredColsA(new Set())
-    setIgnoredColsB(new Set())
     setStep("map")
   }, [sourceA, sourceB])
 
@@ -208,10 +204,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   const addMapping = () => {
     if (!sourceA || !sourceB) return
     const unusedA = sourceA.columns.filter(
-      (c) => !mappings.some((m) => m.sourceAKey === c.key) && !ignoredColsA.has(c.key)
+      (c) => !mappings.some((m) => m.sourceAKey === c.key)
     )
     const unusedB = sourceB.columns.filter(
-      (c) => !mappings.some((m) => m.sourceBKey === c.key) && !ignoredColsB.has(c.key)
+      (c) => !mappings.some((m) => m.sourceBKey === c.key)
     )
     if (unusedA.length > 0 && unusedB.length > 0) {
       setMappings([
@@ -224,27 +220,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         },
       ])
     }
-  }
-
-  const toggleIgnoreA = (key: string) => {
-    const next = new Set(ignoredColsA)
-    if (next.has(key)) next.delete(key)
-    else {
-      next.add(key)
-      // Remove any mapping using this column
-      setMappings(mappings.filter((m) => m.sourceAKey !== key))
-    }
-    setIgnoredColsA(next)
-  }
-
-  const toggleIgnoreB = (key: string) => {
-    const next = new Set(ignoredColsB)
-    if (next.has(key)) next.delete(key)
-    else {
-      next.add(key)
-      setMappings(mappings.filter((m) => m.sourceBKey !== key))
-    }
-    setIgnoredColsB(next)
   }
 
   // ── Create & Run ──────────────────────────────────────────────────
@@ -490,19 +465,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // ── Render: Step 2 - Column Mapping ───────────────────────────────
 
   if (step === "map") {
-    const unmappedA = sourceA?.columns.filter(
-      (c) => !mappings.some((m) => m.sourceAKey === c.key) && !ignoredColsA.has(c.key)
-    ) || []
-    const unmappedB = sourceB?.columns.filter(
-      (c) => !mappings.some((m) => m.sourceBKey === c.key) && !ignoredColsB.has(c.key)
-    ) || []
-
     return (
       <div className="max-w-4xl space-y-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Map Columns</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Configure Matching Fields</h3>
           <p className="text-sm text-gray-500">
-            AI has suggested how columns from each file match up. Adjust the mappings, set tolerances, and mark columns as relevant or ignored.
+            AI has paired columns that look related. Adjust which fields to match on, set tolerances, and remove any pairs that shouldn&apos;t affect matching.
           </p>
         </div>
 
@@ -539,11 +507,13 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </div>
         </div>
 
-        {/* Mapped columns */}
+        {/* Matching Fields */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium text-gray-700">Column Mappings</h4>
-            <span className="text-xs text-gray-400">{mappings.length} mapped</span>
+          <div className="mb-3">
+            <h4 className="text-sm font-medium text-gray-700">Matching Fields</h4>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Each row pairs a column from {sourceALabel || "Source A"} with one from {sourceBLabel || "Source B"}. Only these fields are used to match transactions.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -666,105 +636,41 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
               </div>
             ))}
 
-            {/* Add mapping button */}
-            {unmappedA.length > 0 && unmappedB.length > 0 && (
+            {/* Add mapping button — always visible as long as there are unused columns */}
+            {sourceA && sourceB && (
               <button
                 onClick={addMapping}
-                className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 px-2 py-1"
+                disabled={
+                  sourceA.columns.filter(
+                    (c) => !mappings.some((m) => m.sourceAKey === c.key)
+                  ).length === 0 ||
+                  sourceB.columns.filter(
+                    (c) => !mappings.some((m) => m.sourceBKey === c.key)
+                  ).length === 0
+                }
+                className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 px-2 py-1 disabled:text-gray-300 disabled:cursor-not-allowed"
               >
-                + Add column mapping
+                + Add matching field
               </button>
             )}
           </div>
         </div>
 
-        {/* Unmapped / Ignored columns */}
-        {(unmappedA.length > 0 || unmappedB.length > 0) && (
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Unmapped Columns</h4>
-            <p className="text-xs text-gray-400 mb-3">
-              These columns were not automatically mapped. Click to ignore them or add a mapping above.
+        {/* Summary of unmapped columns — informational only */}
+        {(() => {
+          const unusedA = sourceA?.columns.filter(
+            (c) => !mappings.some((m) => m.sourceAKey === c.key)
+          ) || []
+          const unusedB = sourceB?.columns.filter(
+            (c) => !mappings.some((m) => m.sourceBKey === c.key)
+          ) || []
+          if (unusedA.length === 0 && unusedB.length === 0) return null
+          return (
+            <p className="text-xs text-gray-400">
+              {unusedA.length + unusedB.length} column{unusedA.length + unusedB.length !== 1 ? "s" : ""} not used for matching — they&apos;ll still appear in your uploaded data but won&apos;t affect match results.
             </p>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500 font-medium">{sourceALabel}</p>
-                {unmappedA.map((col) => (
-                  <div
-                    key={col.key}
-                    className="flex items-center justify-between px-2 py-1 bg-amber-50 rounded text-xs"
-                  >
-                    <span className="text-amber-800">{col.label}</span>
-                    <button
-                      onClick={() => toggleIgnoreA(col.key)}
-                      className="text-amber-500 hover:text-amber-700 text-[10px] underline"
-                    >
-                      ignore
-                    </button>
-                  </div>
-                ))}
-                {ignoredColsA.size > 0 && (
-                  <div className="pt-1">
-                    {Array.from(ignoredColsA).map((key) => {
-                      const col = sourceA?.columns.find((c) => c.key === key)
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center justify-between px-2 py-1 bg-gray-100 rounded text-xs text-gray-400 line-through"
-                        >
-                          <span>{col?.label || key}</span>
-                          <button
-                            onClick={() => toggleIgnoreA(key)}
-                            className="text-gray-400 hover:text-gray-600 text-[10px] underline no-underline"
-                          >
-                            restore
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500 font-medium">{sourceBLabel}</p>
-                {unmappedB.map((col) => (
-                  <div
-                    key={col.key}
-                    className="flex items-center justify-between px-2 py-1 bg-amber-50 rounded text-xs"
-                  >
-                    <span className="text-amber-800">{col.label}</span>
-                    <button
-                      onClick={() => toggleIgnoreB(col.key)}
-                      className="text-amber-500 hover:text-amber-700 text-[10px] underline"
-                    >
-                      ignore
-                    </button>
-                  </div>
-                ))}
-                {ignoredColsB.size > 0 && (
-                  <div className="pt-1">
-                    {Array.from(ignoredColsB).map((key) => {
-                      const col = sourceB?.columns.find((c) => c.key === key)
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center justify-between px-2 py-1 bg-gray-100 rounded text-xs text-gray-400 line-through"
-                        >
-                          <span>{col?.label || key}</span>
-                          <button
-                            onClick={() => toggleIgnoreB(key)}
-                            className="text-gray-400 hover:text-gray-600 text-[10px] underline"
-                          >
-                            restore
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+          )
+        })()}
 
         {error && (
           <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -784,12 +690,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           <Button
             onClick={handleCreate}
             disabled={creating || mappings.length === 0}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
+            className="bg-orange-500 hover:bg-orange-600 text-white min-w-[180px]"
           >
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating & matching...
+                Reconciling...
               </>
             ) : (
               <>

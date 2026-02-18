@@ -522,6 +522,8 @@ export default function ReconciliationDetailPage() {
               sourceBRows={selectedRunData.sourceBRows}
               sourceALabel={sourceA.label}
               sourceBLabel={sourceB.label}
+              sourceAColumns={sourceA.columns as any}
+              sourceBColumns={sourceB.columns as any}
               matchedCount={selectedRunData.matchedCount}
               exceptionCount={selectedRunData.exceptionCount}
               variance={selectedRunData.variance}
