@@ -90,6 +90,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check for duplicate name within the organization
+    const existingDb = await prisma.database.findFirst({
+      where: { organizationId: user.organizationId, name: name.trim() },
+      select: { id: true },
+    })
+    if (existingDb) {
+      return NextResponse.json(
+        { error: `A database with the name "${name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     // Accounting-sourced database: sourceType provided, schema auto-populated
     if (sourceType && typeof sourceType === "string") {
       // Import source schemas to auto-populate

@@ -53,6 +53,9 @@ export async function GET(request: NextRequest) {
       _count: {
         select: { workflowRuns: true },
       },
+      lineage: {
+        select: { id: true, name: true },
+      },
       workflowRuns: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { name, trigger, conditions, actions } = body
+  const { name, trigger, conditions, actions, lineageId, taskType } = body
 
   // Validate trigger type
   if (!trigger || !VALID_TRIGGERS.includes(trigger)) {
@@ -200,6 +203,16 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Validate lineageId if provided
+  if (lineageId) {
+    const lineage = await prisma.taskLineage.findFirst({
+      where: { id: lineageId, organizationId },
+    })
+    if (!lineage) {
+      return NextResponse.json({ error: "Invalid lineageId" }, { status: 400 })
+    }
+  }
+
   const rule = await prisma.automationRule.create({
     data: {
       organizationId,
@@ -211,6 +224,8 @@ export async function POST(request: NextRequest) {
       timezone,
       nextRunAt,
       createdById: userId,
+      lineageId: lineageId || null,
+      taskType: taskType || null,
     },
   })
 

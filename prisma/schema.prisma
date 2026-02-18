@@ -164,6 +164,8 @@ model Organization {
   agentDefinitions        AgentDefinition[]
   workflowRuns            WorkflowRun[]
   requestTemplates        RequestTemplate[]
+  analysisDatasets        AnalysisDataset[]
+  analysisConversations   AnalysisConversation[]
 
   @@index([slug])
 }
@@ -180,7 +182,8 @@ model TaskLineage {
   organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   instances     TaskInstance[]
   importRecipes ImportRecipe[]
-  agents        AgentDefinition[]
+  agents          AgentDefinition[]
+  automationRules AutomationRule[]
 
   @@index([organizationId])
 }
@@ -259,6 +262,8 @@ model User {
   createdAgents                         AgentDefinition[]               @relation("AgentCreator")
   createdAutomationRules                AutomationRule[]                @relation("AutomationRuleCreator")
   createdRequestTemplates               RequestTemplate[]               @relation("RequestTemplateCreator")
+  uploadedAnalysisDatasets              AnalysisDataset[]               @relation("AnalysisDatasetUploader")
+  analysisConversations                 AnalysisConversation[]          @relation("AnalysisConversationUser")
 
   @@index([organizationId])
   @@index([email])
@@ -721,12 +726,17 @@ model AutomationRule {
   armedAt        DateTime? // Compound trigger: set when time condition met, cleared after workflow fires
   dataSettledAt  DateTime? // Compound trigger: when data condition first matched (for settling window)
 
+  // Task linkage
+  lineageId      String?   // Links to recurring task lineage
+  taskType       String?   // "reconciliation" | "report" | "form" | "request"
+
   createdById    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?          @relation("AutomationRuleCreator", fields: [createdById], references: [id])
+  lineage      TaskLineage?   @relation(fields: [lineageId], references: [id], onDelete: SetNull)
   workflowRuns WorkflowRun[]
 
   @@index([organizationId])
@@ -734,6 +744,7 @@ model AutomationRule {
   @@index([trigger, isActive])
   @@index([isActive, nextRunAt])
   @@index([trigger, isActive, armedAt])
+  @@index([lineageId])
 }
 
 model EmailDraft {
@@ -1851,5 +1862,89 @@ model RequestTemplate {
   createdBy    User         @relation("RequestTemplateCreator", fields: [createdById], references: [id])
 
   @@index([organizationId])
+}
+
+// ── Analysis Module ─────────────────────────────────────────────────────
+// Chat with your data - upload CSV/Excel, query via LLM-generated SQL (DuckDB + Parquet)
+
+model AnalysisDataset {
+  id              String   @id @default(cuid())
+  organizationId  String
+  name            String
+  description     String?
+  tableName       String   // Sanitized DuckDB table name
+
+  // File origin
+  originalFilename String
+  fileSizeBytes    Int
+  parquetBlobKey   String   // Vercel Blob key for the Parquet file
+  parquetBlobUrl   String?  // Cached blob URL
+
+  // Schema snapshot: { columns: [{ name, duckdbType, sampleValues }] }
+  schemaSnapshot   Json
+
+  // Summary stats: { rowCount, columns: { colName: { type, min, max, mean, nullCount, distinctCount, sampleValues } } }
+  summaryStats     Json?
+
+  // Processing state
+  status           String   @default("processing") // "processing" | "ready" | "failed"
+  errorMessage     String?
+  rowCount         Int      @default(0)
+  columnCount      Int      @default(0)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  uploadedById     String
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy       User         @relation("AnalysisDatasetUploader", fields: [uploadedById], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+model AnalysisConversation {
+  id              String   @id @default(cuid())
+  organizationId  String
+  userId          String
+  title           String   @default("New Analysis")
+
+  // Which datasets this conversation can query (JSON array of dataset IDs, empty = all)
+  datasetIds      Json     @default("[]")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User               @relation("AnalysisConversationUser", fields: [userId], references: [id])
+  messages        AnalysisMessage[]
+
+  @@index([organizationId, userId])
+  @@index([userId, updatedAt])
+}
+
+model AnalysisMessage {
+  id               String   @id @default(cuid())
+  conversationId   String
+  role             String   // "user" | "assistant"
+  content          String   @db.Text
+
+  // For assistant messages: SQL + results
+  generatedSql     String?  @db.Text
+  queryResultJson  Json?
+  queryRowCount    Int?
+  queryDurationMs  Int?
+  queryError       String?
+
+  // LLM metadata
+  model            String?
+  tokensUsed       Int?
+  estimatedCostUsd Float?
+
+  createdAt        DateTime @default(now())
+
+  conversation     AnalysisConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
 

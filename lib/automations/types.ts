@@ -45,8 +45,11 @@ export interface AutomationRuleListItem {
   cronExpression: string | null
   timezone: string | null
   nextRunAt: string | null
+  lineageId: string | null
+  taskType: string | null
   createdAt: string
   updatedAt: string
+  lineage?: { id: string; name: string } | null
   _count: { workflowRuns: number }
   lastRun?: {
     id: string
@@ -93,6 +96,15 @@ export interface WorkflowAuditLogEntry {
   actorType: string | null
   actorId: string | null
   createdAt: string
+}
+
+// ─── Task Linkage Types ─────────────────────────────────────────────────────
+
+export interface TaskLinkageData {
+  taskId: string
+  lineageId: string | null
+  taskType: string | null
+  taskName: string
 }
 
 // ─── Cron Builder Types ──────────────────────────────────────────────────────

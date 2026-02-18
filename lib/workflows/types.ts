@@ -197,6 +197,7 @@ export type RecipientSourceType =
   | "specific_contacts"
   | "specific_users"
   | "database"
+  | "task_history"
 
 export interface SendRequestDatabaseFilter {
   columnKey: string
@@ -219,6 +220,9 @@ export interface SendRequestActionParams {
   emailColumnKey?: string
   nameColumnKey?: string
   filters?: SendRequestDatabaseFilter[]
+
+  // Task-history recipients (used when recipientSourceType === "task_history")
+  lineageId?: string
 
   // Schedule (optional)
   deadlineDate?: string

@@ -76,6 +76,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
+    // Check for duplicate name within the organization
+    const existing = await prisma.reconciliationConfig.findFirst({
+      where: { organizationId: user.organizationId, name: name.trim() },
+      select: { id: true },
+    })
+    if (existing) {
+      return NextResponse.json(
+        { error: `A reconciliation with the name "${name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     const config = await ReconciliationService.createConfig({
       organizationId: user.organizationId,
       name,

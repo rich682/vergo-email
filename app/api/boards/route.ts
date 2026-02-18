@@ -146,6 +146,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check for duplicate name within the organization
+    const existingBoard = await prisma.board.findFirst({
+      where: { organizationId, name: name.trim() },
+      select: { id: true },
+    })
+    if (existingBoard) {
+      return NextResponse.json(
+        { error: `A board with the name "${name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     // Validate cadence if provided
     const validCadences = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEAR_END", "AD_HOC"]
     if (cadence && !validCadences.includes(cadence)) {

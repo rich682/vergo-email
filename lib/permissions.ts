@@ -38,6 +38,7 @@ export type ModuleKey =
   | "reconciliations"
   | "contacts"
   | "agents"
+  | "analysis"
 
 /**
  * Map dashboard/API paths to module keys for access control.
@@ -69,6 +70,8 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
   { path: "/api/entities", module: "contacts" },
   { path: "/dashboard/agents", module: "agents" },
   { path: "/api/agents", module: "agents" },
+  { path: "/dashboard/analysis", module: "analysis" },
+  { path: "/api/analysis", module: "analysis" },
 ]
 
 /**
@@ -175,6 +178,10 @@ export type ActionKey =
   | "agents:view"
   | "agents:manage"
   | "agents:execute"
+  // Analysis
+  | "analysis:view"
+  | "analysis:manage"
+  | "analysis:query"
 
 /**
  * Per-role action permission map. Each key is a role name (MANAGER, MEMBER),
@@ -221,6 +228,7 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "collection:view_all", "collection:manage",
   "reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
   "agents:view", "agents:manage", "agents:execute",
+  "analysis:view", "analysis:manage", "analysis:query",
 ]
 
 /**
@@ -282,6 +290,9 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "agents:view": true,
     "agents:manage": true,
     "agents:execute": true,
+    "analysis:view": true,
+    "analysis:manage": true,
+    "analysis:query": true,
   },
   MEMBER: {
     "contacts:view": false,
@@ -333,6 +344,9 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "agents:view": false,
     "agents:manage": false,
     "agents:execute": false,
+    "analysis:view": false,
+    "analysis:manage": false,
+    "analysis:query": false,
   },
 }
 
@@ -455,6 +469,15 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "agents:execute", label: "Run automations manually" },
     ],
   },
+  {
+    key: "analysis",
+    label: "Analysis",
+    actions: [
+      { key: "analysis:view", label: "View datasets and analysis conversations" },
+      { key: "analysis:manage", label: "Upload, rename & delete datasets" },
+      { key: "analysis:query", label: "Ask questions about data (chat)" },
+    ],
+  },
 ]
 
 // ─── Module → Action Key Mapping ──────────────────────────────────────────────
@@ -475,6 +498,7 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   contacts:        ["contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types"],
   agents:          ["agents:view", "agents:manage", "agents:execute"],
+  analysis:        ["analysis:view", "analysis:manage", "analysis:query"],
 }
 
 // ─── Core Permission Functions ────────────────────────────────────────────────

@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
 import { canPerformAction } from "@/lib/permissions"
 import type { UpdateFormDefinitionInput } from "@/lib/types/form"
@@ -83,6 +84,22 @@ export async function PATCH(
         )
       }
       body.name = body.name.trim()
+
+      // Check for duplicate name within the organization
+      const existingForm = await prisma.formDefinition.findFirst({
+        where: {
+          organizationId: session.user.organizationId,
+          name: body.name,
+          id: { not: id },
+        },
+        select: { id: true },
+      })
+      if (existingForm) {
+        return NextResponse.json(
+          { error: `A form with the name "${body.name}" already exists` },
+          { status: 409 }
+        )
+      }
     }
 
     const form = await FormDefinitionService.update(

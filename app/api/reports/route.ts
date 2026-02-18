@@ -98,6 +98,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check for duplicate name within the organization
+    const existingReport = await prisma.reportDefinition.findFirst({
+      where: { organizationId: user.organizationId, name: name.trim() },
+      select: { id: true },
+    })
+    if (existingReport) {
+      return NextResponse.json(
+        { error: `A report with the name "${name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     if (!databaseId || typeof databaseId !== "string") {
       return NextResponse.json(
         { error: "Database ID is required" },

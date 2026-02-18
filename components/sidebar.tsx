@@ -165,6 +165,16 @@ function FormsIcon({ className }: { className?: string }) {
 }
 
 
+function AnalysisIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 11-9-9" />
+      <path d="M21 3v6h-6" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  )
+}
+
 function InboxIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -562,6 +572,23 @@ export function Sidebar({
                 >
                   <DatabasesIcon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className={labelCls}>Databases</span>
+                </Link>
+              </li>
+            )
+          })()}
+
+          {/* Analysis */}
+          {hasAccess("analysis") && (() => {
+            const isActive = pathname === "/dashboard/analysis" || pathname.startsWith("/dashboard/analysis/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/analysis"
+                  title={collapsed ? "Analysis" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <AnalysisIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Analysis</span>
                 </Link>
               </li>
             )

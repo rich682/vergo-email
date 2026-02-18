@@ -161,6 +161,86 @@ async function handleSendRequestV2(
           htmlBody: htmlResult?.rendered || bodyResult.rendered,
         }
       })
+    } else if (recipientSourceType === "task_history") {
+      // Task history source — resolve recipients from the linked task's previous period requests
+      if (!params.lineageId) {
+        return { success: false, error: "Missing lineageId for task_history recipient source" }
+      }
+
+      // Find the most recent task instance in this lineage that has sent requests
+      const priorTask = await prisma.taskInstance.findFirst({
+        where: {
+          lineageId: params.lineageId,
+          organizationId: context.organizationId,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+
+      if (!priorTask) {
+        return { success: false, error: "No prior task instances found for this lineage" }
+      }
+
+      // Get sent requests from the prior task to extract recipients
+      const priorRequests = await prisma.request.findMany({
+        where: {
+          taskInstanceId: priorTask.id,
+          organizationId: context.organizationId,
+          isDraft: false,
+        },
+        select: {
+          entityId: true,
+          entity: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      })
+
+      if (priorRequests.length === 0) {
+        return {
+          success: true,
+          data: { emailsSent: 0, requestTemplateId, reason: "No prior requests found for task history" },
+          targetType: "request_template",
+          targetId: requestTemplateId,
+        }
+      }
+
+      // Deduplicate by email and filter out requests without contacts
+      const seen = new Set<string>()
+      const uniqueRequests = priorRequests.filter((r): r is typeof r & { entity: NonNullable<typeof r.entity> } => {
+        if (!r.entity?.email || seen.has(r.entity.email)) return false
+        seen.add(r.entity.email)
+        return true
+      })
+
+      recipients = uniqueRequests.map((r) => ({
+        email: r.entity!.email!,
+        name: r.entity!.firstName || undefined,
+      }))
+
+      perRecipientEmails = uniqueRequests.map((r) => {
+        const data: Record<string, string> = {
+          "First Name": r.entity!.firstName || "",
+          "Last Name": r.entity!.lastName || "",
+          "Email": r.entity!.email!,
+        }
+        const subjectResult = renderTemplate(template.subjectTemplate, data)
+        const bodyResult = renderTemplate(template.bodyTemplate, data)
+        const htmlResult = template.htmlBodyTemplate
+          ? renderTemplate(template.htmlBodyTemplate, data)
+          : null
+        return {
+          email: r.entity!.email!,
+          subject: subjectResult.rendered,
+          body: bodyResult.rendered,
+          htmlBody: htmlResult?.rendered || bodyResult.rendered,
+        }
+      })
     } else {
       // Contact-based sources — use existing recipient resolution
       const { resolveRecipientsWithReasons, buildRecipientPersonalizationData } = await import(

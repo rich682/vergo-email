@@ -139,6 +139,24 @@ export async function PATCH(
       skipWeekends
     } = body
 
+    // Check for duplicate name if name is being updated
+    if (name && typeof name === "string" && name.trim()) {
+      const existingBoard = await prisma.board.findFirst({
+        where: {
+          organizationId,
+          name: name.trim(),
+          id: { not: boardId },
+        },
+        select: { id: true },
+      })
+      if (existingBoard) {
+        return NextResponse.json(
+          { error: `A board with the name "${name.trim()}" already exists` },
+          { status: 409 }
+        )
+      }
+    }
+
     // Validate status if provided
     if (status && !VALID_STATUSES.includes(status)) {
       return NextResponse.json(

@@ -548,7 +548,16 @@ export class BoardService {
     }
 
     const nextPeriodEnd = getEndOfPeriod(completedBoard.cadence, nextPeriodStart, effectiveTimezone, { fiscalYearStartMonth })
-    const boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, effectiveTimezone, { fiscalYearStartMonth })
+    let boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, effectiveTimezone, { fiscalYearStartMonth })
+
+    // Ensure name is unique within the organization
+    const nameConflict = await prisma.board.findFirst({
+      where: { organizationId, name: boardName },
+      select: { id: true },
+    })
+    if (nameConflict) {
+      boardName = `${boardName} (Auto)`
+    }
 
     const newBoard = await prisma.board.create({
       data: {

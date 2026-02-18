@@ -5,18 +5,19 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TemplateSelectionStep } from "@/components/automations/wizard/template-selection-step"
+import { TaskLinkageStep } from "@/components/automations/wizard/task-linkage-step"
 import { TriggerConfigurationStep } from "@/components/automations/wizard/trigger-configuration-step"
-import { WorkflowBuilderStep } from "@/components/automations/wizard/workflow-builder-step"
-import { ReviewStep } from "@/components/automations/wizard/review-step"
+import { ConfigurationStep } from "@/components/automations/wizard/configuration-step"
+import { ConfirmationStep } from "@/components/automations/wizard/confirmation-step"
 import { getTemplate } from "@/lib/automations/templates"
-import { scheduleToCron } from "@/lib/automations/cron-helpers"
 import type { AutomationTemplate, TriggerType, WorkflowStep } from "@/lib/automations/types"
 
 const WIZARD_STEPS = [
   { label: "Template", description: "Choose a starting point" },
+  { label: "Task", description: "Link to a recurring task" },
   { label: "Trigger", description: "Configure when to run" },
-  { label: "Steps", description: "Define workflow actions" },
-  { label: "Review", description: "Review and create" },
+  { label: "Configuration", description: "Configure automation" },
+  { label: "Confirmation", description: "Review and create" },
 ]
 
 function generateStepId(): string {
@@ -30,40 +31,61 @@ export default function NewAutomationPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Form state
+  // Step 0: Template
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+
+  // Step 1: Task Linkage
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedLineageId, setSelectedLineageId] = useState<string | null>(null)
+  const [selectedTaskType, setSelectedTaskType] = useState<string | null>(null)
+  const [selectedTaskName, setSelectedTaskName] = useState<string | null>(null)
+
+  // Step 2: Trigger
   const [name, setName] = useState("")
   const [triggerType, setTriggerType] = useState<TriggerType>("board_created")
   const [conditions, setConditions] = useState<Record<string, unknown>>({})
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([])
+
+  // Step 3: Configuration
+  const [configuration, setConfiguration] = useState<Record<string, unknown>>({})
 
   const handleTemplateSelect = (template: AutomationTemplate) => {
     setSelectedTemplateId(template.id)
     setName(template.id === "custom" ? "" : template.name)
     setTriggerType(template.triggerType)
     setConditions(template.defaultConditions)
-    setWorkflowSteps(
-      template.defaultSteps.map((s) => ({
-        id: generateStepId(),
-        type: (s.type || "action") as WorkflowStep["type"],
-        label: s.label || "Step",
-        actionType: s.actionType,
-        actionParams: s.actionParams || {},
-        approvalMessage: s.approvalMessage,
-        notifyUserIds: s.notifyUserIds || [],
-        timeoutHours: s.timeoutHours,
-        agentDefinitionId: s.agentDefinitionId,
-        onError: s.onError || "fail",
-      }))
-    )
+    // Reset task linkage when template changes
+    setSelectedTaskId(null)
+    setSelectedLineageId(null)
+    setSelectedTaskType(null)
+    setSelectedTaskName(null)
+    setConfiguration({})
+  }
+
+  const handleTaskSelect = (
+    taskId: string,
+    lineageId: string | null,
+    taskType: string | null,
+    taskName: string
+  ) => {
+    setSelectedTaskId(taskId)
+    setSelectedLineageId(lineageId)
+    setSelectedTaskType(taskType)
+    setSelectedTaskName(taskName)
+    // Auto-generate name from task if not custom
+    if (!name || name === getTemplate(selectedTemplateId || "")?.name) {
+      setName(`${taskName} Agent`)
+    }
+    // Reset configuration so it re-fetches from the new task
+    setConfiguration({})
   }
 
   const canProceed = () => {
     switch (currentStep) {
       case 0: return selectedTemplateId !== null
-      case 1: return name.trim().length > 0
-      case 2: return workflowSteps.length > 0
+      case 1: return selectedTaskId !== null
+      case 2: return name.trim().length > 0
       case 3: return true
+      case 4: return true
       default: return false
     }
   }
@@ -85,10 +107,11 @@ export default function NewAutomationPage() {
     setError(null)
 
     try {
-      const actions = {
-        version: 1,
-        steps: workflowSteps,
-      }
+      const actions = buildActionsFromConfiguration(
+        selectedTemplateId,
+        configuration,
+        selectedLineageId
+      )
 
       const res = await fetch("/api/automation-rules", {
         method: "POST",
@@ -98,6 +121,8 @@ export default function NewAutomationPage() {
           trigger: triggerType,
           conditions,
           actions,
+          lineageId: selectedLineageId,
+          taskType: selectedTaskType,
         }),
       })
 
@@ -174,7 +199,7 @@ export default function NewAutomationPage() {
           {/* Main content */}
           <div className="flex-1 min-w-0">
             <div className="bg-white rounded-lg border border-gray-200 p-6">
-              {/* Step content */}
+              {/* Step 0: Template */}
               {currentStep === 0 && (
                 <TemplateSelectionStep
                   selectedId={selectedTemplateId}
@@ -182,7 +207,17 @@ export default function NewAutomationPage() {
                 />
               )}
 
+              {/* Step 1: Task Linkage */}
               {currentStep === 1 && (
+                <TaskLinkageStep
+                  selectedTemplateId={selectedTemplateId}
+                  selectedTaskId={selectedTaskId}
+                  onTaskSelect={handleTaskSelect}
+                />
+              )}
+
+              {/* Step 2: Trigger */}
+              {currentStep === 2 && (
                 <TriggerConfigurationStep
                   name={name}
                   onNameChange={setName}
@@ -194,19 +229,26 @@ export default function NewAutomationPage() {
                 />
               )}
 
-              {currentStep === 2 && (
-                <WorkflowBuilderStep
-                  steps={workflowSteps}
-                  onStepsChange={setWorkflowSteps}
+              {/* Step 3: Configuration */}
+              {currentStep === 3 && (
+                <ConfigurationStep
+                  templateId={selectedTemplateId!}
+                  selectedTaskId={selectedTaskId}
+                  configuration={configuration}
+                  onConfigurationChange={setConfiguration}
                 />
               )}
 
-              {currentStep === 3 && (
-                <ReviewStep
+              {/* Step 4: Confirmation */}
+              {currentStep === 4 && (
+                <ConfirmationStep
                   name={name}
+                  linkedTaskName={selectedTaskName}
+                  linkedTaskType={selectedTaskType}
                   triggerType={triggerType}
                   conditions={conditions}
-                  steps={workflowSteps}
+                  configuration={configuration}
+                  templateId={selectedTemplateId!}
                 />
               )}
 
@@ -255,4 +297,104 @@ export default function NewAutomationPage() {
       </div>
     </div>
   )
+}
+
+// ─── Helper: Build WorkflowDefinition from configuration ─────────────────────
+
+function buildActionsFromConfiguration(
+  templateId: string | null,
+  config: Record<string, unknown>,
+  lineageId: string | null
+) {
+  if (templateId === "send-requests") {
+    return {
+      version: 1,
+      steps: [
+        {
+          id: generateStepId(),
+          type: "action",
+          label: "Send requests",
+          actionType: "send_request",
+          actionParams: {
+            requestTemplateId: config.requestTemplateId,
+            recipientSourceType: "task_history",
+            lineageId,
+            deadlineDate: config.deadlineDate,
+            remindersConfig: config.remindersConfig,
+          },
+          onError: "fail",
+        },
+      ],
+    }
+  }
+
+  if (templateId === "send-forms") {
+    return {
+      version: 1,
+      steps: [
+        {
+          id: generateStepId(),
+          type: "action",
+          label: "Send forms",
+          actionType: "send_form",
+          actionParams: {
+            formTemplateId: config.formTemplateId,
+            recipientSourceType: "task_history",
+            lineageId,
+            deadlineDate: config.deadlineDate,
+            remindersConfig: config.remindersConfig,
+          },
+          onError: "fail",
+        },
+      ],
+    }
+  }
+
+  if (templateId === "run-reconciliation") {
+    return {
+      version: 1,
+      steps: [
+        {
+          id: generateStepId(),
+          type: "action",
+          label: "Run reconciliation agent",
+          actionType: "complete_reconciliation",
+          actionParams: {
+            reconciliationConfigId: config.reconciliationConfigId,
+          },
+          onError: "fail",
+        },
+      ],
+    }
+  }
+
+  if (templateId === "generate-report") {
+    return {
+      version: 1,
+      steps: [
+        {
+          id: generateStepId(),
+          type: "action",
+          label: "Generate report",
+          actionType: "complete_report",
+          actionParams: {
+            reportDefinitionId: config.reportDefinitionId,
+            filterBindings: config.reportFilterBindings,
+          },
+          onError: "fail",
+        },
+      ],
+    }
+  }
+
+  // Custom: use the workflow steps stored in configuration
+  if (templateId === "custom" && Array.isArray(config.steps)) {
+    return {
+      version: 1,
+      steps: config.steps,
+    }
+  }
+
+  // Fallback
+  return { version: 1, steps: [] }
 }

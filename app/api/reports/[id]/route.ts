@@ -82,6 +82,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json()
     const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, filterBindings, rowColumnKey, valueColumnKey } = body
 
+    // Check for duplicate name if name is being updated
+    if (name && typeof name === "string" && name.trim()) {
+      const existingReport = await prisma.reportDefinition.findFirst({
+        where: {
+          organizationId: user.organizationId,
+          name: name.trim(),
+          id: { not: id },
+        },
+        select: { id: true },
+      })
+      if (existingReport) {
+        return NextResponse.json(
+          { error: `A report with the name "${name.trim()}" already exists` },
+          { status: 409 }
+        )
+      }
+    }
+
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
       id,

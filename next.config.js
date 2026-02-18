@@ -4,6 +4,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    serverComponentsExternalPackages: ['duckdb'],
   },
   // TypeScript checking during build (can be slow, Vercel uses SWC which is faster)
   typescript: {

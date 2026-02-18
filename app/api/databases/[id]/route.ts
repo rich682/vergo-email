@@ -100,6 +100,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Check for duplicate name if name is being updated
+    if (name && typeof name === "string" && name.trim()) {
+      const existingDb = await prisma.database.findFirst({
+        where: {
+          organizationId: user.organizationId,
+          name: name.trim(),
+          id: { not: params.id },
+        },
+        select: { id: true },
+      })
+      if (existingDb) {
+        return NextResponse.json(
+          { error: `A database with the name "${name.trim()}" already exists` },
+          { status: 409 }
+        )
+      }
+    }
+
     // Validate syncFilter if provided
     if (syncFilter !== undefined && syncFilter !== null) {
       if (!Array.isArray(syncFilter)) {

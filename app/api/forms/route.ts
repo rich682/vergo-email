@@ -70,6 +70,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check for duplicate name within the organization
+    const existingForm = await prisma.formDefinition.findFirst({
+      where: { organizationId: session.user.organizationId, name: body.name.trim() },
+      select: { id: true },
+    })
+    if (existingForm) {
+      return NextResponse.json(
+        { error: `A form with the name "${body.name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     const form = await FormDefinitionService.create(
       session.user.organizationId,
       session.user.id,

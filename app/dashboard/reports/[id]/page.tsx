@@ -1518,7 +1518,8 @@ export default function ReportBuilderPage() {
                     }),
                   })
                   if (!response.ok) {
-                    throw new Error("Failed to update settings")
+                    const errData = await response.json().catch(() => ({}))
+                    throw new Error(errData.error || "Failed to update settings")
                   }
                   const data = await response.json()
                   setReport(prev => prev ? {

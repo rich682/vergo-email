@@ -80,6 +80,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
+
+    // Check for duplicate name if name is being updated
+    if (body.name && typeof body.name === "string" && body.name.trim()) {
+      const existing = await prisma.reconciliationConfig.findFirst({
+        where: {
+          organizationId: user.organizationId,
+          name: body.name.trim(),
+          id: { not: configId },
+        },
+        select: { id: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: `A reconciliation with the name "${body.name.trim()}" already exists` },
+          { status: 409 }
+        )
+      }
+    }
+
     await ReconciliationService.updateConfig(configId, user.organizationId, body)
 
     return NextResponse.json({ success: true })

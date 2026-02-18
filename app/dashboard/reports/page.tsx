@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Eye, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Scale, CheckCircle, AlertTriangle, Copy } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -92,40 +92,8 @@ interface GeneratedReportItem {
   } | null
 }
 
-// Completed reconciliation run returned from /api/reconciliations/completed
-interface CompletedReconRun {
-  id: string
-  configId: string
-  boardId: string | null
-  taskInstanceId: string | null
-  status: "COMPLETE" | "REVIEW"
-  sourceAFileName: string | null
-  sourceBFileName: string | null
-  totalSourceA: number
-  totalSourceB: number
-  matchedCount: number
-  exceptionCount: number
-  variance: number
-  completedAt: string | null
-  completedBy: string | null
-  createdAt: string
-  updatedAt: string
-  config: {
-    id: string
-    name: string
-  }
-  taskInstance: {
-    id: string
-    name: string
-    board: { id: string; name: string } | null
-  } | null
-  completedByUser: { id: string; name: string | null; email: string } | null
-}
-
 // Unified item type for the generated reports table
-type UnifiedReportItem =
-  | { type: "report"; data: GeneratedReportItem; date: string }
-  | { type: "reconciliation"; data: CompletedReconRun; date: string }
+type UnifiedReportItem = { type: "report"; data: GeneratedReportItem; date: string }
 
 interface AvailablePeriod {
   key: string
@@ -156,15 +124,6 @@ export default function ReportsPage() {
   const [generatedLoading, setGeneratedLoading] = useState(true)
   const [periodFilter, setPeriodFilter] = useState<string>("all")
   const [templateFilter, setTemplateFilter] = useState<string>("all")
-  const [typeFilter, setTypeFilter] = useState<string>("all")
-
-  // Completed reconciliation runs state
-  const [completedReconRuns, setCompletedReconRuns] = useState<CompletedReconRun[]>([])
-  const [reconLoading, setReconLoading] = useState(true)
-
-  // Reconciliation viewer modal state
-  const [reconViewerOpen, setReconViewerOpen] = useState(false)
-  const [viewingRecon, setViewingRecon] = useState<CompletedReconRun | null>(null)
 
   // Create Report modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -430,22 +389,6 @@ export default function ReportsPage() {
     }
   }, [orgUsers.length])
 
-  // Fetch completed reconciliation runs
-  const fetchCompletedReconRuns = useCallback(async () => {
-    try {
-      setReconLoading(true)
-      const response = await fetch("/api/reconciliations/completed", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setCompletedReconRuns(data.runs || [])
-      }
-    } catch (error) {
-      console.error("Error fetching completed reconciliation runs:", error)
-    } finally {
-      setReconLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
     if (canManageReports) {
       fetchReports() // Only users with reports:manage can see report templates
@@ -453,8 +396,7 @@ export default function ReportsPage() {
       setLoading(false) // Skip template loading for non-managers
     }
     fetchGeneratedReports() // All users can see generated reports (filtered by viewer permissions)
-    fetchCompletedReconRuns() // Fetch completed reconciliation runs
-  }, [canManageReports, fetchReports, fetchGeneratedReports, fetchCompletedReconRuns])
+  }, [canManageReports, fetchReports, fetchGeneratedReports])
 
   // Fetch org users when create modal opens
   useEffect(() => {
@@ -553,35 +495,20 @@ export default function ReportsPage() {
     )
   })
 
-  // Merge generated reports and completed reconciliation runs into a unified, sorted list
+  // Build sorted list of generated reports
   const unifiedItems = useMemo<UnifiedReportItem[]>(() => {
-    const items: UnifiedReportItem[] = []
-
-    // Add generated reports (filtered by period and template as before)
-    if (typeFilter === "all" || typeFilter === "reports") {
-      for (const report of generatedReports) {
-        items.push({ type: "report", data: report, date: report.generatedAt })
-      }
-    }
-
-    // Add completed reconciliation runs (apply period filter by matching createdAt month)
-    if (typeFilter === "all" || typeFilter === "reconciliations") {
-      for (const run of completedReconRuns) {
-        // Apply period filter: match run createdAt month to the period key (e.g. "2026-01")
-        if (periodFilter && periodFilter !== "all") {
-          const runMonth = run.createdAt.substring(0, 7) // "YYYY-MM"
-          if (runMonth !== periodFilter) continue
-        }
-        items.push({ type: "reconciliation", data: run, date: run.completedAt || run.createdAt })
-      }
-    }
+    const items: UnifiedReportItem[] = generatedReports.map((report) => ({
+      type: "report" as const,
+      data: report,
+      date: report.generatedAt,
+    }))
 
     // Sort by date descending
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     return items
-  }, [generatedReports, completedReconRuns, typeFilter, periodFilter])
+  }, [generatedReports])
 
-  const isUnifiedLoading = generatedLoading || reconLoading
+  const isUnifiedLoading = generatedLoading
 
   return (
     <div className="p-8 space-y-8">
@@ -735,27 +662,15 @@ export default function ReportsPage() {
         )}
 
         {/* ============================================ */}
-        {/* SECTION 2: Generated Reports & Reconciliations */}
+        {/* SECTION 2: Generated Reports */}
         {/* ============================================ */}
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Generated Reports</h2>
-              <p className="text-sm text-gray-500">Reports and reconciliations produced during accounting periods</p>
+              <p className="text-sm text-gray-500">Reports produced during accounting periods</p>
             </div>
             <div className="flex items-center gap-2">
-              {/* Type Filter */}
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[170px] h-9">
-                  <Filter className="w-4 h-4 mr-2 text-gray-400" />
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="reports">Reports</SelectItem>
-                  <SelectItem value="reconciliations">Reconciliations</SelectItem>
-                </SelectContent>
-              </Select>
               {/* Period Filter */}
               <Select value={periodFilter} onValueChange={setPeriodFilter}>
                 <SelectTrigger className="w-[160px] h-9">
@@ -811,9 +726,6 @@ export default function ReportsPage() {
                     Name
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                    Type
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Details
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -830,18 +742,18 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-gray-100">
                 {isUnifiedLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
+                    <td colSpan={5} className="px-4 py-12 text-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500 mx-auto" />
                     </td>
                   </tr>
                 ) : unifiedItems.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
+                    <td colSpan={5} className="px-4 py-12 text-center">
                       <Clock className="mx-auto h-8 w-8 text-gray-300" />
-                      <p className="mt-2 text-sm text-gray-500">No reports or reconciliations available</p>
+                      <p className="mt-2 text-sm text-gray-500">No reports available</p>
                       <p className="text-xs text-gray-400 mt-1">
                         {canGenerateReports
-                          ? "Generate reports from templates or run reconciliations from task pages"
+                          ? "Generate reports from templates above"
                           : "You don't have access to any reports yet. Ask an admin to share reports with you."
                         }
                       </p>
@@ -849,136 +761,64 @@ export default function ReportsPage() {
                   </tr>
                 ) : (
                   unifiedItems.map((item) => {
-                    if (item.type === "report") {
-                      const report = item.data
-                      return (
-                        <tr 
-                          key={`report-${report.id}`} 
-                          className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => openReportViewer(report)}
-                        >
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                              <span className="text-sm font-medium text-gray-900">
-                                {report.data?.reportName || "Untitled Report"}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                              Report
+                    const report = item.data
+                    return (
+                      <tr
+                        key={`report-${report.id}`}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => openReportViewer(report)}
+                      >
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                            <span className="text-sm font-medium text-gray-900">
+                              {report.data?.reportName || "Untitled Report"}
                             </span>
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {report.data?.sliceName ? (
-                              <span>{report.data.sliceName}</span>
-                            ) : (
-                              <span className="text-gray-400">
-                                Period: {report.periodKey}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-500">
-                            {format(new Date(report.generatedAt), "MMM d, yyyy")}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            {report.source === "manual" || !report.taskInstance ? (
-                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                                Manual
-                              </span>
-                            ) : (
-                              <span onClick={(e) => e.stopPropagation()}>
-                                <Link
-                                  href={`/dashboard/jobs/${report.taskInstance.id}`}
-                                  className="flex items-center gap-1 text-blue-600 hover:underline"
-                                >
-                                  {report.taskInstance.name}
-                                  <ExternalLink className="w-3 h-3" />
-                                </Link>
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="Download Excel"
-                                onClick={() => handleDownload(report.id)}
-                              >
-                                <Download className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    } else {
-                      // Reconciliation run
-                      const run = item.data
-                      return (
-                        <tr 
-                          key={`recon-${run.id}`} 
-                          className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => { setViewingRecon(run); setReconViewerOpen(true) }}
-                        >
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-2">
-                              <Scale className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                              <span className="text-sm font-medium text-gray-900">
-                                {run.config.name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-600">
+                          {report.data?.sliceName ? (
+                            <span>{report.data.sliceName}</span>
+                          ) : (
+                            <span className="text-gray-400">
+                              Period: {report.periodKey}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-500">
+                          {format(new Date(report.generatedAt), "MMM d, yyyy")}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-600">
+                          {report.source === "manual" || !report.taskInstance ? (
                             <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                              Reconciliation
+                              Manual
                             </span>
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
-                            <div className="flex items-center gap-3">
-                              <span className="text-green-600 font-medium">{run.matchedCount} matched</span>
-                              {run.exceptionCount > 0 && (
-                                <span className="text-amber-600">{run.exceptionCount} exceptions</span>
-                              )}
-                              <span className={`font-medium ${run.variance === 0 ? "text-green-600" : "text-red-600"}`}>
-                                ${Math.abs(run.variance).toFixed(2)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-500">
-                            {format(new Date(run.completedAt || run.createdAt), "MMM d, yyyy")}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
+                          ) : (
                             <span onClick={(e) => e.stopPropagation()}>
-                              {run.taskInstance ? (
                               <Link
-                                href={`/dashboard/jobs/${run.taskInstance.id}?tab=reconciliation`}
+                                href={`/dashboard/jobs/${report.taskInstance.id}`}
                                 className="flex items-center gap-1 text-blue-600 hover:underline"
                               >
-                                {run.taskInstance.name}
+                                {report.taskInstance.name}
                                 <ExternalLink className="w-3 h-3" />
                               </Link>
-                              ) : (
-                                <span className="text-gray-400 text-xs">No task linked</span>
-                              )}
                             </span>
-                          </td>
-                          <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="View Details"
-                                onClick={() => { setViewingRecon(run); setReconViewerOpen(true) }}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    }
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Download Excel"
+                              onClick={() => handleDownload(report.id)}
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   })
                 )}
               </tbody>
@@ -1301,99 +1141,6 @@ export default function ReportsPage() {
           generatedReportId={viewingReport.id}
         />
       )}
-
-      {/* Reconciliation Summary Modal */}
-      <Dialog open={reconViewerOpen} onOpenChange={(open) => !open && setReconViewerOpen(false)}>
-        <DialogContent className="sm:max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Scale className="w-5 h-5 text-purple-500" />
-              {viewingRecon?.config.name || "Reconciliation"}
-            </DialogTitle>
-            <DialogDescription>
-              {viewingRecon?.taskInstance?.board?.name && (
-                <span>{viewingRecon.taskInstance.board.name} &bull; </span>
-              )}
-              {viewingRecon?.taskInstance?.name || "No task linked"}
-            </DialogDescription>
-          </DialogHeader>
-
-          {viewingRecon && (
-            <div className="space-y-5 py-2">
-              {/* Status */}
-              <div className="flex items-center gap-2">
-                {viewingRecon.status === "COMPLETE" ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-green-700 bg-green-50">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    Complete
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-amber-700 bg-amber-50">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    In Review
-                  </span>
-                )}
-                {viewingRecon.completedAt && (
-                  <span className="text-xs text-gray-500">
-                    {format(new Date(viewingRecon.completedAt), "MMM d, yyyy h:mm a")}
-                  </span>
-                )}
-                {viewingRecon.completedByUser && (
-                  <span className="text-xs text-gray-500">
-                    by {viewingRecon.completedByUser.name || viewingRecon.completedByUser.email}
-                  </span>
-                )}
-              </div>
-
-              {/* Source Files */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1">Source A</p>
-                  <p className="text-sm font-medium text-gray-900 truncate">{viewingRecon.sourceAFileName || "—"}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{viewingRecon.totalSourceA} rows</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1">Source B</p>
-                  <p className="text-sm font-medium text-gray-900 truncate">{viewingRecon.sourceBFileName || "—"}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{viewingRecon.totalSourceB} rows</p>
-                </div>
-              </div>
-
-              {/* Summary Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="text-center bg-green-50 rounded-lg p-3">
-                  <p className="text-2xl font-semibold text-green-700">{viewingRecon.matchedCount}</p>
-                  <p className="text-xs text-green-600 mt-0.5">Matched</p>
-                </div>
-                <div className="text-center bg-amber-50 rounded-lg p-3">
-                  <p className="text-2xl font-semibold text-amber-700">{viewingRecon.exceptionCount}</p>
-                  <p className="text-xs text-amber-600 mt-0.5">Exceptions</p>
-                </div>
-                <div className={`text-center rounded-lg p-3 ${viewingRecon.variance === 0 ? "bg-green-50" : "bg-red-50"}`}>
-                  <p className={`text-2xl font-semibold ${viewingRecon.variance === 0 ? "text-green-700" : "text-red-700"}`}>
-                    ${Math.abs(viewingRecon.variance).toFixed(2)}
-                  </p>
-                  <p className={`text-xs mt-0.5 ${viewingRecon.variance === 0 ? "text-green-600" : "text-red-600"}`}>
-                    Variance
-                  </p>
-                </div>
-              </div>
-
-              {/* Link to full detail */}
-              <div className="pt-2 border-t border-gray-200">
-                <Link
-                  href={viewingRecon.taskInstance ? `/dashboard/jobs/${viewingRecon.taskInstance.id}?tab=reconciliation` : `/dashboard/reconciliations/${viewingRecon.configId}`}
-                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  onClick={() => setReconViewerOpen(false)}
-                >
-                  View full reconciliation detail
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Duplicate Report Modal */}
       <Dialog open={duplicateModalOpen} onOpenChange={(open) => {
