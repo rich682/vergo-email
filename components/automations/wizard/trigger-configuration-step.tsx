@@ -44,14 +44,14 @@ const ALL_EVENT_TRIGGERS: EventTriggerOption[] = [
   },
   {
     key: "board_status_changed",
-    label: "Board completion",
-    description: "Runs when a board is marked as complete",
+    label: "Previous board completed",
+    description: "Runs when the previous period's board reaches a target status (e.g. prior month's book close is done)",
     icon: <BarChart3 className="w-4 h-4" />,
   },
   {
     key: "database_update",
-    label: "Database update",
-    description: "Runs when database data changes (with optional settling window)",
+    label: "Data becomes available",
+    description: "Runs when new data arrives or changes in a connected database",
     icon: <Database className="w-4 h-4" />,
   },
 ]
@@ -321,8 +321,8 @@ export function TriggerConfigurationStep({
                   <Clock className="w-4 h-4" />
                 </span>
                 <div>
-                  <span className="text-sm font-medium text-gray-800">Cron schedule</span>
-                  <p className="text-xs text-gray-400 mt-0.5">Runs at a recurring time (daily, weekly, or monthly)</p>
+                  <span className="text-sm font-medium text-gray-800">Recurring schedule</span>
+                  <p className="text-xs text-gray-400 mt-0.5">Runs on a recurring schedule (daily, weekly, or monthly)</p>
                 </div>
               </div>
             </label>

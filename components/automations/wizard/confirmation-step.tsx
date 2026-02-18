@@ -122,22 +122,24 @@ function ConfigSummary({
   }
 
   if (templateId === "run-reconciliation") {
+    const configName = configuration.reconciliationConfigName as string | undefined
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
         <p>3-step workflow: AI matching &rarr; Review &rarr; Complete</p>
-        {!!configuration.reconciliationConfigId && (
-          <p className="text-xs text-gray-400">Config: {String(configuration.reconciliationConfigId).slice(0, 8)}...</p>
+        {configName && (
+          <p className="text-xs text-gray-500">Configuration: {configName}</p>
         )}
       </div>
     )
   }
 
   if (templateId === "run-report") {
+    const reportName = configuration.reportDefinitionName as string | undefined
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
         <p>Auto-generate report for each period</p>
-        {!!configuration.reportDefinitionId && (
-          <p className="text-xs text-gray-400">Definition: {String(configuration.reportDefinitionId).slice(0, 8)}...</p>
+        {reportName && (
+          <p className="text-xs text-gray-500">Report: {reportName}</p>
         )}
       </div>
     )

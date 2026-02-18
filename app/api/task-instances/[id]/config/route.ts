@@ -44,9 +44,29 @@ export async function GET(
 
     if (task.taskType === "reconciliation") {
       config.reconciliationConfigId = task.reconciliationConfigId
+      // Fetch human-readable name for the reconciliation config
+      if (task.reconciliationConfigId) {
+        const reconConfig = await prisma.reconciliationConfig.findUnique({
+          where: { id: task.reconciliationConfigId },
+          select: { sourceAConfig: true, sourceBConfig: true },
+        })
+        const aLabel = (reconConfig?.sourceAConfig as any)?.label
+        const bLabel = (reconConfig?.sourceBConfig as any)?.label
+        config.reconciliationConfigName = aLabel && bLabel
+          ? `${aLabel} vs ${bLabel}`
+          : "Reconciliation configuration"
+      }
     } else if (task.taskType === "report") {
       config.reportDefinitionId = task.reportDefinitionId
       config.reportFilterBindings = task.reportFilterBindings
+      // Fetch human-readable name for the report definition
+      if (task.reportDefinitionId) {
+        const reportDef = await prisma.reportDefinition.findUnique({
+          where: { id: task.reportDefinitionId },
+          select: { name: true },
+        })
+        config.reportDefinitionName = reportDef?.name || null
+      }
     } else if (task.taskType === "request" || task.taskType === "form") {
       // Look at the most recent EmailDraft for this task to find template info
       const latestDraft = await prisma.emailDraft.findFirst({

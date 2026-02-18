@@ -206,13 +206,32 @@ function ReconciliationConfig({
 }: {
   configuration: Record<string, unknown>
 }) {
+  const configName = configuration.reconciliationConfigName as string | undefined
+
   return (
     <div className="space-y-4">
       <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-start gap-2">
         <Info className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <span>
+            This automation uses the reconciliation configuration from the linked task.
+            The workflow includes AI matching, review approval, and completion.
+          </span>
+          {configName && (
+            <p className="mt-1.5 font-medium text-gray-700">
+              Configuration: {configName}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Limitation note */}
+      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-start gap-2">
+        <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
         <span>
-          This automation uses the reconciliation configuration from the linked task.
-          The workflow includes AI matching, review approval, and completion.
+          Note: Automated reconciliation works best when data sources are connected databases.
+          If your reconciliation requires manual file uploads, the data will need to be
+          available before the agent can run.
         </span>
       </div>
 
@@ -234,12 +253,6 @@ function ReconciliationConfig({
           ))}
         </div>
       </div>
-
-      {!!configuration.reconciliationConfigId && (
-        <p className="text-[11px] text-gray-400">
-          Config ID: {String(configuration.reconciliationConfigId)}
-        </p>
-      )}
     </div>
   )
 }
@@ -249,21 +262,20 @@ function ReportConfig({
 }: {
   configuration: Record<string, unknown>
 }) {
+  const reportName = configuration.reportDefinitionName as string | undefined
+
   return (
     <div className="space-y-4">
       <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-start gap-2">
         <Info className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
-        <span>
-          This automation uses the report definition from the linked task.
-          It will generate the report automatically for each new period.
-        </span>
+        <div>
+          <span>
+            {reportName
+              ? `This agent will re-generate "${reportName}" for each new period. When the underlying data is updated, the agent produces a fresh report snapshot.`
+              : "This automation uses the report configuration from the linked task. It will generate the report automatically for each new period."}
+          </span>
+        </div>
       </div>
-
-      {!!configuration.reportDefinitionId && (
-        <p className="text-[11px] text-gray-400">
-          Report Definition ID: {String(configuration.reportDefinitionId)}
-        </p>
-      )}
     </div>
   )
 }

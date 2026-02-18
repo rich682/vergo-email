@@ -40,6 +40,7 @@ export default function AutomationDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("runs")
   const [running, setRunning] = useState(false)
+  const [runError, setRunError] = useState<string | null>(null)
 
   const canManage = can("agents:manage")
   const canExecute = can("agents:execute")
@@ -66,15 +67,19 @@ export default function AutomationDetailPage() {
 
   const handleRun = async () => {
     setRunning(true)
+    setRunError(null)
     try {
       const res = await fetch(`/api/automation-rules/${ruleId}/run`, { method: "POST" })
       if (res.ok) {
         // Switch to runs tab and refresh
         setActiveTab("runs")
         fetchRule()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setRunError(data.error || "Failed to run agent")
       }
     } catch {
-      // Handle error
+      setRunError("Failed to run agent. Please try again.")
     } finally {
       setRunning(false)
     }
@@ -148,6 +153,13 @@ export default function AutomationDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Run error */}
+      {runError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          {runError}
+        </div>
+      )}
 
       {/* Tab navigation */}
       <div className="border-b border-gray-200 mb-6">

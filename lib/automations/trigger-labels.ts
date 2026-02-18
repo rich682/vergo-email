@@ -2,7 +2,7 @@ import type { TriggerType } from "@/lib/workflows/types"
 
 const TRIGGER_LABELS: Partial<Record<TriggerType, string>> = {
   board_created: "When a new period board is created",
-  board_status_changed: "When a board status changes",
+  board_status_changed: "When the previous period's board status changes",
   scheduled: "On a schedule",
   data_condition: "When data meets a condition",
   data_uploaded: "When reconciliation data is uploaded",
@@ -13,7 +13,7 @@ const TRIGGER_LABELS: Partial<Record<TriggerType, string>> = {
 
 const TRIGGER_SHORT_LABELS: Partial<Record<TriggerType, string>> = {
   board_created: "New period",
-  board_status_changed: "Status change",
+  board_status_changed: "Prev. board status",
   scheduled: "Scheduled",
   data_condition: "Data condition",
   data_uploaded: "Data uploaded",
