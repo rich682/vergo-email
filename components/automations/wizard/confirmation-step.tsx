@@ -83,7 +83,7 @@ function ConfigSummary({
   templateId: string
   configuration: Record<string, unknown>
 }) {
-  if (templateId === "send-requests") {
+  if (templateId === "send-standard-request") {
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
         {!!configuration.requestTemplateId && (
@@ -100,11 +100,28 @@ function ConfigSummary({
     )
   }
 
-  if (templateId === "send-forms") {
+  if (templateId === "send-form") {
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
         <p>Form template from linked task</p>
         <p>Recipients: From task history</p>
+      </div>
+    )
+  }
+
+  if (templateId === "send-data-request") {
+    return (
+      <div className="space-y-1.5 text-sm text-gray-700">
+        {!!configuration.requestTemplateId && (
+          <p>Email template configured</p>
+        )}
+        <p>Recipients: From database</p>
+        {!!configuration.databaseId && (
+          <p className="text-xs text-gray-400">Database configured</p>
+        )}
+        {!!(configuration.remindersConfig as { enabled?: boolean })?.enabled && (
+          <p>Reminders: Enabled ({(configuration.remindersConfig as { frequency?: string })?.frequency || "weekly"})</p>
+        )}
       </div>
     )
   }
@@ -120,7 +137,7 @@ function ConfigSummary({
     )
   }
 
-  if (templateId === "generate-report") {
+  if (templateId === "run-report") {
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
         <p>Auto-generate report for each period</p>
@@ -128,15 +145,6 @@ function ConfigSummary({
           <p className="text-xs text-gray-400">Definition: {String(configuration.reportDefinitionId).slice(0, 8)}...</p>
         )}
       </div>
-    )
-  }
-
-  if (templateId === "custom") {
-    const steps = (configuration.steps as unknown[]) || []
-    return (
-      <p className="text-sm text-gray-700">
-        Custom workflow with {steps.length} step{steps.length !== 1 ? "s" : ""}
-      </p>
     )
   }
 

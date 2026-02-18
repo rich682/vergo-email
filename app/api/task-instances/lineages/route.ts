@@ -30,10 +30,43 @@ export async function GET(request: NextRequest) {
         taskType: true,
         lineageId: true,
         reconciliationConfigId: true,
+        _count: {
+          select: {
+            requests: { where: { requestType: "data" } },
+          },
+        },
+        board: {
+          select: {
+            id: true,
+            name: true,
+            periodStart: true,
+            periodEnd: true,
+            cadence: true,
+          },
+        },
       },
     })
 
-    return NextResponse.json({ tasks })
+    const mapped = tasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      taskType: t.taskType,
+      lineageId: t.lineageId,
+      reconciliationConfigId: t.reconciliationConfigId,
+      hasDbRecipients: t._count.requests > 0,
+      board: t.board
+        ? {
+            id: t.board.id,
+            name: t.board.name,
+            periodStart: t.board.periodStart,
+            periodEnd: t.board.periodEnd,
+            cadence: t.board.cadence,
+          }
+        : null,
+    }))
+
+    return NextResponse.json({ tasks: mapped })
   } catch (error) {
     console.error("Error listing tasks:", error)
     return NextResponse.json({ error: "Failed to list tasks" }, { status: 500 })

@@ -4,8 +4,7 @@ import { useEffect, useState } from "react"
 import { Info, Loader2 } from "lucide-react"
 import { RequestTemplatePicker } from "../steps/send-request/request-template-picker"
 import { ScheduleConfig } from "../steps/send-request/schedule-config"
-import { WorkflowBuilderStep } from "./workflow-builder-step"
-import type { WorkflowStep } from "@/lib/workflows/types"
+import { DatabaseRecipientConfig } from "../steps/send-request/database-recipient-config"
 
 interface ConfigurationStepProps {
   templateId: string
@@ -56,15 +55,22 @@ export function ConfigurationStep({
         Review and adjust the configuration pulled from your task history.
       </p>
 
-      {templateId === "send-requests" && (
-        <SendRequestConfig
+      {templateId === "send-standard-request" && (
+        <SendStandardRequestConfig
           configuration={configuration}
           onChange={onConfigurationChange}
         />
       )}
 
-      {templateId === "send-forms" && (
+      {templateId === "send-form" && (
         <SendFormConfig
+          configuration={configuration}
+          onChange={onConfigurationChange}
+        />
+      )}
+
+      {templateId === "send-data-request" && (
+        <SendDataRequestConfig
           configuration={configuration}
           onChange={onConfigurationChange}
         />
@@ -74,15 +80,8 @@ export function ConfigurationStep({
         <ReconciliationConfig configuration={configuration} />
       )}
 
-      {templateId === "generate-report" && (
+      {templateId === "run-report" && (
         <ReportConfig configuration={configuration} />
-      )}
-
-      {templateId === "custom" && (
-        <CustomConfig
-          configuration={configuration}
-          onChange={onConfigurationChange}
-        />
       )}
     </div>
   )
@@ -90,7 +89,7 @@ export function ConfigurationStep({
 
 // ─── Template-Specific Configurations ─────────────────────────────────────────
 
-function SendRequestConfig({
+function SendStandardRequestConfig({
   configuration,
   onChange,
 }: {
@@ -118,7 +117,7 @@ function SendRequestConfig({
         <div className="text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
           <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
           <span>
-            Recipients are determined by the linked task. The agent will send to
+            Recipients are inherited from the linked task. The agent will send to
             the same contacts as previous periods.
           </span>
         </div>
@@ -150,6 +149,52 @@ function SendFormConfig({
           The agent will send the same form template used in the linked task to the
           same recipients from previous periods.
         </span>
+      </div>
+
+      {/* Schedule & Reminders */}
+      <div>
+        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
+          Scheduling
+        </div>
+        <ScheduleConfig params={configuration} onChange={onChange} />
+      </div>
+    </div>
+  )
+}
+
+function SendDataRequestConfig({
+  configuration,
+  onChange,
+}: {
+  configuration: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+}) {
+  return (
+    <div className="space-y-5">
+      {/* Email Template — inherited from task */}
+      <div>
+        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
+          Email Content
+        </div>
+        <RequestTemplatePicker
+          value={configuration.requestTemplateId as string | undefined}
+          onChange={(id) => onChange({ ...configuration, requestTemplateId: id })}
+        />
+      </div>
+
+      {/* Recipients — from database */}
+      <div>
+        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">
+          Recipients (from database)
+        </div>
+        <div className="text-xs text-gray-600 bg-emerald-50 border border-emerald-100 rounded-lg p-3 flex items-start gap-2 mb-3">
+          <Info className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+          <span>
+            Recipients are resolved from a database each period. Select the database
+            and map the email column. Filters determine which rows receive the email.
+          </span>
+        </div>
+        <DatabaseRecipientConfig params={configuration} onChange={onChange} />
       </div>
 
       {/* Schedule & Reminders */}
@@ -227,31 +272,5 @@ function ReportConfig({
         </p>
       )}
     </div>
-  )
-}
-
-function CustomConfig({
-  configuration,
-  onChange,
-}: {
-  configuration: Record<string, unknown>
-  onChange: (config: Record<string, unknown>) => void
-}) {
-  const steps = (configuration.steps as WorkflowStep[]) || []
-
-  return (
-    <WorkflowBuilderStep
-      steps={steps.length > 0 ? steps : [
-        {
-          id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          type: "action",
-          label: "New step",
-          actionType: "send_request",
-          actionParams: {},
-          onError: "fail",
-        },
-      ]}
-      onStepsChange={(newSteps) => onChange({ ...configuration, steps: newSteps })}
-    />
   )
 }

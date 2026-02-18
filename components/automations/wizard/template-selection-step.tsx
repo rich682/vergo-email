@@ -1,13 +1,13 @@
 "use client"
 
 import {
-  Send, ClipboardList, Scale, FileBarChart, Wrench,
+  Send, ClipboardList, Scale, FileBarChart, Database, Wrench,
 } from "lucide-react"
 import { AUTOMATION_TEMPLATES } from "@/lib/automations/templates"
 import type { AutomationTemplate } from "@/lib/automations/types"
 
 const ICON_MAP: Record<string, typeof Send> = {
-  Send, ClipboardList, Scale, FileBarChart, Wrench,
+  Send, ClipboardList, Scale, FileBarChart, Database, Wrench,
 }
 
 // ── Component ─────────────────────────────────────────────────────────
@@ -18,39 +18,53 @@ interface TemplateSelectionStepProps {
 }
 
 export function TemplateSelectionStep({ selectedId, onSelect }: TemplateSelectionStepProps) {
-  // Separate "custom" from the rest — it always goes at the bottom
-  const templates = AUTOMATION_TEMPLATES.filter((t) => t.id !== "custom")
-  const customTemplate = AUTOMATION_TEMPLATES.find((t) => t.id === "custom")
+  const collectionTemplates = AUTOMATION_TEMPLATES.filter(
+    (t) => t.category === "requests" || t.category === "forms"
+  )
+  const processingTemplates = AUTOMATION_TEMPLATES.filter(
+    (t) => t.category === "reconciliation" || t.category === "reports"
+  )
 
   return (
     <div>
       <h2 className="text-lg font-medium text-gray-900 mb-1">What should this agent do?</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Pick a starting point. You can add approvals, extra steps, and configure triggers in the next steps.
+        Pick a starting point. You can configure triggers and settings in the next steps.
       </p>
 
-      <div className="grid grid-cols-1 gap-2">
-        {templates.map((template) => (
-          <TemplateCard
-            key={template.id}
-            template={template}
-            isSelected={selectedId === template.id}
-            onSelect={onSelect}
-          />
-        ))}
+      {/* Data Collection */}
+      <div className="mb-5">
+        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
+          Data Collection
+        </h3>
+        <div className="grid grid-cols-1 gap-2">
+          {collectionTemplates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              isSelected={selectedId === template.id}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Separator */}
-      <div className="my-4 border-t border-gray-100" />
-
-      {/* Custom — always at the bottom */}
-      {customTemplate && (
-        <TemplateCard
-          template={customTemplate}
-          isSelected={selectedId === "custom"}
-          onSelect={onSelect}
-        />
-      )}
+      {/* Processing */}
+      <div>
+        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
+          Processing
+        </h3>
+        <div className="grid grid-cols-1 gap-2">
+          {processingTemplates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              isSelected={selectedId === template.id}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -85,7 +99,14 @@ function TemplateCard({
           <Icon className={`w-5 h-5 ${isSelected ? "text-orange-600" : "text-gray-500"}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-900">{template.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-gray-900">{template.name}</h3>
+            {template.requiresDatabase && (
+              <span className="text-[10px] text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">
+                Uses database
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
           {template.defaultSteps.length > 0 && (
             <div className="flex items-center gap-1 mt-2 flex-wrap">

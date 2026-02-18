@@ -8,6 +8,7 @@ const TRIGGER_LABELS: Partial<Record<TriggerType, string>> = {
   data_uploaded: "When reconciliation data is uploaded",
   form_submitted: "When a form is submitted",
   compound: "On a schedule + when data is available",
+  database_changed: "When database data is updated",
 }
 
 const TRIGGER_SHORT_LABELS: Partial<Record<TriggerType, string>> = {
@@ -18,6 +19,7 @@ const TRIGGER_SHORT_LABELS: Partial<Record<TriggerType, string>> = {
   data_uploaded: "Data uploaded",
   form_submitted: "Form submitted",
   compound: "Schedule + Data",
+  database_changed: "Database update",
 }
 
 /**

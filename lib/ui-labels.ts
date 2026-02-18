@@ -12,7 +12,7 @@
 
 export const UI_LABELS = {
   // Navigation
-  jobsNavLabel: "Tasks",
+  jobsNavLabel: "Checklists",
   
   // Singular/Plural
   jobSingular: "Task",

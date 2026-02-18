@@ -2,13 +2,12 @@ import type { AutomationTemplate } from "./types"
 
 export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
   // ─── Data Collection ──────────────────────────────────────────────────
-  // Send requests or forms to collect data. Users configure trigger,
-  // recipients, approvals, and additional steps in the wizard.
 
   {
-    id: "send-requests",
-    name: "Send data requests",
-    description: "Collect documents, files, or information from contacts, groups, or database recipients.",
+    id: "send-standard-request",
+    name: "Send Standard Request",
+    description:
+      "Auto-send a recurring request to the same contacts each period (e.g. monthly timesheets). Inherits email template and recipients from a previously completed task.",
     icon: "Send",
     triggerType: "board_created",
     defaultConditions: {},
@@ -21,11 +20,15 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       },
     ],
     category: "requests",
+    requiresDatabase: false,
+    allowedTriggers: ["board_created", "scheduled", "board_status_changed"],
+    recipientSource: "task_history",
   },
   {
-    id: "send-forms",
-    name: "Send forms",
-    description: "Send forms for data intake — onboarding, surveys, questionnaires, or any structured collection.",
+    id: "send-form",
+    name: "Send Form",
+    description:
+      "Auto-send the same form to recipients each period (e.g. monthly surveys, onboarding). Inherits form template and recipients from a previously completed task.",
     icon: "ClipboardList",
     triggerType: "board_created",
     defaultConditions: {},
@@ -38,14 +41,44 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       },
     ],
     category: "forms",
+    requiresDatabase: false,
+    allowedTriggers: ["board_created", "scheduled", "board_status_changed"],
+    recipientSource: "task_history",
+  },
+  {
+    id: "send-data-request",
+    name: "Send Data Personalized Request",
+    description:
+      "Auto-send personalized emails to recipients from a database (e.g. clients with unpaid invoices). Inherits email template from a previously completed task; recipients come from a database.",
+    icon: "Database",
+    triggerType: "board_created",
+    defaultConditions: {},
+    defaultSteps: [
+      {
+        type: "action",
+        label: "Send data requests",
+        actionType: "send_request",
+        actionParams: { recipientSourceType: "database" },
+      },
+    ],
+    category: "requests",
+    requiresDatabase: true,
+    allowedTriggers: [
+      "board_created",
+      "scheduled",
+      "board_status_changed",
+      "database_update",
+    ],
+    recipientSource: "database",
   },
 
-  // ─── Reconciliation ───────────────────────────────────────────────────
+  // ─── Processing ─────────────────────────────────────────────────────
 
   {
     id: "run-reconciliation",
-    name: "Run reconciliation",
-    description: "Run the AI reconciliation agent to match and reconcile data across sources.",
+    name: "Run Reconciliation",
+    description:
+      "Auto-reconcile data sources each period (e.g. general ledger with bank statement). Uses an existing Reconciliation Builder.",
     icon: "Scale",
     triggerType: "board_created",
     defaultConditions: {},
@@ -57,7 +90,8 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       {
         type: "human_approval",
         label: "Review reconciliation results",
-        approvalMessage: "Please review the reconciliation results before completing.",
+        approvalMessage:
+          "Please review the reconciliation results before completing.",
         timeoutHours: 72,
       },
       {
@@ -68,14 +102,20 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       },
     ],
     category: "reconciliation",
+    requiresDatabase: true,
+    allowedTriggers: [
+      "board_created",
+      "scheduled",
+      "board_status_changed",
+      "database_update",
+    ],
+    recipientSource: "config",
   },
-
-  // ─── Reports ──────────────────────────────────────────────────────────
-
   {
-    id: "generate-report",
-    name: "Generate report",
-    description: "Generate a summary report — P&L, balance sheet, or any period-end report.",
+    id: "run-report",
+    name: "Run Report",
+    description:
+      "Auto-generate a report each period (e.g. monthly profitability report). Uses an existing Report Definition.",
     icon: "FileBarChart",
     triggerType: "board_created",
     defaultConditions: {},
@@ -88,19 +128,14 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       },
     ],
     category: "reports",
-  },
-
-  // ─── Custom ───────────────────────────────────────────────────────────
-
-  {
-    id: "custom",
-    name: "Custom agent",
-    description: "Build your own agent with any combination of actions, approvals, and steps.",
-    icon: "Wrench",
-    triggerType: "board_created",
-    defaultConditions: {},
-    defaultSteps: [],
-    category: "requests",
+    requiresDatabase: true,
+    allowedTriggers: [
+      "board_created",
+      "scheduled",
+      "board_status_changed",
+      "database_update",
+    ],
+    recipientSource: "config",
   },
 ]
 

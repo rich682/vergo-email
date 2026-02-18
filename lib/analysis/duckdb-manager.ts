@@ -202,8 +202,11 @@ export async function executeQuery(
     throw new Error(validationError)
   }
 
+  // Strip trailing semicolons — they break subquery wrapping
+  const cleanSql = sql.replace(/;\s*$/, "")
+
   // Wrap in LIMIT to prevent unbounded result sets
-  const limitedSql = `SELECT * FROM (${sql}) __limited_result LIMIT ${maxRows + 1}`
+  const limitedSql = `SELECT * FROM (${cleanSql}) __limited_result LIMIT ${maxRows + 1}`
 
   // Execute with timeout
   const queryPromise = (async () => {

@@ -10,7 +10,7 @@ import { TriggerConfigurationStep } from "@/components/automations/wizard/trigge
 import { ConfigurationStep } from "@/components/automations/wizard/configuration-step"
 import { ConfirmationStep } from "@/components/automations/wizard/confirmation-step"
 import { getTemplate } from "@/lib/automations/templates"
-import type { AutomationTemplate, TriggerType, WorkflowStep } from "@/lib/automations/types"
+import type { AutomationTemplate, TriggerType } from "@/lib/automations/types"
 
 const WIZARD_STEPS = [
   { label: "Template", description: "Choose a starting point" },
@@ -33,6 +33,7 @@ export default function NewAutomationPage() {
 
   // Step 0: Template
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<AutomationTemplate | null>(null)
 
   // Step 1: Task Linkage
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -50,10 +51,11 @@ export default function NewAutomationPage() {
 
   const handleTemplateSelect = (template: AutomationTemplate) => {
     setSelectedTemplateId(template.id)
-    setName(template.id === "custom" ? "" : template.name)
+    setSelectedTemplate(template)
+    setName(template.name)
     setTriggerType(template.triggerType)
     setConditions(template.defaultConditions)
-    // Reset task linkage when template changes
+    // Reset downstream state when template changes
     setSelectedTaskId(null)
     setSelectedLineageId(null)
     setSelectedTaskType(null)
@@ -71,8 +73,8 @@ export default function NewAutomationPage() {
     setSelectedLineageId(lineageId)
     setSelectedTaskType(taskType)
     setSelectedTaskName(taskName)
-    // Auto-generate name from task if not custom
-    if (!name || name === getTemplate(selectedTemplateId || "")?.name) {
+    // Auto-generate name from task
+    if (!name || name === selectedTemplate?.name) {
       setName(`${taskName} Agent`)
     }
     // Reset configuration so it re-fetches from the new task
@@ -230,7 +232,7 @@ export default function NewAutomationPage() {
                   onTriggerTypeChange={setTriggerType}
                   conditions={conditions}
                   onConditionsChange={setConditions}
-                  isCustom={selectedTemplateId === "custom"}
+                  allowedTriggers={selectedTemplate?.allowedTriggers || ["board_created", "scheduled", "board_status_changed"]}
                 />
               )}
 
@@ -311,7 +313,7 @@ function buildActionsFromConfiguration(
   config: Record<string, unknown>,
   lineageId: string | null
 ) {
-  if (templateId === "send-requests") {
+  if (templateId === "send-standard-request") {
     return {
       version: 1,
       steps: [
@@ -333,7 +335,7 @@ function buildActionsFromConfiguration(
     }
   }
 
-  if (templateId === "send-forms") {
+  if (templateId === "send-form") {
     return {
       version: 1,
       steps: [
@@ -345,6 +347,32 @@ function buildActionsFromConfiguration(
           actionParams: {
             formTemplateId: config.formTemplateId,
             recipientSourceType: "task_history",
+            lineageId,
+            deadlineDate: config.deadlineDate,
+            remindersConfig: config.remindersConfig,
+          },
+          onError: "fail",
+        },
+      ],
+    }
+  }
+
+  if (templateId === "send-data-request") {
+    return {
+      version: 1,
+      steps: [
+        {
+          id: generateStepId(),
+          type: "action",
+          label: "Send data requests",
+          actionType: "send_request",
+          actionParams: {
+            requestTemplateId: config.requestTemplateId,
+            recipientSourceType: "database",
+            databaseId: config.databaseId,
+            emailColumnKey: config.emailColumnKey,
+            nameColumnKey: config.nameColumnKey,
+            filters: config.filters,
             lineageId,
             deadlineDate: config.deadlineDate,
             remindersConfig: config.remindersConfig,
@@ -373,7 +401,7 @@ function buildActionsFromConfiguration(
     }
   }
 
-  if (templateId === "generate-report") {
+  if (templateId === "run-report") {
     return {
       version: 1,
       steps: [
@@ -389,14 +417,6 @@ function buildActionsFromConfiguration(
           onError: "fail",
         },
       ],
-    }
-  }
-
-  // Custom: use the workflow steps stored in configuration
-  if (templateId === "custom" && Array.isArray(config.steps)) {
-    return {
-      version: 1,
-      steps: config.steps,
     }
   }
 
