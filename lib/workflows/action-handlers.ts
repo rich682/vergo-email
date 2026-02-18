@@ -165,7 +165,7 @@ async function handleSendRequestV2(
       // Task history source — resolve recipients from the linked task's previous period requests
       const lineageId = params.lineageId || context.lineageId
       if (!lineageId) {
-        return { success: false, error: "Could not determine the linked task. Please re-create this agent and ensure you link it to a task." }
+        return { success: false, error: "This agent requires a recurring task (one that repeats across periods) to find previous recipients. The linked task does not have a recurring history. Please re-create the agent and link it to a recurring task." }
       }
 
       // Find the most recent task instance in this lineage that has sent requests

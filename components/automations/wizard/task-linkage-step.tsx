@@ -42,6 +42,8 @@ const TEMPLATE_TASK_TYPE_MAP: Record<string, string[]> = {
 const DB_RECIPIENT_TEMPLATES = new Set(["send-data-request"])
 /** Templates that require non-DB recipients (standard) */
 const STANDARD_RECIPIENT_TEMPLATES = new Set(["send-standard-request"])
+/** Templates that require a recurring task (lineageId) for task_history recipients */
+const REQUIRES_LINEAGE = new Set(["send-standard-request", "send-form"])
 
 const STATUS_COLORS: Record<string, string> = {
   NOT_STARTED: "bg-gray-100 text-gray-600",
@@ -86,6 +88,11 @@ export function TaskLinkageStep({
       filtered = filtered.filter((t) => t.hasDbRecipients)
     } else if (STANDARD_RECIPIENT_TEMPLATES.has(selectedTemplateId)) {
       filtered = filtered.filter((t) => !t.hasDbRecipients)
+    }
+
+    // For task_history-based templates, require a lineage (recurring task)
+    if (REQUIRES_LINEAGE.has(selectedTemplateId)) {
+      filtered = filtered.filter((t) => !!t.lineageId)
     }
 
     return filtered
@@ -145,7 +152,9 @@ export function TaskLinkageStep({
             No matching tasks found.
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            Create a task with the appropriate type first, then come back to set up automation.
+            {selectedTemplateId && REQUIRES_LINEAGE.has(selectedTemplateId)
+              ? "This agent type requires a recurring task that repeats across periods. Create a recurring task first, then come back to set up automation."
+              : "Create a task with the appropriate type first, then come back to set up automation."}
           </p>
         </div>
       ) : (
