@@ -458,15 +458,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
           sourceBLabel={linkedConfig.sourceBConfig.label}
           sourceAColumns={linkedConfig.sourceAConfig.columns}
           sourceBColumns={linkedConfig.sourceBConfig.columns}
-          matchedCount={activeRun.matchedCount}
-          exceptionCount={activeRun.exceptionCount}
-          variance={activeRun.variance}
-          totalSourceA={activeRun.totalSourceA}
-          totalSourceB={activeRun.totalSourceB}
           status={activeRun.status}
-          completedAt={activeRun.completedAt}
-          completedByUser={activeRun.completedByUser}
-          onComplete={handleRefresh}
           onRefresh={handleRefresh}
         />
       </div>

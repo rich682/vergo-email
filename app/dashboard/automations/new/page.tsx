@@ -83,7 +83,12 @@ export default function NewAutomationPage() {
     switch (currentStep) {
       case 0: return selectedTemplateId !== null
       case 1: return selectedTaskId !== null
-      case 2: return name.trim().length > 0
+      case 2: {
+        if (!name.trim()) return false
+        const events = (conditions._eventTriggers as string[]) || []
+        const hasSchedule = !!(conditions._scheduleEnabled as boolean)
+        return events.length > 0 || hasSchedule
+      }
       case 3: return true
       case 4: return true
       default: return false

@@ -4,14 +4,11 @@ import { useState, useMemo, useCallback } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import {
-  CheckCircle,
-  AlertTriangle,
   CheckCircle2,
   Loader2,
   ChevronDown,
   ChevronRight,
   Download,
-  FileSpreadsheet,
 } from "lucide-react"
 
 interface MatchPair {
@@ -63,15 +60,7 @@ interface ReconciliationResultsProps {
   /** Columns from the config — only these are shown in results */
   sourceAColumns?: SourceColumnDef[]
   sourceBColumns?: SourceColumnDef[]
-  matchedCount: number
-  exceptionCount: number
-  variance: number
-  totalSourceA: number
-  totalSourceB: number
   status: string
-  completedAt?: string | null
-  completedByUser?: { name?: string | null; email: string } | null
-  onComplete: () => void
   onRefresh: () => void
 }
 
@@ -262,19 +251,10 @@ export function ReconciliationResults({
   sourceBLabel,
   sourceAColumns,
   sourceBColumns,
-  matchedCount,
-  exceptionCount,
-  variance,
-  totalSourceA,
-  totalSourceB,
   status,
-  completedAt,
-  completedByUser,
-  onComplete,
   onRefresh,
 }: ReconciliationResultsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("auto_matched")
-  const [completing, setCompleting] = useState(false)
   const [acceptingMatch, setAcceptingMatch] = useState<string | null>(null)
   const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
@@ -320,19 +300,6 @@ export function ReconciliationResults({
     () => matchResults.unmatchedB,
     [matchResults.unmatchedB]
   )
-
-  const matchRate = totalSourceA > 0 ? Math.round((matchedCount / totalSourceA) * 100) : 0
-
-  const handleComplete = async () => {
-    if (!confirm("Sign off on this reconciliation? This action cannot be undone.")) return
-    setCompleting(true)
-    try {
-      await fetch(`/api/reconciliations/${configId}/runs/${runId}/complete`, { method: "POST" })
-      onRefresh()
-    } finally {
-      setCompleting(false)
-    }
-  }
 
   const handleAcceptMatch = useCallback(async (sourceAIdx: number, sourceBIdx: number) => {
     const key = `${sourceAIdx}-${sourceBIdx}`
@@ -412,82 +379,27 @@ export function ReconciliationResults({
 
   return (
     <div className="space-y-4">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-5 gap-3">
-        <SummaryCard label={sourceALabel} value={`${totalSourceA}`} sublabel="rows" />
-        <SummaryCard label={sourceBLabel} value={`${totalSourceB}`} sublabel="rows" />
-        <SummaryCard
-          label="Matched"
-          value={`${matchedCount}`}
-          sublabel={`${matchRate}%`}
-          color={matchRate >= 90 ? "text-green-600" : matchRate >= 70 ? "text-amber-600" : "text-red-600"}
-        />
-        <SummaryCard
-          label="Exceptions"
-          value={`${exceptionCount}`}
-          sublabel={exceptionCount === 0 ? "Clean" : "Review needed"}
-          color={exceptionCount === 0 ? "text-green-600" : "text-amber-600"}
-        />
-        <SummaryCard
-          label="Variance"
-          value={`$${Math.abs(variance).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-          sublabel={variance === 0 ? "Balanced" : variance > 0 ? "Over" : "Under"}
-          color={variance === 0 ? "text-green-600" : "text-red-600"}
-        />
-      </div>
-
-      {/* Status bar */}
-      {isComplete ? (
-        <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
-            <p className="text-sm text-green-800">
-              Reconciliation complete. Signed off by{" "}
-              <span className="font-medium">{completedByUser?.name || completedByUser?.email || "Unknown"}</span>
-              {completedAt && ` on ${new Date(completedAt).toLocaleDateString()}`}
-            </p>
-          </div>
-          <Button onClick={handleDownloadExcel} size="sm" variant="outline" className="flex-shrink-0">
-            <Download className="w-3 h-3 mr-1" />
-            Download Excel
-          </Button>
+      {/* Tabs + Download */}
+      <div className="flex items-center justify-between border-b border-gray-200">
+        <div className="flex items-center gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
         </div>
-      ) : (
-        <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <p className="text-sm text-amber-800">
-              {exceptionCount > 0 ? `${exceptionCount} exceptions need resolution.` : "No exceptions. Ready to sign off."}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Button onClick={handleDownloadExcel} size="sm" variant="outline">
-              <Download className="w-3 h-3 mr-1" />
-              Download Excel
-            </Button>
-            <Button onClick={handleComplete} disabled={completing} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-              {completing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-              Sign Off
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label} ({tab.count})
-          </button>
-        ))}
+        <Button onClick={handleDownloadExcel} size="sm" variant="outline" className="mb-1">
+          <Download className="w-3 h-3 mr-1" />
+          Download Excel
+        </Button>
       </div>
 
       {/* ── Auto-Matched Tab ──────────────────────────────────────── */}
@@ -1062,14 +974,3 @@ function OtherTable({
   )
 }
 
-// ── Summary Card ──────────────────────────────────────────────────────────
-
-function SummaryCard({ label, value, sublabel, color }: { label: string; value: string; sublabel: string; color?: string }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3">
-      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider truncate">{label}</p>
-      <p className={`text-lg font-semibold mt-0.5 ${color || "text-gray-900"}`}>{value}</p>
-      <p className="text-[10px] text-gray-400 mt-0.5">{sublabel}</p>
-    </div>
-  )
-}

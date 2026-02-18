@@ -467,13 +467,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   if (step === "map") {
     return (
       <div className="max-w-4xl space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Configure Matching Fields</h3>
-          <p className="text-sm text-gray-500">
-            AI has paired columns that look related. Adjust which fields to match on, set tolerances, and remove any pairs that shouldn&apos;t affect matching.
-          </p>
-        </div>
-
         {/* Reconciliation Name — at the top */}
         <div>
           <Label className="text-xs text-gray-500">Reconciliation Name</Label>

@@ -524,15 +524,7 @@ export default function ReconciliationDetailPage() {
               sourceBLabel={sourceB.label}
               sourceAColumns={sourceA.columns as any}
               sourceBColumns={sourceB.columns as any}
-              matchedCount={selectedRunData.matchedCount}
-              exceptionCount={selectedRunData.exceptionCount}
-              variance={selectedRunData.variance}
-              totalSourceA={selectedRunData.totalSourceA}
-              totalSourceB={selectedRunData.totalSourceB}
               status={selectedRunData.status}
-              completedAt={selectedRunData.completedAt}
-              completedByUser={selectedRunData.completedByUser}
-              onComplete={handleRefreshRun}
               onRefresh={handleRefreshRun}
             />
           ) : (
