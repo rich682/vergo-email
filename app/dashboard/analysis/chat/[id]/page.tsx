@@ -19,7 +19,7 @@ interface Message {
 interface Conversation {
   id: string
   title: string
-  datasetIds: string[]
+  databaseIds: string[]
   messages: Message[]
 }
 

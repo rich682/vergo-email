@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma"
 import { callAgentLLM } from "@/lib/agents/llm-client"
 import { createOrgDuckDB, executeQuery, validateReadOnlySQL } from "./duckdb-manager"
 import { buildSchemaContext, buildSystemPrompt } from "./schema-context"
+import { ensureFreshParquet } from "./database-to-parquet"
 
 interface ChatInput {
   conversationId: string
@@ -65,15 +66,26 @@ export async function handleAnalysisChat(input: ChatInput) {
     throw new Error("Conversation not found")
   }
 
-  // 2. Load datasets
-  const datasetIds = conversation.datasetIds as string[]
-  const datasets = await prisma.analysisDataset.findMany({
-    where: {
-      organizationId,
-      status: "ready",
-      ...(datasetIds.length > 0 ? { id: { in: datasetIds } } : {}),
-    },
-  })
+  // 2. Load databases and ensure Parquet is fresh
+  const databaseIds = conversation.databaseIds as string[]
+  if (databaseIds.length === 0) {
+    // Save user message and return guidance
+    await prisma.analysisMessage.create({
+      data: { conversationId, role: "user", content: userMessage },
+    })
+    const msg = await prisma.analysisMessage.create({
+      data: {
+        conversationId,
+        role: "assistant",
+        content: "No databases are selected for this conversation. Please create a new chat and select at least one database to query.",
+      },
+    })
+    return msg
+  }
+
+  const databases = await Promise.all(
+    databaseIds.map((id) => ensureFreshParquet(id, organizationId))
+  )
 
   // 3. Save user message
   await prisma.analysisMessage.create({
@@ -96,11 +108,11 @@ export async function handleAnalysisChat(input: ChatInput) {
   }
 
   // 4. Build LLM context
-  const datasetsForContext = datasets.map((ds) => ({
-    tableName: ds.tableName,
-    name: ds.name,
-    schemaSnapshot: ds.schemaSnapshot as any,
-    summaryStats: ds.summaryStats as any,
+  const datasetsForContext = databases.map((db) => ({
+    tableName: db.analysisTableName,
+    name: db.name,
+    schemaSnapshot: db.analysisSchemaSnapshot,
+    summaryStats: db.analysisSummaryStats as any,
   }))
   const schemaContext = buildSchemaContext(datasetsForContext)
   const systemPrompt = buildSystemPrompt(schemaContext)
@@ -160,26 +172,10 @@ export async function handleAnalysisChat(input: ChatInput) {
   }
 
   // 8. Execute SQL against DuckDB
-  const datasetInfos = datasets
-    .filter((ds) => ds.parquetBlobUrl)
-    .map((ds) => ({
-      tableName: ds.tableName,
-      parquetUrl: ds.parquetBlobUrl!,
-    }))
-
-  if (datasetInfos.length === 0) {
-    const msg = await prisma.analysisMessage.create({
-      data: {
-        conversationId,
-        role: "assistant",
-        content: "No datasets are available for querying. Please upload a dataset first.",
-        model,
-        tokensUsed,
-        estimatedCostUsd: cost,
-      },
-    })
-    return msg
-  }
+  const datasetInfos = databases.map((db) => ({
+    tableName: db.analysisTableName,
+    parquetUrl: db.parquetBlobUrl,
+  }))
 
   const handle = await createOrgDuckDB(datasetInfos)
 

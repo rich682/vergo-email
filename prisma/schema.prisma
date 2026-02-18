@@ -1182,6 +1182,17 @@ model Database {
   syncStatus      String?  // null | "syncing" | "error" | "success"
   lastSyncError   String?  // Error message from last sync attempt
 
+  // Analysis / Parquet cache (for DuckDB analytical queries)
+  parquetBlobKey         String?   // Vercel Blob key, e.g., "databases/{orgId}/{id}.parquet"
+  parquetBlobUrl         String?   // Public URL for the Parquet file
+  parquetRowCount        Int?      // Row count at time of Parquet generation
+  parquetGeneratedAt     DateTime? // When the Parquet was last built
+  parquetStatus          String?   // null | "building" | "ready" | "stale" | "error"
+  parquetError           String?   // Error message if Parquet build failed
+  analysisSchemaSnapshot Json?     // DuckDB column types + sample values for LLM context
+  analysisSummaryStats   Json?     // Row count + per-column stats for LLM context
+  analysisTableName      String?   // Sanitized table name for DuckDB queries
+
   // Metadata
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1866,6 +1877,7 @@ model RequestTemplate {
 
 // ── Analysis Module ─────────────────────────────────────────────────────
 // Chat with your data - upload CSV/Excel, query via LLM-generated SQL (DuckDB + Parquet)
+// DEPRECATED: Analysis now queries Database records directly via Parquet cache. Remove in follow-up.
 
 model AnalysisDataset {
   id              String   @id @default(cuid())
@@ -1909,8 +1921,8 @@ model AnalysisConversation {
   userId          String
   title           String   @default("New Analysis")
 
-  // Which datasets this conversation can query (JSON array of dataset IDs, empty = all)
-  datasetIds      Json     @default("[]")
+  // Which databases this conversation can query (JSON array of Database IDs)
+  databaseIds     Json     @default("[]")
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

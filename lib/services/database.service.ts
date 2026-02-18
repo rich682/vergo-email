@@ -13,6 +13,7 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { parseNumericValue } from "@/lib/utils/safe-expression"
+import { invalidateParquet } from "@/lib/analysis/database-to-parquet"
 
 // ============================================
 // Types
@@ -519,6 +520,9 @@ export class DatabaseService {
       throw new Error("Database not found")
     }
 
+    // Invalidate Parquet cache (analysis will rebuild on next query)
+    invalidateParquet(id)
+
     return { cleared: true }
   }
 
@@ -641,6 +645,9 @@ export class DatabaseService {
         },
       })
     })
+
+    // Invalidate Parquet cache (analysis will rebuild on next query)
+    invalidateParquet(id)
 
     return {
       added: newRows.length,
@@ -791,6 +798,9 @@ export class DatabaseService {
         updatedAt: new Date(),
       },
     })
+
+    // Invalidate Parquet cache (analysis will rebuild on next query)
+    invalidateParquet(id)
 
     return { deleted: deletedCount }
   }
