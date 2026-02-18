@@ -13,6 +13,7 @@
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 import { decrypt } from "@/lib/encryption"
+import { invalidateParquet } from "@/lib/analysis/database-to-parquet"
 import {
   MergeAccountingService,
   MergeContact,
@@ -1151,6 +1152,9 @@ export class AccountingSyncService {
           lastSyncError: null,
         },
       })
+
+      // Invalidate Parquet cache (analysis will rebuild on next query)
+      invalidateParquet(databaseId)
 
       return { rowCount: trimmedRows.length }
     } catch (error) {

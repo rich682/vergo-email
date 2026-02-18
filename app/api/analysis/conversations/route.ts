@@ -30,7 +30,7 @@ export async function GET() {
     select: {
       id: true,
       title: true,
-      datasetIds: true,
+      databaseIds: true,
       createdAt: true,
       updatedAt: true,
       _count: { select: { messages: true } },
@@ -51,14 +51,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { title, datasetIds } = body as { title?: string; datasetIds?: string[] }
+  const { title, databaseIds } = body as { title?: string; databaseIds?: string[] }
 
   const conversation = await prisma.analysisConversation.create({
     data: {
       organizationId: session.user.organizationId,
       userId: session.user.id,
       title: title || "New Analysis",
-      datasetIds: datasetIds || [],
+      databaseIds: databaseIds || [],
     },
   })
 

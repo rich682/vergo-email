@@ -5,6 +5,9 @@
     },
     "app/api/reconciliations/analyze/*.ts": {
       "maxDuration": 60
+    },
+    "app/api/analysis/conversations/*/messages/*.ts": {
+      "maxDuration": 120
     }
   }
 }
