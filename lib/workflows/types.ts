@@ -187,6 +187,7 @@ export interface ActionContext {
   triggeredBy: string | null // userId or null for system
   triggerContext: TriggerContext
   stepResults: StepResult[] // Results from previous steps
+  lineageId?: string | null // From the automation rule — fallback for task_history recipient source
 }
 
 // ─── Send Request Action Params ──────────────────────────────────────────

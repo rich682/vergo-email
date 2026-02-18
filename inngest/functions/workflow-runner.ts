@@ -57,7 +57,7 @@ export const workflowRunner = inngest.createFunction(
     const rule = await step.run("load-rule", async () => {
       const r = await prisma.automationRule.findFirst({
         where: { id: automationRuleId, organizationId },
-        select: { id: true, actions: true, createdById: true },
+        select: { id: true, actions: true, createdById: true, lineageId: true },
       })
       if (!r) throw new Error(`AutomationRule ${automationRuleId} not found`)
       return r
@@ -97,6 +97,7 @@ export const workflowRunner = inngest.createFunction(
             triggeredBy: rule.createdById || triggerContext.metadata.triggeredBy as string || null,
             triggerContext,
             stepResults,
+            lineageId: rule.lineageId,
           })
         })
 
@@ -304,6 +305,7 @@ async function executeWorkflowStep(
     triggeredBy: string | null
     triggerContext: TriggerContext
     stepResults: StepResult[]
+    lineageId?: string | null
   }
 ): Promise<StepExecutionResult> {
   const actionContext: ActionContext = {
@@ -312,6 +314,7 @@ async function executeWorkflowStep(
     triggeredBy: context.triggeredBy,
     triggerContext: context.triggerContext,
     stepResults: context.stepResults,
+    lineageId: context.lineageId,
   }
 
   switch (step.type) {

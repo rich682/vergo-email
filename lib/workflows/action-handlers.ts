@@ -38,7 +38,7 @@ export async function executeAction(
     case "complete_report":
       return handleCompleteReport(actionParams, context)
     default:
-      return { success: false, error: `Unknown action type: ${actionType}` }
+      return { success: false, error: `This agent uses an unsupported action type. Please contact support.` }
   }
 }
 
@@ -64,7 +64,7 @@ async function handleSendRequestLegacy(
 ): Promise<ActionResult> {
   const questId = params.questId as string
   if (!questId) {
-    return { success: false, error: "Missing questId or requestTemplateId in actionParams" }
+    return { success: false, error: "No email template configured. Please re-create this agent and ensure the linked task has sent at least one request." }
   }
 
   const permCheck = await checkPermissionForAction(context, "inbox:send_emails")
@@ -104,10 +104,10 @@ async function handleSendRequestV2(
 ): Promise<ActionResult> {
   const { requestTemplateId, recipientSourceType } = params
   if (!requestTemplateId) {
-    return { success: false, error: "Missing requestTemplateId" }
+    return { success: false, error: "No email template configured. Please re-create this agent and ensure the linked task has sent at least one request." }
   }
   if (!recipientSourceType) {
-    return { success: false, error: "Missing recipientSourceType" }
+    return { success: false, error: "No recipient source configured. Please re-create this agent." }
   }
 
   const permCheck = await checkPermissionForAction(context, "inbox:send_emails")
@@ -121,7 +121,7 @@ async function handleSendRequestV2(
       where: { id: requestTemplateId, organizationId: context.organizationId },
     })
     if (!template) {
-      return { success: false, error: `Request template ${requestTemplateId} not found` }
+      return { success: false, error: "The email template for this agent could not be found. It may have been deleted. Please re-create the agent." }
     }
 
     // 2. Resolve recipients based on source type
@@ -136,7 +136,7 @@ async function handleSendRequestV2(
       const { resolveDatabaseRecipients } = await import("@/lib/services/database-recipient.service")
 
       if (!params.databaseId || !params.emailColumnKey) {
-        return { success: false, error: "Missing databaseId or emailColumnKey for database recipient source" }
+        return { success: false, error: "Database recipient configuration is incomplete. Please check the database and email column settings." }
       }
 
       const dbResult = await resolveDatabaseRecipients(
@@ -163,14 +163,15 @@ async function handleSendRequestV2(
       })
     } else if (recipientSourceType === "task_history") {
       // Task history source — resolve recipients from the linked task's previous period requests
-      if (!params.lineageId) {
-        return { success: false, error: "Missing lineageId for task_history recipient source" }
+      const lineageId = params.lineageId || context.lineageId
+      if (!lineageId) {
+        return { success: false, error: "Could not determine the linked task. Please re-create this agent and ensure you link it to a task." }
       }
 
       // Find the most recent task instance in this lineage that has sent requests
       const priorTask = await prisma.taskInstance.findFirst({
         where: {
-          lineageId: params.lineageId,
+          lineageId,
           organizationId: context.organizationId,
         },
         orderBy: { createdAt: "desc" },
@@ -178,7 +179,7 @@ async function handleSendRequestV2(
       })
 
       if (!priorTask) {
-        return { success: false, error: "No prior task instances found for this lineage" }
+        return { success: false, error: "No previous task found to inherit recipients from. Make sure the linked task has sent at least one request." }
       }
 
       // Get sent requests from the prior task to extract recipients
@@ -295,7 +296,7 @@ async function handleSendRequestV2(
           requestTemplateId
         )
       } else {
-        return { success: false, error: `No recipients configured for source type "${recipientSourceType}"` }
+        return { success: false, error: "No recipients are configured for this agent. Please check the recipient settings." }
       }
 
       const resolved = await resolveRecipientsWithReasons(context.organizationId, recipientSelection)
@@ -409,7 +410,7 @@ async function handleSendForm(
   const recipientUserIds = params.recipientUserIds as string[] | undefined
 
   if (!formDefinitionId || !taskInstanceId) {
-    return { success: false, error: "Missing formDefinitionId or taskInstanceId in actionParams" }
+    return { success: false, error: "Form configuration is incomplete. Please re-create this agent and ensure the linked task has a form set up." }
   }
 
   const permCheck = await checkPermissionForAction(context, "forms:send")
@@ -469,7 +470,7 @@ async function handleCompleteReconciliation(
   // runId can come from actionParams or trigger context
   const runId = (params.runId as string) || (context.triggerContext.metadata.runId as string)
   if (!runId) {
-    return { success: false, error: "Missing runId in actionParams or trigger context" }
+    return { success: false, error: "Could not find the reconciliation run to complete. The trigger event may not have provided the required data." }
   }
 
   const permCheck = await checkPermissionForAction(context, "reconciliations:resolve")
@@ -501,7 +502,7 @@ async function handleCompleteReport(
 ): Promise<ActionResult> {
   const reportDefinitionId = params.reportDefinitionId as string
   if (!reportDefinitionId) {
-    return { success: false, error: "Missing reportDefinitionId in actionParams" }
+    return { success: false, error: "No report definition configured. Please re-create this agent and link it to a task with a report." }
   }
 
   // Derive periodKey: explicit param → trigger metadata → active board fallback
@@ -524,7 +525,7 @@ async function handleCompleteReport(
     }
   }
   if (!periodKey) {
-    return { success: false, error: "Missing periodKey in actionParams or trigger context, and no active board found" }
+    return { success: false, error: "Could not determine the reporting period. Please ensure there is an active board or the trigger provides period information." }
   }
 
   const permCheck = await checkPermissionForAction(context, "reports:generate")
@@ -561,7 +562,7 @@ export async function handleAgentRun(
   context: ActionContext
 ): Promise<ActionResult> {
   if (!agentDefinitionId) {
-    return { success: false, error: "Missing agentDefinitionId" }
+    return { success: false, error: "Agent configuration is missing. Please check the automation setup." }
   }
 
   try {
@@ -570,7 +571,7 @@ export async function handleAgentRun(
       where: { id: agentDefinitionId, organizationId: context.organizationId },
     })
     if (!agent) {
-      return { success: false, error: `Agent ${agentDefinitionId} not found` }
+      return { success: false, error: "The agent could not be found. It may have been deleted." }
     }
 
     // Dispatch agent/run event — the existing agent runner handles execution
