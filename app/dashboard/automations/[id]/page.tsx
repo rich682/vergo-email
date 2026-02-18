@@ -181,7 +181,7 @@ export default function AutomationDetailPage() {
           conditions={rule.conditions}
           steps={steps}
           canManage={canManage}
-          onEdit={() => router.push(`/dashboard/automations/new?edit=${ruleId}`)}
+          onEdit={() => {}}
         />
       )}
       {activeTab === "activity" && <ActivityLogTab ruleId={ruleId} />}

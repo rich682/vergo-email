@@ -20,19 +20,6 @@ export type {
   FormSubmittedTriggerConditions,
 } from "@/lib/workflows/types"
 
-// ─── Template Types ──────────────────────────────────────────────────────────
-
-export interface AutomationTemplate {
-  id: string
-  name: string
-  description: string
-  icon: string // Lucide icon name
-  triggerType: import("@/lib/workflows/types").TriggerType
-  defaultConditions: Record<string, unknown>
-  defaultSteps: Partial<import("@/lib/workflows/types").WorkflowStep>[]
-  category: "requests" | "reconciliation" | "reports" | "forms" | "agents"
-}
-
 // ─── API Response Shapes ─────────────────────────────────────────────────────
 
 export interface AutomationRuleListItem {

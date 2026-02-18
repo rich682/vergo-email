@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Zap, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Zap, Loader2 } from "lucide-react"
 import { usePermissions } from "@/components/permissions-context"
 import { AutomationCard } from "@/components/automations/automation-card"
 import { AutomationStats } from "@/components/automations/automation-stats"
@@ -107,12 +106,7 @@ export default function AutomationsPage() {
             Create and manage agents to automate recurring workflows
           </p>
         </div>
-        {canManage && (
-          <Button size="sm" onClick={() => router.push("/dashboard/automations/new")}>
-            <Plus className="w-4 h-4 mr-1.5" />
-            New Agent
-          </Button>
-        )}
+        {/* Agent creation is handled via the agent create wizard dialog */}
       </div>
 
       {/* Loading */}
@@ -128,10 +122,7 @@ export default function AutomationsPage() {
           icon={<Zap className="w-6 h-6" />}
           title="No agents yet"
           description="Set up your first agent to automate recurring workflows like sending requests, running reconciliations, or generating reports."
-          action={canManage ? {
-            label: "Create Your First Agent",
-            onClick: () => router.push("/dashboard/automations/new"),
-          } : undefined}
+          action={undefined}
         />
       )}
 
