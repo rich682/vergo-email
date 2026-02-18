@@ -33,6 +33,8 @@ export async function executeAction(
       return handleSendRequest(actionParams, context)
     case "send_form":
       return handleSendForm(actionParams, context)
+    case "run_reconciliation":
+      return handleRunReconciliation(actionParams, context)
     case "complete_reconciliation":
       return handleCompleteReconciliation(actionParams, context)
     case "complete_report":
@@ -458,6 +460,174 @@ async function handleSendForm(
     }
   } catch (error: any) {
     return { success: false, error: error.message, targetType: "form_request", targetId: formDefinitionId }
+  }
+}
+
+// ─── run_reconciliation ──────────────────────────────────────────────────────
+
+/**
+ * Full reconciliation lifecycle:
+ * 1. Load config → verify it's database_database
+ * 2. Resolve periodKey from trigger context or active board
+ * 3. Create a new ReconciliationRun
+ * 4. Load database rows (with period filtering)
+ * 5. Run matching engine
+ * 6. Save results → status = REVIEW
+ */
+async function handleRunReconciliation(
+  params: Record<string, unknown>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const reconciliationConfigId = params.reconciliationConfigId as string
+  if (!reconciliationConfigId) {
+    return { success: false, error: "No reconciliation configuration linked. Please re-create this agent and link it to a task with a Database vs Database reconciliation." }
+  }
+
+  const permCheck = await checkPermissionForAction(context, "reconciliations:manage")
+  if (!permCheck.allowed) {
+    return { success: false, error: permCheck.reason }
+  }
+
+  try {
+    // 1. Load config
+    const config = await prisma.reconciliationConfig.findFirst({
+      where: { id: reconciliationConfigId, organizationId: context.organizationId },
+      select: {
+        id: true,
+        name: true,
+        sourceType: true,
+        sourceAConfig: true,
+        sourceBConfig: true,
+        matchingRules: true,
+      },
+    })
+
+    if (!config) {
+      return { success: false, error: "The reconciliation configuration could not be found. It may have been deleted." }
+    }
+
+    if (config.sourceType !== "database_database") {
+      return { success: false, error: "Automated reconciliation requires a Database vs Database configuration. The linked reconciliation uses file uploads which cannot be automated." }
+    }
+
+    // 2. Resolve periodKey from trigger context or active board
+    let periodKey = (params.periodKey as string) || (context.triggerContext.metadata.periodKey as string)
+    if (!periodKey) {
+      const activeBoard = await prisma.board.findFirst({
+        where: {
+          organizationId: context.organizationId,
+          status: { in: ["IN_PROGRESS", "NOT_STARTED"] },
+          periodStart: { not: null },
+        },
+        orderBy: { periodStart: "desc" },
+        select: { periodStart: true, periodEnd: true },
+      })
+      if (activeBoard?.periodStart) {
+        const start = activeBoard.periodStart.toISOString().split("T")[0]
+        const end = activeBoard.periodEnd?.toISOString().split("T")[0] || start
+        periodKey = `${start}_${end}`
+      }
+    }
+
+    // 3. Find the task instance linked to this config (for run association)
+    const linkedTask = await prisma.taskInstance.findFirst({
+      where: {
+        reconciliationConfigId,
+        organizationId: context.organizationId,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, boardId: true },
+    })
+
+    // 4. Create a new run
+    const { ReconciliationService } = await import("@/lib/services/reconciliation.service")
+    const run = await ReconciliationService.createRun({
+      organizationId: context.organizationId,
+      configId: reconciliationConfigId,
+      boardId: linkedTask?.boardId || undefined,
+      taskInstanceId: linkedTask?.id || undefined,
+    })
+
+    // 5. Load database rows (with period filtering)
+    const { populateRunFromDatabases } = await import("@/lib/services/reconciliation-database.service")
+    const loadResult = await populateRunFromDatabases({
+      runId: run.id,
+      organizationId: context.organizationId,
+      sourceAConfig: config.sourceAConfig as any,
+      sourceBConfig: config.sourceBConfig as any,
+      periodKey: periodKey || undefined,
+    })
+
+    // 6. Set run to PROCESSING and run matching engine
+    const { ReconciliationRunStatus } = await import("@prisma/client")
+    await ReconciliationService.updateRunStatus(run.id, context.organizationId, ReconciliationRunStatus.PROCESSING)
+
+    const { ReconciliationMatchingService } = await import("@/lib/services/reconciliation-matching.service")
+
+    // Get the full run with loaded rows
+    const fullRun = await ReconciliationService.getRun(run.id, context.organizationId)
+    if (!fullRun) {
+      return { success: false, error: "Run was created but could not be loaded", targetType: "reconciliation_run", targetId: run.id }
+    }
+
+    const sourceAConfig = config.sourceAConfig as any
+    const sourceBConfig = config.sourceBConfig as any
+    const matchingRules = config.matchingRules as any
+
+    const result = await ReconciliationMatchingService.runMatching(
+      (fullRun.sourceARows || []) as Record<string, any>[],
+      (fullRun.sourceBRows || []) as Record<string, any>[],
+      sourceAConfig,
+      sourceBConfig,
+      matchingRules
+    )
+
+    // Convert exceptions array to keyed map (same pattern as match API)
+    const exceptionsMap: Record<string, any> = {}
+    for (const exc of result.exceptions) {
+      const key = `${exc.source}-${exc.rowIdx}`
+      exceptionsMap[key] = {
+        category: exc.category,
+        reason: exc.reason,
+        source: exc.source,
+        rowIdx: exc.rowIdx,
+      }
+    }
+
+    // 7. Save results (status → REVIEW)
+    await ReconciliationService.saveMatchResults(run.id, context.organizationId, {
+      matchResults: {
+        matched: result.matched,
+        unmatchedA: result.unmatchedA,
+        unmatchedB: result.unmatchedB,
+      },
+      exceptions: exceptionsMap,
+      matchedCount: result.matched.length,
+      exceptionCount: result.unmatchedA.length + result.unmatchedB.length,
+      variance: result.variance,
+    })
+
+    return {
+      success: true,
+      data: {
+        runId: run.id,
+        sourceARowCount: loadResult.sourceARowCount,
+        sourceBRowCount: loadResult.sourceBRowCount,
+        matchedCount: result.matched.length,
+        exceptionCount: result.unmatchedA.length + result.unmatchedB.length,
+        variance: result.variance,
+        periodKey: periodKey || null,
+      },
+      targetType: "reconciliation_run",
+      targetId: run.id,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message,
+      targetType: "reconciliation_run",
+      targetId: reconciliationConfigId,
+    }
   }
 }
 

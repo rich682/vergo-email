@@ -207,6 +207,28 @@ function ReconciliationConfig({
   configuration: Record<string, unknown>
 }) {
   const configName = configuration.reconciliationConfigName as string | undefined
+  const [configSourceType, setConfigSourceType] = useState<string | null>(null)
+  const [checkingConfig, setCheckingConfig] = useState(false)
+  const reconciliationConfigId = configuration.reconciliationConfigId as string | undefined
+
+  // Check if the linked reconciliation config is database_database
+  useEffect(() => {
+    if (reconciliationConfigId) {
+      setCheckingConfig(true)
+      fetch(`/api/reconciliations/${reconciliationConfigId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.config?.sourceType) {
+            setConfigSourceType(data.config.sourceType)
+          }
+        })
+        .catch(() => {})
+        .finally(() => setCheckingConfig(false))
+    }
+  }, [reconciliationConfigId])
+
+  const isDatabaseDatabase = configSourceType === "database_database"
+  const isNotDatabaseDatabase = configSourceType && configSourceType !== "database_database"
 
   return (
     <div className="space-y-4">
@@ -215,7 +237,7 @@ function ReconciliationConfig({
         <div>
           <span>
             This automation uses the reconciliation configuration from the linked task.
-            The workflow includes AI matching, review approval, and completion.
+            The workflow loads data from both databases, runs AI matching, then waits for review.
           </span>
           {configName && (
             <p className="mt-1.5 font-medium text-gray-700">
@@ -225,15 +247,32 @@ function ReconciliationConfig({
         </div>
       </div>
 
-      {/* Limitation note */}
-      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-start gap-2">
-        <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <span>
-          Note: Automated reconciliation works best when data sources are connected databases.
-          If your reconciliation requires manual file uploads, the data will need to be
-          available before the agent can run.
-        </span>
-      </div>
+      {/* Warning if config is not database_database */}
+      {checkingConfig ? (
+        <div className="text-xs text-gray-500 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Checking reconciliation configuration...
+        </div>
+      ) : isNotDatabaseDatabase ? (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-medium">Incompatible configuration.</span>{" "}
+            Automated reconciliation requires a <strong>Database vs Database</strong> configuration.
+            The linked task uses document uploads which cannot be automated.
+            Please update the reconciliation to use database sources in the{" "}
+            <a href="/dashboard/reconciliations" className="underline">Reconciliation Builder</a>.
+          </div>
+        </div>
+      ) : isDatabaseDatabase ? (
+        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-3 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+          <span>
+            Database vs Database configuration detected. The agent will automatically load
+            data from both databases and run matching each period.
+          </span>
+        </div>
+      ) : null}
 
       {/* Fixed workflow preview */}
       <div className="space-y-2">
@@ -242,7 +281,7 @@ function ReconciliationConfig({
         </div>
         <div className="space-y-1.5">
           {[
-            { num: 1, label: "Run AI reconciliation agent" },
+            { num: 1, label: "Load data & run AI matching" },
             { num: 2, label: "Review reconciliation results" },
             { num: 3, label: "Complete reconciliation" },
           ].map((step) => (

@@ -1541,6 +1541,9 @@ model ReconciliationConfig {
 
   name           String   // "Chase Checking Bank Rec"
 
+  // Source type: "document_document" | "database_document" | "database_database"
+  sourceType     String   @default("document_document")
+
   // Source definitions (JSON)
   // { label: string, columns: { key: string, label: string, type: "date"|"amount"|"text"|"reference" }[] }
   sourceAConfig  Json

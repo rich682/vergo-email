@@ -390,8 +390,8 @@ function buildActionsFromConfiguration(
         {
           id: generateStepId(),
           type: "action",
-          label: "Run reconciliation agent",
-          actionType: "complete_reconciliation",
+          label: "Run reconciliation",
+          actionType: "run_reconciliation",
           actionParams: {
             reconciliationConfigId: config.reconciliationConfigId,
           },

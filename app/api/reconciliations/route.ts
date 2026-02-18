@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, sourceAConfig, sourceBConfig, matchingRules } = body
+    const { name, sourceType, sourceAConfig, sourceBConfig, matchingRules } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     const config = await ReconciliationService.createConfig({
       organizationId: user.organizationId,
       name,
+      sourceType,
       sourceAConfig: sourceAConfig || { label: "Source A", columns: [] },
       sourceBConfig: sourceBConfig || { label: "Source B", columns: [] },
       matchingRules: matchingRules || {

@@ -125,7 +125,7 @@ function ConfigSummary({
     const configName = configuration.reconciliationConfigName as string | undefined
     return (
       <div className="space-y-1.5 text-sm text-gray-700">
-        <p>3-step workflow: AI matching &rarr; Review &rarr; Complete</p>
+        <p>3-step workflow: Load data &amp; match &rarr; Review &rarr; Complete</p>
         {configName && (
           <p className="text-xs text-gray-500">Configuration: {configName}</p>
         )}

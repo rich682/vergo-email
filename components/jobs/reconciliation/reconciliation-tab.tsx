@@ -18,8 +18,9 @@ interface ReconciliationTabProps {
 interface ReconciliationConfigSummary {
   id: string
   name: string
-  sourceAConfig: { label: string; columns: any[] }
-  sourceBConfig: { label: string; columns: any[] }
+  sourceType?: string // "document_document" | "database_document" | "database_database"
+  sourceAConfig: { label: string; columns: any[]; sourceType?: string; databaseId?: string }
+  sourceBConfig: { label: string; columns: any[]; sourceType?: string; databaseId?: string }
   matchingRules: any
   createdAt: string
 }
@@ -50,6 +51,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
   const [linkedConfig, setLinkedConfig] = useState<ReconciliationConfigSummary | null>(null)
   const [activeRun, setActiveRun] = useState<ReconciliationRun | null>(null)
   const [matching, setMatching] = useState(false)
+  const [loadingDatabase, setLoadingDatabase] = useState(false)
   const [error, setError] = useState("")
   const [viewerDenied, setViewerDenied] = useState(false)
 
@@ -187,6 +189,45 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
     } catch (err: any) {
       setError(err.message)
     } finally {
+      setMatching(false)
+    }
+  }
+
+  // Load database rows into run, then trigger matching
+  const handleLoadDatabaseAndMatch = async () => {
+    if (!linkedConfig || !activeRun) return
+    setLoadingDatabase(true)
+    setError("")
+
+    try {
+      // Load database rows
+      const loadRes = await fetch(`/api/reconciliations/${linkedConfig.id}/runs/${activeRun.id}/load-database`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+
+      if (!loadRes.ok) {
+        const data = await loadRes.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to load database rows")
+      }
+
+      // Now trigger matching
+      setMatching(true)
+      const matchRes = await fetch(`/api/reconciliations/${linkedConfig.id}/runs/${activeRun.id}/match`, {
+        method: "POST",
+      })
+
+      if (!matchRes.ok) {
+        const data = await matchRes.json().catch(() => ({}))
+        throw new Error(data.error || "Matching failed")
+      }
+
+      await fetchRun(linkedConfig.id, activeRun.id)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoadingDatabase(false)
       setMatching(false)
     }
   }
@@ -371,15 +412,25 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
     )
   }
 
-  // Run: PENDING - upload files
+  // Run: PENDING - upload files or load database rows
   if (activeRun.status === "PENDING") {
+    const isDatabaseDatabase = linkedConfig.sourceType === "database_database"
+    const isDatabaseDocument = linkedConfig.sourceType === "database_document"
+    const hasDatabaseSources = isDatabaseDatabase || isDatabaseDocument
+
     return (
       <div className="space-y-4">
         <AgentTaskWidget configId={linkedConfig.id} readOnly={readOnly} />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium text-gray-700">{linkedConfig.name}</h3>
-            <p className="text-xs text-gray-400">Upload both source files to begin</p>
+            <p className="text-xs text-gray-400">
+              {isDatabaseDatabase
+                ? "Load data from both databases to begin"
+                : isDatabaseDocument
+                ? "Load database data and upload a file to begin"
+                : "Upload both source files to begin"}
+            </p>
           </div>
           <Button
             onClick={handleUnlinkConfig}
@@ -392,15 +443,46 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
             Unlink
           </Button>
         </div>
-        <ReconciliationUpload
-          configId={linkedConfig.id}
-          runId={activeRun.id}
-          sourceALabel={linkedConfig.sourceAConfig.label}
-          sourceBLabel={linkedConfig.sourceBConfig.label}
-          sourceAFileName={activeRun.sourceAFileName}
-          sourceBFileName={activeRun.sourceBFileName}
-          onBothUploaded={handleRunMatching}
-        />
+
+        {isDatabaseDatabase ? (
+          /* Database vs Database: Show "Load Data & Match" button */
+          <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+            <Scale className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-600 mb-1">
+              {linkedConfig.sourceAConfig.label} vs {linkedConfig.sourceBConfig.label}
+            </p>
+            <p className="text-xs text-gray-400 mb-4">
+              Data will be loaded from both connected databases
+            </p>
+            {!readOnly && (
+              <Button
+                onClick={handleLoadDatabaseAndMatch}
+                disabled={loadingDatabase}
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                {loadingDatabase ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading data...
+                  </>
+                ) : (
+                  <>Load Data & Match</>
+                )}
+              </Button>
+            )}
+          </div>
+        ) : (
+          /* Document-based: use file upload component */
+          <ReconciliationUpload
+            configId={linkedConfig.id}
+            runId={activeRun.id}
+            sourceALabel={linkedConfig.sourceAConfig.label}
+            sourceBLabel={linkedConfig.sourceBConfig.label}
+            sourceAFileName={activeRun.sourceAFileName}
+            sourceBFileName={activeRun.sourceBFileName}
+            onBothUploaded={handleRunMatching}
+          />
+        )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     )

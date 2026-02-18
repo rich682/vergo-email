@@ -93,6 +93,7 @@ export type WorkflowStepType = "action" | "condition" | "human_approval" | "agen
 export type ActionType =
   | "send_request"
   | "send_form"
+  | "run_reconciliation"
   | "complete_reconciliation"
   | "complete_report"
 

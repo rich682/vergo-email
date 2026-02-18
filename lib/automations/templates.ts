@@ -78,14 +78,16 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     id: "run-reconciliation",
     name: "Run Reconciliation",
     description:
-      "Auto-reconcile data sources each period (e.g. general ledger with bank statement). Uses an existing Reconciliation Builder.",
+      "Auto-reconcile two databases each period (e.g. general ledger vs bank statement). Requires a Database vs Database reconciliation configuration.",
     icon: "Scale",
     triggerType: "board_created",
     defaultConditions: {},
     defaultSteps: [
       {
-        type: "agent_run",
-        label: "Run reconciliation agent",
+        type: "action",
+        label: "Run reconciliation",
+        actionType: "run_reconciliation",
+        actionParams: {},
       },
       {
         type: "human_approval",

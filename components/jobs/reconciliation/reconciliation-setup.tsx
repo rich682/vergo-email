@@ -22,9 +22,14 @@ import {
   X,
   Link2,
   AlertCircle,
+  Database,
+  Files,
 } from "lucide-react"
+import { DatabaseSourcePicker, type DatabaseAnalysis } from "./database-source-picker"
 
 // ── Types ──────────────────────────────────────────────────────────────
+
+type SourceType = "document_document" | "database_document" | "database_database"
 
 interface DetectedColumn {
   key: string
@@ -61,13 +66,20 @@ interface ReconciliationSetupProps {
 
 export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, onCreated }: ReconciliationSetupProps) {
   // Step tracking
-  const [step, setStep] = useState<"upload" | "map" | "confirm">("upload")
+  const [step, setStep] = useState<"source_type" | "upload" | "map" | "confirm">("source_type")
 
-  // File analysis results
+  // Source type selection
+  const [sourceType, setSourceType] = useState<SourceType>("document_document")
+
+  // File analysis results (for document sources)
   const [sourceA, setSourceA] = useState<FileAnalysis | null>(null)
   const [sourceB, setSourceB] = useState<FileAnalysis | null>(null)
   const [analyzingA, setAnalyzingA] = useState(false)
   const [analyzingB, setAnalyzingB] = useState(false)
+
+  // Database analysis results (for database sources)
+  const [dbAnalysisA, setDbAnalysisA] = useState<DatabaseAnalysis | null>(null)
+  const [dbAnalysisB, setDbAnalysisB] = useState<DatabaseAnalysis | null>(null)
 
   // Source labels
   const [sourceALabel, setSourceALabel] = useState("Source A")
@@ -82,6 +94,24 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // State
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
+
+  // ── Source type helpers ──────────────────────────────────────────────
+
+  const sourceAIsDatabase = sourceType === "database_document" || sourceType === "database_database"
+  const sourceBIsDatabase = sourceType === "database_database"
+
+  // Get the columns for mapping (from file or database analysis)
+  const getSourceAColumns = (): DetectedColumn[] => {
+    if (sourceAIsDatabase) return dbAnalysisA?.columns || []
+    return sourceA?.columns || []
+  }
+  const getSourceBColumns = (): DetectedColumn[] => {
+    if (sourceBIsDatabase) return dbAnalysisB?.columns || []
+    return sourceB?.columns || []
+  }
+
+  const sourceAReady = sourceAIsDatabase ? !!dbAnalysisA : !!sourceA
+  const sourceBReady = sourceBIsDatabase ? !!dbAnalysisB : !!sourceB
 
   // ── File Analysis ──────────────────────────────────────────────────
 
@@ -125,20 +155,34 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     }
   }, [])
 
-  // ── Auto-generate mappings when both files are analyzed ────────────
+  // ── Database analysis handlers ────────────────────────────────────
+
+  const handleDbAnalyzedA = useCallback((analysis: DatabaseAnalysis) => {
+    setDbAnalysisA(analysis)
+    setSourceALabel(analysis.databaseName)
+  }, [])
+
+  const handleDbAnalyzedB = useCallback((analysis: DatabaseAnalysis) => {
+    setDbAnalysisB(analysis)
+    setSourceBLabel(analysis.databaseName)
+  }, [])
+
+  // ── Auto-generate mappings when both sources are ready ────────────
 
   const generateMappings = useCallback(() => {
-    if (!sourceA || !sourceB) return
+    const colsA = getSourceAColumns()
+    const colsB = getSourceBColumns()
+    if (colsA.length === 0 || colsB.length === 0) return
 
     const newMappings: ColumnMapping[] = []
     const usedB = new Set<string>()
 
-    for (const colA of sourceA.columns) {
+    for (const colA of colsA) {
       // Try to find matching column in B by label similarity
       let bestMatch: DetectedColumn | null = null
       let bestScore = 0
 
-      for (const colB of sourceB.columns) {
+      for (const colB of colsB) {
         if (usedB.has(colB.key)) continue
 
         // Score: exact label match = 100, case-insensitive = 80, contains = 50
@@ -175,7 +219,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
     setMappings(newMappings)
     setStep("map")
-  }, [sourceA, sourceB])
+  }, [sourceA, sourceB, dbAnalysisA, dbAnalysisB, sourceType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mapping helpers ────────────────────────────────────────────────
 
@@ -202,11 +246,13 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   }
 
   const addMapping = () => {
-    if (!sourceA || !sourceB) return
-    const unusedA = sourceA.columns.filter(
+    const colsA = getSourceAColumns()
+    const colsB = getSourceBColumns()
+    if (colsA.length === 0 || colsB.length === 0) return
+    const unusedA = colsA.filter(
       (c) => !mappings.some((m) => m.sourceAKey === c.key)
     )
-    const unusedB = sourceB.columns.filter(
+    const unusedB = colsB.filter(
       (c) => !mappings.some((m) => m.sourceBKey === c.key)
     )
     if (unusedA.length > 0 && unusedB.length > 0) {
@@ -225,13 +271,13 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // ── Create & Run ──────────────────────────────────────────────────
 
   const handleCreate = async () => {
-    if (!sourceA || !sourceB || mappings.length === 0) return
+    if (!sourceAReady || !sourceBReady || mappings.length === 0) return
     setCreating(true)
     setError("")
 
     try {
       // Build source configs from mappings
-      const sourceAConfig = {
+      const sourceAConfig: Record<string, any> = {
         label: sourceALabel,
         columns: mappings.map((m) => ({
           key: m.sourceAKey,
@@ -239,13 +285,32 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           type: m.type,
         })),
       }
-      const sourceBConfig = {
+      const sourceBConfig: Record<string, any> = {
         label: sourceBLabel,
         columns: mappings.map((m) => ({
           key: m.sourceBKey,
           label: m.label,
           type: m.type,
         })),
+      }
+
+      // Add database metadata to source configs if applicable
+      if (sourceAIsDatabase && dbAnalysisA) {
+        sourceAConfig.sourceType = "database"
+        sourceAConfig.databaseId = dbAnalysisA.databaseId
+        if (dbAnalysisA.dateColumnKey) sourceAConfig.dateColumnKey = dbAnalysisA.dateColumnKey
+        if (dbAnalysisA.cadence) sourceAConfig.cadence = dbAnalysisA.cadence
+      } else {
+        sourceAConfig.sourceType = "file"
+      }
+
+      if (sourceBIsDatabase && dbAnalysisB) {
+        sourceBConfig.sourceType = "database"
+        sourceBConfig.databaseId = dbAnalysisB.databaseId
+        if (dbAnalysisB.dateColumnKey) sourceBConfig.dateColumnKey = dbAnalysisB.dateColumnKey
+        if (dbAnalysisB.cadence) sourceBConfig.cadence = dbAnalysisB.cadence
+      } else {
+        sourceBConfig.sourceType = "file"
       }
 
       // Build matching rules from per-column tolerances
@@ -267,6 +332,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
+          sourceType,
           sourceAConfig,
           sourceBConfig,
           matchingRules: {
@@ -310,7 +376,24 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
       const { run } = await runRes.json()
 
-      // 3. Upload both files to the run
+      // 3. Load data into the run based on source type
+      const hasDatabaseSources = sourceAIsDatabase || sourceBIsDatabase
+
+      if (hasDatabaseSources) {
+        // Load database rows via load-database endpoint
+        const loadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/load-database`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+        if (!loadRes.ok) {
+          let errorMsg = "Failed to load database rows"
+          try { const data = await loadRes.json(); errorMsg = data.error || errorMsg } catch {}
+          throw new Error(errorMsg)
+        }
+      }
+
+      // Upload any file sources
       const uploadFile = async (file: File, source: "A" | "B") => {
         const fd = new FormData()
         fd.append("file", file)
@@ -326,10 +409,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         }
       }
 
-      await Promise.all([
-        uploadFile(sourceA.file, "A"),
-        uploadFile(sourceB.file, "B"),
-      ])
+      const fileUploads: Promise<void>[] = []
+      if (!sourceAIsDatabase && sourceA) fileUploads.push(uploadFile(sourceA.file, "A"))
+      if (!sourceBIsDatabase && sourceB) fileUploads.push(uploadFile(sourceB.file, "B"))
+      if (fileUploads.length > 0) await Promise.all(fileUploads)
 
       // 4. Trigger matching
       const matchRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/match`, {
@@ -353,7 +436,89 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     }
   }
 
-  // ── Render: Step 1 - Upload ───────────────────────────────────────
+  // ── Render: Step 0 - Source Type ────────────────────────────────────
+
+  if (step === "source_type") {
+    const SOURCE_TYPE_OPTIONS: { value: SourceType; title: string; description: string; icon: React.ReactNode }[] = [
+      {
+        value: "document_document",
+        title: "Document vs Document",
+        description: "Reconcile two uploaded files (CSV, Excel, PDF)",
+        icon: <Files className="w-6 h-6" />,
+      },
+      {
+        value: "database_document",
+        title: "Database vs Document",
+        description: "Reconcile a connected database against an uploaded file",
+        icon: (
+          <div className="flex items-center gap-1">
+            <Database className="w-5 h-5" />
+            <span className="text-gray-300 text-xs">&times;</span>
+            <FileText className="w-5 h-5" />
+          </div>
+        ),
+      },
+      {
+        value: "database_database",
+        title: "Database vs Database",
+        description: "Reconcile two connected databases — required for AI agent automation",
+        icon: (
+          <div className="flex items-center gap-1">
+            <Database className="w-5 h-5" />
+            <span className="text-gray-300 text-xs">&times;</span>
+            <Database className="w-5 h-5" />
+          </div>
+        ),
+      },
+    ]
+
+    return (
+      <div className="max-w-3xl space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Choose Source Type</h3>
+          <p className="text-sm text-gray-500">
+            Select how you want to provide data for this reconciliation.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {SOURCE_TYPE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                setSourceType(option.value)
+                // Reset sources when switching type
+                setSourceA(null)
+                setSourceB(null)
+                setDbAnalysisA(null)
+                setDbAnalysisB(null)
+                setSourceALabel("Source A")
+                setSourceBLabel("Source B")
+                setMappings([])
+                setStep("upload")
+              }}
+              className={`flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all hover:border-orange-300 hover:bg-orange-50/50 ${
+                sourceType === option.value
+                  ? "border-orange-400 bg-orange-50/50"
+                  : "border-gray-200 bg-white"
+              }`}
+            >
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">
+                {option.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-medium text-gray-900">{option.title}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{option.description}</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Render: Step 1 - Upload / Select Sources ───────────────────────
 
   const DropZone = ({ side, analysis, analyzing }: {
     side: "A" | "B"
@@ -441,19 +606,64 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   }
 
   if (step === "upload") {
+    const sourceTypeLabel =
+      sourceType === "document_document" ? "Document vs Document" :
+      sourceType === "database_document" ? "Database vs Document" :
+      "Database vs Database"
+
     return (
       <div className="max-w-3xl space-y-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Files to Reconcile</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {sourceType === "document_document" ? "Upload Files to Reconcile" :
+               sourceType === "database_database" ? "Select Databases to Reconcile" :
+               "Select Sources to Reconcile"}
+            </h3>
+            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+              {sourceTypeLabel}
+            </span>
+          </div>
           <p className="text-sm text-gray-500">
-            Upload both reports and AI will automatically detect the columns and data types.
-            Source A is your source of truth — unmatched Source A rows will appear in the &ldquo;Not Matched&rdquo; tab.
+            {sourceType === "document_document" ? (
+              <>Upload both reports and AI will automatically detect the columns and data types.
+              Source A is your source of truth — unmatched Source A rows will appear in the &ldquo;Not Matched&rdquo; tab.</>
+            ) : sourceType === "database_database" ? (
+              <>Select the two databases to reconcile. AI will map columns automatically.
+              Source A is your source of truth.</>
+            ) : (
+              <>Select a database for Source A and upload a file for Source B.
+              Source A is your source of truth.</>
+            )}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
-          <DropZone side="A" analysis={sourceA} analyzing={analyzingA} />
-          <DropZone side="B" analysis={sourceB} analyzing={analyzingB} />
+          {/* Source A */}
+          {sourceAIsDatabase ? (
+            <DatabaseSourcePicker
+              side="A"
+              sideLabel="Source of Truth"
+              sideDescription="e.g. ERP, General Ledger, AP report"
+              onAnalyzed={handleDbAnalyzedA}
+              selectedDatabaseId={dbAnalysisA?.databaseId}
+            />
+          ) : (
+            <DropZone side="A" analysis={sourceA} analyzing={analyzingA} />
+          )}
+
+          {/* Source B */}
+          {sourceBIsDatabase ? (
+            <DatabaseSourcePicker
+              side="B"
+              sideLabel="Comparison"
+              sideDescription="e.g. Bank statement, card feed"
+              onAnalyzed={handleDbAnalyzedB}
+              selectedDatabaseId={dbAnalysisB?.databaseId}
+            />
+          ) : (
+            <DropZone side="B" analysis={sourceB} analyzing={analyzingB} />
+          )}
         </div>
 
         {error && (
@@ -463,20 +673,31 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </div>
         )}
 
-        {sourceA && sourceB && (
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Sparkles className="w-4 h-4 text-orange-500" />
-              <span>AI detected {sourceA.columns.length} + {sourceB.columns.length} columns</span>
+        <div className="flex items-center justify-between pt-2">
+          <button
+            onClick={() => setStep("source_type")}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            &larr; Change source type
+          </button>
+
+          {sourceAReady && sourceBReady && (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Sparkles className="w-4 h-4 text-orange-500" />
+                <span>
+                  {getSourceAColumns().length} + {getSourceBColumns().length} columns detected
+                </span>
+              </div>
+              <Button
+                onClick={generateMappings}
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                Map Columns <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </div>
-            <Button
-              onClick={generateMappings}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
-            >
-              Map Columns <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     )
   }
@@ -484,6 +705,9 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // ── Render: Step 2 - Column Mapping ───────────────────────────────
 
   if (step === "map") {
+    const colsA = getSourceAColumns()
+    const colsB = getSourceBColumns()
+
     return (
       <div className="max-w-4xl space-y-6">
         {/* Reconciliation Name — at the top */}
@@ -550,7 +774,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                     value={mapping.sourceAKey}
                     onValueChange={(v) => {
                       const updated = [...mappings]
-                      const col = sourceA?.columns.find((c) => c.key === v)
+                      const col = colsA.find((c) => c.key === v)
                       updated[i] = { ...updated[i], sourceAKey: v, label: col?.label || v }
                       setMappings(updated)
                     }}
@@ -559,10 +783,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {sourceA?.columns.map((col) => (
+                      {colsA.map((col) => (
                         <SelectItem key={col.key} value={col.key}>
                           {col.label}
-                          <span className="ml-1 text-gray-400">({col.sampleValues[0] || ""})</span>
+                          {col.sampleValues[0] && (
+                            <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -581,10 +807,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {sourceB?.columns.map((col) => (
+                      {colsB.map((col) => (
                         <SelectItem key={col.key} value={col.key}>
                           {col.label}
-                          <span className="ml-1 text-gray-400">({col.sampleValues[0] || ""})</span>
+                          {col.sampleValues[0] && (
+                            <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -608,7 +836,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                 <div>
                   {mapping.type === "amount" ? (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400">±$</span>
+                      <span className="text-xs text-gray-400">&plusmn;$</span>
                       <Input
                         type="number"
                         step="0.01"
@@ -621,7 +849,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                     </div>
                   ) : mapping.type === "date" ? (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400">±</span>
+                      <span className="text-xs text-gray-400">&plusmn;</span>
                       <Input
                         type="number"
                         step="1"
@@ -649,14 +877,14 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             ))}
 
             {/* Add mapping button — always visible as long as there are unused columns */}
-            {sourceA && sourceB && (
+            {colsA.length > 0 && colsB.length > 0 && (
               <button
                 onClick={addMapping}
                 disabled={
-                  sourceA.columns.filter(
+                  colsA.filter(
                     (c) => !mappings.some((m) => m.sourceAKey === c.key)
                   ).length === 0 ||
-                  sourceB.columns.filter(
+                  colsB.filter(
                     (c) => !mappings.some((m) => m.sourceBKey === c.key)
                   ).length === 0
                 }
@@ -670,16 +898,16 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
         {/* Summary of unmapped columns — informational only */}
         {(() => {
-          const unusedA = sourceA?.columns.filter(
+          const unusedA = colsA.filter(
             (c) => !mappings.some((m) => m.sourceAKey === c.key)
-          ) || []
-          const unusedB = sourceB?.columns.filter(
+          )
+          const unusedB = colsB.filter(
             (c) => !mappings.some((m) => m.sourceBKey === c.key)
-          ) || []
+          )
           if (unusedA.length === 0 && unusedB.length === 0) return null
           return (
             <p className="text-xs text-gray-400">
-              {unusedA.length + unusedB.length} column{unusedA.length + unusedB.length !== 1 ? "s" : ""} not used for matching — they&apos;ll still appear in your uploaded data but won&apos;t affect match results.
+              {unusedA.length + unusedB.length} column{unusedA.length + unusedB.length !== 1 ? "s" : ""} not used for matching — they&apos;ll still appear in your data but won&apos;t affect match results.
             </p>
           )
         })()}
@@ -697,7 +925,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             onClick={() => setStep("upload")}
             className="text-sm text-gray-500 hover:text-gray-700"
           >
-            &larr; Back to files
+            &larr; Back to sources
           </button>
           <Button
             onClick={handleCreate}

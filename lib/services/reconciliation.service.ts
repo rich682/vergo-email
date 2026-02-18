@@ -15,6 +15,11 @@ export interface SourceColumnDef {
 export interface SourceConfig {
   label: string
   columns: SourceColumnDef[]
+  // Database source metadata (only set for database sources)
+  sourceType?: "file" | "database"
+  databaseId?: string
+  dateColumnKey?: string   // Period filtering column
+  cadence?: string         // "daily" | "monthly" | "quarterly" | "annual"
 }
 
 export interface MatchingRules {
@@ -122,6 +127,7 @@ export class ReconciliationService {
   static async createConfig(data: {
     organizationId: string
     name: string
+    sourceType?: string
     sourceAConfig: SourceConfig
     sourceBConfig: SourceConfig
     matchingRules: MatchingRules
@@ -131,6 +137,7 @@ export class ReconciliationService {
       data: {
         organizationId: data.organizationId,
         name: data.name,
+        sourceType: data.sourceType || "document_document",
         sourceAConfig: data.sourceAConfig as any,
         sourceBConfig: data.sourceBConfig as any,
         matchingRules: data.matchingRules as any,
