@@ -12,7 +12,7 @@ const ACRONYMS = new Set(['ID', 'URL', 'API', 'PDF', 'CSV', 'SSN', 'EIN', 'TIN',
  * 
  * Examples:
  * - "unpaid_invoice_amount" -> "Unpaid Invoice Amount"
- * - "due_date" -> "Due Date"
+ * - "due_date" -> "Target Date"
  * - "invoice_id" -> "Invoice ID"
  * - "firstName" -> "First Name"
  * - "lastName" -> "Last Name"
@@ -51,7 +51,7 @@ export function humanizeStateKey(key: string): string {
  * 
  * Examples:
  * - "Unpaid Invoice Amount" -> "unpaid_invoice_amount"
- * - "Due Date" -> "due_date"
+ * - "Target Date" -> "target_date"
  */
 export function dehumanizeToKey(label: string): string {
   if (!label) return ''

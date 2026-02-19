@@ -215,17 +215,32 @@ export async function PATCH(
 
     // Check if we need to trigger auto-creation (status changing to COMPLETE)
     let shouldTriggerAutomation = false
+    const currentBoard = await BoardService.getById(boardId, organizationId)
     if (status === "COMPLETE") {
-      // Get current board to check if this is actually a status change
-      const currentBoard = await BoardService.getById(boardId, organizationId)
       if (currentBoard && currentBoard.status !== "COMPLETE") {
         shouldTriggerAutomation = true
       }
     }
 
+    // Determine closedAt based on status change
+    let closedAt: Date | null | undefined = undefined
+    if (status) {
+      const closedStatuses = ["CLOSED", "COMPLETE"]
+      const wasClosedBefore = currentBoard && closedStatuses.includes(currentBoard.status)
+      const isClosedNow = closedStatuses.includes(status)
+
+      if (isClosedNow && !wasClosedBefore) {
+        // Transitioning to a closed status — stamp the close time
+        closedAt = new Date()
+      } else if (!isClosedNow && wasClosedBefore) {
+        // Reopening — clear the close time
+        closedAt = null
+      }
+    }
+
     const board = await BoardService.update(
-      boardId, 
-      organizationId, 
+      boardId,
+      organizationId,
       {
         name: name?.trim(),
         description: description !== undefined ? description?.trim() || null : undefined,
@@ -236,7 +251,8 @@ export async function PATCH(
         periodEnd: finalPeriodEnd,
         collaboratorIds,
         automationEnabled,
-        skipWeekends
+        skipWeekends,
+        closedAt,
       },
       userId
     )

@@ -133,7 +133,7 @@ Description: ${job.description}`
         year: 'numeric'
       })
       prompt += `
-Due Date: ${formattedDate}`
+Target Date: ${formattedDate}`
     }
 
     if (labels?.tags && labels.tags.length > 0) {

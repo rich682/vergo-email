@@ -154,6 +154,7 @@ export interface UpdateBoardData {
   collaboratorIds?: string[]
   automationEnabled?: boolean
   skipWeekends?: boolean
+  closedAt?: Date | null
 }
 
 interface BoardOwner {
@@ -444,7 +445,8 @@ export class BoardService {
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
         automationEnabled: data.automationEnabled,
-        skipWeekends: data.skipWeekends
+        skipWeekends: data.skipWeekends,
+        closedAt: data.closedAt,
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },

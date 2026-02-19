@@ -998,7 +998,7 @@ export default function JobsPage() {
                   />
                 </div>
 
-                {/* Owner & Due Date - Side by side */}
+                {/* Owner & Target Date - Side by side */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="owner" className="text-sm">Owner <span className="text-red-500">*</span></Label>
@@ -1017,7 +1017,7 @@ export default function JobsPage() {
                     </select>
                   </div>
                   <div>
-                    <Label htmlFor="dueDate" className="text-sm">Due Date <span className="text-red-500">*</span></Label>
+                    <Label htmlFor="dueDate" className="text-sm">Target Date <span className="text-red-500">*</span></Label>
                     <Input
                       id="dueDate"
                       type="date"

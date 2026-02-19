@@ -146,7 +146,7 @@ Be concise and professional. Focus on what matters most for getting responses.`
 
 Task: "${jobName}"
 Status: ${jobStatus}
-Due Date: ${dueDate ? format(new Date(dueDate), "MMM d, yyyy") : "No deadline"}
+Target Date: ${dueDate ? format(new Date(dueDate), "MMM d, yyyy") : "No deadline"}
 ${daysUntilDue !== null ? `Days until due: ${daysUntilDue}` : ""}
 
 Request Summary:

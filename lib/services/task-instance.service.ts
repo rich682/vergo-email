@@ -80,6 +80,8 @@ export interface UpdateTaskInstanceInput {
   reconciliationConfigId?: string | null
   // Task type for agent integration
   taskType?: TaskType | null
+  // Completion tracking
+  completedAt?: Date | null
 }
 
 export interface TaskInstanceOwner {
@@ -465,6 +467,7 @@ export class TaskInstanceService {
     if (input.reportFilterBindings !== undefined) updateData.reportFilterBindings = input.reportFilterBindings
     if (input.reconciliationConfigId !== undefined) updateData.reconciliationConfigId = input.reconciliationConfigId
     if (input.taskType !== undefined) updateData.taskType = input.taskType
+    if (input.completedAt !== undefined) updateData.completedAt = input.completedAt
 
     const instance = await prisma.taskInstance.update({
       where: { id },

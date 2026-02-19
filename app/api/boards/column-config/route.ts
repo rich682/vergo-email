@@ -21,7 +21,7 @@ const DEFAULT_TASK_COLUMNS = [
   { id: "status", label: "Status", width: 130, visible: true, order: 1, isSystem: true },
   { id: "type", label: "Type", width: 120, visible: true, order: 2, isSystem: true },
   { id: "owner", label: "Owner", width: 120, visible: true, order: 3, isSystem: true },
-  { id: "dueDate", label: "Due Date", width: 100, visible: true, order: 4, isSystem: true },
+  { id: "dueDate", label: "Target Date", width: 100, visible: true, order: 4, isSystem: true },
   { id: "responses", label: "Responses", width: 100, visible: true, order: 5, isSystem: true },
   { id: "notes", label: "Notes", width: 150, visible: true, order: 6, isSystem: true },
   { id: "files", label: "Files", width: 80, visible: true, order: 7, isSystem: true },

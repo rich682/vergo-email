@@ -189,7 +189,7 @@ Refine the email according to the user's request.`
 ITEM CONTEXT:
 - Item Name: ${job.name}
 - Description: ${job.description || "Not provided"}
-- Due Date: ${job.dueDate ? job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Not set"}
+- Target Date: ${job.dueDate ? job.dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Not set"}
 - Labels: ${jobLabels.length > 0 ? jobLabels.join(', ') : "None"}
 
 AVAILABLE MERGE FIELDS (YOU MUST USE THESE):

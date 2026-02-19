@@ -26,6 +26,9 @@ import {
   PauseCircle,
   Check,
   Lock,
+  Zap,
+  Sparkles,
+  X,
 } from "lucide-react"
 import { formatDistanceToNow, differenceInDays, parseISO } from "date-fns"
 import {
@@ -82,6 +85,7 @@ interface Board {
   cadence: BoardCadence | null
   periodStart: string | null
   periodEnd: string | null
+  closedAt: string | null
   taskInstanceCount: number
   owner: BoardOwner | null
   collaborators: BoardCollaborator[]
@@ -205,24 +209,41 @@ function isFutureMonth(periodStart: string | null): boolean {
   return boardYear > currentYear || (boardYear === currentYear && boardMonth > currentMonth)
 }
 
-function getDaysUntilClose(periodEnd: string | null, isClosed: boolean): { text: string; className: string } | null {
+function getDaysUntilClose(periodEnd: string | null, periodStart: string | null, isClosed: boolean, closedAt: string | null): { text: string; className: string; icon?: "zap" | null } | null {
   if (!periodEnd) return null
-  if (isClosed) return { text: "Closed", className: "text-green-600" }
+
+  if (isClosed) {
+    // Show close speed for boards with closedAt
+    if (closedAt && periodStart) {
+      const closedDate = parseISO(closedAt)
+      const endDate = parseISO(periodEnd)
+      const startDate = parseISO(periodStart)
+      const daysToClose = differenceInDays(closedDate, startDate)
+
+      if (closedDate <= endDate) {
+        return { text: `Closed in ${daysToClose} days`, className: "text-green-600", icon: "zap" }
+      } else {
+        const daysLate = differenceInDays(closedDate, endDate)
+        return { text: `Closed ${daysLate} days late`, className: "text-amber-600", icon: null }
+      }
+    }
+    return { text: "Closed", className: "text-green-600", icon: null }
+  }
 
   const end = parseISO(periodEnd)
   const now = new Date()
   const days = differenceInDays(end, now)
 
   if (days < 0) {
-    return { text: "Overdue", className: "text-red-600 font-medium" }
+    return { text: "Overdue", className: "text-red-600 font-medium", icon: null }
   }
   if (days === 0) {
-    return { text: "Due today", className: "text-orange-600 font-medium" }
+    return { text: "Due today", className: "text-orange-600 font-medium", icon: null }
   }
   if (days === 1) {
-    return { text: "1 day", className: "text-orange-600" }
+    return { text: "1 day", className: "text-orange-600", icon: null }
   }
-  return { text: `${days} days`, className: "text-gray-600" }
+  return { text: `${days} days`, className: "text-gray-600", icon: null }
 }
 
 function getSimplifiedStatusBadge(status: BoardStatus, isCurrent: boolean, isFuture: boolean) {
@@ -276,6 +297,11 @@ export default function BoardsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [archiveConfirm, setArchiveConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
+
+  // Close summary modal state
+  const [closeSummaryData, setCloseSummaryData] = useState<any>(null)
+  const [loadingCloseSummary, setLoadingCloseSummary] = useState(false)
+  const [closeSummaryBoardId, setCloseSummaryBoardId] = useState<string | null>(null)
 
   // Column configuration state (for board rows - advanced mode only)
   const [columns, setColumns] = useState<BoardColumnDefinition[]>(DEFAULT_BOARD_COLUMNS)
@@ -548,6 +574,26 @@ export default function BoardsPage() {
     fetchBoards()
   }
 
+  // Fetch AI close summary
+  const fetchCloseSummary = async (boardId: string) => {
+    setCloseSummaryBoardId(boardId)
+    setLoadingCloseSummary(true)
+    setCloseSummaryData(null)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/close-summary`)
+      if (res.ok) {
+        const data = await res.json()
+        setCloseSummaryData(data)
+      } else {
+        setCloseSummaryData({ error: "Failed to generate close summary" })
+      }
+    } catch {
+      setCloseSummaryData({ error: "Failed to generate close summary" })
+    } finally {
+      setLoadingCloseSummary(false)
+    }
+  }
+
   // ============================================
   // Simplified Book Close View
   // ============================================
@@ -571,10 +617,11 @@ export default function BoardsPage() {
         ) : (
           <div className="border rounded-lg overflow-hidden">
             {/* Table Header */}
-            <div className="grid grid-cols-[1fr_140px_160px] gap-4 px-6 py-3 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <div className="grid grid-cols-[1fr_140px_200px_40px] gap-4 px-6 py-3 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
               <div>Month</div>
               <div>Status</div>
               <div>Days Until Close</div>
+              <div></div>
             </div>
 
             {/* Table Rows */}
@@ -583,13 +630,13 @@ export default function BoardsPage() {
                 const current = isCurrentMonth(board.periodStart)
                 const future = isFutureMonth(board.periodStart)
                 const isClosed = board.status === "CLOSED" || board.status === "COMPLETE"
-                const daysInfo = getDaysUntilClose(board.periodEnd, isClosed)
+                const daysInfo = getDaysUntilClose(board.periodEnd, board.periodStart, isClosed, board.closedAt)
 
                 return (
                   <div
                     key={board.id}
                     className={`
-                      grid grid-cols-[1fr_140px_160px] gap-4 px-6 py-4 items-center transition-colors
+                      grid grid-cols-[1fr_140px_200px_40px] gap-4 px-6 py-4 items-center transition-colors
                       ${current ? "border-l-4 border-l-orange-500 bg-orange-50/50 pl-5" : ""}
                       ${future ? "opacity-50" : "hover:bg-gray-50 cursor-pointer"}
                     `}
@@ -620,20 +667,147 @@ export default function BoardsPage() {
 
                     {/* Days Until Close */}
                     <div className="text-sm">
-                      {isClosed ? (
-                        <span className="flex items-center gap-1 text-green-600">
-                          <Check className="w-3.5 h-3.5" />
-                          Closed
+                      {daysInfo ? (
+                        <span className={`flex items-center gap-1 ${daysInfo.className}`}>
+                          {isClosed && <Check className="w-3.5 h-3.5" />}
+                          {daysInfo.icon === "zap" && <Zap className="w-3.5 h-3.5" />}
+                          {daysInfo.text}
                         </span>
-                      ) : daysInfo ? (
-                        <span className={daysInfo.className}>{daysInfo.text}</span>
                       ) : (
                         <span className="text-gray-300">—</span>
+                      )}
+                    </div>
+
+                    {/* AI Close Summary Button */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      {isClosed && (
+                        <button
+                          onClick={() => fetchCloseSummary(board.id)}
+                          className="p-1.5 rounded-lg hover:bg-purple-50 text-gray-400 hover:text-purple-600 transition-colors"
+                          title="AI close summary"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   </div>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {/* AI Close Summary Modal */}
+        {closeSummaryBoardId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setCloseSummaryBoardId(null); setCloseSummaryData(null) }}>
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white rounded-t-xl">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  <h2 className="text-lg font-semibold text-gray-900">Close Summary</h2>
+                </div>
+                <button onClick={() => { setCloseSummaryBoardId(null); setCloseSummaryData(null) }} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="px-6 py-4">
+                {loadingCloseSummary ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+                    <span className="ml-2 text-gray-500">Analyzing close performance...</span>
+                  </div>
+                ) : closeSummaryData?.error ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">{closeSummaryData.error}</p>
+                  </div>
+                ) : closeSummaryData ? (
+                  <div className="space-y-6">
+                    {/* Close Speed */}
+                    {closeSummaryData.summary?.closeSpeed && (
+                      <div className="flex items-center gap-3 p-4 rounded-lg bg-gray-50">
+                        {closeSummaryData.summary.closeSpeed === "early" ? (
+                          <Zap className="w-6 h-6 text-green-500" />
+                        ) : closeSummaryData.summary.closeSpeed === "late" ? (
+                          <span className="w-6 h-6 text-amber-500 text-xl">⏰</span>
+                        ) : (
+                          <Check className="w-6 h-6 text-green-500" />
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {closeSummaryData.summary.closeSpeed === "early" && `Closed ${closeSummaryData.summary.daysToClose} days after period start`}
+                            {closeSummaryData.summary.closeSpeed === "on_time" && "Closed on time"}
+                            {closeSummaryData.summary.closeSpeed === "late" && `Closed ${closeSummaryData.summary.daysToClose} days after period start`}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {closeSummaryData.summary.totalTasks} tasks total • {closeSummaryData.summary.periodDays}-day period
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Missed Target Tasks */}
+                    {closeSummaryData.summary?.missedTargetTasks?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">Tasks That Missed Target Date</h3>
+                        <div className="space-y-2">
+                          {closeSummaryData.summary.missedTargetTasks.map((task: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100">
+                              <span className="text-sm text-gray-800">{task.name}</span>
+                              <span className="text-xs text-amber-700 font-medium">{task.daysLate} days late</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Blocker Tasks */}
+                    {closeSummaryData.summary?.blockerTasks?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">Longest Running Tasks</h3>
+                        <div className="space-y-2">
+                          {closeSummaryData.summary.blockerTasks.map((task: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <span className="text-sm text-gray-800">{task.name}</span>
+                              <span className="text-xs text-gray-500">{task.daysInProgress} days in progress</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AI Insights */}
+                    {closeSummaryData.summary?.aiInsights?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">Key Insights</h3>
+                        <ul className="space-y-2">
+                          {closeSummaryData.summary.aiInsights.map((insight: string, i: number) => (
+                            <li key={i} className="flex gap-2 text-sm text-gray-700">
+                              <span className="text-purple-500 mt-0.5">•</span>
+                              <span>{insight}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* AI Recommendations */}
+                    {closeSummaryData.summary?.aiRecommendations?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-2">Recommendations</h3>
+                        <ul className="space-y-2">
+                          {closeSummaryData.summary.aiRecommendations.map((rec: string, i: number) => (
+                            <li key={i} className="flex gap-2 text-sm text-gray-700">
+                              <span className="text-green-500 mt-0.5">→</span>
+                              <span>{rec}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         )}

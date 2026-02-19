@@ -1092,7 +1092,7 @@ export default function JobDetailPage() {
 
                   <div className="flex items-center gap-2 mb-3 text-sm">
                     <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium">Deadline:</span>
+                    <span className="font-medium">Target Date:</span>
                     {editingDueDate ? (
                       <Input
                         type="date"

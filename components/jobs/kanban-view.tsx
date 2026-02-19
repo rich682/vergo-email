@@ -172,7 +172,7 @@ function TaskCard({ job, onClick }: TaskCardProps) {
             </span>
           </div>
 
-          {/* Due Date */}
+          {/* Target Date */}
           {job.dueDate && (
             <div className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
               <Calendar className="w-3 h-3" />

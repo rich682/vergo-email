@@ -421,6 +421,7 @@ model TaskInstance {
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  completedAt    DateTime? // When the task was completed — used for target vs actual analytics
 
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lineage         TaskLineage?               @relation(fields: [lineageId], references: [id], onDelete: SetNull)
@@ -905,8 +906,9 @@ model Board {
   skipWeekends      Boolean @default(true) // For DAILY cadence: skip weekends
 
   createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  closedAt    DateTime? // When the board was closed — used for close-speed analytics
 
   organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner            User?               @relation("BoardOwner", fields: [ownerId], references: [id])

@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/prisma"
 import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
+import { differenceInDays } from "date-fns"
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
@@ -142,6 +143,74 @@ export class BoardSummaryService {
       }
     }
 
+    // Fetch previous period data for context
+    let previousPeriodContext: string | null = null
+    if (board.periodStart && board.cadence === "MONTHLY") {
+      try {
+        const prevBoard = await prisma.board.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            cadence: "MONTHLY",
+            status: { in: ["CLOSED", "COMPLETE"] },
+            periodStart: { lt: board.periodStart },
+          },
+          orderBy: { periodStart: "desc" },
+          select: {
+            name: true,
+            closedAt: true,
+            periodEnd: true,
+            periodStart: true,
+            taskInstances: {
+              select: {
+                name: true,
+                status: true,
+                dueDate: true,
+                completedAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        })
+
+        if (prevBoard) {
+          const prevCloseDate = prevBoard.closedAt || prevBoard.periodEnd
+          const prevDaysToClose = prevBoard.periodStart && prevCloseDate
+            ? differenceInDays(prevCloseDate, prevBoard.periodStart)
+            : null
+          const prevCloseSpeed = prevBoard.periodEnd && prevCloseDate
+            ? (prevCloseDate <= prevBoard.periodEnd ? "on time" : "late")
+            : "unknown"
+
+          // Find tasks that missed their target date last month
+          const prevMissedTargets = prevBoard.taskInstances
+            .filter((t) => {
+              if (!t.dueDate) return false
+              const endTime = t.completedAt || t.updatedAt
+              return endTime > t.dueDate
+            })
+            .map((t) => {
+              const endTime = t.completedAt || t.updatedAt
+              const daysLate = differenceInDays(endTime, t.dueDate!)
+              return { name: t.name, daysLate: Math.max(0, daysLate) }
+            })
+            .sort((a, b) => b.daysLate - a.daysLate)
+            .slice(0, 5)
+
+          // Build context string
+          const parts: string[] = []
+          parts.push(`Last month (${prevBoard.name}), books closed ${prevDaysToClose ? `in ${prevDaysToClose} days` : ""} (${prevCloseSpeed}).`)
+
+          if (prevMissedTargets.length > 0) {
+            parts.push(`Tasks that missed their target date last month: ${prevMissedTargets.map((t) => `${t.name} (${t.daysLate} days late)`).join(", ")}.`)
+          }
+
+          previousPeriodContext = parts.join("\n")
+        }
+      } catch (error) {
+        console.warn("[BoardSummary] Failed to fetch previous period data:", error)
+      }
+    }
+
     // Generate AI summary if there's meaningful data
     let summaryBullets: string[] = []
     let recommendations: string[] = []
@@ -159,7 +228,8 @@ export class BoardSummaryService {
           highRiskRequests,
           pendingRequests,
           completedRequests,
-          riskHighlights
+          riskHighlights,
+          previousPeriodContext,
         })
         summaryBullets = aiSummary.bullets
         recommendations = aiSummary.recommendations
@@ -215,8 +285,17 @@ export class BoardSummaryService {
       riskLevel: string
       riskReason: string | null
     }>
+    previousPeriodContext?: string | null
   }): Promise<{ bullets: string[]; recommendations: string[] }> {
     const openai = getOpenAIClient()
+
+    const previousPeriodInstructions = data.previousPeriodContext
+      ? `\nYou also have data from the previous accounting period, including which tasks missed their target dates. Use this to identify recurring bottlenecks. If a task missed its target last month and is at risk this month, call it out.`
+      : ""
+
+    const previousPeriodData = data.previousPeriodContext
+      ? `\n\nPREVIOUS PERIOD DATA:\n${data.previousPeriodContext}\nCompare current progress against this pattern — flag tasks that consistently miss targets.`
+      : ""
 
     const completion = await callOpenAI(openai, {
       model: "gpt-4o-mini",
@@ -232,7 +311,7 @@ Provide:
 Focus on:
 - Completion progress
 - Risk items needing attention
-- Blockers or delays
+- Blockers or delays${previousPeriodInstructions}
 
 Respond with JSON:
 {
@@ -257,14 +336,14 @@ Requests:
 - Pending: ${data.pendingRequests}
 - High Risk: ${data.highRiskRequests}
 
-${data.riskHighlights.length > 0 ? `High Risk Items:\n${data.riskHighlights.map(r => `- ${r.requestName} (${r.recipientName}): ${r.riskReason || r.riskLevel}`).join("\n")}` : "No high-risk items."}
+${data.riskHighlights.length > 0 ? `High Risk Items:\n${data.riskHighlights.map(r => `- ${r.requestName} (${r.recipientName}): ${r.riskReason || r.riskLevel}`).join("\n")}` : "No high-risk items."}${previousPeriodData}
 
 Generate a summary and recommendations.`
         }
       ],
       response_format: { type: "json_object" },
       temperature: 0.3,
-      max_tokens: 300
+      max_tokens: 400
     })
 
     const response = completion.choices[0]?.message?.content

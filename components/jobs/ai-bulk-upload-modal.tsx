@@ -421,7 +421,7 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
                     placeholder="Paste your Excel data here (include headers)...
 
 Example:
-Task Name	Due Date	Owner	Description
+Task Name	Target Date	Owner	Description
 Reconcile bank accounts	2026-01-31	John	Monthly bank rec
 Review journal entries	2026-01-31	Sarah	Month-end review
 Submit payroll	2026-01-25	Mike	Process payroll"
@@ -468,7 +468,7 @@ Submit payroll	2026-01-25	Mike	Process payroll"
                 <p className="font-medium">Supported columns:</p>
                 <ul className="list-disc list-inside space-y-0.5 text-gray-400">
                   <li><span className="text-gray-600">Task Name</span> (required)</li>
-                  <li><span className="text-gray-600">Due Date</span> - Any date format</li>
+                  <li><span className="text-gray-600">Target Date</span> - Any date format</li>
                   <li><span className="text-gray-600">Owner</span> - Will match to your team members</li>
                   <li><span className="text-gray-600">Description</span> - Task details</li>
                   <li><span className="text-gray-600">Priority</span> - High, Medium, or Low</li>

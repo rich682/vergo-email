@@ -239,6 +239,20 @@ export async function PATCH(
       }
     }
 
+    // Determine completedAt based on status change
+    let completedAt: Date | null | undefined = undefined
+    if (effectiveStatus) {
+      const completedStatuses: string[] = ["COMPLETE", "COMPLETED"]
+      const wasCompletedBefore = completedStatuses.includes(existingInstance.status)
+      const isCompletedNow = completedStatuses.includes(effectiveStatus)
+
+      if (isCompletedNow && !wasCompletedBefore) {
+        completedAt = new Date()
+      } else if (!isCompletedNow && wasCompletedBefore) {
+        completedAt = null
+      }
+    }
+
     const taskInstance = await TaskInstanceService.update(id, organizationId, {
       name: name?.trim(),
       description: description !== undefined ? description?.trim() || null : undefined,
@@ -257,6 +271,8 @@ export async function PATCH(
       reconciliationConfigId: reconciliationConfigId !== undefined ? reconciliationConfigId : undefined,
       // Task type for agent integration
       taskType: taskType !== undefined ? taskType : undefined,
+      // Completion tracking
+      completedAt,
     })
 
     if (!taskInstance) {
