@@ -189,16 +189,20 @@ function isCurrentMonth(periodStart: string | null): boolean {
   if (!periodStart) return false
   const date = parseISO(periodStart)
   const now = new Date()
-  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+  // Use UTC methods since periodStart is stored as UTC midnight (e.g. 2026-02-01T00:00:00.000Z)
+  return date.getUTCMonth() === now.getMonth() && date.getUTCFullYear() === now.getFullYear()
 }
 
 function isFutureMonth(periodStart: string | null): boolean {
   if (!periodStart) return false
   const date = parseISO(periodStart)
   const now = new Date()
-  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const boardMonthStart = new Date(date.getFullYear(), date.getMonth(), 1)
-  return boardMonthStart > currentMonthStart
+  // Compare using UTC month/year from stored date vs local current date
+  const boardYear = date.getUTCFullYear()
+  const boardMonth = date.getUTCMonth()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
+  return boardYear > currentYear || (boardYear === currentYear && boardMonth > currentMonth)
 }
 
 function getDaysUntilClose(periodEnd: string | null, isClosed: boolean): { text: string; className: string } | null {

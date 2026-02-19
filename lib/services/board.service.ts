@@ -892,21 +892,21 @@ export class BoardService {
     createdById: string
   ): Promise<void> {
     const now = new Date()
-    const currentMonth = now.getMonth() // 0-indexed
-    const currentYear = now.getFullYear()
+    const currentMonth = now.getUTCMonth() // 0-indexed, UTC
+    const currentYear = now.getUTCFullYear()
 
     // Calculate fiscal year start
     // If fiscal year starts in July (7) and we're in Feb (1), fiscal year started July of previous year
     const fiscalMonthIndex = fiscalYearStartMonth - 1 // Convert to 0-indexed
     let fiscalYearStart: Date
     if (currentMonth >= fiscalMonthIndex) {
-      fiscalYearStart = new Date(currentYear, fiscalMonthIndex, 1)
+      fiscalYearStart = new Date(Date.UTC(currentYear, fiscalMonthIndex, 1))
     } else {
-      fiscalYearStart = new Date(currentYear - 1, fiscalMonthIndex, 1)
+      fiscalYearStart = new Date(Date.UTC(currentYear - 1, fiscalMonthIndex, 1))
     }
 
     // Check existing MONTHLY boards for this fiscal year range
-    const fiscalYearEnd = new Date(fiscalYearStart.getFullYear() + 1, fiscalYearStart.getMonth(), 1)
+    const fiscalYearEnd = new Date(Date.UTC(fiscalYearStart.getUTCFullYear() + 1, fiscalYearStart.getUTCMonth(), 1))
     const existingBoards = await prisma.board.findMany({
       where: {
         organizationId,
@@ -919,11 +919,11 @@ export class BoardService {
       select: { periodStart: true },
     })
 
-    // Build set of existing period months for quick lookup
+    // Build set of existing period months for quick lookup (use UTC)
     const existingMonths = new Set(
       existingBoards.map(b => {
         if (!b.periodStart) return ""
-        return `${b.periodStart.getFullYear()}-${b.periodStart.getMonth()}`
+        return `${b.periodStart.getUTCFullYear()}-${b.periodStart.getUTCMonth()}`
       })
     )
 
@@ -935,13 +935,14 @@ export class BoardService {
     }> = []
 
     for (let i = 0; i < 12; i++) {
-      const monthDate = new Date(fiscalYearStart.getFullYear(), fiscalYearStart.getMonth() + i, 1)
-      const key = `${monthDate.getFullYear()}-${monthDate.getMonth()}`
+      const monthDate = new Date(Date.UTC(fiscalYearStart.getUTCFullYear(), fiscalYearStart.getUTCMonth() + i, 1))
+      const key = `${monthDate.getUTCFullYear()}-${monthDate.getUTCMonth()}`
 
       if (!existingMonths.has(key)) {
-        const periodEnd = endOfMonth(monthDate)
+        // End of month in UTC: last day of the month at 23:59:59.999 UTC
+        const nextMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0, 23, 59, 59, 999))
         const name = generatePeriodBoardName("MONTHLY", monthDate, timezone)
-        boardsToCreate.push({ name, periodStart: monthDate, periodEnd })
+        boardsToCreate.push({ name, periodStart: monthDate, periodEnd: nextMonth })
       }
     }
 
