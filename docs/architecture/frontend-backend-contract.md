@@ -1,19 +1,22 @@
 # Frontend-Backend Contract
 
-> **Living Document** - Last updated: 2026-01-30  
-> **Purpose**: Map all frontend pages to backend API routes with evidence-based classifications.  
+> **Version**: 3.0 (Domain-Driven Model)
+> **Last Updated**: 2026-02-19
+> **Purpose**: Map all frontend pages and backend API routes to domains and workflows with evidence-based classifications.
 > **Taxonomy Reference**: `docs/product/workflow-taxonomy.md`
 
 ---
 
 ## Table of Contents
 
-- [Job Capabilities (Non-Schema Concept)](#job-capabilities-non-schema-concept)
-- [Section A: Page-to-Workflow Mapping](#section-a-page-to-workflow-mapping)
+- [Job Model (Simplified)](#job-model-simplified)
+- [Draft Request Handling](#draft-request-handling-period-rollover)
+- [Database Data Model & Import Contract](#database-data-model--import-contract)
+- [Section A: Page-to-Domain Mapping](#section-a-page-to-domain-mapping)
 - [Section B: Classification Model](#section-b-classification-model)
-- [Section C: API Route Inventory](#section-c-api-route-inventory)
+- [Section C: API Route Inventory by Domain](#section-c-api-route-inventory-by-domain)
 - [Section D: Orphan Triage](#section-d-orphan-triage)
-- [Section E: Top 10 Fix-Next Recommendations](#section-e-top-10-fix-next-recommendations)
+- [Section E: Fix-Next Recommendations](#section-e-fix-next-recommendations)
 - [Section F: Rules of the Road](#section-f-rules-of-the-road)
 - [Section G: Drift Check Commands](#section-g-drift-check-commands)
 
@@ -37,17 +40,15 @@ Recipients are selected when sending requests, not pre-assigned to jobs.
 
 ### Available Features
 
-| Feature | Description | API Route Patterns | Workflows |
-|---------|-------------|-------------------|-----------|
-| **Core** | Basic job operations | `/api/task-instances/[id]`, `/api/task-instances/[id]/collaborators`, `/api/task-instances/[id]/comments` | WF-03a, WF-03f, WF-03g, WF-04b-h |
-| **Request** | Email communication, reminders, tracking | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-05a-r |
-| **Evidence** | File collection, review, export | `/api/task-instances/[id]/collection/*` | WF-06a-e |
-| **Report** | Attach report definitions to jobs | `/api/reports/*`, `/api/generated-reports/*` | WF-12a-k |
-| **Form** | Send form requests for data collection | `/api/task-instances/[id]/form-requests/*`, `/api/forms/*` | WF-13a-f |
+| Feature | Description | Domain | API Route Patterns | Workflows |
+|---------|-------------|--------|-------------------|-----------|
+| **Core** | Basic job operations | DOM-02 | `/api/task-instances/[id]`, `.../collaborators`, `.../comments` | WF-02.11–02.19 |
+| **Request** | Email communication, reminders, tracking | DOM-03, DOM-04 | `/api/task-instances/[id]/request/*`, `/api/requests/*`, `/api/review/*` | WF-03.01–03.07, WF-04.01–04.08 |
+| **Evidence** | File collection, review, export | DOM-02 | `/api/task-instances/[id]/collection/*` | WF-02.20 |
+| **Report** | Attach report definitions to jobs | DOM-05 | `/api/reports/*`, `/api/generated-reports/*` | WF-05.06–05.10 |
+| **Form** | Send form requests for data collection | DOM-03 | `/api/forms/*`, `/api/form-requests/*` | WF-03.08–03.12 |
 
 ### Removed Concepts
-
-The following have been removed from the system:
 
 | Removed | Reason |
 |---------|--------|
@@ -55,7 +56,6 @@ The following have been removed from the system:
 | `stakeholderScope` field | Stakeholders are not linked to tasks |
 | `stakeholders` on jobs | Recipients selected at request time |
 | Table/Variance feature | Removed (use Databases instead) |
-| Reconciliation feature | Removed |
 
 ### Developer Guardrails
 
@@ -72,12 +72,12 @@ CRITICAL: Job Stability Rules
 
 ## Draft Request Handling (Period Rollover)
 
-> **Last Updated**: 2026-01-22  
+> **Last Updated**: 2026-01-22
 > **Scope**: Recurring request drafts copied during board period rollover
 
 ### Overview
 
-When a board completes and auto-creates the next period (WF-02l, WF-02m), active requests from the previous period are copied forward as **draft requests** on the new job. These drafts require user review before sending.
+When a board completes and auto-creates the next period (WF-02.06 → WF-06.12), active requests from the previous period are copied forward as **draft requests** on the new job. These drafts require user review before sending.
 
 ### Canonical API Endpoint
 
@@ -132,23 +132,16 @@ Draft requests are surfaced in the **Job Detail Header** (not in table cells):
 
 ### Related Workflows
 
-- WF-02l: Auto-Create Next Period Board (triggers draft copy)
-- WF-02m: Copy Tasks to Next Period (copies job structure)
-- WF-05o: Review Draft Requests (new - documented below)
-- WF-05p: Edit Draft Request (new - documented below)
-- WF-05q: Send Draft Request (new - documented below)
-- WF-05r: Delete Draft Request (new - documented below)
+- WF-02.06: Mark Board Complete (triggers draft copy)
+- WF-06.12: System auto-creates next period board
+- WF-03.04: Review & Send Draft Requests
 
 ---
 
 ## Database Data Model & Import Contract
 
-> **Last Updated**: 2026-01-28  
-> **Scope**: Databases feature - structured data storage with composite identifiers
-
-### Overview
-
-Databases are standalone structured data stores with schema definitions and Excel import/export capabilities. They are the foundation for future Report and Form features.
+> **Last Updated**: 2026-01-28
+> **Scope**: Databases feature (DOM-05) - structured data storage with composite identifiers
 
 ### Data Model
 
@@ -191,25 +184,11 @@ interface DatabaseRow {
 
 ### Composite Identifiers
 
-Databases support **composite keys** - multiple columns together form the unique identifier.
-
 | Concept | Description |
 |---------|-------------|
 | `identifierKeys` | Array of column keys that together uniquely identify a row |
 | Example | `["project_id", "period"]` - combination must be unique |
 | Requirement | All identifier columns must be marked as `required: true` |
-
-```typescript
-// Example: Project profitability database
-identifierKeys: ["project_id", "period"]
-
-// Valid rows (different composite keys):
-{ project_id: "P1", period: "Jan", revenue: 50000 }
-{ project_id: "P1", period: "Feb", revenue: 55000 }  // Same project, different period = OK
-
-// Invalid (duplicate composite key):
-{ project_id: "P1", period: "Jan", revenue: 60000 }  // Rejected - P1+Jan already exists
-```
 
 ### Import Behavior (Append-Only)
 
@@ -221,64 +200,18 @@ identifierKeys: ["project_id", "period"]
 | Existing composite key | Row is **rejected** (error) |
 | Mix of new and duplicate | Entire import **fails** |
 
-```typescript
-// POST /api/databases/[id]/import/preview response
-{
-  valid: boolean,
-  errors: string[],
-  warnings: string[],
-  rowCount: number,           // Total rows in file
-  newRowCount: number,        // Rows that will be added
-  duplicateCount: number,     // Rows that would be rejected
-  existingRowCount: number,   // Current rows in database
-  totalAfterImport: number,   // Rows after successful import
-}
-
-// POST /api/databases/[id]/import response
-{
-  success: boolean,
-  added: number,
-  duplicates: number,
-  errors: string[],
-  message: string,
-}
-```
-
-### Reserved Field Conventions
-
-| Prefix | Usage |
-|--------|-------|
-| `_` (underscore) | Reserved for system metadata (future use) |
-
-Column keys starting with `_` are **not allowed** in schema definitions. This reserves space for future row-level metadata like `_submittedBy`, `_submittedAt`, `_rowStatus`.
-
-### API Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/databases` | GET | List all databases |
-| `/api/databases` | POST | Create database with schema |
-| `/api/databases/[id]` | GET | Get database with rows |
-| `/api/databases/[id]` | PATCH | Update name/description |
-| `/api/databases/[id]` | DELETE | Delete database |
-| `/api/databases/[id]/schema` | PATCH | Update schema (with guardrails) |
-| `/api/databases/[id]/template.xlsx` | GET | Download empty Excel template |
-| `/api/databases/[id]/export.xlsx` | GET | Export all data to Excel |
-| `/api/databases/[id]/import/preview` | POST | Validate import file |
-| `/api/databases/[id]/import` | POST | Execute append-only import |
-
 ### Schema Edit Guardrails
 
 | Operation | Allowed | Condition |
 |-----------|---------|-----------|
-| Add columns | ✅ Yes | Always |
-| Rename labels | ✅ Yes | Always |
-| Change column order | ✅ Yes | Always |
-| Change data types | ⚠️ Warning | Existing data not converted |
-| Mark required | ⚠️ Warning | Existing nulls may fail re-import |
-| Remove columns | ❌ No | If data exists |
-| Change identifiers | ❌ No | If data exists |
-| Remove identifier column | ❌ No | Never |
+| Add columns | Yes | Always |
+| Rename labels | Yes | Always |
+| Change column order | Yes | Always |
+| Change data types | Warning | Existing data not converted |
+| Mark required | Warning | Existing nulls may fail re-import |
+| Remove columns | No | If data exists |
+| Change identifiers | No | If data exists |
+| Remove identifier column | No | Never |
 
 ### Limits
 
@@ -289,48 +222,102 @@ Column keys starting with `_` are **not allowed** in schema definitions. This re
 
 ---
 
-## Section A: Page-to-Workflow Mapping
+## Section A: Page-to-Domain Mapping
 
-### Dashboard Pages
+### DOM-01: Identity & Organization Pages
 
-| Page | URL | Parent Workflow | Sub-Workflows | Key APIs |
-|------|-----|-----------------|---------------|----------|
-| Jobs List | `/dashboard/jobs` | PWF-03: Job Lifecycle | WF-02c, WF-03a, WF-03f, WF-03g | `/api/task-instances`, `/api/boards/*`, `/api/org/team` |
-| Job Detail | `/dashboard/jobs/[id]` | PWF-03, PWF-04, PWF-05, PWF-06 | WF-04b-h, WF-05a-c, WF-06a-d | `/api/task-instances/[id]/*`, `/api/requests/*` |
-| Boards | `/dashboard/boards` | PWF-02: Board Management | WF-02a, WF-02b, WF-02d, WF-02e, WF-02f, WF-02g, WF-02h | `/api/boards`, `/api/boards/[id]`, `/api/boards/team-members` |
-| Contacts | `/dashboard/contacts` | PWF-07: Contact Management | WF-07a, WF-07b, WF-07c, WF-07d | `/api/entities/*`, `/api/groups/*`, `/api/contacts/*` |
-| Requests | `/dashboard/requests` | PWF-05: Requests & Communication | WF-05d, WF-05e, WF-05f, WF-05g | `/api/requests/detail/*`, `/api/boards` |
-| Collection | `/dashboard/collection` | PWF-06: Evidence Collection | WF-06a, WF-06b, WF-06c, WF-06d | `/api/collection`, `/api/boards` |
-| Collection/Invoices | `/dashboard/collection/invoices` | PWF-06: Evidence Collection | WF-06a, WF-06b | `/api/boards` |
-| Collection/Expenses | `/dashboard/collection/expenses` | PWF-06: Evidence Collection | WF-06a, WF-06b | `/api/boards` |
-| Review | `/dashboard/review/[messageId]` | PWF-05: Requests & Communication | WF-05h | `/api/review/*`, `/api/requests/detail/[id]/reply*` |
-| Settings | `/dashboard/settings` | - | - | `/api/org/settings`, `/api/user/signature` |
-| Settings/Team | `/dashboard/settings/team` | PWF-08: Email Account Management | WF-08a, WF-08b, WF-08c | `/api/org/users/*`, `/api/email-accounts/*` |
-| Settings/Accounting | `/dashboard/settings/accounting` | - | - | `/api/org/accounting-calendar` |
-| Databases List | `/dashboard/databases` | PWF-11: Databases | WF-11a, WF-11f | `/api/databases` |
-| Database Detail | `/dashboard/databases/[id]` | PWF-11: Databases | WF-11d, WF-11e, WF-11f | `/api/databases/[id]`, `/api/databases/[id]/import/*`, `/api/databases/[id]/*.xlsx` |
-| New Database | `/dashboard/databases/new` | PWF-11: Databases | WF-11a, WF-11b, WF-11c | `/api/databases` |
-| Reports List | `/dashboard/reports` | PWF-12: Reports | WF-12a, WF-12g, WF-12h, WF-12i, WF-12j, WF-12k | `/api/reports`, `/api/generated-reports`, `/api/reports/[id]/insights` |
-| Report Builder | `/dashboard/reports/[id]` | PWF-12: Reports | WF-12b, WF-12c, WF-12d, WF-12e, WF-12f | `/api/reports/[id]`, `/api/reports/[id]/preview` |
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Landing | `/` | — | — |
+| Terms | `/terms` | — | — |
+| Privacy | `/privacy` | — | — |
+| Sign Up | `/signup` | WF-01.01 | `/api/auth/signup` |
+| Sign In | `/auth/signin` | WF-01.02 | NextAuth |
+| Verify Email | `/auth/verify-email` | WF-01.01 | `/api/auth/verify` |
+| Forgot Password | `/auth/forgot-password` | WF-01.03 | `/api/auth/forgot-password` |
+| Reset Password | `/auth/reset-password` | WF-01.03 | `/api/auth/reset-password` |
+| Accept Invite | `/auth/accept-invite` | WF-01.04 | `/api/auth/accept-invite` |
+| Profile | `/dashboard/profile` | WF-01.05 | `/api/user/profile` |
+| Settings (General) | `/dashboard/settings` | WF-01.09 | `/api/org/settings`, `/api/user/signature` |
+| Settings / Team | `/dashboard/settings/team` | WF-01.07 | `/api/org/users/*`, `/api/email-accounts/*` |
+| Settings / Role Permissions | `/dashboard/settings/role-permissions` | WF-01.08 | `/api/org/role-permissions` |
 
-### Auth Pages
+### DOM-02: Planning & Work Execution Pages
 
-| Page | URL | Parent Workflow | Sub-Workflow | Key APIs |
-|------|-----|-----------------|--------------|----------|
-| Sign In | `/auth/signin` | PWF-01: Authentication | WF-01b | NextAuth (no direct API) |
-| Sign Up | `/signup` | PWF-01: Authentication | WF-01a | `/api/auth/signup` |
-| Accept Invite | `/auth/accept-invite` | PWF-01: Authentication | WF-01d | `/api/auth/accept-invite` |
-| Forgot Password | `/auth/forgot-password` | PWF-01: Authentication | WF-01c | `/api/auth/forgot-password` |
-| Reset Password | `/auth/reset-password` | PWF-01: Authentication | WF-01c | `/api/auth/reset-password` |
-| Verify Email | `/auth/verify-email` | PWF-01: Authentication | WF-01a | `/api/auth/verify` |
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Dashboard (home) | `/dashboard` | — | `/api/task-instances`, `/api/boards` |
+| Boards | `/dashboard/boards` | WF-02.01–02.10 | `/api/boards/*` |
+| Jobs List | `/dashboard/jobs` | WF-02.03, WF-02.11–02.13 | `/api/task-instances`, `/api/boards/*` |
+| Job Detail | `/dashboard/jobs/[id]` | WF-02.14–02.23, WF-03.01–03.04 | `/api/task-instances/[id]/*` |
+| Collection | `/dashboard/collection` | WF-02.20 | `/api/collection`, `/api/boards` |
+| Collection / Invoices | `/dashboard/collection/invoices` | WF-02.20 | `/api/boards` |
+| Collection / Expenses | `/dashboard/collection/expenses` | WF-02.20 | `/api/boards` |
+| Contacts | `/dashboard/contacts` | WF-02.21 | `/api/entities/*`, `/api/groups/*` |
+| Campaigns | `/dashboard/campaigns` | — | — |
 
-### Info Pages
+### DOM-03: Outreach & Data Collection Pages
 
-| Page | URL | Workflow | APIs |
-|------|-----|----------|------|
-| Landing | `/` | None | None |
-| Privacy | `/privacy` | None | None |
-| Terms | `/terms` | None | None |
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Forms List | `/dashboard/forms` | WF-03.08 | `/api/forms` |
+| Form Builder | `/dashboard/forms/[id]` | WF-03.08, WF-03.12 | `/api/forms/[id]`, `/api/forms/[id]/viewers` |
+| New Form | `/dashboard/forms/new` | WF-03.08 | `/api/forms` |
+| Form Submission (public) | `/forms/[requestId]` | WF-03.10 | `/api/form-requests/token/[token]`, `.../submit` |
+
+### DOM-04: Inbound Review & Resolution Pages
+
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Inbox | `/dashboard/inbox` | WF-04.01 | `/api/inbox` |
+| Requests List | `/dashboard/requests` | WF-04.02–04.05 | `/api/requests/detail/*` |
+| Request Detail | `/dashboard/requests/[key]` | WF-04.02–04.08 | `/api/requests/detail/[id]/*` |
+| Reply Review | `/dashboard/review/[messageId]` | WF-04.06–04.07 | `/api/review/*` |
+
+### DOM-05: Data Intelligence Pages
+
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Databases List | `/dashboard/databases` | WF-05.01, WF-05.05 | `/api/databases` |
+| Database Detail | `/dashboard/databases/[id]` | WF-05.02–05.04 | `/api/databases/[id]/*` |
+| New Database | `/dashboard/databases/new` | WF-05.01 | `/api/databases` |
+| Reports List | `/dashboard/reports` | WF-05.06, WF-05.08–05.10 | `/api/reports`, `/api/generated-reports` |
+| Report Detail | `/dashboard/reports/[id]` | WF-05.07 | `/api/reports/[id]/*` |
+| New Report | `/dashboard/reports/new` | WF-05.06 | `/api/reports` |
+| Reconciliations List | `/dashboard/reconciliations` | WF-05.11 | `/api/reconciliations` |
+| New Reconciliation | `/dashboard/reconciliations/new` | WF-05.11 | `/api/reconciliations` |
+| Reconciliation Detail | `/dashboard/reconciliations/[configId]` | WF-05.12–05.13 | `/api/reconciliations/[configId]/*` |
+| Analysis | `/dashboard/analysis` | WF-05.14 | `/api/analysis/conversations` |
+| Analysis Chat | `/dashboard/analysis/chat/[id]` | WF-05.14 | `/api/analysis/conversations/[id]/messages` |
+
+### DOM-06: Automation & Agents Pages
+
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Agents List | `/dashboard/agents` | WF-06.01 | `/api/agents` |
+| Agent Detail | `/dashboard/agents/[id]` | WF-06.01–06.06 | `/api/agents/[agentId]/*` |
+| Automations List | `/dashboard/automations` | WF-06.07, WF-06.09 | `/api/automation-rules`, `/api/workflow-runs` |
+| New Automation | `/dashboard/automations/new` | WF-06.07 | `/api/automation-rules` |
+| Automation Detail | `/dashboard/automations/[id]` | WF-06.07–06.08 | `/api/automation-rules/[id]/*` |
+| Workflow Run Detail | `/dashboard/automations/[id]/runs/[runId]` | WF-06.09 | `/api/workflow-runs/[id]` |
+
+### DOM-07: Integrations & Delivery Channels Pages
+
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Settings / Integrations | `/dashboard/settings/integrations` | WF-07.01–07.03 | `/api/oauth/*`, `/api/email-accounts` |
+| Settings / Accounting | `/dashboard/settings/accounting` | WF-07.04 | `/api/integrations/accounting/*`, `/api/org/accounting-calendar` |
+
+### DOM-08: Platform Ops & Internal Pages
+
+| Page | URL | Workflows | Key APIs |
+|------|-----|-----------|----------|
+| Admin Dashboard | `admin-dashboard/` | WF-08.01–08.04 | Separate app |
+| Admin Login | `admin-dashboard/login` | — | Separate auth |
+| Admin Errors | `admin-dashboard/errors` | WF-08.04 | — |
+| Admin Activity | `admin-dashboard/activity` | WF-08.01 | — |
+| Admin Companies | `admin-dashboard/companies` | WF-08.01 | — |
+| Admin Company Detail | `admin-dashboard/companies/[id]` | WF-08.01 | — |
 
 ---
 
@@ -360,255 +347,317 @@ Every route has two classification fields:
 
 ---
 
-## Section C: API Route Inventory
+## Section C: API Route Inventory by Domain
 
-### FRONTEND Routes (85 routes)
+### DOM-01: Identity & Organization (18 routes)
 
-Routes with verified `fetch()` calls from `app/` or `components/`.
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/auth/[...nextauth]` | ALL | WF-01.02 | EXTERNAL | NextAuth.js framework |
+| `/api/auth/signup` | POST | WF-01.01 | FRONTEND | `app/signup/page.tsx:48` |
+| `/api/auth/verify` | GET | WF-01.01 | FRONTEND | `app/auth/verify-email/page.tsx:27` |
+| `/api/auth/accept-invite` | GET, POST | WF-01.04 | FRONTEND | `app/auth/accept-invite/page.tsx:42,84` |
+| `/api/auth/forgot-password` | POST | WF-01.03 | FRONTEND | `app/auth/forgot-password/page.tsx:20` |
+| `/api/auth/reset-password` | GET, POST | WF-01.03 | FRONTEND | `app/auth/reset-password/page.tsx:33,69` |
+| `/api/user/profile` | GET, PATCH | WF-01.05 | FRONTEND | `app/dashboard/profile/page.tsx` |
+| `/api/user/signature` | GET, PUT | WF-01.05 | FRONTEND | `app/dashboard/settings/page.tsx:68,84` |
+| `/api/user/onboarding` | GET, POST | WF-01.06 | FRONTEND | `components/onboarding-checklist.tsx:91,109` |
+| `/api/users` | GET | WF-01.07 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:571` |
+| `/api/org/settings` | GET, PUT | WF-01.09 | FRONTEND | `app/dashboard/settings/page.tsx:28,44` |
+| `/api/org/team` | GET | WF-01.07 | FRONTEND | `app/dashboard/jobs/page.tsx:211` |
+| `/api/org/users` | GET, POST | WF-01.07 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:571` |
+| `/api/org/users/[id]` | GET, PATCH, DELETE | WF-01.07 | FRONTEND | `app/dashboard/settings/team/page.tsx:275,313` |
+| `/api/org/accounting-calendar` | GET, PUT | WF-01.09 | FRONTEND | `app/dashboard/settings/accounting/page.tsx:44,61` |
+| `/api/org/role-permissions` | GET, PUT | WF-01.08 | FRONTEND | `app/dashboard/settings/role-permissions/page.tsx` |
+| `/api/contacts/type-counts` | GET | WF-01.09 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:523` |
+| `/api/contacts/custom-types` | POST, DELETE | WF-01.09 | FRONTEND | `components/contacts/bulk-action-toolbar.tsx:97` |
 
-| Route | Methods | Caller Type | Call Style | Evidence |
-|-------|---------|-------------|------------|----------|
-| `/api/auth/accept-invite` | GET, POST | FRONTEND | DIRECT_FETCH | `app/auth/accept-invite/page.tsx:42,84` |
-| `/api/auth/forgot-password` | POST | FRONTEND | DIRECT_FETCH | `app/auth/forgot-password/page.tsx:20` |
-| `/api/auth/reset-password` | GET, POST | FRONTEND | DIRECT_FETCH | `app/auth/reset-password/page.tsx:33,69` |
-| `/api/auth/signup` | POST | FRONTEND | DIRECT_FETCH | `app/signup/page.tsx:48` |
-| `/api/auth/verify` | GET | FRONTEND | DIRECT_FETCH | `app/auth/verify-email/page.tsx:27` |
-| `/api/boards` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/boards/page.tsx:255,452` |
-| `/api/boards/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/boards/page.tsx:273,400,416,438,474` |
-| `/api/boards/team-members` | GET | FRONTEND | DIRECT_FETCH | `components/boards/create-board-modal.tsx:175` |
-| `/api/collection` | GET, PATCH | FRONTEND | DIRECT_FETCH | `app/dashboard/collection/page.tsx:159` |
-| `/api/collection/preview/[id]` | GET | FRONTEND | URL_GENERATION | `components/jobs/collection/collection-tab.tsx:478`, `components/reply-review/left-pane/attachments-tab.tsx:184` |
-| `/api/contacts/custom-types` | POST, DELETE | FRONTEND | DIRECT_FETCH | `components/contacts/bulk-action-toolbar.tsx:97` |
-| `/api/contacts/type-counts` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:523` |
-| `/api/email-accounts` | GET | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:217` |
-| `/api/email-accounts/[id]` | DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/team/page.tsx:204` |
-| `/api/entities` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/contacts/page.tsx:59` |
-| `/api/entities/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/contacts/contact-list.tsx:72` |
-| `/api/entities/bulk` | POST | FRONTEND | DIRECT_FETCH | `components/contacts/csv-upload.tsx:64` |
-| `/api/entities/bulk-update` | POST | FRONTEND | DIRECT_FETCH | `components/contacts/bulk-action-toolbar.tsx:134` |
-| `/api/entities/import` | POST | FRONTEND | DIRECT_FETCH | `components/contacts/import-modal.tsx:124` |
-| `/api/groups` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/contacts/page.tsx:74` |
-| `/api/groups/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/contacts/groups-manager.tsx:63,91` |
-| `/api/org/accounting-calendar` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/accounting/page.tsx:44,61` |
-| `/api/org/settings` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:28,44` |
-| `/api/org/team` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/page.tsx:211` |
-| `/api/org/users` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:571` |
-| `/api/org/users/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/team/page.tsx:275,313` |
-| `/api/quests` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:533` |
-| `/api/quests/[id]/execute` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:562` |
-| `/api/requests` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:392` |
-| `/api/requests/detail/[id]` | GET, PATCH | FRONTEND | DIRECT_FETCH | `app/dashboard/requests/page.tsx:148` |
-| `/api/requests/detail/[id]/messages` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/requests/page.tsx:331,385` |
-| `/api/requests/detail/[id]/reminders` | GET, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/request-card-expandable.tsx:214,229` |
-| `/api/requests/detail/[id]/reply` | POST | FRONTEND | DIRECT_FETCH | `components/reply-review/right-pane/reply-section.tsx:73` |
-| `/api/requests/detail/[id]/reply-draft` | POST | FRONTEND | DIRECT_FETCH | `components/reply-review/right-pane/reply-section.tsx:44` |
-| `/api/recipients/search` | GET | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:393` |
-| `/api/review/[messageId]` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/reply-review/reply-review-layout.tsx:87` |
-| `/api/review/analyze` | POST | FRONTEND | DIRECT_FETCH | `components/reply-review/right-pane/ai-summary-section.tsx:38` |
-| `/api/review/draft-reply` | POST | FRONTEND | DIRECT_FETCH | `components/reply-review/right-pane/review-rhs.tsx:120` |
-| `/api/task-instances` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/page.tsx:179,376,443,505` |
-| `/api/task-instances/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:357,639,668` |
-| `/api/task-instances/[id]/ai-summary` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/task-ai-summary.tsx:67` |
-| `/api/task-instances/[id]/collaborators` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:559,817,836` |
-| `/api/task-instances/[id]/collection` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/collection/collection-upload-modal.tsx:96` |
-| `/api/task-instances/[id]/collection/[itemId]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/collection/collection-tab.tsx:189` |
-| `/api/task-instances/[id]/collection/download` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/collection/page.tsx:186`, `components/jobs/collection/collection-tab.tsx:166`, `components/review/attachment-preview.tsx:61` |
-| `/api/task-instances/[id]/collection/bulk` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/collection/collection-tab.tsx:168` |
-| `/api/task-instances/[id]/collection/export` | GET | FRONTEND | URL_GENERATION | `components/jobs/collection/collection-tab.tsx:324` |
-| `/api/task-instances/[id]/comments` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:421,755` |
-| `/api/task-instances/[id]/contact-labels` | GET, POST, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `components/jobs/contact-labels-table.tsx:28` |
-| `/api/task-instances/[id]/labels` | GET, POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:246` |
-| `/api/task-instances/[id]/request/dataset` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:283,326` |
-| `/api/task-instances/[id]/request/dataset/draft` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:161,203` |
-| `/api/task-instances/[id]/request/dataset/send` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/compose-send-step.tsx:366` |
-| `/api/task-instances/[id]/request/dataset/upload` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/data-personalization/upload-step.tsx:204` |
-| `/api/task-instances/[id]/request/draft` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:291` |
-| `/api/task-instances/[id]/request/refine` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:434` |
-| `/api/task-instances/[id]/request/reminder-preview` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/send-request-modal.tsx:397` |
-| `/api/task-instances/[id]/requests` | GET, POST, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:407`, `components/jobs/draft-request-review-modal.tsx:122,154,181` (GET supports `?includeDrafts=true`, POST handles draft send/update, DELETE for draft deletion) |
-| `/api/task-instances/[id]/timeline` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/jobs/[id]/page.tsx:445` |
-| `/api/task-instances/ai-generate` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-bulk-upload-modal.tsx:79` |
-| `/api/task-instances/ai-summary` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-summary-panel.tsx:41` |
-| `/api/task-instances/bulk-import` | POST | FRONTEND | DIRECT_FETCH | `components/jobs/ai-bulk-upload-modal.tsx:217` |
-| `/api/task-instances/column-config` | GET, PATCH | FRONTEND | DIRECT_FETCH | `components/jobs/configurable-table/configurable-table.tsx:186,209` |
-| `/api/task-instances/template` | GET | FRONTEND | URL_GENERATION | `components/jobs/ai-bulk-upload-modal.tsx:310` (window.open) |
-| `/api/templates/contacts` | GET | FRONTEND | URL_GENERATION | `components/contacts/import-modal.tsx:156` (href link) |
-| `/api/user/onboarding` | GET, POST | FRONTEND | DIRECT_FETCH | `components/onboarding-checklist.tsx:91,109` |
-| `/api/user/signature` | GET, PUT | FRONTEND | DIRECT_FETCH | `app/dashboard/settings/page.tsx:68,84` |
-| `/api/databases` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/page.tsx:42,98` |
-| `/api/databases/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:67`, `app/dashboard/databases/page.tsx:60` |
-| `/api/databases/[id]/schema` | PATCH | FRONTEND | DIRECT_FETCH | Schema edit guardrails (not wired to UI yet) |
-| `/api/databases/[id]/template.xlsx` | GET | FRONTEND | URL_GENERATION | `app/dashboard/databases/[id]/page.tsx` (window.open) |
-| `/api/databases/[id]/export.xlsx` | GET | FRONTEND | URL_GENERATION | `app/dashboard/databases/[id]/page.tsx` (window.open) |
-| `/api/databases/[id]/import/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:195` |
-| `/api/databases/[id]/import` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/databases/[id]/page.tsx:218` |
-| `/api/reports` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx`, `app/dashboard/reports/new/page.tsx` |
-| `/api/reports/[id]` | GET, PATCH, DELETE | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` |
-| `/api/reports/[id]/preview` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/[id]/page.tsx` (preview with period, compareMode, liveConfig) |
-| `/api/reports/[id]/filter-properties` | GET | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (get filterable columns for report creation) |
-| `/api/reports/[id]/insights` | POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (AI-powered report analysis) |
-| `/api/generated-reports` | GET, POST | FRONTEND | DIRECT_FETCH | `app/dashboard/reports/page.tsx` (list and create fixed report snapshots) |
+### DOM-02: Planning & Work Execution (46 routes)
 
-### ADMIN Routes (18 routes)
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/boards` | GET, POST | WF-02.01, WF-02.03 | FRONTEND | `app/dashboard/boards/page.tsx:255,452` |
+| `/api/boards/[id]` | GET, PATCH, DELETE | WF-02.02–02.08 | FRONTEND | `app/dashboard/boards/page.tsx:273,400,416,438,474` |
+| `/api/boards/[id]/ai-summary` | GET | WF-02.10 | FRONTEND | `app/dashboard/boards/page.tsx` |
+| `/api/boards/[id]/close-summary` | GET | WF-02.09 | FRONTEND | `app/dashboard/boards/page.tsx` |
+| `/api/boards/column-config` | GET, PATCH | WF-02.03 | FRONTEND | `app/dashboard/boards/page.tsx` |
+| `/api/boards/team-members` | GET | WF-02.04 | FRONTEND | `components/boards/create-board-modal.tsx:175` |
+| `/api/task-instances` | GET, POST | WF-02.03, WF-02.11 | FRONTEND | `app/dashboard/jobs/page.tsx:179,376,443,505` |
+| `/api/task-instances/[id]` | GET, PATCH, DELETE | WF-02.12–02.19 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:357,639,668` |
+| `/api/task-instances/[id]/ai-summary` | POST | WF-02.23 | FRONTEND | `components/jobs/task-ai-summary.tsx:67` |
+| `/api/task-instances/[id]/config` | GET | WF-02.19 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx` |
+| `/api/task-instances/[id]/timeline` | GET | WF-02.18 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:445` |
+| `/api/task-instances/[id]/previous-period` | GET | WF-02.03 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx` |
+| `/api/task-instances/[id]/collaborators` | GET, POST, DELETE | WF-02.14 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:559,817,836` |
+| `/api/task-instances/[id]/comments` | GET, POST, DELETE | WF-02.18 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:421,755` |
+| `/api/task-instances/[id]/attachments` | GET, POST | WF-02.17 | UNKNOWN | `rg "\/attachments[^/]" -n app components` |
+| `/api/task-instances/[id]/labels` | GET, POST | WF-02.21 | FRONTEND | `components/jobs/send-request-modal.tsx:246` |
+| `/api/task-instances/[id]/labels/[labelId]` | GET, PATCH, DELETE | WF-02.21 | UNKNOWN | `rg "\/labels\/" -n app components` |
+| `/api/task-instances/[id]/contact-labels` | GET, POST, PATCH, DELETE | WF-02.21 | FRONTEND | `components/jobs/contact-labels-table.tsx:28` |
+| `/api/task-instances/[id]/collection` | GET, POST | WF-02.20 | FRONTEND | `components/jobs/collection/collection-upload-modal.tsx:96` |
+| `/api/task-instances/[id]/collection/[itemId]` | GET, PATCH, DELETE | WF-02.20 | FRONTEND | `components/jobs/collection/collection-tab.tsx:189` |
+| `/api/task-instances/[id]/collection/bulk` | POST | WF-02.20 | FRONTEND | `components/jobs/collection/collection-tab.tsx:168` |
+| `/api/task-instances/[id]/collection/download` | GET | WF-02.20 | FRONTEND | `components/jobs/collection/collection-tab.tsx:166` |
+| `/api/task-instances/[id]/collection/export` | GET | WF-02.20 | FRONTEND | `components/jobs/collection/collection-tab.tsx:324` |
+| `/api/task-instances/[id]/requests` | GET, POST, DELETE | WF-03.04 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:407`, `components/jobs/draft-request-review-modal.tsx:122,154,181` |
+| `/api/task-instances/[id]/form-requests` | GET, POST | WF-03.09 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx` |
+| `/api/task-instances/ai-generate` | POST | WF-02.22 | FRONTEND | `components/jobs/ai-bulk-upload-modal.tsx:79` |
+| `/api/task-instances/ai-summary` | POST | WF-02.23 | FRONTEND | `components/jobs/ai-summary-panel.tsx:41` |
+| `/api/task-instances/bulk-import` | POST | WF-02.22 | FRONTEND | `components/jobs/ai-bulk-upload-modal.tsx:217` |
+| `/api/task-instances/column-config` | GET, PATCH | WF-02.03 | FRONTEND | `components/jobs/configurable-table/configurable-table.tsx:186,209` |
+| `/api/task-instances/lineages` | GET | WF-02.03 | FRONTEND | `app/dashboard/jobs/page.tsx` |
+| `/api/task-instances/template` | GET | WF-02.22 | FRONTEND | `components/jobs/ai-bulk-upload-modal.tsx:310` |
+| `/api/task-lineages/[id]` | GET, PATCH, DELETE | WF-02.11 | FRONTEND | `app/dashboard/jobs/page.tsx` |
+| `/api/collection` | GET, PATCH | WF-02.20 | FRONTEND | `app/dashboard/collection/page.tsx:159` |
+| `/api/collection/preview/[id]` | GET | WF-02.20 | FRONTEND | `components/jobs/collection/collection-tab.tsx:478` |
+| `/api/collection/download/[id]` | GET | WF-02.20 | FRONTEND | `app/dashboard/collection/page.tsx` |
+| `/api/attachments/[id]` | GET, DELETE | WF-02.17 | UNKNOWN | `rg "\/api\/attachments\/" -n app components lib` |
+| `/api/attachments/by-key/[key]` | GET | WF-02.17 | UNKNOWN | Same as above |
+| `/api/attachments/download/[id]` | GET | WF-02.17 | UNKNOWN | Same as above |
+| `/api/entities` | GET, POST | WF-02.21 | FRONTEND | `app/dashboard/contacts/page.tsx:59` |
+| `/api/entities/[id]` | GET, PATCH, DELETE | WF-02.21 | FRONTEND | `components/contacts/contact-list.tsx:72` |
+| `/api/entities/bulk` | POST | WF-02.21 | FRONTEND | `components/contacts/csv-upload.tsx:64` |
+| `/api/entities/bulk-update` | POST | WF-02.21 | FRONTEND | `components/contacts/bulk-action-toolbar.tsx:134` |
+| `/api/entities/import` | POST | WF-02.21 | FRONTEND | `components/contacts/import-modal.tsx:124` |
+| `/api/groups` | GET, POST | WF-02.21 | FRONTEND | `app/dashboard/contacts/page.tsx:74` |
+| `/api/groups/[id]` | GET, PATCH, DELETE | WF-02.21 | FRONTEND | `components/contacts/groups-manager.tsx:63,91` |
+| `/api/templates/contacts` | GET | WF-02.21 | FRONTEND | `components/contacts/import-modal.tsx:156` |
 
-Routes restricted to admin users. Caller Type: `ADMIN`, Call Style: `INTERNAL`.
+### DOM-03: Outreach & Data Collection (34 routes)
 
-| Route | Methods | Purpose |
-|-------|---------|---------|
-| `/api/admin/backfill-completion` | POST | Backfill completion percentages |
-| `/api/admin/backfill-file-urls` | GET | Backfill file URLs |
-| `/api/admin/backfill-risk` | POST | Backfill risk computations |
-| `/api/admin/check-replies` | GET | Check for new replies |
-| `/api/admin/cleanup-requests` | POST | Clean up orphan requests |
-| `/api/admin/debug-accounts` | GET, POST | Debug email accounts |
-| `/api/admin/debug-blob` | GET | Debug blob storage |
-| `/api/admin/debug-collection` | GET | Debug collected items |
-| `/api/admin/debug-email-sync` | GET | Debug email sync |
-| `/api/admin/debug-messages` | GET, POST | Debug messages |
-| `/api/admin/debug/[taskId]` | GET | Debug specific task |
-| `/api/admin/delete-user` | GET, DELETE | Delete user (dangerous) |
-| `/api/admin/health-check` | GET | System health check |
-| `/api/admin/migrate` | POST | Run migrations |
-| `/api/admin/pipeline-status` | GET | View pipeline status |
-| `/api/admin/reminders/run-once` | POST | Trigger reminders manually |
-| `/api/admin/sync-emails` | POST | Trigger email sync |
-| `/api/admin/sync-gmail-now` | POST | Trigger Gmail sync |
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/task-instances/[id]/request/draft` | POST | WF-03.01 | FRONTEND | `components/jobs/send-request-modal.tsx:291` |
+| `/api/task-instances/[id]/request/refine` | POST | WF-03.01 | FRONTEND | `components/jobs/send-request-modal.tsx:434` |
+| `/api/task-instances/[id]/request/reminder-preview` | POST | WF-03.03 | FRONTEND | `components/jobs/send-request-modal.tsx:397` |
+| `/api/task-instances/[id]/request/dataset` | GET, PATCH | WF-03.02 | FRONTEND | `components/jobs/data-personalization/compose-send-step.tsx:283,326` |
+| `/api/task-instances/[id]/request/dataset/preview` | GET, POST | WF-03.02 | UNKNOWN | `rg "\/dataset\/preview" -n app components` |
+| `/api/task-instances/[id]/request/dataset/send` | POST | WF-03.02 | FRONTEND | `components/jobs/data-personalization/compose-send-step.tsx:366` |
+| `/api/task-instances/[id]/request/dataset/upload` | POST | WF-03.02 | FRONTEND | `components/jobs/data-personalization/upload-step.tsx:204` |
+| `/api/task-instances/[id]/request/database/draft` | POST | WF-03.02 | FRONTEND | `components/jobs/send-request-modal.tsx` |
+| `/api/task-instances/[id]/request/database/send` | POST | WF-03.02 | FRONTEND | `components/jobs/send-request-modal.tsx` |
+| `/api/quests` | GET, POST | WF-03.07 | FRONTEND | `components/jobs/send-request-modal.tsx:533` |
+| `/api/quests/[id]` | GET, PATCH | WF-03.07 | UNKNOWN | `rg "\/api\/quests\/[^e]" -n app components lib` |
+| `/api/quests/[id]/execute` | POST | WF-03.07 | FRONTEND | `components/jobs/send-request-modal.tsx:562` |
+| `/api/quests/[id]/generate` | POST | WF-03.07 | UNKNOWN | `rg "\/api\/quests\/.*\/generate" -n app components` |
+| `/api/quests/context` | GET | WF-03.07 | UNKNOWN | `rg "\/api\/quests\/context" -n app components` |
+| `/api/quests/interpret` | GET, POST | WF-03.07 | UNKNOWN | `rg "\/api\/quests\/interpret" -n app components` |
+| `/api/quests/standing` | POST | WF-03.07 | UNKNOWN | `rg "\/api\/quests\/standing" -n app components` |
+| `/api/email-drafts/[id]` | GET, PATCH | WF-03.01 | TEST_ONLY | `tests/api/email-drafts-generate.test.ts:275` |
+| `/api/email-drafts/[id]/send` | POST | WF-03.01 | TEST_ONLY | No production callers |
+| `/api/email-drafts/csv-upload` | POST | WF-03.02 | TEST_ONLY | No production callers |
+| `/api/email-drafts/generate` | POST | WF-03.01 | TEST_ONLY | `tests/api/email-drafts-generate.test.ts:143,172,199,211` |
+| `/api/request-templates` | GET, POST | WF-03.05 | FRONTEND | `components/jobs/send-request-modal.tsx` |
+| `/api/request-templates/[id]` | GET, PATCH, DELETE | WF-03.05 | FRONTEND | `components/jobs/send-request-modal.tsx` |
+| `/api/recipients/search` | GET | WF-03.06 | FRONTEND | `components/jobs/send-request-modal.tsx:393` |
+| `/api/recipients/all` | GET | WF-03.06 | FRONTEND | `components/jobs/send-request-modal.tsx` |
+| `/api/forms` | GET, POST | WF-03.08 | FRONTEND | `app/dashboard/forms/page.tsx` |
+| `/api/forms/[id]` | GET, PATCH, DELETE | WF-03.08 | FRONTEND | `app/dashboard/forms/[id]/page.tsx` |
+| `/api/forms/[id]/viewers` | GET, PUT | WF-03.12 | FRONTEND | `app/dashboard/forms/[id]/page.tsx` |
+| `/api/form-requests/[id]/request` | GET | WF-03.09 | FRONTEND | `app/forms/[requestId]/page.tsx` |
+| `/api/form-requests/[id]/submit` | POST | WF-03.10 | FRONTEND | `app/forms/[requestId]/page.tsx` |
+| `/api/form-requests/[id]/attachments` | GET, POST, DELETE | WF-03.10 | FRONTEND | `app/forms/[requestId]/page.tsx` |
+| `/api/form-requests/[id]/remind` | POST | WF-03.11 | FRONTEND | `app/dashboard/forms/[id]/page.tsx` |
+| `/api/form-requests/tasks` | GET | WF-03.09 | FRONTEND | `app/dashboard/forms/page.tsx` |
+| `/api/form-requests/token/[token]` | GET, POST | WF-03.10 | EXTERNAL | Public form fill via token URL |
 
-### EXTERNAL Routes (8 routes)
+### DOM-04: Inbound Review & Resolution (17 routes)
 
-Routes called by external systems. Caller Type: `EXTERNAL`, Call Style: `INTERNAL`.
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/inbox` | GET | WF-04.01 | FRONTEND | `app/dashboard/inbox/page.tsx` |
+| `/api/inbox/count` | GET | WF-04.01 | FRONTEND | `components/dashboard-shell.tsx` |
+| `/api/requests` | GET | WF-04.02 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx:392` |
+| `/api/requests/detail` | GET | WF-04.02 | UNKNOWN | Candidate for deletion — `/detail/[id]` is the actual endpoint |
+| `/api/requests/detail/[id]` | GET, PATCH | WF-04.02–04.03 | FRONTEND | `app/dashboard/requests/page.tsx:148` |
+| `/api/requests/detail/[id]/messages` | GET | WF-04.02 | FRONTEND | `app/dashboard/requests/page.tsx:331,385` |
+| `/api/requests/detail/[id]/mark-read` | POST | WF-04.04 | UNKNOWN | `rg "mark-read" -n app components` |
+| `/api/requests/detail/[id]/reminders` | GET, DELETE | WF-04.02 | FRONTEND | `components/jobs/request-card-expandable.tsx:214,229` |
+| `/api/requests/detail/[id]/reminder-draft` | GET, POST | WF-04.02 | UNKNOWN | `rg "reminder-draft" -n app components` |
+| `/api/requests/detail/[id]/reply` | POST | WF-04.07 | FRONTEND | `components/reply-review/right-pane/reply-section.tsx:73` |
+| `/api/requests/detail/[id]/reply-draft` | POST | WF-04.07 | FRONTEND | `components/reply-review/right-pane/reply-section.tsx:44` |
+| `/api/requests/detail/[id]/retry` | POST | WF-04.03 | FRONTEND | `app/dashboard/requests/page.tsx` |
+| `/api/requests/detail/[id]/risk` | PUT | WF-04.05 | UNKNOWN | `rg "\/risk[^-]" -n app components` |
+| `/api/requests/[id]/accept-suggestion` | POST | WF-04.08 | FRONTEND | `app/dashboard/requests/page.tsx` |
+| `/api/review/[messageId]` | GET, PATCH | WF-04.06 | FRONTEND | `components/reply-review/reply-review-layout.tsx:87` |
+| `/api/review/analyze` | POST | WF-04.06 | FRONTEND | `components/reply-review/right-pane/ai-summary-section.tsx:38` |
+| `/api/review/draft-reply` | POST | WF-04.07 | FRONTEND | `components/reply-review/right-pane/review-rhs.tsx:120` |
 
-| Route | Methods | Purpose | External Caller |
-|-------|---------|---------|-----------------|
-| `/api/auth/[...nextauth]` | ALL | NextAuth authentication | NextAuth.js framework |
-| `/api/inngest` | ALL | Inngest webhook handler | Inngest Cloud |
-| `/api/oauth/gmail` | GET | Gmail OAuth initiation | Browser redirect |
-| `/api/oauth/gmail/callback` | GET | Gmail OAuth callback | Google OAuth |
-| `/api/oauth/microsoft` | GET | Microsoft OAuth initiation | Browser redirect |
-| `/api/oauth/microsoft/callback` | GET | Microsoft OAuth callback | Microsoft OAuth |
-| `/api/tracking/[token]` | GET | Email tracking pixel | Email clients |
-| `/api/webhooks/gmail` | POST | Gmail push notifications | Google Pub/Sub |
+### DOM-05: Data Intelligence (40 routes)
 
-### TEST_ONLY Routes (3 routes)
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/databases` | GET, POST | WF-05.01 | FRONTEND | `app/dashboard/databases/page.tsx:42,98` |
+| `/api/databases/[id]` | GET, PATCH, DELETE | WF-05.01, WF-05.05 | FRONTEND | `app/dashboard/databases/[id]/page.tsx:67` |
+| `/api/databases/[id]/columns` | GET | WF-05.02 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` |
+| `/api/databases/[id]/rows` | DELETE | WF-05.01 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` |
+| `/api/databases/[id]/schema` | PATCH | WF-05.02 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` |
+| `/api/databases/[id]/sync` | POST | WF-05.03 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` |
+| `/api/databases/[id]/template.xlsx` | GET | WF-05.04 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` (window.open) |
+| `/api/databases/[id]/export.xlsx` | GET | WF-05.04 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` (window.open) |
+| `/api/databases/[id]/import` | POST | WF-05.03 | FRONTEND | `app/dashboard/databases/[id]/page.tsx:218` |
+| `/api/databases/[id]/import/preview` | POST | WF-05.03 | FRONTEND | `app/dashboard/databases/[id]/page.tsx:195` |
+| `/api/databases/[id]/viewers` | GET, PUT | WF-05.01 | FRONTEND | `app/dashboard/databases/[id]/page.tsx` |
+| `/api/reports` | GET, POST | WF-05.06 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/reports/[id]` | GET, PATCH, DELETE | WF-05.07 | FRONTEND | `app/dashboard/reports/[id]/page.tsx` |
+| `/api/reports/[id]/preview` | GET, POST | WF-05.07 | FRONTEND | `app/dashboard/reports/[id]/page.tsx` |
+| `/api/reports/[id]/filter-properties` | GET | WF-05.07 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/reports/[id]/insights` | POST | WF-05.10 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/reports/[id]/viewers` | GET, PUT | WF-05.06 | FRONTEND | `app/dashboard/reports/[id]/page.tsx` |
+| `/api/reports/[id]/duplicate` | POST | WF-05.06 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/generated-reports` | GET, POST | WF-05.08 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/generated-reports/[id]` | GET | WF-05.08 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/generated-reports/[id]/export` | GET | WF-05.09 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/generated-reports/[id]/insights` | GET, POST | WF-05.10 | FRONTEND | `app/dashboard/reports/page.tsx` |
+| `/api/generated-reports/ensure-for-task` | POST | WF-05.08 | FRONTEND | `app/dashboard/jobs/[id]/page.tsx` |
+| `/api/reconciliations` | GET, POST | WF-05.11 | FRONTEND | `app/dashboard/reconciliations/page.tsx` |
+| `/api/reconciliations/completed` | GET | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/page.tsx` |
+| `/api/reconciliations/analyze` | POST | WF-05.13 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/suggest-mappings` | POST | WF-05.13 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]` | GET, PATCH, DELETE | WF-05.11 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/viewers` | GET, PUT | WF-05.11 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs` | GET, POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]` | GET | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/upload` | POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/load-database` | POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/match` | POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/accept-match` | POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/exceptions` | PATCH | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/reconciliations/[configId]/runs/[runId]/complete` | POST | WF-05.12 | FRONTEND | `app/dashboard/reconciliations/[configId]/page.tsx` |
+| `/api/analysis/conversations` | GET, POST | WF-05.14 | FRONTEND | `app/dashboard/analysis/page.tsx` |
+| `/api/analysis/conversations/[id]` | GET, DELETE | WF-05.14 | FRONTEND | `app/dashboard/analysis/chat/[id]/page.tsx` |
+| `/api/analysis/conversations/[id]/messages` | POST | WF-05.14 | FRONTEND | `app/dashboard/analysis/chat/[id]/page.tsx` |
 
-Routes only called from test files. Caller Type: `TEST_ONLY`, Call Style: `NONE` for production.
+### DOM-06: Automation & Agents (16 routes + 13 Inngest functions)
 
-| Route | Methods | Test Evidence |
-|-------|---------|---------------|
-| `/api/email-drafts/[id]` | GET, PATCH | `tests/api/email-drafts-generate.test.ts:275`, `tests/ui/compose-page.test.tsx:33,60` |
-| `/api/email-drafts/[id]/send` | POST | No test callers found, route uses services |
-| `/api/email-drafts/generate` | POST | `tests/api/email-drafts-generate.test.ts:143,172,199,211` |
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/agents` | GET, POST | WF-06.01 | FRONTEND | `app/dashboard/agents/page.tsx` |
+| `/api/agents/[agentId]` | GET, PATCH, DELETE | WF-06.01 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/execute` | POST | WF-06.02 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/executions` | GET | WF-06.03 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/executions/[executionId]` | GET, POST | WF-06.03 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/executions/[executionId]/status` | GET | WF-06.03 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` (polling) |
+| `/api/agents/[agentId]/executions/[executionId]/cancel` | POST | WF-06.04 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/executions/[executionId]/feedback` | POST | WF-06.06 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/memory` | GET | WF-06.05 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/agents/[agentId]/metrics` | GET | WF-06.05 | FRONTEND | `app/dashboard/agents/[id]/page.tsx` |
+| `/api/automation-rules` | GET, POST | WF-06.07 | FRONTEND | `app/dashboard/automations/page.tsx` |
+| `/api/automation-rules/[id]` | GET, PATCH, DELETE | WF-06.07 | FRONTEND | `app/dashboard/automations/[id]/page.tsx` |
+| `/api/automation-rules/[id]/run` | POST | WF-06.08 | FRONTEND | `app/dashboard/automations/[id]/page.tsx` |
+| `/api/workflow-runs` | GET | WF-06.09 | FRONTEND | `app/dashboard/automations/page.tsx` |
+| `/api/workflow-runs/[id]` | GET | WF-06.09 | FRONTEND | `app/dashboard/automations/[id]/runs/[runId]/page.tsx` |
+| `/api/workflow-runs/[id]/approve` | POST | WF-06.09 | FRONTEND | `app/dashboard/automations/[id]/runs/[runId]/page.tsx` |
 
-### UNKNOWN Routes (21 routes)
+**Inngest Functions** (all DOM-06, Caller: SYSTEM):
 
-Routes with no detected callers. Caller Type: `UNKNOWN`, Call Style: `NONE`.
+| Function | Trigger | Schedule | Workflow |
+|----------|---------|----------|----------|
+| `ping` | Event | — | WF-06.12 |
+| `classify-message` | Event: `message/classify` | — | WF-06.11 |
+| `summarize-task` | Event: `task/summarize` | — | WF-06.11 |
+| `sync-gmail-accounts` | Cron | Every 1 min | WF-06.10 |
+| `sync-microsoft-accounts` | Cron | Every 1 min | WF-06.10 |
+| `reminder/send-due` | Cron | Every 15 min | WF-06.12 |
+| `quest/execute-standing` | Cron | Every 5 min | WF-06.12 |
+| `process-email-queue` | Cron | Every hour | WF-06.12 |
+| `auto-create-period-boards` | Cron | Every hour | WF-06.12 |
+| `workflow-run` | Event: `workflow/run` | — | WF-06.12 |
+| `workflow-trigger-dispatcher` | Event: `workflow/trigger` | — | WF-06.12 |
+| `workflow-scheduler` | Cron | Every 5 min | WF-06.12 |
+| `agent-run` | Event: `agent/run` | — | WF-06.02 |
 
-| Route | Methods | Services Used | Verification Command |
-|-------|---------|---------------|---------------------|
-| `/api/attachments/[id]` | GET, DELETE | attachment.service | `rg "\/api\/attachments\/" -n app components lib` |
-| `/api/attachments/delete/[id]` | DELETE | attachment.service | `rg "\/api\/attachments\/delete" -n app components lib` |
-| `/api/attachments/download/[id]` | GET | attachment.service | `rg "\/api\/attachments\/download" -n app components lib` |
-| `/api/contacts/sync` | POST | email-connection, entity, group | `rg "\/api\/contacts\/sync" -n app components lib` |
-| `/api/internal/ai-metrics/agreement` | GET | - | `rg "\/api\/internal" -n app components lib` |
-| `/api/quests/[id]` | GET, PATCH | quest.service | `rg "\/api\/quests\/[^e]" -n app components lib` |
-| `/api/quests/[id]/generate` | POST | quest.service | `rg "\/api\/quests\/.*\/generate" -n app components` |
-| `/api/quests/context` | GET | quest-interpreter | `rg "\/api\/quests\/context" -n app components` |
-| `/api/quests/interpret` | GET, POST | quest-interpreter | `rg "\/api\/quests\/interpret" -n app components` |
-| `/api/quests/standing` | POST | quest.service | `rg "\/api\/quests\/standing" -n app components` |
-| `/api/requests/detail` | GET | risk-computation | `rg "\/api\/requests\/detail[^/]" -n app components` |
-| `/api/requests/detail/[id]/mark-read` | POST | - | `rg "mark-read" -n app components` |
-| `/api/requests/detail/[id]/reminder-draft` | GET, POST | - | `rg "reminder-draft" -n app components` |
-| `/api/requests/detail/[id]/risk` | PUT | - | `rg "\/risk[^-]" -n app components` |
-| `/api/task-instances/[id]/attachments` | GET, POST | attachment.service | `rg "\/attachments[^/]" -n app components` |
-| `/api/task-instances/[id]/labels/[labelId]` | GET, PATCH, DELETE | task-instance-label | `rg "\/labels\/[^r]" -n app components` |
-| `/api/task-instances/[id]/request/dataset/preview` | GET, POST | task-instance | `rg "\/dataset\/preview" -n app components` |
+### DOM-07: Integrations & Delivery Channels (16 routes)
+
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/oauth/gmail` | GET | WF-07.01 | EXTERNAL | Browser redirect to Google |
+| `/api/oauth/gmail/callback` | GET | WF-07.01 | EXTERNAL | Google OAuth callback |
+| `/api/oauth/microsoft` | GET | WF-07.02 | EXTERNAL | Browser redirect to Microsoft |
+| `/api/oauth/microsoft/callback` | GET | WF-07.02 | EXTERNAL | Microsoft OAuth callback |
+| `/api/email-accounts` | GET | WF-07.03 | FRONTEND | `components/jobs/send-request-modal.tsx:217` |
+| `/api/email-accounts/[id]` | DELETE | WF-07.03 | FRONTEND | `app/dashboard/settings/team/page.tsx:204` |
+| `/api/integrations/accounting/link-token` | POST | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/connect` | POST | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/disconnect` | DELETE | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/status` | GET | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/sync` | POST | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/config` | PUT | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/sources` | GET | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/integrations/accounting/preview` | POST | WF-07.04 | FRONTEND | `app/dashboard/settings/accounting/page.tsx` |
+| `/api/webhooks/gmail` | POST | WF-07.05 | EXTERNAL | Google Pub/Sub |
+| `/api/tracking/[token]` | GET | WF-07.05 | EXTERNAL | Email clients (pixel) |
+
+### DOM-08: Platform Ops & Internal (24 routes)
+
+| Route | Methods | Workflow(s) | Caller | Evidence |
+|-------|---------|-------------|--------|----------|
+| `/api/admin/backfill-completion` | POST | WF-08.02 | ADMIN | — |
+| `/api/admin/backfill-file-urls` | GET | WF-08.02 | ADMIN | — |
+| `/api/admin/backfill-risk` | POST | WF-08.02 | ADMIN | — |
+| `/api/admin/check-replies` | GET | WF-08.04 | ADMIN | — |
+| `/api/admin/cleanup-requests` | POST | WF-08.03 | ADMIN | — |
+| `/api/admin/debug-accounts` | GET, POST | WF-08.01 | ADMIN | — |
+| `/api/admin/debug-blob` | GET | WF-08.01 | ADMIN | — |
+| `/api/admin/debug-collection` | GET | WF-08.01 | ADMIN | — |
+| `/api/admin/debug-email-sync` | GET | WF-08.01 | ADMIN | — |
+| `/api/admin/debug-messages` | GET, POST | WF-08.01 | ADMIN | — |
+| `/api/admin/debug/[taskId]` | GET | WF-08.01 | ADMIN | — |
+| `/api/admin/delete-user` | DELETE | WF-08.03 | ADMIN | — |
+| `/api/admin/health-check` | GET | WF-08.04 | ADMIN | — |
+| `/api/admin/migrate` | POST | WF-08.02 | ADMIN | — |
+| `/api/admin/pipeline-status` | GET | WF-08.04 | ADMIN | — |
+| `/api/admin/reminders/run-once` | POST | WF-08.03 | ADMIN | — |
+| `/api/admin/sync-emails` | POST | WF-08.03 | ADMIN | — |
+| `/api/admin/sync-gmail-now` | POST | WF-08.03 | ADMIN | — |
+| `/api/inngest` | GET, POST, PUT | WF-06.12 | EXTERNAL | Inngest Cloud |
+| `/api/errors/report` | POST | WF-08.04 | FRONTEND | `app/layout.tsx:33` (global error handler) |
+| `/api/internal/ai-metrics/agreement` | GET | WF-08.04 | INTERNAL | Admin analytics only |
+| `/api/notifications` | GET, PATCH | WF-08.05 | FRONTEND | `components/notifications/notification-bell.tsx` |
+| `/api/notifications/[id]` | PATCH | WF-08.05 | FRONTEND | `components/notifications/notification-bell.tsx` |
+| `/api/notifications/count` | GET | WF-08.05 | FRONTEND | `components/notifications/notification-bell.tsx` |
 
 ---
 
 ## Section D: Orphan Triage
 
-### Triage Categories for UNKNOWN Routes
+### UNKNOWN Routes (11)
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Feature-flagged | 5 | Quest routes behind `QUEST_*` flags |
-| Missing wiring | 6 | Valid functionality, needs UI integration |
-| Recently wired | 6 | Wired in P1 Sprint 2026-01-21/22 |
-| Duplicate/Legacy | 2 | Can be safely removed |
-| Internal metrics | 1 | Not for frontend use |
-| Unclear purpose | 1 | Needs investigation |
+| Route | Domain | Workflow | Recommendation |
+|-------|--------|---------|----------------|
+| `/api/attachments/[id]` | DOM-02 | WF-02.17 | Wire to job detail attachments section |
+| `/api/attachments/by-key/[key]` | DOM-02 | WF-02.17 | Wire to attachment preview |
+| `/api/attachments/download/[id]` | DOM-02 | WF-02.17 | Wire to attachment download |
+| `/api/requests/detail` (base) | DOM-04 | WF-04.02 | Delete — `/detail/[id]` is the actual endpoint |
+| `/api/requests/detail/[id]/mark-read` | DOM-04 | WF-04.04 | Wire to request row click handler |
+| `/api/requests/detail/[id]/reminder-draft` | DOM-04 | WF-04.02 | Wire to reminder preview modal |
+| `/api/requests/detail/[id]/risk` | DOM-04 | WF-04.05 | Wire to request detail risk badge |
+| `/api/task-instances/[id]/attachments` | DOM-02 | WF-02.17 | Wire to job detail attachments section |
+| `/api/task-instances/[id]/labels/[labelId]` | DOM-02 | WF-02.21 | Wire to label edit/delete UI |
+| `/api/quests/[id]` | DOM-03 | WF-03.07 | Quest routes — verify feature flag status |
+| `/api/quests/context` | DOM-03 | WF-03.07 | Same as above |
 
-### Detailed Analysis
+### TEST_ONLY Routes (4)
 
-#### Feature-Flagged Routes (5)
-
-These routes support Quest functionality behind feature flags:
-- `/api/quests/[id]` - Quest detail/update
-- `/api/quests/[id]/generate` - Generate quest email content
-- `/api/quests/context` - Quest context for UI
-- `/api/quests/interpret` - Natural language quest interpretation
-- `/api/quests/standing` - Standing/recurring quests
-
-**Flags**: None (feature flags removed; access controlled via permissions)
-
-#### Missing Wiring (6)
-
-| Route | Sub-Workflow | Workflow Justification | Recommended Action |
-|-------|--------------|----------------------|-------------------|
-| `/api/requests/detail/[id]/reminder-draft` | WF-05c | Reminder preview | Wire to reminder preview modal |
-| `/api/requests/detail/[id]/mark-read` | WF-05g | Read status tracking | Wire to request list row click |
-| `/api/requests/detail/[id]/risk` | WF-05f | Manual risk override | Wire to request detail risk badge |
-| `/api/task-instances/[id]/attachments` | WF-04e | File attachments on jobs | Wire to job detail attachments section |
-| `/api/task-instances/[id]/labels/[labelId]` | WF-05a | Label management | Wire to label edit/delete UI |
-| `/api/task-instances/[id]/request/dataset/preview` | WF-05b | Preview personalization | Wire to dataset preview step |
-
-#### Recently Wired (6) - 2026-01-21/22
-
-| Route | Sub-Workflow | Component | Evidence |
-|-------|--------------|-----------|----------|
-| `/api/recipients/search` | WF-07f | `send-request-modal.tsx:393` | Recipient autocomplete search |
-| `/api/requests/detail/[id]/reminders` | WF-05e | `request-card-expandable.tsx:214,229` | Reminder info fetch + cancel |
-| `/api/task-instances/[id]/collection/bulk` | WF-06c | `collection-tab.tsx:168` | Bulk approve/reject/delete actions |
-| `/api/task-instances/[id]/collection/export` | WF-06d | `collection-tab.tsx:324` | Export All button |
-#### Duplicate/Legacy (2)
-
-| Route | Issue | Recommendation |
-|-------|-------|----------------|
-| `/api/attachments/delete/[id]` | DELETE already exists on `/api/attachments/[id]` | Delete route file |
-| `/api/requests/detail` | Base route without ID, unclear purpose | Investigate or delete |
-
-#### Internal Metrics (1)
-
-| Route | Purpose |
-|-------|---------|
-| `/api/internal/ai-metrics/agreement` | AI recommendation agreement metrics, admin use only |
+| Route | Domain | Notes |
+|-------|--------|-------|
+| `/api/email-drafts/[id]` | DOM-03 | Legacy email draft CRUD |
+| `/api/email-drafts/[id]/send` | DOM-03 | Legacy email draft send |
+| `/api/email-drafts/csv-upload` | DOM-03 | Legacy CSV upload |
+| `/api/email-drafts/generate` | DOM-03 | Legacy draft generation |
 
 ---
 
-## Section E: Top 10 Fix-Next Recommendations
+## Section E: Fix-Next Recommendations
 
-Only items with workflow justification and verified no current frontend caller.
-
-### Completed (2026-01-21)
-
-| Route | Sub-Workflow | Status | Evidence |
-|-------|--------------|--------|----------|
-| `/api/recipients/search` | WF-07f | WIRED | `components/jobs/send-request-modal.tsx:393` |
-| `/api/requests/detail/[id]/reminders` | WF-05e | WIRED | `components/jobs/request-card-expandable.tsx:214,229` |
-| `/api/task-instances/[id]/collection/export` | WF-06d | WIRED | `components/jobs/collection/collection-tab.tsx:324` |
-| `/api/task-instances/[id]/collection/bulk` | WF-06c | WIRED | `components/jobs/collection/collection-tab.tsx:168` |
-
-### Remaining
-
-| Priority | Route | Sub-Workflow | Workflow | Action |
-|----------|-------|--------------|----------|--------|
-| 1 | `/api/requests/detail/[id]/mark-read` | WF-05g | Mark Request Read/Unread | Wire to request row click handler |
-| 2 | `/api/task-instances/[id]/labels/[labelId]` | WF-05a | Send Email Request (labels) | Wire to label edit/delete UI |
-| 3 | `/api/requests/detail/[id]/reminder-draft` | WF-05c | Configure Request Reminders | Wire to reminder preview modal |
-| 4 | `/api/requests/detail/[id]/risk` | WF-05f | Manually Override Request Risk | Wire to request detail risk badge |
-| 5 | `/api/task-instances/[id]/attachments` | WF-04e | Manage Job Attachments | Wire to job detail attachments section |
-| 6 | `/api/attachments/delete/[id]` | - | N/A - Duplicate | Delete route file |
-| 7 | `/api/requests/detail` | - | N/A - Unclear purpose | Investigate or delete |
+| Priority | Route | Domain | Workflow | Action |
+|----------|-------|--------|----------|--------|
+| 1 | `/api/requests/detail/[id]/mark-read` | DOM-04 | WF-04.04 | Wire to request row click handler |
+| 2 | `/api/task-instances/[id]/attachments` | DOM-02 | WF-02.17 | Wire to job detail attachments section |
+| 3 | `/api/task-instances/[id]/labels/[labelId]` | DOM-02 | WF-02.21 | Wire to label edit/delete UI |
+| 4 | `/api/requests/detail/[id]/reminder-draft` | DOM-04 | WF-04.02 | Wire to reminder preview modal |
+| 5 | `/api/requests/detail/[id]/risk` | DOM-04 | WF-04.05 | Wire to request detail risk badge |
+| 6 | `/api/requests/detail` (base) | DOM-04 | — | Delete route file |
 
 ---
 
@@ -628,8 +677,8 @@ Only items with workflow justification and verified no current frontend caller.
 #### Required Pattern for Date-Only Fields
 
 ```typescript
-// WRONG - causes off-by-one errors due to UTC→local conversion
-format(new Date(task.dueDate), "MMM d")  // Jan 31 UTC → Jan 30 in EST
+// WRONG - causes off-by-one errors due to UTC->local conversion
+format(new Date(task.dueDate), "MMM d")  // Jan 31 UTC -> Jan 30 in EST
 
 // CORRECT - parse date part only
 function parseDateOnly(dateStr: string): Date {
@@ -639,13 +688,6 @@ function parseDateOnly(dateStr: string): Date {
 }
 format(parseDateOnly(task.dueDate), "MMM d")  // Correctly shows Jan 31
 ```
-
-#### API Response Contract
-
-All date-only fields returned from API routes MUST:
-1. Be stored as midnight UTC in the database
-2. Be returned as ISO strings (`YYYY-MM-DDT00:00:00.000Z`)
-3. Be documented in this contract as date-only fields
 
 #### Timezone Configuration
 
@@ -661,16 +703,6 @@ Organizations have a `timezone` field (e.g., `"America/New_York"`).
 
 Shared timezone utilities: `lib/utils/timezone.ts`
 
-Key exports:
-- `parseDateOnly()` - Parse date-only strings
-- `formatDateInTimezone()` - Format with timezone
-- `getTodayInTimezone()` - Get today's date in org timezone
-- `getStartOfPeriod()` / `getEndOfPeriod()` - Period boundary calculations
-- `generatePeriodBoardName()` - Timezone-aware board naming
-- `formatPeriodDisplay()` - Format period ranges for display
-
----
-
 ### Classification Rules
 
 1. **No caller claims without evidence**: Every Caller Type assertion must cite `file:line`
@@ -681,8 +713,9 @@ Key exports:
 
 1. Create route in `app/api/`
 2. Add frontend caller in same PR (or document why not needed)
-3. Update this document with evidence
-4. Run `npx tsx scripts/generate-api-map.ts` to verify detection
+3. Assign to a domain in `workflow-taxonomy.md`
+4. Update this document with evidence
+5. Run `npx tsx scripts/generate-api-map.ts` to verify detection
 
 ### Preventing UNKNOWN Routes
 
@@ -699,11 +732,11 @@ Key exports:
 ### Regenerate Route Mapping
 
 ```bash
-# Regenerate api-mapping.json and api-mapping.csv
-npx tsx scripts/generate-api-map.ts
+# Count route files
+find app/api -name "route.ts" | wc -l
 
-# Count by status
-awk -F',' 'NR>1 {print $1}' api-mapping.csv | sort | uniq -c | sort -rn
+# Regenerate api-mapping (if script exists)
+npx tsx scripts/generate-api-map.ts
 ```
 
 ### Find Frontend Callers
@@ -723,11 +756,14 @@ rg "\/api\/task-instances\/[^/]*\/collection" -n app components
 rg "route-path" -n app components lib inngest scripts tests
 ```
 
-### Check for New UNKNOWN Routes
+### Domain Assignment Verification
 
 ```bash
-# Routes with 0 frontend callers from api-mapping.csv
-awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
+# Count routes per domain by checking taxonomy doc
+grep "DOM-0" docs/product/workflow-taxonomy.md | wc -l
+
+# Check for unassigned routes
+diff <(find app/api -name "route.ts" | sort) <(grep "^|" docs/architecture/frontend-backend-contract.md | grep "/api/" | sort)
 ```
 
 ---
@@ -736,14 +772,19 @@ awk -F',' '$1=="ORPHAN" {print $2}' api-mapping.csv
 
 | Metric | Count | Source |
 |--------|-------|--------|
-| Total API Routes | 136 | `find app/api -name "route.ts" \| wc -l` |
-| FRONTEND | 90 | This document |
-| ADMIN | 18 | Routes in `/api/admin/*` |
-| EXTERNAL | 8 | OAuth, webhooks, tracking |
-| TEST_ONLY | 3 | Only test file callers |
-| UNKNOWN | 17 | No callers detected |
-| Frontend Pages | 21 | `find app -name "page.tsx" \| wc -l` |
+| Total API Route Files | 211 | `find app/api -name "route.ts" \| wc -l` |
+| FRONTEND routes | 160+ | This document |
+| ADMIN routes | 18 | Routes in `/api/admin/*` |
+| EXTERNAL routes | 8 | OAuth, webhooks, tracking, forms |
+| TEST_ONLY routes | 4 | Only test file callers |
+| UNKNOWN routes | 11 | No callers detected |
+| Inngest Functions | 13 | `inngest/functions/index.ts` |
+| Frontend Pages | 44 | Dashboard pages |
+| Public/Auth Pages | 9 | Auth + info pages |
+| Admin Pages | 6 | Separate admin-dashboard app |
+| Domains | 8 | DOM-01 through DOM-08 |
+| Workflows | 88 | WF-01.01 through WF-08.05 |
 
 ---
 
-*Generated from codebase analysis. Regenerate mapping with `npx tsx scripts/generate-api-map.ts`*
+*Taxonomy reference: `docs/product/workflow-taxonomy.md` v3.0. Regenerate mapping with `npx tsx scripts/generate-api-map.ts`.*

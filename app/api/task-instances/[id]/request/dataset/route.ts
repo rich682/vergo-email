@@ -6,6 +6,7 @@
  * Updates dataset structure or row values:
  * - add_column: Add a new column to the dataset
  * - update_rows: Update values for specific recipients
+import { normalizeEmail } from "@/lib/utils/email"
  * - update_draft: Update subject/body templates
  */
 
@@ -202,7 +203,7 @@ export async function PATCH(
           
           if (!email) continue
 
-          const normalizedEmail = email.toLowerCase().trim()
+          const normalizedEmail = normalizeEmail(email) || ""
           
           // Find the PersonalizationData record
           const record = await prisma.personalizationData.findFirst({

@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import { canPerformAction } from "@/lib/permissions"
-import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export const maxDuration = 30
 export const dynamic = "force-dynamic"
@@ -12,13 +12,6 @@ export const dynamic = "force-dynamic"
 // Current prompt version - increment when prompt changes significantly
 const PROMPT_VERSION = "v3" // Bumped for attachment content analysis
 
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 interface Finding {
   severity: "info" | "warning" | "critical"

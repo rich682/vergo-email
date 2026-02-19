@@ -6,15 +6,7 @@
  */
 
 import * as XLSX from "xlsx"
-import OpenAI from "openai"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export interface ExtractionResult {
   success: boolean

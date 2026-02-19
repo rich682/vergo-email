@@ -48,13 +48,14 @@ export async function GET(
       if (task.reconciliationConfigId) {
         const reconConfig = await prisma.reconciliationConfig.findUnique({
           where: { id: task.reconciliationConfigId },
-          select: { sourceAConfig: true, sourceBConfig: true },
+          select: { sourceAConfig: true, sourceBConfig: true, sourceType: true },
         })
         const aLabel = (reconConfig?.sourceAConfig as any)?.label
         const bLabel = (reconConfig?.sourceBConfig as any)?.label
         config.reconciliationConfigName = aLabel && bLabel
           ? `${aLabel} vs ${bLabel}`
           : "Reconciliation configuration"
+        config.reconciliationSourceType = reconConfig?.sourceType || null
       }
     } else if (task.taskType === "report") {
       config.reportDefinitionId = task.reportDefinitionId

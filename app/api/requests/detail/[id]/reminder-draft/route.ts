@@ -2,18 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 interface ReminderDraft {
   subject: string

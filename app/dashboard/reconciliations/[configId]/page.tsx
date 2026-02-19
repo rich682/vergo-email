@@ -381,10 +381,7 @@ export default function ReconciliationDetailPage() {
             {/* Matching Rules */}
             <div className="flex items-center gap-6 text-xs text-gray-600">
               <span>
-                Amount: <span className="font-medium">{matchingRules.amountMatch === "exact" ? "Exact match" : `±$${matchingRules.amountTolerance || 0}`}</span>
-              </span>
-              <span>
-                Date window: <span className="font-medium">{matchingRules.dateWindowDays} days</span>
+                Matching: <span className="font-medium">Exact</span>
               </span>
               <span>
                 AI fuzzy matching: <span className="font-medium">{matchingRules.fuzzyDescription ? "Enabled" : "Disabled"}</span>

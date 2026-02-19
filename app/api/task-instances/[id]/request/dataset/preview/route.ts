@@ -6,6 +6,7 @@
  * Renders the email template for a specific recipient, resolving merge fields.
  * Returns rendered content and highlights missing fields.
  */
+import { normalizeEmail } from "@/lib/utils/email"
 
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
@@ -75,7 +76,7 @@ export async function POST(
       )
     }
 
-    const normalizedEmail = email.toLowerCase().trim()
+    const normalizedEmail = normalizeEmail(email) || ""
 
     // Fetch the EmailDraft
     const emailDraft = await prisma.emailDraft.findFirst({

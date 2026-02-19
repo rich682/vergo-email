@@ -1,17 +1,9 @@
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { prisma } from "@/lib/prisma"
 import { EntityService } from "./entity.service"
 import { GroupService } from "./group.service"
 import { CampaignType } from "@prisma/client"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 export interface GeneratedEmailDraft {
   subject: string

@@ -1,13 +1,6 @@
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
+import { getOpenAIClient } from "@/lib/utils/openai-client"
+import { isBounce, isOutOfOffice } from "@/lib/utils/bounce-detection"
 
 export enum MessageClassification {
   DATA = "DATA",
@@ -31,76 +24,12 @@ export class AIClassificationService {
    * These come from mail servers and have predictable patterns
    */
   static detectBounceOrAutoReply(data: { subject?: string; body: string; fromAddress?: string }): MessageClassification | null {
-    const subject = (data.subject || "").toLowerCase()
-    const body = (data.body || "").toLowerCase()
-    const from = (data.fromAddress || "").toLowerCase()
-    
-    // Bounce detection - delivery failures from mail servers
-    const bounceIndicators = [
-      // From addresses
-      from.includes("mailer-daemon"),
-      from.includes("postmaster"),
-      from.includes("mail delivery"),
-      from.includes("maildelivery"),
-      // Subject patterns
-      subject.includes("delivery status notification"),
-      subject.includes("undeliverable"),
-      subject.includes("mail delivery failed"),
-      subject.includes("delivery failure"),
-      subject.includes("returned mail"),
-      subject.includes("delivery has failed"),
-      subject.includes("message not delivered"),
-      // Body patterns
-      body.includes("address not found"),
-      body.includes("address couldn't be found"),
-      body.includes("user unknown"),
-      body.includes("no such user"),
-      body.includes("mailbox not found"),
-      body.includes("mailbox unavailable"),
-      body.includes("recipient rejected"),
-      body.includes("550 5.1.1"),
-      body.includes("550-5.1.1"),
-      body.includes("550 user unknown"),
-      body.includes("action: failed"),
-      body.includes("status: 5."),
-      body.includes("diagnostic-code: smtp"),
-      body.includes("the email account that you tried to reach does not exist"),
-      body.includes("wasn't delivered to"),
-      body.includes("could not be delivered"),
-      body.includes("permanent failure"),
-      body.includes("mailbox full"),
-      body.includes("over quota")
-    ]
-    
-    if (bounceIndicators.some(Boolean)) {
+    if (isBounce({ subject: data.subject, body: data.body, fromAddress: data.fromAddress })) {
       return MessageClassification.BOUNCE
     }
-    
-    // Out of office detection
-    const oooIndicators = [
-      subject.includes("out of office"),
-      subject.includes("out of the office"),
-      subject.includes("automatic reply"),
-      subject.includes("auto-reply"),
-      subject.includes("autoreply"),
-      subject.includes("away from"),
-      subject.includes("on vacation"),
-      subject.includes("on leave"),
-      subject.includes("on holiday"),
-      body.includes("i am currently out of the office"),
-      body.includes("i'm currently out of the office"),
-      body.includes("i will be out of the office"),
-      body.includes("i am away from"),
-      body.includes("i'm away from"),
-      body.includes("limited access to email"),
-      body.includes("will respond when i return"),
-      body.includes("will reply when i return")
-    ]
-    
-    if (oooIndicators.some(Boolean)) {
+    if (isOutOfOffice({ subject: data.subject, body: data.body })) {
       return MessageClassification.OUT_OF_OFFICE
     }
-    
     return null
   }
 

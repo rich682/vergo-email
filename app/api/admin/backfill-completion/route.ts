@@ -3,16 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { AIClassificationService } from "@/lib/services/ai-classification.service"
-import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export const maxDuration = 120;
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 async function analyzeCompletionPercentage(
   requestSubject: string,

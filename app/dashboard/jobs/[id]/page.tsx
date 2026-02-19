@@ -142,6 +142,8 @@ interface Job {
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null
+  // Reconciliation configuration
+  reconciliationConfigId?: string | null
   // Task type for agent integration
   taskType?: string | null
 }
@@ -1457,6 +1459,11 @@ export default function JobDetailPage() {
                 taskType={job.taskType ?? null}
                 taskName={job.name}
                 canEdit={permissions?.canEdit}
+                reconciliationConfigId={job.reconciliationConfigId ?? null}
+                reportDefinitionId={job.reportDefinitionId ?? null}
+                requestCount={requests.length}
+                formRequestCount={formRequestCount}
+                onJobUpdate={() => fetchJob()}
               />
             )}
           </div>

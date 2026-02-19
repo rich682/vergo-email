@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
+import { normalizeEmail } from "@/lib/utils/email"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 import { RequestCreationService } from "@/lib/services/request-creation.service"
 import { DatabaseService, DatabaseSchema, DatabaseRow } from "@/lib/services/database.service"
@@ -337,12 +338,12 @@ export async function POST(
     }
 
     // Get existing contacts to avoid duplicates in contact creation
-    const recipientEmails = validRows.map(r => String(r[emailColumnKey]).toLowerCase())
+    const recipientEmails = validRows.map(r => normalizeEmail(String(r[emailColumnKey])) || "")
     const existingEntities = await prisma.entity.findMany({
       where: { organizationId, email: { in: recipientEmails, mode: "insensitive" } },
       select: { email: true }
     })
-    const existingEmailsSet = new Set(existingEntities.map(e => e.email?.toLowerCase()))
+    const existingEmailsSet = new Set(existingEntities.map(e => normalizeEmail(e.email) || ""))
 
     // Campaign name
     const campaignName = `Database Request: ${instance.name} - ${database.name} - ${new Date().toISOString().split('T')[0]}`
@@ -411,7 +412,7 @@ export async function POST(
           sent = true
 
           // Track new contacts
-          if (!existingEmailsSet.has(email.toLowerCase())) {
+          if (!existingEmailsSet.has(normalizeEmail(email) || "")) {
             newContacts.push({ email, firstName, lastName: null })
           }
           break // Success - exit retry loop

@@ -3,6 +3,8 @@
  * Provides deterministic fallbacks and LLM integration hooks
  */
 
+import { isBounce, isOutOfOffice } from "@/lib/utils/bounce-detection"
+
 export type RiskLevel = "high" | "medium" | "low" | "bounced" | "unknown"
 export type ReadStatus = "unread" | "read" | "replied"
 
@@ -32,75 +34,35 @@ export interface RiskComputationResult {
 }
 
 /**
- * Detect if a message is a bounce/delivery failure
- * Returns true if the message appears to be from a mail server indicating delivery failure
+ * Detect if a message is a bounce/delivery failure.
+ * Delegates to shared isBounce utility, plus checks AI classification.
  */
-export function detectBounce(input: { 
+export function detectBounce(input: {
   latestResponseText?: string | null
-  latestInboundClassification?: string | null 
+  latestInboundClassification?: string | null
   fromAddress?: string | null
 }): boolean {
-  // Check classification first (most reliable)
   if (input.latestInboundClassification === "BOUNCE") {
     return true
   }
-  
-  const text = (input.latestResponseText || "").toLowerCase()
-  const from = (input.fromAddress || "").toLowerCase()
-  
-  // Check from address patterns
-  if (from.includes("mailer-daemon") || from.includes("postmaster") || from.includes("mail delivery")) {
-    return true
-  }
-  
-  // Check body patterns for bounce indicators
-  const bouncePatterns = [
-    "address not found",
-    "address couldn't be found",
-    "user unknown",
-    "no such user",
-    "mailbox not found",
-    "mailbox unavailable",
-    "550 5.1.1",
-    "550-5.1.1",
-    "action: failed",
-    "delivery status notification",
-    "the email account that you tried to reach does not exist",
-    "wasn't delivered to",
-    "could not be delivered",
-    "permanent failure",
-    "undeliverable"
-  ]
-  
-  return bouncePatterns.some(pattern => text.includes(pattern))
+  return isBounce({
+    body: input.latestResponseText,
+    fromAddress: input.fromAddress,
+  })
 }
 
 /**
- * Detect if a message is an out-of-office auto-reply
+ * Detect if a message is an out-of-office auto-reply.
+ * Delegates to shared isOutOfOffice utility, plus checks AI classification.
  */
-export function detectOutOfOffice(input: { 
+export function detectOutOfOffice(input: {
   latestResponseText?: string | null
-  latestInboundClassification?: string | null 
+  latestInboundClassification?: string | null
 }): boolean {
   if (input.latestInboundClassification === "OUT_OF_OFFICE") {
     return true
   }
-  
-  const text = (input.latestResponseText || "").toLowerCase()
-  
-  const oooPatterns = [
-    "out of office",
-    "out of the office",
-    "automatic reply",
-    "auto-reply",
-    "i am currently away",
-    "i'm currently away",
-    "on vacation",
-    "on leave",
-    "limited access to email"
-  ]
-  
-  return oooPatterns.some(pattern => text.includes(pattern))
+  return isOutOfOffice({ body: input.latestResponseText })
 }
 
 /**

@@ -12,16 +12,9 @@ import { EmailQueueService } from "@/lib/services/email-queue.service"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import { CompletionDetectionService } from "@/lib/services/completion-detection.service"
-import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { createHash } from "crypto"
 
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 export const functions = [
   inngest.createFunction(

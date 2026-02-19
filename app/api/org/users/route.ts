@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { normalizeEmail } from "@/lib/utils/email"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() }
+      where: { email: normalizeEmail(email) || "" }
     })
 
     if (existingUser) {
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
     // Create user with empty password (pending status) and invite token
     const newUser = await prisma.user.create({
       data: {
-        email: email.toLowerCase().trim(),
+        email: normalizeEmail(email) || "",
         name: name?.trim() || null,
         role: userRoleToSet,
         organizationId,

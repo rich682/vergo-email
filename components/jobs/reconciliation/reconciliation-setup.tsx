@@ -51,7 +51,7 @@ interface ColumnMapping {
   sourceBKey: string
   type: "date" | "amount" | "text" | "reference"
   label: string
-  tolerance?: number // ±$ for amount, ±days for date
+  isPeriodIdentifier?: boolean
 }
 
 interface ReconciliationSetupProps {
@@ -225,13 +225,17 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   const updateMappingType = (index: number, type: ColumnMapping["type"]) => {
     const updated = [...mappings]
-    updated[index] = { ...updated[index], type, tolerance: undefined }
+    updated[index] = { ...updated[index], type, isPeriodIdentifier: type === "date" ? updated[index].isPeriodIdentifier : undefined }
     setMappings(updated)
   }
 
-  const updateMappingTolerance = (index: number, tolerance: number) => {
-    const updated = [...mappings]
-    updated[index] = { ...updated[index], tolerance }
+  const updatePeriodIdentifier = (index: number, value: boolean) => {
+    const updated = mappings.map((m, i) => {
+      if (i === index) return { ...m, isPeriodIdentifier: value }
+      // Only one period identifier allowed — clear others
+      if (value && m.isPeriodIdentifier) return { ...m, isPeriodIdentifier: false }
+      return m
+    })
     setMappings(updated)
   }
 
@@ -295,11 +299,16 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
 
       // Add database metadata to source configs if applicable
+      // Period identifier: find the mapping marked as period identifier
+      const periodMapping = mappings.find((m) => m.isPeriodIdentifier)
+
       if (sourceAIsDatabase && dbAnalysisA) {
         sourceAConfig.sourceType = "database"
         sourceAConfig.databaseId = dbAnalysisA.databaseId
-        if (dbAnalysisA.dateColumnKey) sourceAConfig.dateColumnKey = dbAnalysisA.dateColumnKey
-        if (dbAnalysisA.cadence) sourceAConfig.cadence = dbAnalysisA.cadence
+        if (periodMapping) {
+          sourceAConfig.dateColumnKey = periodMapping.sourceAKey
+          sourceAConfig.cadence = "monthly"
+        }
       } else {
         sourceAConfig.sourceType = "file"
       }
@@ -307,23 +316,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       if (sourceBIsDatabase && dbAnalysisB) {
         sourceBConfig.sourceType = "database"
         sourceBConfig.databaseId = dbAnalysisB.databaseId
-        if (dbAnalysisB.dateColumnKey) sourceBConfig.dateColumnKey = dbAnalysisB.dateColumnKey
-        if (dbAnalysisB.cadence) sourceBConfig.cadence = dbAnalysisB.cadence
+        if (periodMapping) {
+          sourceBConfig.dateColumnKey = periodMapping.sourceBKey
+          sourceBConfig.cadence = "monthly"
+        }
       } else {
         sourceBConfig.sourceType = "file"
-      }
-
-      // Build matching rules from per-column tolerances
-      const amountMapping = mappings.find((m) => m.type === "amount")
-      const dateMapping = mappings.find((m) => m.type === "date")
-      const amountTol = amountMapping?.tolerance || 0
-      const dateTol = dateMapping?.tolerance || 0
-
-      const columnTolerances: Record<string, { type: string; tolerance: number }> = {}
-      for (const m of mappings) {
-        if (m.tolerance !== undefined && m.tolerance > 0) {
-          columnTolerances[m.sourceAKey] = { type: m.type, tolerance: m.tolerance }
-        }
       }
 
       // 1. Create the config
@@ -336,11 +334,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           sourceAConfig,
           sourceBConfig,
           matchingRules: {
-            amountMatch: amountTol > 0 ? "tolerance" : "exact",
-            amountTolerance: amountTol,
-            dateWindowDays: dateTol,
+            amountMatch: "exact",
+            amountTolerance: 0,
+            dateWindowDays: 0,
             fuzzyDescription: true,
-            columnTolerances: Object.keys(columnTolerances).length > 0 ? columnTolerances : undefined,
           },
         }),
       })
@@ -759,7 +756,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
               <span />
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceBLabel}</span>
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Type</span>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Tolerance</span>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Period ID</span>
               <span />
             </div>
 
@@ -832,37 +829,23 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                   </SelectContent>
                 </Select>
 
-                {/* Tolerance — contextual per type */}
+                {/* Period Identifier — only for date columns */}
                 <div>
-                  {mapping.type === "amount" ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400">&plusmn;$</span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={mapping.tolerance ?? 0}
-                        onChange={(e) => updateMappingTolerance(i, Number(e.target.value))}
-                        className="h-7 text-xs w-full"
-                        placeholder="0"
-                      />
-                    </div>
-                  ) : mapping.type === "date" ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-400">&plusmn;</span>
-                      <Input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={mapping.tolerance ?? 0}
-                        onChange={(e) => updateMappingTolerance(i, Number(e.target.value))}
-                        className="h-7 text-xs w-16"
-                        placeholder="0"
-                      />
-                      <span className="text-xs text-gray-400">days</span>
-                    </div>
+                  {mapping.type === "date" ? (
+                    <Select
+                      value={mapping.isPeriodIdentifier ? "yes" : "no"}
+                      onValueChange={(v) => updatePeriodIdentifier(i, v === "yes")}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no">No</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                      </SelectContent>
+                    </Select>
                   ) : (
-                    <span className="text-xs text-gray-400 px-1">Exact</span>
+                    <span className="text-xs text-gray-400 px-1">&mdash;</span>
                   )}
                 </div>
 

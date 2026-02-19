@@ -4,17 +4,9 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { differenceInDays } from "date-fns"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 export interface BoardSummaryInput {
   boardId: string
@@ -143,7 +135,10 @@ export class BoardSummaryService {
       }
     }
 
-    // Fetch previous period data for context
+    // Fetch previous period data for context.
+    // previousPeriodContext is a plain-text summary of the most recent closed monthly board:
+    // close speed (days to close, on-time vs late) and up to 5 tasks that missed their
+    // target dates. Passed to the AI prompt so it can flag recurring bottlenecks.
     let previousPeriodContext: string | null = null
     if (board.periodStart && board.cadence === "MONTHLY") {
       try {
@@ -266,7 +261,9 @@ export class BoardSummaryService {
   }
 
   /**
-   * Generate AI-powered summary bullets
+   * Generate AI-powered summary bullets and recommendations via GPT-4o-mini.
+   * @param data.previousPeriodContext - Optional plain-text snapshot of the prior month's
+   *   close speed and missed-target tasks, used to identify recurring bottlenecks.
    */
   static async generateAISummary(data: {
     boardName: string

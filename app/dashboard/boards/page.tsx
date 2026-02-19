@@ -40,6 +40,7 @@ import {
 } from "@/lib/utils/timezone"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 import { usePermissions } from "@/components/permissions-context"
+import { getDaysUntilClose } from "@/lib/utils/board-display"
 
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -207,43 +208,6 @@ function isFutureMonth(periodStart: string | null): boolean {
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
   return boardYear > currentYear || (boardYear === currentYear && boardMonth > currentMonth)
-}
-
-function getDaysUntilClose(periodEnd: string | null, periodStart: string | null, isClosed: boolean, closedAt: string | null): { text: string; className: string; icon?: "zap" | null } | null {
-  if (!periodEnd) return null
-
-  if (isClosed) {
-    // Show close speed for boards with closedAt
-    if (closedAt && periodStart) {
-      const closedDate = parseISO(closedAt)
-      const endDate = parseISO(periodEnd)
-      const startDate = parseISO(periodStart)
-      const daysToClose = differenceInDays(closedDate, startDate)
-
-      if (closedDate <= endDate) {
-        return { text: `Closed in ${daysToClose} days`, className: "text-green-600", icon: "zap" }
-      } else {
-        const daysLate = differenceInDays(closedDate, endDate)
-        return { text: `Closed ${daysLate} days late`, className: "text-amber-600", icon: null }
-      }
-    }
-    return { text: "Closed", className: "text-green-600", icon: null }
-  }
-
-  const end = parseISO(periodEnd)
-  const now = new Date()
-  const days = differenceInDays(end, now)
-
-  if (days < 0) {
-    return { text: "Overdue", className: "text-red-600 font-medium", icon: null }
-  }
-  if (days === 0) {
-    return { text: "Due today", className: "text-orange-600 font-medium", icon: null }
-  }
-  if (days === 1) {
-    return { text: "1 day", className: "text-orange-600", icon: null }
-  }
-  return { text: `${days} days`, className: "text-gray-600", icon: null }
 }
 
 function getSimplifiedStatusBadge(status: BoardStatus, isCurrent: boolean, isFuture: boolean) {

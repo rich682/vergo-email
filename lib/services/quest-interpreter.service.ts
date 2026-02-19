@@ -11,8 +11,8 @@
  * - Organization context is injected into LLM prompt to ensure valid outputs
  */
 
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { prisma } from "@/lib/prisma"
 import { ContactType } from "@prisma/client"
 import { resolveRecipientsWithReasons } from "./recipient-filter.service"
@@ -28,14 +28,6 @@ import type {
   QuestResolvedCounts,
   OrganizationContext
 } from "@/lib/types/quest"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 // Valid contact types from Prisma schema
 const VALID_CONTACT_TYPES: string[] = [

@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { normalizeEmail } from "@/lib/utils/email"
 import { prisma } from "@/lib/prisma"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
 
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const normalizedEmail = email.toLowerCase().trim()
+    const normalizedEmail = normalizeEmail(email) || ""
 
     // Find user by email
     const user = await prisma.user.findUnique({

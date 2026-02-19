@@ -4,16 +4,8 @@
  * Uses AI to analyze content against request context.
  */
 
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export interface CompletionDetectionInput {
   // Request context

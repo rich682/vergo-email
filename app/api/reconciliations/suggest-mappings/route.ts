@@ -7,14 +7,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions"
-import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 
 export const maxDuration = 30
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set")
-  return new OpenAI({ apiKey })
-}
 
 interface ColumnInfo {
   key: string

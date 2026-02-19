@@ -28,12 +28,102 @@ interface AgentTabProps {
   taskType: string | null
   taskName: string
   canEdit?: boolean
+  reconciliationConfigId?: string | null
+  reportDefinitionId?: string | null
+  requestCount: number
+  formRequestCount: number
+  onJobUpdate?: () => void
 }
 
-export function AgentTab({ jobId, lineageId, taskType, taskName, canEdit }: AgentTabProps) {
+function getConfigStatus(
+  taskType: string | null,
+  reconciliationConfigId: string | null | undefined,
+  reportDefinitionId: string | null | undefined,
+  requestCount: number,
+  formRequestCount: number,
+  hasDatabases: boolean | null,
+): { configured: boolean; message: string; subtitle: string } {
+  if (!taskType) {
+    return {
+      configured: false,
+      message: "Set a task type to enable agents",
+      subtitle: "Choose a task type (request, form, report, or reconciliation) from the overview tab.",
+    }
+  }
+
+  switch (taskType) {
+    case "reconciliation":
+      return reconciliationConfigId
+        ? { configured: true, message: "", subtitle: "" }
+        : {
+            configured: false,
+            message: "Task needs to be configured first — create your first reconciliation",
+            subtitle: "Set up a reconciliation from the Reconciliation tab before enabling agents.",
+          }
+    case "request":
+      return requestCount > 0
+        ? { configured: true, message: "", subtitle: "" }
+        : {
+            configured: false,
+            message: "Task needs to be configured first — create your first request",
+            subtitle: "Send at least one request from the Requests tab before enabling agents.",
+          }
+    case "report":
+      return reportDefinitionId
+        ? { configured: true, message: "", subtitle: "" }
+        : {
+            configured: false,
+            message: "Task needs to be configured first — configure your report",
+            subtitle: "Link a report definition from the Report tab before enabling agents.",
+          }
+    case "form":
+      return formRequestCount > 0
+        ? { configured: true, message: "", subtitle: "" }
+        : {
+            configured: false,
+            message: "Task needs to be configured first — create your first form",
+            subtitle: "Send at least one form from the Forms tab before enabling agents.",
+          }
+    case "analysis":
+      if (hasDatabases === null) return { configured: false, message: "", subtitle: "" } // Still loading
+      return hasDatabases
+        ? { configured: true, message: "", subtitle: "" }
+        : {
+            configured: false,
+            message: "Task needs to be configured first — create your first database",
+            subtitle: "Create a database from the Databases module before enabling agents.",
+          }
+    default:
+      return {
+        configured: false,
+        message: "Agent automation is not available for this task type",
+        subtitle: "",
+      }
+  }
+}
+
+export function AgentTab({
+  jobId,
+  lineageId,
+  taskType,
+  taskName,
+  canEdit,
+  reconciliationConfigId,
+  reportDefinitionId,
+  requestCount,
+  formRequestCount,
+  onJobUpdate,
+}: AgentTabProps) {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [showWizard, setShowWizard] = useState(false)
+
+  // Reconciliation sourceType check
+  const [reconSourceType, setReconSourceType] = useState<string | null>(null)
+  const [reconSourceLoading, setReconSourceLoading] = useState(false)
+
+  // Analysis: check if org has databases
+  const [hasDatabases, setHasDatabases] = useState<boolean | null>(null)
 
   // Per-agent execution state
   const [executionStates, setExecutionStates] = useState<Record<string, {
@@ -44,6 +134,32 @@ export function AgentTab({ jobId, lineageId, taskType, taskName, canEdit }: Agen
   }>>({})
   const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
   const pollRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+
+  // Fetch reconciliation sourceType when recon config is linked
+  useEffect(() => {
+    if (taskType === "reconciliation" && reconciliationConfigId) {
+      setReconSourceLoading(true)
+      fetch(`/api/task-instances/${jobId}/config`, { credentials: "include" })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.config?.reconciliationSourceType) {
+            setReconSourceType(data.config.reconciliationSourceType)
+          }
+        })
+        .catch(() => {})
+        .finally(() => setReconSourceLoading(false))
+    }
+  }, [taskType, reconciliationConfigId, jobId])
+
+  // Check if org has databases (for analysis tasks)
+  useEffect(() => {
+    if (taskType === "analysis") {
+      fetch("/api/databases", { credentials: "include" })
+        .then(res => res.ok ? res.json() : { databases: [] })
+        .then(data => setHasDatabases((data.databases?.length || 0) > 0))
+        .catch(() => setHasDatabases(false))
+    }
+  }, [taskType])
 
   const fetchAgents = useCallback(async () => {
     if (!lineageId) {
@@ -160,22 +276,71 @@ export function AgentTab({ jobId, lineageId, taskType, taskName, canEdit }: Agen
 
   const handleWizardSuccess = () => {
     setShowWizard(false)
+    onJobUpdate?.()
     fetchAgents()
   }
 
-  if (!lineageId) {
+  // Gate 1: Task not configured
+  const configStatus = getConfigStatus(
+    taskType, reconciliationConfigId, reportDefinitionId, requestCount, formRequestCount, hasDatabases
+  )
+
+  if (!configStatus.configured) {
+    // Still loading analysis DB check — show spinner
+    if (taskType === "analysis" && hasDatabases === null) {
+      return (
+        <div className="space-y-4">
+          <SectionHeader title="Agent" icon={<Bot className="w-4 h-4 text-orange-500" />} />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="space-y-4">
         <SectionHeader title="Agent" icon={<Bot className="w-4 h-4 text-orange-500" />} />
         <Card>
           <CardContent className="p-8 text-center">
             <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-1">Agents require a completed accounting period</p>
-            <p className="text-xs text-gray-400">A full accounting month must be completed before agents can be activated for this task.</p>
+            <p className="text-sm text-gray-500 mb-1">{configStatus.message}</p>
+            {configStatus.subtitle && (
+              <p className="text-xs text-gray-400">{configStatus.subtitle}</p>
+            )}
           </CardContent>
         </Card>
       </div>
     )
+  }
+
+  // Gate 2: Reconciliation sourceType check
+  if (taskType === "reconciliation" && reconciliationConfigId) {
+    if (reconSourceLoading) {
+      return (
+        <div className="space-y-4">
+          <SectionHeader title="Agent" icon={<Bot className="w-4 h-4 text-orange-500" />} />
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+          </div>
+        </div>
+      )
+    }
+
+    if (reconSourceType && reconSourceType !== "database_database") {
+      return (
+        <div className="space-y-4">
+          <SectionHeader title="Agent" icon={<Bot className="w-4 h-4 text-orange-500" />} />
+          <Card>
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+              <p className="text-sm text-gray-500 mb-1">Agents are only available for database to database reconciliations</p>
+              <p className="text-xs text-gray-400">The linked reconciliation uses file uploads which cannot be automated. Switch to a Database vs Database configuration to enable agents.</p>
+            </CardContent>
+          </Card>
+        </div>
+      )
+    }
   }
 
   return (

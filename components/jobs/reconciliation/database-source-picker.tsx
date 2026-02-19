@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Database, Loader2, CheckCircle } from "lucide-react"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -26,8 +25,6 @@ export interface DatabaseAnalysis {
   databaseName: string
   rowCount: number
   columns: DetectedColumn[]
-  dateColumnKey?: string
-  cadence?: string
 }
 
 interface DatabaseOption {
@@ -65,8 +62,6 @@ export function DatabaseSourcePicker({
   const [databases, setDatabases] = useState<DatabaseOption[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDb, setSelectedDb] = useState<DatabaseOption | null>(null)
-  const [dateColumnKey, setDateColumnKey] = useState<string>("")
-  const [cadence, setCadence] = useState<string>("monthly")
 
   // Fetch databases on mount
   useEffect(() => {
@@ -97,7 +92,6 @@ export function DatabaseSourcePicker({
     const db = databases.find((d) => d.id === dbId)
     if (!db) return
     setSelectedDb(db)
-    setDateColumnKey("")
 
     // Map database columns to reconciliation column types
     const columns: DetectedColumn[] = db.schema.columns
@@ -114,41 +108,8 @@ export function DatabaseSourcePicker({
       databaseName: db.name,
       rowCount: db.rowCount,
       columns,
-      dateColumnKey: undefined,
-      cadence: "monthly",
     })
   }
-
-  // When period column or cadence changes, update analysis
-  const handlePeriodChange = (newDateColumnKey: string, newCadence: string) => {
-    setDateColumnKey(newDateColumnKey)
-    setCadence(newCadence)
-
-    if (!selectedDb) return
-
-    const columns: DetectedColumn[] = selectedDb.schema.columns
-      .sort((a, b) => a.order - b.order)
-      .map((col) => ({
-        key: col.key,
-        label: col.label,
-        sampleValues: [],
-        suggestedType: mapDatabaseColumnType(col.dataType),
-      }))
-
-    onAnalyzed({
-      databaseId: selectedDb.id,
-      databaseName: selectedDb.name,
-      rowCount: selectedDb.rowCount,
-      columns,
-      dateColumnKey: newDateColumnKey || undefined,
-      cadence: newCadence,
-    })
-  }
-
-  // Get date-type columns for the period column picker
-  const dateColumns = selectedDb
-    ? selectedDb.schema.columns.filter((c) => c.dataType === "date")
-    : []
 
   return (
     <div className="border-2 border-dashed border-gray-200 rounded-xl p-6">
@@ -203,53 +164,6 @@ export function DatabaseSourcePicker({
                   {selectedDb.rowCount.toLocaleString()} rows
                 </span>
               </div>
-
-              {/* Period column selector (for agent automation) */}
-              <div>
-                <Label className="text-xs text-gray-500">
-                  Period Column <span className="text-gray-400">(optional)</span>
-                </Label>
-                <p className="text-[10px] text-gray-400 mt-0.5 mb-1.5">
-                  Select the date column used to filter data by period. Required for AI agent automation.
-                </p>
-                <Select
-                  value={dateColumnKey}
-                  onValueChange={(v) => handlePeriodChange(v, cadence)}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="None (use all rows)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">None (use all rows)</SelectItem>
-                    {dateColumns.map((col) => (
-                      <SelectItem key={col.key} value={col.key}>
-                        {col.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Cadence selector */}
-              {dateColumnKey && dateColumnKey !== "__none__" && (
-                <div>
-                  <Label className="text-xs text-gray-500">Cadence</Label>
-                  <Select
-                    value={cadence}
-                    onValueChange={(v) => handlePeriodChange(dateColumnKey, v)}
-                  >
-                    <SelectTrigger className="mt-1 w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="annual">Annual</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </>
           )}
         </div>

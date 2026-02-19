@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
 import { isValidEmail } from "@/lib/utils/validate-email"
+import { normalizeEmail } from "@/lib/utils/email"
 
 // ── Simple in-memory rate limiter (per IP) ──────────────────────────────
 const RATE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
     // Combine first and last name for storage
     const fullName = `${firstName.trim()} ${lastName.trim()}`
 
-    const normalizedEmail = email.toLowerCase().trim()
+    const normalizedEmail = normalizeEmail(email) || ""
     const trimmedCompanyName = companyName.trim()
 
     // Check if user already exists

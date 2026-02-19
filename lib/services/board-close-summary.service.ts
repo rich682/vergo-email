@@ -6,17 +6,9 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import OpenAI from "openai"
 import { callOpenAI } from "@/lib/utils/openai-retry"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { differenceInDays } from "date-fns"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is not set")
-  }
-  return new OpenAI({ apiKey })
-}
 
 export interface CloseSummary {
   closeSpeed: "early" | "on_time" | "late"

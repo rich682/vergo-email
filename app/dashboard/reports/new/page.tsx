@@ -82,11 +82,12 @@ export default function NewReportPage() {
   const [loadingDatabases, setLoadingDatabases] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [advancedBoardTypes, setAdvancedBoardTypes] = useState(false)
 
   // Form state
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [cadence, setCadence] = useState("")
+  const [cadence, setCadence] = useState("monthly")
   const [layout, setLayout] = useState("accounting")
   const [databaseId, setDatabaseId] = useState("")
   const [dateColumnKey, setDateColumnKey] = useState("")
@@ -135,6 +136,25 @@ export default function NewReportPage() {
     }
   }, [])
 
+  // Fetch feature flags
+  useEffect(() => {
+    const fetchFeatureFlags = async () => {
+      try {
+        const response = await fetch("/api/boards", { credentials: "include" })
+        if (response.ok) {
+          const data = await response.json()
+          setAdvancedBoardTypes(data.advancedBoardTypes || false)
+          if (!data.advancedBoardTypes) {
+            setCadence("monthly")
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching feature flags:", err)
+      }
+    }
+    fetchFeatureFlags()
+  }, [])
+
   useEffect(() => {
     fetchDatabases()
   }, [fetchDatabases])
@@ -158,7 +178,7 @@ export default function NewReportPage() {
       setError("Report name is required")
       return
     }
-    if (!cadence) {
+    if (advancedBoardTypes && !cadence) {
       setError("Please select a cadence")
       return
     }
@@ -329,28 +349,30 @@ export default function NewReportPage() {
               />
             </div>
 
-            {/* Cadence Selection */}
-            <div className="space-y-2">
-              <Label>Cadence *</Label>
-              <p className="text-xs text-gray-500 mb-2">
-                Determines which period-based tasks can use this report
-              </p>
-              <Select value={cadence} onValueChange={setCadence}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select cadence..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {CADENCE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span>{option.label}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Cadence Selection - only shown when Advanced Board Types is enabled */}
+            {advancedBoardTypes && (
+              <div className="space-y-2">
+                <Label>Cadence *</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Determines which period-based tasks can use this report
+                </p>
+                <Select value={cadence} onValueChange={setCadence}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select cadence..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CADENCE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <span>{option.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Layout Selection */}
             <div className="space-y-2">

@@ -6,13 +6,8 @@
  */
 import * as XLSX from "xlsx"
 import OpenAI from "openai"
+import { getOpenAIClient } from "@/lib/utils/openai-client"
 import type { SourceConfig, SourceColumnDef } from "./reconciliation.service"
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set")
-  return new OpenAI({ apiKey })
-}
 
 export interface ParsedSourceResult {
   rows: Record<string, any>[]

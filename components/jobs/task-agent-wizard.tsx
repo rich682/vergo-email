@@ -31,7 +31,7 @@ interface TaskAgentWizardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   jobId: string
-  lineageId: string
+  lineageId: string | null
   taskType: string | null
   taskName: string
   onSuccess: () => void
@@ -105,7 +105,23 @@ export function TaskAgentWizard({
     setError(null)
 
     try {
-      const actions = buildActions(templateId, configuration, lineageId)
+      // Auto-create lineage if the task doesn't have one yet
+      let effectiveLineageId = lineageId
+      if (!effectiveLineageId) {
+        const promoteRes = await fetch(`/api/task-instances/${jobId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ createLineage: true }),
+        })
+        if (!promoteRes.ok) throw new Error("Failed to promote task to recurring")
+        const promoteData = await promoteRes.json()
+        effectiveLineageId = promoteData.taskInstance.lineageId
+      }
+
+      if (!effectiveLineageId) throw new Error("Could not create task lineage")
+
+      const actions = buildActions(templateId, configuration, effectiveLineageId)
 
       const res = await fetch("/api/automation-rules", {
         method: "POST",
@@ -116,7 +132,7 @@ export function TaskAgentWizard({
           trigger: triggerType,
           conditions,
           actions,
-          lineageId,
+          lineageId: effectiveLineageId,
           taskType,
         }),
       })

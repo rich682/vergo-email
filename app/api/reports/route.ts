@@ -83,12 +83,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "You do not have permission to manage reports" }, { status: 403 })
     }
 
+    // Check if advanced board types is enabled
+    const organization = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { features: true },
+    })
+    const orgFeatures = (organization?.features as Record<string, any>) || {}
+    const advancedBoardTypes = orgFeatures.advancedBoardTypes === true
+
     const body = await request.json()
     const {
-      name, description, databaseId, cadence, dateColumnKey,
+      name, description, databaseId, dateColumnKey,
       layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows,
       rowColumnKey, valueColumnKey
     } = body
+
+    // Default cadence to monthly when advanced board types is off
+    const cadence = advancedBoardTypes ? body.cadence : "monthly"
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.trim() === "") {
