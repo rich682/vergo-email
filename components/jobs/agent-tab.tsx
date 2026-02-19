@@ -41,7 +41,7 @@ function getConfigStatus(
   reportDefinitionId: string | null | undefined,
   requestCount: number,
   formRequestCount: number,
-  hasDatabases: boolean | null,
+  hasAnalysisConversations: boolean | null,
 ): { configured: boolean; message: string; subtitle: string } {
   if (!taskType) {
     return {
@@ -85,13 +85,13 @@ function getConfigStatus(
             subtitle: "Send at least one form from the Forms tab before enabling agents.",
           }
     case "analysis":
-      if (hasDatabases === null) return { configured: false, message: "", subtitle: "" } // Still loading
-      return hasDatabases
+      if (hasAnalysisConversations === null) return { configured: false, message: "", subtitle: "" } // Still loading
+      return hasAnalysisConversations
         ? { configured: true, message: "", subtitle: "" }
         : {
             configured: false,
-            message: "Task needs to be configured first — create your first database",
-            subtitle: "Create a database from the Databases module before enabling agents.",
+            message: "Task needs to be configured first — create your first analysis",
+            subtitle: "Start an analysis conversation from the Analysis tab before enabling agents.",
           }
     default:
       return {
@@ -122,8 +122,8 @@ export function AgentTab({
   const [reconSourceType, setReconSourceType] = useState<string | null>(null)
   const [reconSourceLoading, setReconSourceLoading] = useState(false)
 
-  // Analysis: check if org has databases
-  const [hasDatabases, setHasDatabases] = useState<boolean | null>(null)
+  // Analysis: check if task has analysis conversations
+  const [hasAnalysisConversations, setHasAnalysisConversations] = useState<boolean | null>(null)
 
   // Per-agent execution state
   const [executionStates, setExecutionStates] = useState<Record<string, {
@@ -151,15 +151,15 @@ export function AgentTab({
     }
   }, [taskType, reconciliationConfigId, jobId])
 
-  // Check if org has databases (for analysis tasks)
+  // Check if task has analysis conversations
   useEffect(() => {
     if (taskType === "analysis") {
-      fetch("/api/databases", { credentials: "include" })
-        .then(res => res.ok ? res.json() : { databases: [] })
-        .then(data => setHasDatabases((data.databases?.length || 0) > 0))
-        .catch(() => setHasDatabases(false))
+      fetch(`/api/analysis/conversations?taskInstanceId=${jobId}`, { credentials: "include" })
+        .then(res => res.ok ? res.json() : { conversations: [] })
+        .then(data => setHasAnalysisConversations((data.conversations?.length || 0) > 0))
+        .catch(() => setHasAnalysisConversations(false))
     }
-  }, [taskType])
+  }, [taskType, jobId])
 
   const fetchAgents = useCallback(async () => {
     if (!lineageId) {
@@ -282,12 +282,12 @@ export function AgentTab({
 
   // Gate 1: Task not configured
   const configStatus = getConfigStatus(
-    taskType, reconciliationConfigId, reportDefinitionId, requestCount, formRequestCount, hasDatabases
+    taskType, reconciliationConfigId, reportDefinitionId, requestCount, formRequestCount, hasAnalysisConversations
   )
 
   if (!configStatus.configured) {
-    // Still loading analysis DB check — show spinner
-    if (taskType === "analysis" && hasDatabases === null) {
+    // Still loading analysis conversations check — show spinner
+    if (taskType === "analysis" && hasAnalysisConversations === null) {
       return (
         <div className="space-y-4">
           <SectionHeader title="Agent" icon={<Bot className="w-4 h-4 text-orange-500" />} />

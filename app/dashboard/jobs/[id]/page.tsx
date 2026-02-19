@@ -1444,7 +1444,7 @@ export default function JobDetailPage() {
             {activeTab === "reconciliation" && hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
               <div className="space-y-4">
                 <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
-                <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "reconciliations:manage", orgActionPermissions)} />
+                <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "reconciliations:manage", orgActionPermissions)} onConfigChange={() => fetchJob()} />
               </div>
             )}
 

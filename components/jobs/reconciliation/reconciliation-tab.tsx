@@ -13,6 +13,7 @@ interface ReconciliationTabProps {
   jobId: string
   taskName: string
   readOnly?: boolean
+  onConfigChange?: () => void
 }
 
 interface ReconciliationConfigSummary {
@@ -46,7 +47,7 @@ interface ReconciliationRun {
   createdAt: string
 }
 
-export function ReconciliationTab({ jobId, taskName, readOnly = false }: ReconciliationTabProps) {
+export function ReconciliationTab({ jobId, taskName, readOnly = false, onConfigChange }: ReconciliationTabProps) {
   const [loading, setLoading] = useState(true)
   const [linkedConfig, setLinkedConfig] = useState<ReconciliationConfigSummary | null>(null)
   const [activeRun, setActiveRun] = useState<ReconciliationRun | null>(null)
@@ -141,6 +142,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
       setLinkedConfig(null)
       setActiveRun(null)
       await fetchLinkedConfig()
+      onConfigChange?.()
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -162,6 +164,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false }: Reconci
 
       setLinkedConfig(null)
       setActiveRun(null)
+      onConfigChange?.()
     } catch (err: any) {
       setError(err.message)
     } finally {

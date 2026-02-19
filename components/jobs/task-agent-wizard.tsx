@@ -54,15 +54,46 @@ export function TaskAgentWizard({
   const [checkingPrevious, setCheckingPrevious] = useState(false)
   const [previousPeriodExists, setPreviousPeriodExists] = useState<boolean | null>(null)
 
-  // Auto-select template from task type
-  const templateId = taskType ? TASK_TYPE_TEMPLATE_MAP[taskType] : null
+  // Auto-detect template from task config (handles data-personalized vs standard request)
+  const [resolvedTemplateId, setResolvedTemplateId] = useState<string | null>(null)
+  const [loadingConfig, setLoadingConfig] = useState(false)
+
+  // Fetch task config to determine the correct template
+  useEffect(() => {
+    if (!open || !taskType) return
+
+    // For request tasks, we need to check if it's data-personalized
+    if (taskType === "request") {
+      setLoadingConfig(true)
+      fetch(`/api/task-instances/${jobId}/config`, { credentials: "include" })
+        .then(res => res.ok ? res.json() : { config: {} })
+        .then(data => {
+          const mode = data.config?.personalizationMode
+          setResolvedTemplateId(mode === "csv" ? "send-data-request" : "send-standard-request")
+        })
+        .catch(() => setResolvedTemplateId("send-standard-request"))
+        .finally(() => setLoadingConfig(false))
+    } else {
+      setResolvedTemplateId(taskType ? TASK_TYPE_TEMPLATE_MAP[taskType] : null)
+    }
+  }, [open, taskType, jobId])
+
+  const templateId = resolvedTemplateId
   const template = templateId ? getTemplate(templateId) : null
 
   // Wizard state
   const [name, setName] = useState(`${taskName} Agent`)
-  const [triggerType, setTriggerType] = useState<TriggerType>(template?.triggerType || "board_created")
-  const [conditions, setConditions] = useState<Record<string, unknown>>(template?.defaultConditions || {})
+  const [triggerType, setTriggerType] = useState<TriggerType>("board_created")
+  const [conditions, setConditions] = useState<Record<string, unknown>>({})
   const [configuration, setConfiguration] = useState<Record<string, unknown>>({})
+
+  // Update trigger defaults when template resolves
+  useEffect(() => {
+    if (template) {
+      setTriggerType(template.triggerType || "board_created")
+      setConditions(template.defaultConditions || {})
+    }
+  }, [templateId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if previous period task exists (for request/form agents)
   useEffect(() => {
@@ -147,6 +178,23 @@ export function TaskAgentWizard({
       setError(err.message || "Something went wrong")
       setCreating(false)
     }
+  }
+
+  // Loading config to determine template
+  if (loadingConfig) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Agent</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-gray-400 mr-2" />
+            <span className="text-sm text-gray-500">Detecting task configuration...</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   // No template for this task type
@@ -249,15 +297,25 @@ export function TaskAgentWizard({
         {/* Step content */}
         <div className="py-4">
           {currentStep === 0 && (
-            <TriggerConfigurationStep
-              name={name}
-              onNameChange={setName}
-              triggerType={triggerType}
-              onTriggerTypeChange={setTriggerType}
-              conditions={conditions}
-              onConditionsChange={setConditions}
-              allowedTriggers={template.allowedTriggers}
-            />
+            <>
+              <TriggerConfigurationStep
+                name={name}
+                onNameChange={setName}
+                triggerType={triggerType}
+                onTriggerTypeChange={setTriggerType}
+                conditions={conditions}
+                onConditionsChange={setConditions}
+                allowedTriggers={template.allowedTriggers.filter(t => t !== "database_update")}
+              />
+              {template.requiresDatabase && (
+                <div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <span>
+                    This agent uses connected databases with a period column. When new data is uploaded for the next period, the agent will automatically detect it and run using the matched period data.
+                  </span>
+                </div>
+              )}
+            </>
           )}
           {currentStep === 1 && (
             <ConfigurationStep
@@ -347,6 +405,32 @@ function buildActions(
           htmlBodyTemplate: config.htmlBodyTemplate,
           availableTags: config.availableTags,
           recipientSourceType: "task_history",
+          lineageId,
+        },
+        onError: "fail",
+      }],
+    }
+  }
+
+  if (templateId === "send-data-request") {
+    return {
+      version: 1,
+      steps: [{
+        id: generateStepId(),
+        type: "action",
+        label: "Send data requests",
+        actionType: "send_request",
+        actionParams: {
+          requestTemplateId: config.requestTemplateId || undefined,
+          subjectTemplate: config.subjectTemplate,
+          bodyTemplate: config.bodyTemplate,
+          htmlBodyTemplate: config.htmlBodyTemplate,
+          availableTags: config.availableTags,
+          recipientSourceType: "database",
+          databaseId: config.databaseId,
+          emailColumnKey: config.emailColumnKey,
+          nameColumnKey: config.nameColumnKey,
+          filters: config.filters,
           lineageId,
         },
         onError: "fail",

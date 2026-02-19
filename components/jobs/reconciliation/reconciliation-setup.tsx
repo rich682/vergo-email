@@ -272,7 +272,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     }
   }
 
-  // ── Create & Run ──────────────────────────────────────────────────
+  // ── Save Configuration ──────────────────────────────────────────────
 
   const handleCreate = async () => {
     if (!sourceAReady || !sourceBReady || mappings.length === 0) return
@@ -324,7 +324,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         sourceBConfig.sourceType = "file"
       }
 
-      // 1. Create the config
+      // Create the config (run is triggered separately from the config detail page)
       const configRes = await fetch("/api/reconciliations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -358,69 +358,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
 
       const { config } = await configRes.json()
-
-      // 2. Create a run (both standalone and task mode)
-      const runRes = await fetch(`/api/reconciliations/${config.id}/runs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "task" ? { taskInstanceId } : {}),
-      })
-
-      if (!runRes.ok) {
-        let errorMsg = "Failed to create run"
-        try { const data = await runRes.json(); errorMsg = data.error || errorMsg } catch {}
-        throw new Error(errorMsg)
-      }
-      const { run } = await runRes.json()
-
-      // 3. Load data into the run based on source type
-      const hasDatabaseSources = sourceAIsDatabase || sourceBIsDatabase
-
-      if (hasDatabaseSources) {
-        // Load database rows via load-database endpoint
-        const loadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/load-database`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        })
-        if (!loadRes.ok) {
-          let errorMsg = "Failed to load database rows"
-          try { const data = await loadRes.json(); errorMsg = data.error || errorMsg } catch {}
-          throw new Error(errorMsg)
-        }
-      }
-
-      // Upload any file sources
-      const uploadFile = async (file: File, source: "A" | "B") => {
-        const fd = new FormData()
-        fd.append("file", file)
-        fd.append("source", source)
-        const res = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/upload`, {
-          method: "POST",
-          body: fd,
-        })
-        if (!res.ok) {
-          let errorMsg = `Failed to upload source ${source}`
-          try { const data = await res.json(); errorMsg = data.error || errorMsg } catch {}
-          throw new Error(errorMsg)
-        }
-      }
-
-      const fileUploads: Promise<void>[] = []
-      if (!sourceAIsDatabase && sourceA) fileUploads.push(uploadFile(sourceA.file, "A"))
-      if (!sourceBIsDatabase && sourceB) fileUploads.push(uploadFile(sourceB.file, "B"))
-      if (fileUploads.length > 0) await Promise.all(fileUploads)
-
-      // 4. Trigger matching
-      const matchRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/match`, {
-        method: "POST",
-      })
-
-      if (!matchRes.ok) {
-        // Matching failed but config/run exist -- still navigate
-        console.error("Matching failed, but config was created")
-      }
-
       onCreated(config.id)
     } catch (err: any) {
       if (err.message === "Failed to fetch" || err.name === "TypeError") {
@@ -918,11 +855,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Reconciling...
+                Saving...
               </>
             ) : (
               <>
-                Run Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
+                Save Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>

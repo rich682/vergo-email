@@ -241,16 +241,20 @@ export default function NewReportPage() {
           order: index,
         }))
       } else if (layout === "pivot") {
-        // Add all numeric/currency columns as source metric rows
-        const numericColumns = dbColumns.filter(
-          (col: DatabaseColumn) => col.dataType === "number" || col.dataType === "currency"
-        )
-        autoMetricRows = numericColumns.map((col: DatabaseColumn, index: number) => ({
+        // Add all database columns as source metric rows (user can delete/reorder)
+        const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
+          text: "text",
+          number: "number",
+          currency: "currency",
+          date: "text",
+          boolean: "text",
+        }
+        autoMetricRows = dbColumns.map((col: DatabaseColumn, index: number) => ({
           key: `metric_${col.key}`,
           label: col.label,
           type: "source" as const,
           sourceColumnKey: col.key,
-          format: col.dataType === "currency" ? "currency" : "number",
+          format: formatMap[col.dataType] || "number",
           order: index,
         }))
       }
