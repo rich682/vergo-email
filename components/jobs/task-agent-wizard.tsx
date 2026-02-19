@@ -1,18 +1,25 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Info, Calendar, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { TriggerConfigurationStep } from "@/components/automations/wizard/trigger-configuration-step"
-import { ConfigurationStep } from "@/components/automations/wizard/configuration-step"
-import { ConfirmationStep } from "@/components/automations/wizard/confirmation-step"
+import { Badge } from "@/components/ui/badge"
 import { getTemplate } from "@/lib/automations/templates"
+import { scheduleToCron, TIMEZONE_OPTIONS } from "@/lib/automations/cron-helpers"
 import type { TriggerType } from "@/lib/automations/types"
 
 // Task type → automation template mapping
@@ -25,6 +32,37 @@ const TASK_TYPE_TEMPLATE_MAP: Record<string, string> = {
 
 function generateStepId(): string {
   return `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+const DAY_OF_MONTH_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
+  value: String(i + 1),
+  label: `${i + 1}${getOrdinalSuffix(i + 1)}`,
+}))
+
+function getOrdinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return s[(v - 20) % 10] || s[v] || s[0]
+}
+
+const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}))
+
+const MINUTE_OPTIONS = [
+  { value: "0", label: "00" },
+  { value: "15", label: "15" },
+  { value: "30", label: "30" },
+  { value: "45", label: "45" },
+]
+
+const TYPE_LABELS: Record<string, string> = {
+  request: "Request",
+  form: "Form",
+  reconciliation: "Reconciliation",
+  report: "Report",
+  analysis: "Analysis",
 }
 
 interface TaskAgentWizardProps {
@@ -81,19 +119,33 @@ export function TaskAgentWizard({
   const templateId = resolvedTemplateId
   const template = templateId ? getTemplate(templateId) : null
 
-  // Wizard state
-  const [name, setName] = useState(`${taskName} Agent`)
-  const [triggerType, setTriggerType] = useState<TriggerType>("board_created")
-  const [conditions, setConditions] = useState<Record<string, unknown>>({})
+  // Wizard state — name is auto-derived from task
+  const name = `${taskName} Agent`
   const [configuration, setConfiguration] = useState<Record<string, unknown>>({})
 
-  // Update trigger defaults when template resolves
+  // Schedule state — simple day-of-month + time
+  const defaultTimezone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC"
+  const [dayOfMonth, setDayOfMonth] = useState(1)
+  const [hour, setHour] = useState(9)
+  const [minute, setMinute] = useState(0)
+  const [timezone, setTimezone] = useState(defaultTimezone)
+
+  // Auto-fetch config from task when wizard opens (for confirmation display)
+  const [configLoaded, setConfigLoaded] = useState(false)
   useEffect(() => {
-    if (template) {
-      setTriggerType(template.triggerType || "board_created")
-      setConditions(template.defaultConditions || {})
+    if (!open || configLoaded) return
+    if (jobId) {
+      fetch(`/api/task-instances/${jobId}/config`, { credentials: "include" })
+        .then((res) => (res.ok ? res.json() : { config: {} }))
+        .then((data) => {
+          if (data.config && Object.keys(data.config).length > 0) {
+            setConfiguration(data.config)
+          }
+          setConfigLoaded(true)
+        })
+        .catch(() => setConfigLoaded(true))
     }
-  }, [templateId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, jobId, configLoaded])
 
   // Check if previous period task exists (for request/form agents)
   useEffect(() => {
@@ -111,24 +163,11 @@ export function TaskAgentWizard({
   }, [open, taskType, jobId])
 
   const WIZARD_STEPS = [
-    { label: "Trigger", description: "Configure when to run" },
-    { label: "Configuration", description: "Configure automation" },
-    { label: "Confirmation", description: "Review and create" },
+    { label: "Schedule", description: "Set when to run" },
+    { label: "Confirm", description: "Review and create" },
   ]
 
-  const canProceed = () => {
-    switch (currentStep) {
-      case 0: {
-        if (!name.trim()) return false
-        const events = (conditions._eventTriggers as string[]) || []
-        const hasSchedule = !!(conditions._scheduleEnabled as boolean)
-        return events.length > 0 || hasSchedule
-      }
-      case 1: return true
-      case 2: return true
-      default: return false
-    }
-  }
+  const canProceed = () => true
 
   const handleCreate = async () => {
     if (!templateId) return
@@ -154,13 +193,22 @@ export function TaskAgentWizard({
 
       const actions = buildActions(templateId, configuration, effectiveLineageId)
 
+      // Build conditions with schedule
+      const cronExpression = scheduleToCron({ frequency: "monthly", dayOfMonth, hour, minute, timezone })
+      const conditions: Record<string, unknown> = {
+        _eventTriggers: ["board_created"],
+        _scheduleEnabled: true,
+        cronExpression,
+        timezone,
+      }
+
       const res = await fetch("/api/automation-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
-          trigger: triggerType,
+          trigger: "board_created" as TriggerType,
           conditions,
           actions,
           lineageId: effectiveLineageId,
@@ -257,13 +305,20 @@ export function TaskAgentWizard({
     )
   }
 
+  // Helper for time display
+  const hour12 = hour % 12 || 12
+  const ampm = hour >= 12 ? "PM" : "AM"
+  const setHourFrom12 = (h12: number, ap: string) => {
+    let h24 = h12 % 12
+    if (ap === "PM") h24 += 12
+    setHour(h24)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            Create Agent — {template.name}
-          </DialogTitle>
+          <DialogTitle>Create Agent</DialogTitle>
           <p className="text-sm text-gray-500">
             Linked to: {taskName}
           </p>
@@ -297,44 +352,168 @@ export function TaskAgentWizard({
         {/* Step content */}
         <div className="py-4">
           {currentStep === 0 && (
-            <>
-              <TriggerConfigurationStep
-                name={name}
-                onNameChange={setName}
-                triggerType={triggerType}
-                onTriggerTypeChange={setTriggerType}
-                conditions={conditions}
-                onConditionsChange={setConditions}
-                allowedTriggers={template.allowedTriggers.filter(t => t !== "database_update")}
-              />
-              {template.requiresDatabase && (
-                <div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-1">Schedule</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Choose when this agent should run each accounting period.
+              </p>
+
+              <div className="space-y-6">
+                {/* Day of Month */}
+                <div>
+                  <Label className="text-xs text-gray-500">Day of the month</Label>
+                  <p className="text-[11px] text-gray-400 mt-0.5 mb-1.5">
+                    The agent will run on this day each month when a new board is created.
+                  </p>
+                  <Select
+                    value={String(dayOfMonth)}
+                    onValueChange={(v) => setDayOfMonth(parseInt(v))}
+                  >
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DAY_OF_MONTH_OPTIONS.map((d) => (
+                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Time */}
+                <div>
+                  <Label className="text-xs text-gray-500">Time</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Select value={String(hour12)} onValueChange={(v) => setHourFrom12(parseInt(v), ampm)}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HOUR_OPTIONS.map((h) => (
+                          <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-gray-400">:</span>
+                    <Select value={String(minute)} onValueChange={(v) => setMinute(parseInt(v))}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MINUTE_OPTIONS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={ampm} onValueChange={(v) => setHourFrom12(hour12, v)}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AM">AM</SelectItem>
+                        <SelectItem value="PM">PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Timezone */}
+                <div>
+                  <Label className="text-xs text-gray-500">Timezone</Label>
+                  <Select value={timezone} onValueChange={setTimezone}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONE_OPTIONS.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* How it triggers explanation */}
+                <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
                   <span>
-                    This agent uses connected databases with a period column. When new data is uploaded for the next period, the agent will automatically detect it and run using the matched period data.
+                    {template.requiresDatabase
+                      ? "This agent runs when a new monthly board is created and connected database(s) have data for that period. It will automatically detect new period data and execute at the scheduled time."
+                      : "This agent runs when a new monthly board is created. It will repeat the same action from the previous period at the scheduled time."}
                   </span>
                 </div>
-              )}
-            </>
+              </div>
+            </div>
           )}
+
           {currentStep === 1 && (
-            <ConfigurationStep
-              templateId={templateId}
-              selectedTaskId={jobId}
-              configuration={configuration}
-              onConfigurationChange={setConfiguration}
-            />
-          )}
-          {currentStep === 2 && (
-            <ConfirmationStep
-              name={name}
-              linkedTaskName={taskName}
-              linkedTaskType={taskType}
-              triggerType={triggerType}
-              conditions={conditions}
-              configuration={configuration}
-              templateId={templateId}
-            />
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-1">Review &amp; create</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Confirm your agent details before creating.
+              </p>
+
+              <div className="space-y-4">
+                {/* Name */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Name</h3>
+                  <p className="text-sm text-gray-900 font-medium">{name || "Untitled Agent"}</p>
+                </div>
+
+                {/* Linked Task */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Linked Task</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-900">{taskName}</span>
+                    {taskType && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {TYPE_LABELS[taskType] || taskType}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Schedule */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Schedule</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Calendar className="w-4 h-4 text-orange-500" />
+                    <span>{dayOfMonth}{getOrdinalSuffix(dayOfMonth)} of each month</span>
+                    <span className="text-gray-300">|</span>
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span>{hour12}:{String(minute).padStart(2, "0")} {ampm}</span>
+                  </div>
+                </div>
+
+                {/* How it works */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">How this agent triggers</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-[10px] font-bold text-orange-600">1</span>
+                      </div>
+                      <p className="text-sm text-gray-700">A new monthly board is created for this task</p>
+                    </div>
+                    {template.requiresDatabase && (
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-[10px] font-bold text-orange-600">2</span>
+                        </div>
+                        <p className="text-sm text-gray-700">Connected database(s) are updated with data for that period</p>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-[10px] font-bold text-orange-600">{template.requiresDatabase ? "3" : "2"}</span>
+                      </div>
+                      <p className="text-sm text-gray-700">
+                        The agent runs at the scheduled time ({dayOfMonth}{getOrdinalSuffix(dayOfMonth)} at {hour12}:{String(minute).padStart(2, "0")} {ampm})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
