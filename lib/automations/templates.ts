@@ -139,6 +139,35 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     ],
     recipientSource: "config",
   },
+
+  // ─── Analysis ──────────────────────────────────────────────────────
+
+  {
+    id: "run-analysis",
+    name: "Run Analysis",
+    description:
+      "Auto-run a saved analysis each period (e.g. monthly vendor spend breakdown). Replays the same prompts against fresh data.",
+    icon: "MessageSquare",
+    triggerType: "board_created",
+    defaultConditions: {},
+    defaultSteps: [
+      {
+        type: "action",
+        label: "Run analysis",
+        actionType: "run_analysis",
+        actionParams: {},
+      },
+    ],
+    category: "analysis",
+    requiresDatabase: true,
+    allowedTriggers: [
+      "board_created",
+      "scheduled",
+      "board_status_changed",
+      "database_update",
+    ],
+    recipientSource: "config",
+  },
 ]
 
 /** Get a template by its ID */

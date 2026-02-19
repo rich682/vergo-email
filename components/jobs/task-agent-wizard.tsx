@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Info, Calendar, Clock } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Info, Calendar, Clock, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -28,6 +28,7 @@ const TASK_TYPE_TEMPLATE_MAP: Record<string, string> = {
   form: "send-form",
   reconciliation: "run-reconciliation",
   report: "run-report",
+  analysis: "run-analysis",
 }
 
 function generateStepId(): string {
@@ -65,6 +66,13 @@ const TYPE_LABELS: Record<string, string> = {
   analysis: "Analysis",
 }
 
+interface AnalysisConversation {
+  id: string
+  title: string
+  databaseIds: string[]
+  _count: { messages: number }
+}
+
 interface TaskAgentWizardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -96,6 +104,11 @@ export function TaskAgentWizard({
   const [resolvedTemplateId, setResolvedTemplateId] = useState<string | null>(null)
   const [loadingConfig, setLoadingConfig] = useState(false)
 
+  // Analysis conversation selection
+  const [analysisConversations, setAnalysisConversations] = useState<AnalysisConversation[]>([])
+  const [loadingConversations, setLoadingConversations] = useState(false)
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+
   // Fetch task config to determine the correct template
   useEffect(() => {
     if (!open || !taskType) return
@@ -114,6 +127,24 @@ export function TaskAgentWizard({
     } else {
       setResolvedTemplateId(taskType ? TASK_TYPE_TEMPLATE_MAP[taskType] : null)
     }
+  }, [open, taskType, jobId])
+
+  // Fetch analysis conversations when wizard opens for analysis tasks
+  useEffect(() => {
+    if (!open || taskType !== "analysis") return
+    setLoadingConversations(true)
+    fetch(`/api/analysis/conversations?taskInstanceId=${jobId}`, { credentials: "include" })
+      .then(res => res.ok ? res.json() : { conversations: [] })
+      .then(data => {
+        const convs = data.conversations || []
+        setAnalysisConversations(convs)
+        // Auto-select if only one conversation
+        if (convs.length === 1) {
+          setSelectedConversationId(convs[0].id)
+        }
+      })
+      .catch(() => setAnalysisConversations([]))
+      .finally(() => setLoadingConversations(false))
   }, [open, taskType, jobId])
 
   const templateId = resolvedTemplateId
@@ -172,12 +203,30 @@ export function TaskAgentWizard({
     }
   }, [open, taskType, jobId])
 
-  const WIZARD_STEPS = [
-    { label: "Schedule", description: "Set when to run" },
-    { label: "Confirm", description: "Review and create" },
-  ]
+  // Dynamic wizard steps — analysis gets a conversation picker
+  const isAnalysis = taskType === "analysis"
+  const WIZARD_STEPS = isAnalysis
+    ? [
+        { label: "Schedule", description: "Set when to run" },
+        { label: "Select Analysis", description: "Choose analysis to replay" },
+        { label: "Confirm", description: "Review and create" },
+      ]
+    : [
+        { label: "Schedule", description: "Set when to run" },
+        { label: "Confirm", description: "Review and create" },
+      ]
 
-  const canProceed = () => true
+  const confirmStepIndex = WIZARD_STEPS.length - 1
+  const analysisStepIndex = isAnalysis ? 1 : -1
+
+  const canProceed = () => {
+    if (isAnalysis && currentStep === analysisStepIndex) {
+      return !!selectedConversationId
+    }
+    return true
+  }
+
+  const selectedConversation = analysisConversations.find(c => c.id === selectedConversationId)
 
   const handleCreate = async () => {
     if (!templateId) return
@@ -201,7 +250,10 @@ export function TaskAgentWizard({
 
       if (!effectiveLineageId) throw new Error("Could not create task lineage")
 
-      const actions = buildActions(templateId, configuration, effectiveLineageId)
+      const actions = buildActions(templateId, configuration, effectiveLineageId, {
+        selectedConversationId,
+        selectedConversation,
+      })
 
       // Build conditions with schedule
       const cronExpression = scheduleToCron({ frequency: "monthly", dayOfMonth, hour, minute, timezone })
@@ -431,7 +483,9 @@ export function TaskAgentWizard({
                 <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2">
                   <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
                   <span>
-                    {template.requiresDatabase
+                    {isAnalysis
+                      ? "This agent replays the selected analysis prompts against fresh data each period when a new monthly board is created."
+                      : template.requiresDatabase
                       ? "This agent runs when a new monthly board is created and connected database(s) have data for that period. It will automatically detect new period data and execute at the scheduled time."
                       : "This agent runs when a new monthly board is created. It will repeat the same action from the previous period at the scheduled time."}
                   </span>
@@ -440,7 +494,66 @@ export function TaskAgentWizard({
             </div>
           )}
 
-          {currentStep === 1 && (
+          {isAnalysis && currentStep === analysisStepIndex && (
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-1">Select Analysis</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Choose which analysis conversation to replay each period.
+              </p>
+
+              {loadingConversations ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400 mr-2" />
+                  <span className="text-sm text-gray-500">Loading conversations...</span>
+                </div>
+              ) : analysisConversations.length === 0 ? (
+                <div className="py-8 text-center">
+                  <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">No analysis conversations found for this task.</p>
+                  <p className="text-xs text-gray-400 mt-1">Create an analysis from the Analysis tab first.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {analysisConversations.map((conv) => (
+                    <button
+                      key={conv.id}
+                      type="button"
+                      onClick={() => setSelectedConversationId(conv.id)}
+                      className={`w-full text-left p-4 rounded-lg border transition-colors ${
+                        selectedConversationId === conv.id
+                          ? "border-orange-300 bg-orange-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <MessageSquare className={`w-4 h-4 flex-shrink-0 ${
+                          selectedConversationId === conv.id ? "text-orange-500" : "text-gray-400"
+                        }`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{conv.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {conv._count.messages} messages
+                          </p>
+                        </div>
+                        {selectedConversationId === conv.id && (
+                          <Check className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+
+                  <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-2 mt-4">
+                    <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <span>
+                      The agent will replay all prompts from this conversation against fresh data each period, creating a new analysis with updated results.
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentStep === confirmStepIndex && (
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-1">Review &amp; create</h2>
               <p className="text-sm text-gray-500 mb-6">
@@ -466,6 +579,18 @@ export function TaskAgentWizard({
                     )}
                   </div>
                 </div>
+
+                {/* Selected Analysis (only for analysis tasks) */}
+                {isAnalysis && selectedConversation && (
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Analysis to Replay</h3>
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-cyan-500" />
+                      <span className="text-sm text-gray-900">{selectedConversation.title}</span>
+                      <span className="text-xs text-gray-400">({selectedConversation._count.messages} messages)</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Schedule */}
                 <div className="border border-gray-200 rounded-lg p-4">
@@ -502,7 +627,9 @@ export function TaskAgentWizard({
                         <span className="text-[10px] font-bold text-orange-600">{template.requiresDatabase ? "3" : "2"}</span>
                       </div>
                       <p className="text-sm text-gray-700">
-                        The agent runs at the scheduled time ({dayOfMonth}{getOrdinalSuffix(dayOfMonth)} at {hour12}:{String(minute).padStart(2, "0")} {ampm})
+                        {isAnalysis
+                          ? `The agent replays the analysis prompts against fresh data (${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} at ${hour12}:${String(minute).padStart(2, "0")} ${ampm})`
+                          : `The agent runs at the scheduled time (${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} at ${hour12}:${String(minute).padStart(2, "0")} ${ampm})`}
                       </p>
                     </div>
                   </div>
@@ -562,7 +689,11 @@ export function TaskAgentWizard({
 function buildActions(
   templateId: string,
   config: Record<string, unknown>,
-  lineageId: string
+  lineageId: string,
+  analysisContext?: {
+    selectedConversationId: string | null
+    selectedConversation?: AnalysisConversation | null
+  }
 ) {
   if (templateId === "send-standard-request") {
     return {
@@ -657,6 +788,23 @@ function buildActions(
         actionParams: {
           reportDefinitionId: config.reportDefinitionId,
           filterBindings: config.reportFilterBindings,
+        },
+        onError: "fail",
+      }],
+    }
+  }
+
+  if (templateId === "run-analysis") {
+    return {
+      version: 1,
+      steps: [{
+        id: generateStepId(),
+        type: "action",
+        label: "Run analysis",
+        actionType: "run_analysis",
+        actionParams: {
+          conversationId: analysisContext?.selectedConversationId,
+          databaseIds: analysisContext?.selectedConversation?.databaseIds || [],
         },
         onError: "fail",
       }],

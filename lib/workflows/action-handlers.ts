@@ -39,6 +39,8 @@ export async function executeAction(
       return handleCompleteReconciliation(actionParams, context)
     case "complete_report":
       return handleCompleteReport(actionParams, context)
+    case "run_analysis":
+      return handleRunAnalysis(actionParams, context)
     default:
       return { success: false, error: `This agent uses an unsupported action type. Please contact support.` }
   }
@@ -722,6 +724,132 @@ async function handleCompleteReport(
     }
   } catch (error: any) {
     return { success: false, error: error.message, targetType: "report", targetId: reportDefinitionId }
+  }
+}
+
+// ─── run_analysis ─────────────────────────────────────────────────────────────
+
+/**
+ * Replay a saved analysis conversation against fresh data.
+ *
+ * 1. Load reference conversation + extract user prompts
+ * 2. Resolve the current task instance (from trigger context or latest board)
+ * 3. Create a new AnalysisConversation linked to the current task
+ * 4. Replay each user prompt via handleAnalysisChat (headless, no SSE)
+ * 5. Return summary
+ */
+async function handleRunAnalysis(
+  params: Record<string, unknown>,
+  context: ActionContext
+): Promise<ActionResult> {
+  const conversationId = params.conversationId as string
+  if (!conversationId) {
+    return { success: false, error: "No analysis conversation configured. Please re-create this agent and select an analysis to replay." }
+  }
+
+  const permCheck = await checkPermissionForAction(context, "analysis:query")
+  if (!permCheck.allowed) {
+    return { success: false, error: permCheck.reason }
+  }
+
+  try {
+    // 1. Load reference conversation + user messages
+    const refConversation = await prisma.analysisConversation.findFirst({
+      where: { id: conversationId, organizationId: context.organizationId },
+      include: {
+        messages: {
+          where: { role: "user" },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    })
+
+    if (!refConversation) {
+      return { success: false, error: "The reference analysis conversation could not be found. It may have been deleted." }
+    }
+
+    const userPrompts = refConversation.messages.map((m) => m.content)
+    if (userPrompts.length === 0) {
+      return { success: false, error: "The reference analysis conversation has no prompts to replay." }
+    }
+
+    const databaseIds = (params.databaseIds as string[]) || (refConversation.databaseIds as string[]) || []
+    if (databaseIds.length === 0) {
+      return { success: false, error: "No databases are linked to the reference analysis. Cannot run analysis without data." }
+    }
+
+    // 2. Resolve the current task instance from trigger context or lineage
+    let taskInstanceId: string | null = null
+    const boardId = context.triggerContext.metadata.boardId as string | undefined
+    const lineageId = context.lineageId
+
+    if (lineageId && boardId) {
+      const task = await prisma.taskInstance.findFirst({
+        where: { lineageId, boardId, organizationId: context.organizationId },
+        select: { id: true },
+      })
+      taskInstanceId = task?.id || null
+    }
+
+    if (!taskInstanceId && lineageId) {
+      const task = await prisma.taskInstance.findFirst({
+        where: { lineageId, organizationId: context.organizationId },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+      taskInstanceId = task?.id || null
+    }
+
+    // 3. Create new conversation linked to current task
+    const userId = context.triggeredBy || refConversation.userId
+    const newConversation = await prisma.analysisConversation.create({
+      data: {
+        organizationId: context.organizationId,
+        userId,
+        title: `${refConversation.title} (automated)`,
+        databaseIds,
+        ...(taskInstanceId ? { taskInstanceId } : {}),
+      },
+    })
+
+    // 4. Replay each user prompt
+    const { handleAnalysisChat } = await import("@/lib/analysis/text-to-sql")
+    let messagesProcessed = 0
+
+    for (const prompt of userPrompts) {
+      try {
+        await handleAnalysisChat({
+          conversationId: newConversation.id,
+          userMessage: prompt,
+          organizationId: context.organizationId,
+          userId,
+        })
+        messagesProcessed++
+      } catch (error: any) {
+        // Log but continue — partial results are still useful
+        console.error(`[run_analysis] Failed to process prompt: ${error.message}`)
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        conversationId: newConversation.id,
+        referenceConversationId: conversationId,
+        messagesProcessed,
+        totalPrompts: userPrompts.length,
+        taskInstanceId,
+      },
+      targetType: "analysis_conversation",
+      targetId: newConversation.id,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message,
+      targetType: "analysis_conversation",
+      targetId: conversationId,
+    }
   }
 }
 

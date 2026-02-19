@@ -30,7 +30,7 @@ export interface AutomationTemplate {
   triggerType: import("@/lib/workflows/types").TriggerType
   defaultConditions: Record<string, unknown>
   defaultSteps: Partial<import("@/lib/workflows/types").WorkflowStep>[]
-  category: "requests" | "reconciliation" | "reports" | "forms"
+  category: "requests" | "reconciliation" | "reports" | "forms" | "analysis"
   requiresDatabase: boolean // Whether this agent type needs database triggers
   allowedTriggers: string[] // Which trigger options to show in the wizard
   recipientSource: "task_history" | "database" | "config" | "none" // Clarifies configuration step

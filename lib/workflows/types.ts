@@ -96,6 +96,7 @@ export type ActionType =
   | "run_reconciliation"
   | "complete_reconciliation"
   | "complete_report"
+  | "run_analysis"
 
 export interface WorkflowStep {
   id: string
