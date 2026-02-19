@@ -170,8 +170,8 @@ export function AgentTab({ jobId, lineageId, taskType, taskName, canEdit }: Agen
         <Card>
           <CardContent className="p-8 text-center">
             <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-1">Agents require a recurring task</p>
-            <p className="text-xs text-gray-400">This task must be part of a board with a recurring lineage to enable agent automation.</p>
+            <p className="text-sm text-gray-500 mb-1">Agents require a completed accounting period</p>
+            <p className="text-xs text-gray-400">A full accounting month must be completed before agents can be activated for this task.</p>
           </CardContent>
         </Card>
       </div>
