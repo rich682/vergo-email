@@ -39,6 +39,7 @@ export async function GET(
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const userRole = session.user.role || UserRole.MEMBER
+    const orgActionPermissions = session.user.orgActionPermissions || null
     const { id } = await params
 
     const taskInstance = await TaskInstanceService.findById(id, organizationId)
@@ -51,7 +52,7 @@ export async function GET(
     }
 
     // Check view permission
-    const canView = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'view')
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'view', orgActionPermissions)
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
@@ -60,9 +61,9 @@ export async function GET(
     }
 
     // Include permission info for UI
-    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'edit')
-    const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'update_status')
-    const canManageCollaborators = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'manage_collaborators')
+    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'edit', orgActionPermissions)
+    const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'update_status', orgActionPermissions)
+    const canManageCollaborators = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'manage_collaborators', orgActionPermissions)
 
     const labels = taskInstance.labels as any
     const stakeholders = labels?.stakeholders || []
@@ -116,6 +117,7 @@ export async function PATCH(
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const userRole = sessionRole?.toUpperCase() as UserRole || UserRole.MEMBER
+    const orgActionPermissions = session.user.orgActionPermissions || null
     const { id } = await params
     const body = await request.json()
 
@@ -135,7 +137,7 @@ export async function PATCH(
 
     if (isStatusOnlyUpdate) {
       // Collaborators can update status
-      const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'update_status')
+      const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'update_status', orgActionPermissions)
       if (!canUpdateStatus) {
         return NextResponse.json(
           { error: "Access denied - you don't have permission to update this task's status" },
@@ -153,7 +155,7 @@ export async function PATCH(
         }
       }
       // Full edit requires edit permission
-      const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'edit')
+      const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'edit', orgActionPermissions)
       if (!canEdit) {
         return NextResponse.json(
           { error: "Access denied - only owner or admin can edit" },
@@ -210,7 +212,7 @@ export async function PATCH(
 
     // Ownership transfer
     if (ownerId && ownerId !== existingInstance.ownerId) {
-      const canManage = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'manage_collaborators')
+      const canManage = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'manage_collaborators', orgActionPermissions)
       if (!canManage) {
         return NextResponse.json(
           { error: "Access denied - only owner or admin can transfer ownership" },
@@ -393,6 +395,7 @@ export async function DELETE(
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const userRole = sessionRole?.toUpperCase() as UserRole || UserRole.MEMBER
+    const orgActionPermissions = session.user.orgActionPermissions || null
     const { id } = await params
     const { searchParams } = new URL(request.url)
     
@@ -420,7 +423,7 @@ export async function DELETE(
     }
 
     // Check archive permission
-    const canArchive = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'archive')
+    const canArchive = await TaskInstanceService.canUserAccess(userId, userRole, existingInstance, 'archive', orgActionPermissions)
     if (!canArchive) {
       return NextResponse.json(
         { error: "Access denied - only owner or admin can archive/delete" },

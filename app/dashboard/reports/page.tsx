@@ -1028,7 +1028,7 @@ export default function ReportsPage() {
               </div>
             ) : (
               <div className="rounded-lg border border-gray-200 overflow-auto h-full">
-                <table className="text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
+                <table className="text-sm border-collapse" style={{ tableLayout: 'auto', width: 'max-content' }}>
                   <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
                       {viewingReport.data.table.columns.map((col, colIndex) => {
@@ -1036,15 +1036,13 @@ export default function ReportsPage() {
                         return (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ${
-                              isLabelColumn 
-                                ? "text-left sticky left-0 z-30 bg-gray-100 whitespace-nowrap" 
+                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap ${
+                              isLabelColumn
+                                ? "text-left sticky left-0 z-30 bg-gray-100"
                                 : "text-center border-l border-gray-200"
                             }`}
-                            style={{ 
-                              width: isLabelColumn ? 200 : 120, 
-                              minWidth: isLabelColumn ? 200 : 120,
-                              maxWidth: isLabelColumn ? 200 : 120
+                            style={{
+                              minWidth: isLabelColumn ? 200 : 100,
                             }}
                           >
                             {col.label}
@@ -1056,10 +1054,14 @@ export default function ReportsPage() {
                   <tbody>
                     {viewingReport.data.table.rows.map((row, rowIndex) => {
                       const rowType = row._type as string | undefined
+                      const rowBold = row._bold as boolean | undefined
+                      const rowSeparator = row._separatorAbove as boolean | undefined
                       return (
-                        <tr 
-                          key={`row-${row._label || rowIndex}`} 
-                          className="hover:bg-blue-50 transition-colors bg-white"
+                        <tr
+                          key={`row-${row._label || rowIndex}`}
+                          className={`hover:bg-blue-50 transition-colors bg-white ${
+                            rowSeparator ? "border-t-2 border-t-black" : ""
+                          }`}
                         >
                           {viewingReport.data.table!.columns.map((col, colIndex) => {
                             const effectiveFormat = col.key === "_label"
@@ -1067,17 +1069,15 @@ export default function ReportsPage() {
                               : ((row._format as string) || col.dataType)
                             const isLabelColumn = col.key === "_label"
                             return (
-                              <td 
-                                key={col.key} 
-                                className={`px-4 py-3 border-b border-gray-100 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                  isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900" 
-                                    : "text-center border-l border-gray-100 text-gray-700"
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 border-b border-gray-100 whitespace-nowrap ${
+                                  isLabelColumn
+                                    ? "sticky left-0 z-10 bg-white font-bold text-gray-900"
+                                    : `text-center border-l border-gray-100 text-gray-700 ${rowBold ? "font-bold" : ""}`
                                 }`}
-                                style={{ 
-                                  width: isLabelColumn ? 200 : 120, 
-                                  minWidth: isLabelColumn ? 200 : 120,
-                                  maxWidth: isLabelColumn ? 200 : 120
+                                style={{
+                                  minWidth: isLabelColumn ? 200 : 100,
                                 }}
                               >
                                 {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
@@ -1098,30 +1098,32 @@ export default function ReportsPage() {
                   </tbody>
                   {viewingReport.data.table?.formulaRows && viewingReport.data.table.formulaRows.length > 0 && (
                     <tfoot className="bg-blue-50 border-t-2 border-blue-200 sticky bottom-0 z-20">
-                      {viewingReport.data.table.formulaRows.map((fRow) => (
-                        <tr key={fRow.key}>
-                          {viewingReport.data.table!.columns.map((col, colIndex) => {
-                            const isLabelColumn = colIndex === 0
-                            return (
-                              <td
-                                key={col.key}
-                                className={`px-4 py-3 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                  isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900" 
-                                    : "text-center border-l border-blue-100 text-gray-900"
-                                }`}
-                                style={{ 
-                                  width: isLabelColumn ? 200 : 120, 
-                                  minWidth: isLabelColumn ? 200 : 120,
-                                  maxWidth: isLabelColumn ? 200 : 120
-                                }}
-                              >
-                                {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
+                      {viewingReport.data.table.formulaRows.map((fRow) => {
+                        const fBold = (fRow as any)._bold as boolean | undefined
+                        const fSeparator = (fRow as any)._separatorAbove as boolean | undefined
+                        return (
+                          <tr key={fRow.key} className={fSeparator ? "border-t-2 border-t-black" : ""}>
+                            {viewingReport.data.table!.columns.map((col, colIndex) => {
+                              const isLabelColumn = colIndex === 0
+                              return (
+                                <td
+                                  key={col.key}
+                                  className={`px-4 py-3 whitespace-nowrap ${
+                                    isLabelColumn
+                                      ? "sticky left-0 z-10 bg-blue-50 font-bold text-gray-900"
+                                      : `text-center border-l border-blue-100 text-gray-900 ${fBold ? "font-bold" : ""}`
+                                  }`}
+                                  style={{
+                                    minWidth: isLabelColumn ? 200 : 100,
+                                  }}
+                                >
+                                  {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
                     </tfoot>
                   )}
                 </table>

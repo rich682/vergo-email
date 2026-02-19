@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
+import { canPerformAction, hasModuleAccess } from "@/lib/permissions"
 import { UserRole } from "@prisma/client"
 
 // Constants for pagination and performance
@@ -46,6 +47,7 @@ export async function GET(
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const userRole = session.user.role || UserRole.MEMBER
+    const orgActionPermissions = session.user.orgActionPermissions || null
     const { id: taskInstanceId } = await params
     const { searchParams } = new URL(request.url)
     
@@ -67,8 +69,8 @@ export async function GET(
       )
     }
 
-    // Check view permission
-    const canView = await TaskInstanceService.canUserAccess(userId, userRole, instance, 'view')
+    // Check view permission (pass orgActionPermissions so tasks:view_all is respected)
+    const canView = await TaskInstanceService.canUserAccess(userId, userRole, instance, 'view', orgActionPermissions)
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
@@ -76,9 +78,32 @@ export async function GET(
       )
     }
 
+    // Determine if user is directly involved (owner/collaborator) — these users
+    // see ALL events regardless of module permissions. Event filtering only applies
+    // to users accessing the task through org-wide permissions like tasks:view_all.
+    let isDirectlyInvolved = userRole === UserRole.ADMIN || instance.ownerId === userId
+    if (!isDirectlyInvolved) {
+      const isTaskCollaborator = await prisma.taskInstanceCollaborator.findUnique({
+        where: { taskInstanceId_userId: { taskInstanceId, userId } }
+      })
+      if (isTaskCollaborator) {
+        isDirectlyInvolved = true
+      } else if (instance.boardId) {
+        const isBoardCollaborator = await prisma.boardCollaborator.findUnique({
+          where: { boardId_userId: { boardId: instance.boardId, userId } }
+        })
+        if (isBoardCollaborator) isDirectlyInvolved = true
+      }
+    }
+
+    // For non-directly-involved users, check which event types they can see
+    const canSeeRequestEvents = isDirectlyInvolved
+      || hasModuleAccess(userRole, "inbox", orgActionPermissions)
+      || hasModuleAccess(userRole, "requests", orgActionPermissions)
+
     const events: TimelineEvent[] = []
 
-    // Fetch Comments
+    // Fetch Comments (always visible if you can see the task)
     if (filter !== "emails") {
       const comments = await prisma.taskInstanceComment.findMany({
         where: { 
@@ -116,8 +141,8 @@ export async function GET(
       })
     }
 
-    // Fetch Messages and Reminders
-    if (filter !== "comments") {
+    // Fetch Messages and Reminders (skip entirely if user can't see request events)
+    if (filter !== "comments" && canSeeRequestEvents) {
       const requests = await prisma.request.findMany({
         where: { 
           taskInstanceId, 
@@ -229,9 +254,14 @@ export async function GET(
       return a.id.localeCompare(b.id)
     })
 
+    // Filter events by module permissions (only for non-directly-involved users)
+    const filteredEvents = canSeeRequestEvents
+      ? events
+      : events.filter(e => e.type === "comment")
+
     // Apply pagination
-    const totalCount = events.length
-    const paginatedEvents = events.slice(offset, offset + limit)
+    const totalCount = filteredEvents.length
+    const paginatedEvents = filteredEvents.slice(offset, offset + limit)
 
     return NextResponse.json({
       success: true,

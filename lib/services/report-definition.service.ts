@@ -35,6 +35,8 @@ export interface ReportFormulaRow {
     [columnKey: string]: string  // e.g., { "revenue": "SUM", "cost": "SUM", "margin": "AVG" }
   }
   order: number
+  isBold?: boolean               // Bold all cells in this row
+  separatorAbove?: boolean       // Thick black border above this row
 }
 
 // Metric row for pivot layout
@@ -50,6 +52,8 @@ export interface MetricRow {
   compareOutput?: "value" | "delta" | "percent"  // Output: raw value, difference, or percentage change
   format: "text" | "number" | "currency" | "percent"
   order: number
+  isBold?: boolean               // Bold all cells in this row
+  separatorAbove?: boolean       // Thick black border above this row
 }
 
 // Comparison period types for metric rows

@@ -72,6 +72,8 @@ interface ReportFormulaRow {
   label: string
   columnFormulas: Record<string, string>
   order: number
+  isBold?: boolean
+  separatorAbove?: boolean
 }
 
 // Metric row for pivot layout
@@ -87,6 +89,8 @@ interface MetricRow {
   compareOutput?: "value" | "delta" | "percent"
   format: "text" | "number" | "currency" | "percent"
   order: number
+  isBold?: boolean
+  separatorAbove?: boolean
 }
 
 // Formula column for pivot layout - computed columns that aggregate across pivot columns
@@ -893,10 +897,18 @@ export default function ReportBuilderPage() {
                           {metric.type === "comparison" && <TrendingUp className="w-4 h-4 text-amber-500 flex-shrink-0" />}
                           
                           {/* Label */}
-                          <span className="flex-1 text-sm text-gray-700 truncate">
+                          <span className={`flex-1 text-sm truncate ${metric.isBold ? "font-bold text-gray-900" : "text-gray-700"}`}>
                             {metric.label || <span className="text-gray-400 italic">Untitled</span>}
                           </span>
-                          
+
+                          {/* Formatting indicators */}
+                          {metric.separatorAbove && (
+                            <span className="text-[10px] text-gray-400 font-mono" title="Separator above">---</span>
+                          )}
+                          {metric.isBold && (
+                            <span className="text-[10px] font-bold text-gray-400" title="Bold row">B</span>
+                          )}
+
                           {/* Type badge */}
                           <span className={`text-xs px-1.5 py-0.5 rounded ${
                             metric.type === "source" ? "bg-blue-100 text-blue-700" :
@@ -1356,7 +1368,7 @@ export default function ReportBuilderPage() {
               </div>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto h-full">
-                <table className="border-collapse" style={{ tableLayout: 'fixed' }}>
+                <table className="border-collapse" style={{ tableLayout: 'auto', width: 'max-content' }}>
                   <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-20">
                     <tr>
                       {previewData.table.columns.map((col, colIndex) => {
@@ -1364,15 +1376,13 @@ export default function ReportBuilderPage() {
                         return (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-sm font-semibold text-gray-600 ${
-                              isLabelColumn 
-                                ? "text-left sticky left-0 z-30 bg-gray-100 whitespace-nowrap" 
+                            className={`px-4 py-3 text-sm font-semibold text-gray-600 whitespace-nowrap ${
+                              isLabelColumn
+                                ? "text-left sticky left-0 z-30 bg-gray-100"
                                 : "text-center border-l border-gray-200"
                             }`}
-                            style={{ 
-                              width: isLabelColumn ? 200 : 120, 
-                              minWidth: isLabelColumn ? 200 : 120,
-                              maxWidth: isLabelColumn ? 200 : 120
+                            style={{
+                              minWidth: isLabelColumn ? 200 : 100,
                             }}
                           >
                             <div className={`flex items-center gap-1.5 ${isLabelColumn ? "" : "justify-center"}`}>
@@ -1389,26 +1399,31 @@ export default function ReportBuilderPage() {
                   <tbody className="bg-white">
                     {previewData.table.rows.map((row, rowIndex) => {
                       const rowType = row._type as string | undefined
+                      const rowBold = row._bold as boolean | undefined
+                      const rowSeparator = row._separatorAbove as boolean | undefined
                       return (
-                        <tr key={`row-${row._label || rowIndex}`} className="hover:bg-blue-50 transition-colors bg-white">
+                        <tr
+                          key={`row-${row._label || rowIndex}`}
+                          className={`hover:bg-blue-50 transition-colors bg-white ${
+                            rowSeparator ? "border-t-2 border-t-black" : ""
+                          }`}
+                        >
                           {previewData.table.columns.map((col, colIndex) => {
                             // For pivot layouts, use row's _format if available (except for label column)
-                            const effectiveFormat = col.key === "_label" 
-                              ? "text" 
+                            const effectiveFormat = col.key === "_label"
+                              ? "text"
                               : ((row._format as string) || col.dataType)
                             const isLabelColumn = col.key === "_label"
                             return (
-                              <td 
-                                key={col.key} 
-                                className={`px-4 py-3 text-sm border-b border-gray-200 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                  isLabelColumn 
-                                    ? "sticky left-0 z-10 bg-white font-medium text-gray-900" 
-                                    : "text-center border-l border-gray-200 text-gray-700"
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 text-sm border-b border-gray-200 whitespace-nowrap ${
+                                  isLabelColumn
+                                    ? "sticky left-0 z-10 bg-white font-bold text-gray-900"
+                                    : `text-center border-l border-gray-200 text-gray-700 ${rowBold ? "font-bold" : ""}`
                                 }`}
-                                style={{ 
-                                  width: isLabelColumn ? 200 : 120, 
-                                  minWidth: isLabelColumn ? 200 : 120,
-                                  maxWidth: isLabelColumn ? 200 : 120
+                                style={{
+                                  minWidth: isLabelColumn ? 200 : 100,
                                 }}
                               >
                                 {isLabelColumn ? (
@@ -1427,37 +1442,39 @@ export default function ReportBuilderPage() {
                       )
                     })}
                     {/* Formula rows */}
-                    {previewData.table.formulaRows.map((fr, frIndex) => (
-                      <tr key={fr.key} className="bg-blue-50 hover:bg-blue-100 transition-colors">
-                        {previewData.table.columns.map((col, colIndex) => {
-                          const isLabelColumn = colIndex === 0
-                          return (
-                            <td 
-                              key={col.key} 
-                              className={`px-4 py-3 text-sm border-b border-blue-200 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                isLabelColumn 
-                                  ? "sticky left-0 z-10 bg-blue-50 font-medium text-gray-900" 
-                                  : "text-center border-l border-blue-200 text-gray-700"
-                              }`}
-                              style={{ 
-                                width: isLabelColumn ? 200 : 120, 
-                                minWidth: isLabelColumn ? 200 : 120,
-                                maxWidth: isLabelColumn ? 200 : 120
-                              }}
-                            >
-                              {isLabelColumn ? (
-                                <span className="flex items-center gap-1.5">
-                                  <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
-                                  {fr.label}
-                                </span>
-                              ) : (
-                                formatCellValue(fr.values[col.key], col.dataType)
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
+                    {previewData.table.formulaRows.map((fr, frIndex) => {
+                      const fBold = (fr as any)._bold as boolean | undefined
+                      const fSeparator = (fr as any)._separatorAbove as boolean | undefined
+                      return (
+                        <tr key={fr.key} className={`bg-blue-50 hover:bg-blue-100 transition-colors ${fSeparator ? "border-t-2 border-t-black" : ""}`}>
+                          {previewData.table.columns.map((col, colIndex) => {
+                            const isLabelColumn = colIndex === 0
+                            return (
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 text-sm border-b border-blue-200 whitespace-nowrap ${
+                                  isLabelColumn
+                                    ? "sticky left-0 z-10 bg-blue-50 font-bold text-gray-900"
+                                    : `text-center border-l border-blue-200 text-gray-700 ${fBold ? "font-bold" : ""}`
+                                }`}
+                                style={{
+                                  minWidth: isLabelColumn ? 200 : 100,
+                                }}
+                              >
+                                {isLabelColumn ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
+                                    {fr.label}
+                                  </span>
+                                ) : (
+                                  formatCellValue(fr.values[col.key], col.dataType)
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2002,6 +2019,8 @@ function FormulaRowModal({
 
   const [label, setLabel] = useState("")
   const [columnFormulas, setColumnFormulas] = useState<Record<string, string>>({})
+  const [isBold, setIsBold] = useState(false)
+  const [separatorAbove, setSeparatorAbove] = useState(false)
 
   // Reset form when modal opens
   useEffect(() => {
@@ -2009,6 +2028,8 @@ function FormulaRowModal({
       if (editingRow) {
         setLabel(editingRow.label)
         setColumnFormulas(editingRow.columnFormulas)
+        setIsBold(editingRow.isBold ?? false)
+        setSeparatorAbove(editingRow.separatorAbove ?? false)
       } else {
         setLabel("")
         // Default to SUM for numeric columns
@@ -2019,6 +2040,8 @@ function FormulaRowModal({
           }
         })
         setColumnFormulas(defaults)
+        setIsBold(false)
+        setSeparatorAbove(false)
       }
     }
   }, [open, editingRow, reportColumns])
@@ -2032,6 +2055,8 @@ function FormulaRowModal({
       label: label.trim(),
       columnFormulas,
       order: editingRow?.order || 0,
+      isBold: isBold || undefined,
+      separatorAbove: separatorAbove || undefined,
     })
   }
 
@@ -2092,6 +2117,33 @@ function FormulaRowModal({
               </div>
             )}
           </div>
+
+          {/* Row Formatting */}
+          <div className="space-y-3 pt-3 border-t border-gray-100">
+            <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Formatting
+            </Label>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="formula-isBold"
+                checked={isBold}
+                onCheckedChange={(checked) => setIsBold(checked === true)}
+              />
+              <Label htmlFor="formula-isBold" className="text-sm text-gray-700 cursor-pointer">
+                Bold entire row
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="formula-separatorAbove"
+                checked={separatorAbove}
+                onCheckedChange={(checked) => setSeparatorAbove(checked === true)}
+              />
+              <Label htmlFor="formula-separatorAbove" className="text-sm text-gray-700 cursor-pointer">
+                Separator line above row
+              </Label>
+            </div>
+          </div>
         </div>
 
         <DialogFooter>
@@ -2143,6 +2195,8 @@ function MetricRowModal({
   const [comparePeriod, setComparePeriod] = useState<"mom" | "qoq" | "yoy">("yoy")
   const [compareOutput, setCompareOutput] = useState<"value" | "delta" | "percent">("value")
   const [format, setFormat] = useState<"text" | "number" | "currency" | "percent">("currency")
+  const [isBold, setIsBold] = useState(false)
+  const [separatorAbove, setSeparatorAbove] = useState(false)
 
   const editingMetric = editingKey
     ? metricRows.find(m => m.key === editingKey)
@@ -2207,6 +2261,8 @@ function MetricRowModal({
       setComparePeriod(editingMetric.comparePeriod || "yoy")
       setCompareOutput(editingMetric.compareOutput || "value")
       setFormat(editingMetric.format)
+      setIsBold(editingMetric.isBold ?? false)
+      setSeparatorAbove(editingMetric.separatorAbove ?? false)
     } else if (open && !editingKey) {
       // Reset for new row
       setLabel("")
@@ -2217,6 +2273,8 @@ function MetricRowModal({
       setComparePeriod("yoy")
       setCompareOutput("value")
       setFormat("currency")
+      setIsBold(false)
+      setSeparatorAbove(false)
     }
   }, [open, editingKey, editingMetric, keysToLabels])
 
@@ -2241,6 +2299,8 @@ function MetricRowModal({
       compareOutput: type === "comparison" ? compareOutput : undefined,
       format,
       order: editingMetric?.order || 0,
+      isBold: isBold || undefined,
+      separatorAbove: separatorAbove || undefined,
     })
   }
 
@@ -2512,6 +2572,33 @@ function MetricRowModal({
               </Select>
             </div>
           )}
+
+          {/* Row Formatting */}
+          <div className="space-y-3 pt-3 border-t border-gray-100">
+            <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Formatting
+            </Label>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="metric-isBold"
+                checked={isBold}
+                onCheckedChange={(checked) => setIsBold(checked === true)}
+              />
+              <Label htmlFor="metric-isBold" className="text-sm text-gray-700 cursor-pointer">
+                Bold entire row
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="metric-separatorAbove"
+                checked={separatorAbove}
+                onCheckedChange={(checked) => setSeparatorAbove(checked === true)}
+              />
+              <Label htmlFor="metric-separatorAbove" className="text-sm text-gray-700 cursor-pointer">
+                Separator line above row
+              </Label>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="flex justify-between">

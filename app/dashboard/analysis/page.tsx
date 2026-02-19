@@ -19,6 +19,13 @@ export default function AnalysisPage() {
   const { can } = usePermissions()
   const canQuery = can("analysis:query")
 
+  // Redirect if user lacks any analysis permissions
+  useEffect(() => {
+    if (!can("analysis:view") && !can("analysis:manage") && !can("analysis:query")) {
+      router.replace("/dashboard/boards")
+    }
+  }, [can, router])
+
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [showDbSelect, setShowDbSelect] = useState(false)

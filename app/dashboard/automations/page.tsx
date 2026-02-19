@@ -18,6 +18,13 @@ export default function AutomationsPage() {
   const [recentRuns, setRecentRuns] = useState<WorkflowRunListItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Redirect if user lacks any agents permissions
+  useEffect(() => {
+    if (!can("agents:view") && !can("agents:manage") && !can("agents:execute")) {
+      router.replace("/dashboard/boards")
+    }
+  }, [can, router])
+
   const canManage = can("agents:manage")
   const canExecute = can("agents:execute")
 

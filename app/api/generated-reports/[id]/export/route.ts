@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Convert to Excel
-    const buffer = reportToExcel(report.data)
+    const buffer = await reportToExcel(report.data)
     
     // Generate filename
     const filename = generateExportFilename(

@@ -164,19 +164,35 @@ export class TaskInstanceService {
   /**
    * Check if a user can perform an action on a task instance
    *
-   * ADMIN/MANAGER: Full access
-   * Owner: Full access
-   * Task Collaborator: Can view, update status, execute requests, add comments
-   * Board Collaborator: Same as task collaborator (sees all tasks in their boards)
+   * Resolution order:
+   * 1. ADMIN: Always has full access (hardcoded bypass)
+   * 2. Action permissions: tasks:view_all, tasks:edit_any, tasks:delete grant
+   *    org-wide access for their respective actions
+   * 3. Owner: Full access to own tasks
+   * 4. Task Collaborator: Can view, update status, execute requests, add comments
+   * 5. Board Collaborator: Same as task collaborator
+   *
+   * orgActionPermissions is optional for backward compatibility — when omitted,
+   * falls back to hardcoded defaults (MANAGER gets full access, MEMBER doesn't).
    */
   static async canUserAccess(
     userId: string,
     userRole: UserRole,
     taskInstance: { id: string; ownerId: string; boardId?: string | null },
-    action: TaskInstanceAction
+    action: TaskInstanceAction,
+    orgActionPermissions?: OrgActionPermissions
   ): Promise<boolean> {
-    // ADMIN and MANAGER have full access to all tasks
-    if (userRole === UserRole.ADMIN || userRole === UserRole.MANAGER) return true
+    // ADMIN always has full access
+    if (userRole === UserRole.ADMIN) return true
+
+    // Check action permissions for org-wide access
+    if (action === 'view' && canPerformAction(userRole, 'tasks:view_all', orgActionPermissions)) return true
+    if (action === 'edit' && canPerformAction(userRole, 'tasks:edit_any', orgActionPermissions)) return true
+    if (action === 'delete' && canPerformAction(userRole, 'tasks:delete', orgActionPermissions)) return true
+    if (action === 'archive' && canPerformAction(userRole, 'tasks:delete', orgActionPermissions)) return true
+    if (action === 'manage_collaborators' && canPerformAction(userRole, 'tasks:edit_any', orgActionPermissions)) return true
+
+    // Owner has full access to own tasks
     if (taskInstance.ownerId === userId) return true
 
     // Check task-level collaborator
@@ -199,7 +215,7 @@ export class TaskInstanceService {
       }
     }
 
-    // Non-owner, non-collaborator, non-admin cannot access
+    // Non-owner, non-collaborator, no matching action permission
     return false
   }
 

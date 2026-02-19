@@ -313,58 +313,31 @@ export function ReportTab({
     return String(value)
   }
 
-  // Export to Excel
+  // Export to Excel (uses shared styled export utility)
   const handleExportExcel = useCallback(async () => {
-    const XLSX = await import("xlsx")
     if (!previewData || !previewData.table.columns.length) return
 
-    const wsData: unknown[][] = []
+    const { reportToExcel, generateExportFilename } = await import("@/lib/utils/excel-export")
 
-    const headers = previewData.table.columns.map(col => col.label || col.key)
-    wsData.push(headers)
-
-    for (const row of previewData.table.rows) {
-      const rowData = previewData.table.columns.map(col => {
-        const value = row[col.key]
-        if (value === null || value === undefined) return ""
-        return value
-      })
-      wsData.push(rowData)
+    const reportData = {
+      current: null,
+      table: previewData.table,
+      reportName: savedReport?.name || "Report",
+      layout: savedReport?.layout || "pivot",
     }
 
-    if (previewData.table.formulaRows && previewData.table.formulaRows.length > 0) {
-      wsData.push([])
-      for (const formulaRow of previewData.table.formulaRows) {
-        const rowData = previewData.table.columns.map((col, idx) => {
-          if (idx === 0) return formulaRow.label
-          const value = formulaRow.values[col.key]
-          if (value === null || value === undefined) return ""
-          return value
-        })
-        wsData.push(rowData)
-      }
-    }
-
-    const workbook = XLSX.utils.book_new()
-    const worksheet = XLSX.utils.aoa_to_sheet(wsData)
-
-    const colWidths = headers.map((header, idx) => {
-      let maxWidth = String(header).length
-      for (const row of wsData) {
-        const cellValue = String(row[idx] || "")
-        if (cellValue.length > maxWidth) maxWidth = cellValue.length
-      }
-      return { wch: Math.min(maxWidth + 2, 50) }
+    const buffer = await reportToExcel(reportData as any)
+    const blob = new Blob([new Uint8Array(buffer)], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     })
-    worksheet["!cols"] = colWidths
-
-    const sheetName = (savedReport?.name || "Report").substring(0, 31)
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
-
-    const filename = `${savedReport?.name || "Report"} - ${currentPeriodKey || "Report"}.xlsx`
-      .replace(/[/\\?%*:|"<>]/g, "-")
-
-    XLSX.writeFile(workbook, filename)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = generateExportFilename(reportData.reportName, undefined, currentPeriodKey || undefined)
+    document.body.appendChild(a)
+    a.click()
+    URL.revokeObjectURL(url)
+    document.body.removeChild(a)
   }, [previewData, savedReport, currentPeriodKey])
 
   // Check if there are unsaved changes
@@ -578,7 +551,7 @@ export function ReportTab({
               </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
+                <table className="text-sm border-collapse" style={{ tableLayout: 'auto', width: 'max-content' }}>
                   <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
                       {previewData.table.columns.map((col, colIndex) => {
@@ -586,15 +559,13 @@ export function ReportTab({
                         return (
                           <th
                             key={col.key}
-                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                            className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap ${
                               isLabelColumn
-                                ? "text-left whitespace-nowrap"
+                                ? "text-left"
                                 : "text-center border-l border-gray-200"
                             }`}
                             style={{
-                              width: isLabelColumn ? 200 : 120,
-                              minWidth: isLabelColumn ? 200 : 120,
-                              maxWidth: isLabelColumn ? 200 : 120
+                              minWidth: isLabelColumn ? 200 : 100,
                             }}
                           >
                             {col.label}
@@ -604,72 +575,78 @@ export function ReportTab({
                     </tr>
                   </thead>
                   <tbody>
-                    {previewData.table.rows.slice(0, 20).map((row, rowIndex) => (
-                      <tr
-                        key={rowIndex}
-                        className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"}`}
-                      >
-                        {previewData.table.columns.map((col, colIndex) => {
-                          const effectiveFormat = col.key === "_label"
-                            ? "text"
-                            : ((row._format as string) || col.dataType)
-                          const rowType = row._type as string | undefined
-                          const isLabelColumn = col.key === "_label"
-                          return (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-3 border-b border-gray-100 overflow-hidden text-ellipsis whitespace-nowrap ${
-                                isLabelColumn
-                                  ? "font-medium text-gray-900"
-                                  : "text-center border-l border-gray-100 text-gray-700"
-                              }`}
-                              style={{
-                                width: isLabelColumn ? 200 : 120,
-                                minWidth: isLabelColumn ? 200 : 120,
-                                maxWidth: isLabelColumn ? 200 : 120
-                              }}
-                            >
-                              {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
-                                <span className="flex items-center gap-1.5">
-                                  {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
-                                  {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
-                                  {formatCellValue(row[col.key], effectiveFormat)}
-                                </span>
-                              ) : (
-                                formatCellValue(row[col.key], effectiveFormat)
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                  {previewData.table.formulaRows && previewData.table.formulaRows.length > 0 && (
-                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
-                      {previewData.table.formulaRows.map((fRow) => (
-                        <tr key={fRow.key}>
+                    {previewData.table.rows.slice(0, 20).map((row, rowIndex) => {
+                      const rowBold = row._bold as boolean | undefined
+                      const rowSeparator = row._separatorAbove as boolean | undefined
+                      return (
+                        <tr
+                          key={rowIndex}
+                          className={`hover:bg-blue-50 transition-colors ${rowIndex % 2 === 1 ? "bg-gray-50" : "bg-white"} ${
+                            rowSeparator ? "border-t-2 border-t-black" : ""
+                          }`}
+                        >
                           {previewData.table.columns.map((col, colIndex) => {
-                            const isLabelColumn = colIndex === 0
+                            const effectiveFormat = col.key === "_label"
+                              ? "text"
+                              : ((row._format as string) || col.dataType)
+                            const rowType = row._type as string | undefined
+                            const isLabelColumn = col.key === "_label"
                             return (
                               <td
                                 key={col.key}
-                                className={`px-4 py-3 overflow-hidden text-ellipsis whitespace-nowrap ${
+                                className={`px-4 py-3 border-b border-gray-100 whitespace-nowrap ${
                                   isLabelColumn
-                                    ? "font-medium text-gray-900"
-                                    : "text-center border-l border-blue-100 text-gray-900"
+                                    ? "font-bold text-gray-900"
+                                    : `text-center border-l border-gray-100 text-gray-700 ${rowBold ? "font-bold" : ""}`
                                 }`}
                                 style={{
-                                  width: isLabelColumn ? 200 : 120,
-                                  minWidth: isLabelColumn ? 200 : 120,
-                                  maxWidth: isLabelColumn ? 200 : 120
+                                  minWidth: isLabelColumn ? 200 : 100,
                                 }}
                               >
-                                {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
+                                {isLabelColumn && (rowType === "formula" || rowType === "comparison") ? (
+                                  <span className="flex items-center gap-1.5">
+                                    {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
+                                    {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                    {formatCellValue(row[col.key], effectiveFormat)}
+                                  </span>
+                                ) : (
+                                  formatCellValue(row[col.key], effectiveFormat)
+                                )}
                               </td>
                             )
                           })}
                         </tr>
-                      ))}
+                      )
+                    })}
+                  </tbody>
+                  {previewData.table.formulaRows && previewData.table.formulaRows.length > 0 && (
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                      {previewData.table.formulaRows.map((fRow) => {
+                        const fBold = (fRow as any)._bold as boolean | undefined
+                        const fSeparator = (fRow as any)._separatorAbove as boolean | undefined
+                        return (
+                          <tr key={fRow.key} className={fSeparator ? "border-t-2 border-t-black" : ""}>
+                            {previewData.table.columns.map((col, colIndex) => {
+                              const isLabelColumn = colIndex === 0
+                              return (
+                                <td
+                                  key={col.key}
+                                  className={`px-4 py-3 whitespace-nowrap ${
+                                    isLabelColumn
+                                      ? "font-bold text-gray-900"
+                                      : `text-center border-l border-blue-100 text-gray-900 ${fBold ? "font-bold" : ""}`
+                                  }`}
+                                  style={{
+                                    minWidth: isLabelColumn ? 200 : 100,
+                                  }}
+                                >
+                                  {isLabelColumn ? fRow.label : formatCellValue(fRow.values[col.key])}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
                     </tfoot>
                   )}
                 </table>

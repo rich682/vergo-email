@@ -67,6 +67,8 @@ export interface FormulaRowOutput {
   key: string
   label: string
   values: Record<string, unknown>
+  _bold?: boolean
+  _separatorAbove?: boolean
 }
 
 export interface ExecutePreviewResult {
@@ -587,10 +589,12 @@ export class ReportExecutionService {
 
     // Build output rows with format and type information
     const dataRows = sortedMetrics.map(metric => {
-      const row: Record<string, unknown> = { 
+      const row: Record<string, unknown> = {
         _label: metric.label,
         _format: metric.format, // Include format for frontend rendering
         _type: metric.type, // Include type to show formula/comparison icons
+        _bold: metric.isBold || false,
+        _separatorAbove: metric.separatorAbove || false,
       }
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]
@@ -942,6 +946,8 @@ export class ReportExecutionService {
         key: fr.key,
         label: fr.label,
         values,
+        _bold: fr.isBold || false,
+        _separatorAbove: fr.separatorAbove || false,
       }
     })
   }
