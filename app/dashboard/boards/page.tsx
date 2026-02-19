@@ -564,11 +564,6 @@ export default function BoardsPage() {
   if (!advancedBoardTypes) {
     return (
       <div className="p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Book Close</h1>
-          <p className="text-sm text-gray-500 mt-1">Track your monthly close progress</p>
-        </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
