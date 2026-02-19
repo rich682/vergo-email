@@ -1601,7 +1601,8 @@ function formatCellValue(value: unknown, dataType: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
   }
   if (format === "percent" && numValue !== null) {
-    return `${numValue.toLocaleString()}%`
+    const pct = Math.round(numValue * 10000) / 100
+    return `${pct.toLocaleString()}%`
   }
   if ((format === "number" || !format) && numValue !== null) {
     return numValue.toLocaleString()

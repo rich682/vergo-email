@@ -550,11 +550,12 @@ export class ReportExecutionService {
               metricValuesByPivot[pv][metric.key] = Math.round((currentValue - compareValue) * 100) / 100
               break
             case "percent":
-              // Percentage change: (current - compare) / compare * 100
+              // Percentage change as ratio: (current - compare) / compare
+              // Frontend formatter handles ×100 display for percent format
               if (compareValue === 0) {
                 metricValuesByPivot[pv][metric.key] = null
               } else {
-                metricValuesByPivot[pv][metric.key] = Math.round(((currentValue - compareValue) / compareValue) * 10000) / 100
+                metricValuesByPivot[pv][metric.key] = (currentValue - compareValue) / compareValue
               }
               break
             default:
