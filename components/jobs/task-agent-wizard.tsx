@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { getTemplate } from "@/lib/automations/templates"
-import { scheduleToCron, TIMEZONE_OPTIONS } from "@/lib/automations/cron-helpers"
+import { scheduleToCron } from "@/lib/automations/cron-helpers"
 import type { TriggerType } from "@/lib/automations/types"
 
 // Task type → automation template mapping
@@ -124,11 +124,21 @@ export function TaskAgentWizard({
   const [configuration, setConfiguration] = useState<Record<string, unknown>>({})
 
   // Schedule state — simple day-of-month + time
-  const defaultTimezone = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC"
   const [dayOfMonth, setDayOfMonth] = useState(1)
   const [hour, setHour] = useState(9)
   const [minute, setMinute] = useState(0)
-  const [timezone, setTimezone] = useState(defaultTimezone)
+  const [timezone, setTimezone] = useState("UTC")
+
+  // Fetch org timezone from company settings
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/org/accounting-calendar", { credentials: "include" })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.timezone) setTimezone(data.timezone)
+      })
+      .catch(() => {})
+  }, [open])
 
   // Auto-fetch config from task when wizard opens (for confirmation display)
   const [configLoaded, setConfigLoaded] = useState(false)
@@ -415,21 +425,6 @@ export function TaskAgentWizard({
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-
-                {/* Timezone */}
-                <div>
-                  <Label className="text-xs text-gray-500">Timezone</Label>
-                  <Select value={timezone} onValueChange={setTimezone}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEZONE_OPTIONS.map((tz) => (
-                        <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 {/* How it triggers explanation */}
