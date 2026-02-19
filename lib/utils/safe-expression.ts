@@ -251,8 +251,8 @@ export function evaluateSafeExpression(
       return null
     }
 
-    // Round to 2 decimal places
-    return Math.round(result * 100) / 100
+    // Round to 6 decimal places to preserve precision for ratios (e.g. percent values)
+    return Math.round(result * 1000000) / 1000000
   } catch (error) {
     // Return null for any parsing/evaluation errors
     return null
