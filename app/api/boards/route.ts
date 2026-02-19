@@ -58,15 +58,28 @@ export async function GET(request: NextRequest) {
     const yearParam = searchParams.get("year")
     const year = yearParam ? parseInt(yearParam, 10) : undefined
 
-    // Fetch organization timezone for frontend date formatting
+    // Fetch organization settings
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { timezone: true }
+      select: { timezone: true, fiscalYearStartMonth: true, features: true }
     })
+
+    const orgFeatures = (organization?.features as Record<string, any>) || {}
+    const advancedBoardTypes = orgFeatures.advancedBoardTypes === true
+
+    // In simplified mode, lazy-generate fiscal year boards
+    if (!advancedBoardTypes) {
+      await BoardService.generateFiscalYearBoards(
+        organizationId,
+        organization?.fiscalYearStartMonth ?? 1,
+        organization?.timezone ?? "UTC",
+        userId
+      )
+    }
 
     const boards = await BoardService.getByOrganizationId(organizationId, {
       status,
-      cadence,
+      cadence: !advancedBoardTypes ? "MONTHLY" as BoardCadence : cadence,
       ownerId,
       year,
       includeTaskInstanceCount: true,
@@ -78,11 +91,12 @@ export async function GET(request: NextRequest) {
     // Return timezone, or null if not configured (don't default to UTC)
     const timezone = organization?.timezone
     const timezoneConfigured = timezone && timezone !== "UTC"
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       boards,
       organizationTimezone: timezone || null,
-      timezoneConfigured
+      timezoneConfigured,
+      advancedBoardTypes,
     })
   } catch (error: any) {
     console.error("[API/boards] Error listing boards:", error)

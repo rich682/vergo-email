@@ -64,7 +64,15 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ board })
+    // Fetch org features to pass advancedBoardTypes flag
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { features: true },
+    })
+    const orgFeatures = (org?.features as Record<string, any>) || {}
+    const advancedBoardTypes = orgFeatures.advancedBoardTypes === true
+
+    return NextResponse.json({ board, advancedBoardTypes })
   } catch (error: any) {
     console.error("[API/boards/[id]] Error getting board:", error)
     return NextResponse.json(

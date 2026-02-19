@@ -11,27 +11,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  Plus, 
-  Search, 
-  MoreHorizontal, 
-  Archive, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  MoreHorizontal,
+  Archive,
+  Trash2,
   Copy,
   RotateCcw,
   Loader2,
   Pencil,
   PlayCircle,
   CheckCircle2,
-  PauseCircle
+  PauseCircle,
+  Check,
+  Lock,
 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import { 
-  formatDateInTimezone, 
-  formatMonthYearInTimezone, 
-  getMonthInTimezone, 
+import { formatDistanceToNow, differenceInDays, parseISO } from "date-fns"
+import {
+  formatDateInTimezone,
+  formatMonthYearInTimezone,
+  getMonthInTimezone,
   getYearInTimezone,
-  formatPeriodDisplay 
+  formatPeriodDisplay
 } from "@/lib/utils/timezone"
 import { CreateBoardModal } from "@/components/boards/create-board-modal"
 import { usePermissions } from "@/components/permissions-context"
@@ -41,7 +43,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { BoardColumnHeader, BoardColumnDefinition } from "@/components/boards/board-column-header"
 
-// Default board columns
+// Default board columns (for advanced mode)
 const DEFAULT_BOARD_COLUMNS: BoardColumnDefinition[] = [
   { id: "name", label: "Item", width: 280, visible: true, order: 0, isSystem: true },
   { id: "cadence", label: "Cadence", width: 100, visible: true, order: 1, isSystem: true },
@@ -80,7 +82,7 @@ interface Board {
   cadence: BoardCadence | null
   periodStart: string | null
   periodEnd: string | null
-  jobCount: number
+  taskInstanceCount: number
   owner: BoardOwner | null
   collaborators: BoardCollaborator[]
   updatedAt: string
@@ -107,7 +109,7 @@ function getInitials(name: string | null, email: string): string {
 function normalizeStatus(status: BoardStatus): BoardStatus {
   // Handle legacy statuses
   if (status === "OPEN") return "NOT_STARTED"
-  if (status === "CLOSED") return "COMPLETE"
+  if (status === "CLOSED") return "CLOSED" // Keep CLOSED as first-class
   return status
 }
 
@@ -120,6 +122,8 @@ function getStatusBadge(status: BoardStatus) {
       return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">In Progress</span>
     case "COMPLETE":
       return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Complete</span>
+    case "CLOSED":
+      return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Closed</span>
     case "BLOCKED":
       return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">Blocked</span>
     case "ARCHIVED":
@@ -131,7 +135,7 @@ function getStatusBadge(status: BoardStatus) {
 
 function getCadenceBadge(cadence: BoardCadence | null) {
   if (!cadence) return <span className="text-gray-400">—</span>
-  
+
   const colors: Record<BoardCadence, string> = {
     DAILY: "bg-purple-100 text-purple-700",
     WEEKLY: "bg-indigo-100 text-indigo-700",
@@ -140,7 +144,7 @@ function getCadenceBadge(cadence: BoardCadence | null) {
     YEAR_END: "bg-orange-100 text-orange-700",
     AD_HOC: "bg-gray-100 text-gray-600",
   }
-  
+
   const labels: Record<BoardCadence, string> = {
     DAILY: "Daily",
     WEEKLY: "Weekly",
@@ -149,7 +153,7 @@ function getCadenceBadge(cadence: BoardCadence | null) {
     YEAR_END: "Year-End",
     AD_HOC: "Ad Hoc",
   }
-  
+
   return (
     <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${colors[cadence]}`}>
       {labels[cadence]}
@@ -159,7 +163,6 @@ function getCadenceBadge(cadence: BoardCadence | null) {
 
 /**
  * Format period using the shared timezone utility.
- * Wrapper to maintain existing function signature.
  */
 function formatPeriod(periodStart: string | null, periodEnd: string | null, cadence: BoardCadence | null, timezone: string): string {
   if (!timezone) {
@@ -173,10 +176,77 @@ const STATUS_ORDER: Record<BoardStatus, number> = {
   NOT_STARTED: 2,
   BLOCKED: 3,
   COMPLETE: 4,
+  CLOSED: 4,
   ARCHIVED: 5,
   OPEN: 2, // Legacy - treat as NOT_STARTED
-  CLOSED: 4, // Legacy - treat as COMPLETE
 }
+
+// ============================================
+// Simplified mode helpers
+// ============================================
+
+function isCurrentMonth(periodStart: string | null): boolean {
+  if (!periodStart) return false
+  const date = parseISO(periodStart)
+  const now = new Date()
+  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+}
+
+function isFutureMonth(periodStart: string | null): boolean {
+  if (!periodStart) return false
+  const date = parseISO(periodStart)
+  const now = new Date()
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const boardMonthStart = new Date(date.getFullYear(), date.getMonth(), 1)
+  return boardMonthStart > currentMonthStart
+}
+
+function getDaysUntilClose(periodEnd: string | null, isClosed: boolean): { text: string; className: string } | null {
+  if (!periodEnd) return null
+  if (isClosed) return { text: "Closed", className: "text-green-600" }
+
+  const end = parseISO(periodEnd)
+  const now = new Date()
+  const days = differenceInDays(end, now)
+
+  if (days < 0) {
+    return { text: "Overdue", className: "text-red-600 font-medium" }
+  }
+  if (days === 0) {
+    return { text: "Due today", className: "text-orange-600 font-medium" }
+  }
+  if (days === 1) {
+    return { text: "1 day", className: "text-orange-600" }
+  }
+  return { text: `${days} days`, className: "text-gray-600" }
+}
+
+function getSimplifiedStatusBadge(status: BoardStatus, isCurrent: boolean, isFuture: boolean) {
+  if (isFuture) {
+    return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600">Not Started</span>
+  }
+
+  if (isCurrent && (status === "NOT_STARTED" || status === "OPEN")) {
+    return <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">In Progress</span>
+  }
+
+  const normalized = normalizeStatus(status)
+  // Map COMPLETE → Closed for display in simplified mode
+  const displayStatus = normalized === "COMPLETE" ? "CLOSED" : normalized
+
+  const statusMap: Record<string, { label: string; className: string }> = {
+    "NOT_STARTED": { label: "Not Started", className: "bg-gray-100 text-gray-600" },
+    "IN_PROGRESS": { label: "In Progress", className: "bg-blue-100 text-blue-700" },
+    "CLOSED": { label: "Closed", className: "bg-green-100 text-green-700" },
+  }
+
+  const config = statusMap[displayStatus] || statusMap["NOT_STARTED"]
+  return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${config.className}`}>{config.label}</span>
+}
+
+// ============================================
+// Main Component
+// ============================================
 
 export default function BoardsPage() {
   const router = useRouter()
@@ -189,24 +259,28 @@ export default function BoardsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [cadenceFilter, setCadenceFilter] = useState<CadenceFilter>("ALL")
   const [sortOption, setSortOption] = useState<SortOption>("recent")
-  
+
   // Organization timezone for date formatting
   const [organizationTimezone, setOrganizationTimezone] = useState<string>("UTC")
-  
+
+  // Feature flag
+  const [advancedBoardTypes, setAdvancedBoardTypes] = useState(false)
+
   // Modal states
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<Board | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [archiveConfirm, setArchiveConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; boardId: string | null; boardName: string }>({ open: false, boardId: null, boardName: "" })
-  
-  // Column configuration state (for board rows)
+
+  // Column configuration state (for board rows - advanced mode only)
   const [columns, setColumns] = useState<BoardColumnDefinition[]>(DEFAULT_BOARD_COLUMNS)
-  
+
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Fetch column configurations on mount
+  // Fetch column configurations on mount (advanced mode only)
   useEffect(() => {
+    if (!advancedBoardTypes) return
     const fetchColumnConfig = async () => {
       try {
         const response = await fetch("/api/boards/column-config", {
@@ -223,7 +297,7 @@ export default function BoardsPage() {
       }
     }
     fetchColumnConfig()
-  }, [])
+  }, [advancedBoardTypes])
 
   // Save column configuration when columns change
   const saveColumnConfig = useCallback(async (newColumns: BoardColumnDefinition[]) => {
@@ -259,10 +333,10 @@ export default function BoardsPage() {
       if (response.ok) {
         const data = await response.json()
         setBoards(data.boards || [])
-        // Store organization timezone for date formatting
         if (data.organizationTimezone) {
           setOrganizationTimezone(data.organizationTimezone)
         }
+        setAdvancedBoardTypes(data.advancedBoardTypes || false)
       }
     } catch (error) {
       console.error("Error fetching boards:", error)
@@ -282,39 +356,44 @@ export default function BoardsPage() {
         setMenuOpenId(null)
       }
     }
-    
+
     if (menuOpenId) {
       document.addEventListener("mousedown", handleClickOutside)
     }
-    
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [menuOpenId])
 
-  // Filter and sort boards
+  // Boards sorted by periodStart for simplified mode
+  const sortedBoards = useMemo(() => {
+    if (advancedBoardTypes) return boards
+    return [...boards].sort((a, b) => {
+      if (!a.periodStart && !b.periodStart) return 0
+      if (!a.periodStart) return 1
+      if (!b.periodStart) return -1
+      return new Date(a.periodStart).getTime() - new Date(b.periodStart).getTime()
+    })
+  }, [boards, advancedBoardTypes])
+
+  // Filter and sort boards (advanced mode)
   const filteredBoards = useMemo(() => {
     return boards
       .filter(board => {
-        // Status filter
         if (statusFilter !== "ALL") {
           const normalized = normalizeStatus(board.status)
           if (normalized !== statusFilter) {
             return false
           }
         } else {
-          // By default, hide archived unless explicitly requested
           if (normalizeStatus(board.status) === "ARCHIVED") {
             return false
           }
         }
-        
-        // Cadence filter
         if (cadenceFilter !== "ALL" && board.cadence !== cadenceFilter) {
           return false
         }
-        
-        // Search filter
         if (searchQuery && !board.name.toLowerCase().includes(searchQuery.toLowerCase())) {
           return false
         }
@@ -325,28 +404,27 @@ export default function BoardsPage() {
           case "name":
             return a.name.localeCompare(b.name)
           case "period":
-            // Sort by periodStart, null last
             if (!a.periodStart && !b.periodStart) return 0
             if (!a.periodStart) return 1
             if (!b.periodStart) return -1
             return new Date(b.periodStart).getTime() - new Date(a.periodStart).getTime()
           case "status":
             return STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
-          default: // recent
+          default:
             return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         }
       })
   }, [boards, statusFilter, cadenceFilter, searchQuery, sortOption])
 
-  // Split boards into recurring, ad hoc, and complete sections
+  // Split boards into recurring, ad hoc, and complete sections (advanced mode)
   const { recurringBoards, adHocBoards, completeBoards } = useMemo(() => {
     const recurring: Board[] = []
     const adHoc: Board[] = []
     const complete: Board[] = []
-    
+
     filteredBoards.forEach(board => {
       const normalized = normalizeStatus(board.status)
-      if (normalized === "COMPLETE") {
+      if (normalized === "COMPLETE" || normalized === "CLOSED") {
         complete.push(board)
       } else if (board.cadence === "AD_HOC" || !board.cadence) {
         adHoc.push(board)
@@ -354,7 +432,7 @@ export default function BoardsPage() {
         recurring.push(board)
       }
     })
-    
+
     return { recurringBoards: recurring, adHocBoards: adHoc, completeBoards: complete }
   }, [filteredBoards])
 
@@ -456,19 +534,112 @@ export default function BoardsPage() {
   }
 
   const canDeleteBoard = (board: Board): boolean => {
-    return (board.jobCount || 0) === 0
+    return (board.taskInstanceCount || 0) === 0
   }
 
-  // Handle board updates from sidebar (optimistic + refresh)
   const handleBoardUpdate = (updatedBoard: Board) => {
-    // Optimistically update local state
-    setBoards(prev => prev.map(b => 
+    setBoards(prev => prev.map(b =>
       b.id === updatedBoard.id ? { ...b, ...updatedBoard } : b
     ))
-    // Also refresh to get any computed fields from server
     fetchBoards()
   }
 
+  // ============================================
+  // Simplified Book Close View
+  // ============================================
+  if (!advancedBoardTypes) {
+    return (
+      <div className="p-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900">Book Close</h1>
+          <p className="text-sm text-gray-500 mt-1">Track your monthly close progress</p>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        ) : sortedBoards.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-500">Setting up your book close...</span>
+          </div>
+        ) : (
+          <div className="border rounded-lg overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-[1fr_140px_160px] gap-4 px-6 py-3 bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <div>Month</div>
+              <div>Status</div>
+              <div>Days Until Close</div>
+            </div>
+
+            {/* Table Rows */}
+            <div className="divide-y divide-gray-100">
+              {sortedBoards.map((board) => {
+                const current = isCurrentMonth(board.periodStart)
+                const future = isFutureMonth(board.periodStart)
+                const isClosed = board.status === "CLOSED" || board.status === "COMPLETE"
+                const daysInfo = getDaysUntilClose(board.periodEnd, isClosed)
+
+                return (
+                  <div
+                    key={board.id}
+                    className={`
+                      grid grid-cols-[1fr_140px_160px] gap-4 px-6 py-4 items-center transition-colors
+                      ${current ? "border-l-4 border-l-orange-500 bg-orange-50/50 pl-5" : ""}
+                      ${future ? "opacity-50" : "hover:bg-gray-50 cursor-pointer"}
+                    `}
+                    onClick={() => {
+                      if (future) return
+                      router.push(`/dashboard/jobs?boardId=${board.id}`)
+                    }}
+                  >
+                    {/* Month Name */}
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-medium ${current ? "text-orange-900" : future ? "text-gray-400" : "text-gray-900"}`}>
+                        {board.name}
+                      </span>
+                      {current && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded bg-orange-100 text-orange-700">
+                          Current
+                        </span>
+                      )}
+                      {future && (
+                        <Lock className="w-3.5 h-3.5 text-gray-300" />
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      {getSimplifiedStatusBadge(board.status, current, future)}
+                    </div>
+
+                    {/* Days Until Close */}
+                    <div className="text-sm">
+                      {isClosed ? (
+                        <span className="flex items-center gap-1 text-green-600">
+                          <Check className="w-3.5 h-3.5" />
+                          Closed
+                        </span>
+                      ) : daysInfo ? (
+                        <span className={daysInfo.className}>{daysInfo.text}</span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ============================================
+  // Advanced Mode (original UI)
+  // ============================================
   return (
     <div className="p-8">
       {/* Filters + Action */}
@@ -482,7 +653,7 @@ export default function BoardsPage() {
             className="pl-10"
           />
         </div>
-        
+
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Status" />
@@ -592,7 +763,7 @@ export default function BoardsPage() {
                 <span className="text-xs text-gray-400">{recurringBoards.length}</span>
               </div>
               {recurringBoards.map((board) => (
-                <BoardRow 
+                <BoardRow
                   key={board.id}
                   board={board}
                   menuOpenId={menuOpenId}
@@ -627,7 +798,7 @@ export default function BoardsPage() {
                 <span className="text-xs text-gray-400">{adHocBoards.length}</span>
               </div>
               {adHocBoards.map((board) => (
-                <BoardRow 
+                <BoardRow
                   key={board.id}
                   board={board}
                   menuOpenId={menuOpenId}
@@ -662,7 +833,7 @@ export default function BoardsPage() {
                 <span className="text-xs text-gray-400">{completeBoards.length}</span>
               </div>
               {completeBoards.map((board) => (
-                <BoardRow 
+                <BoardRow
                   key={board.id}
                   board={board}
                   menuOpenId={menuOpenId}
@@ -709,6 +880,7 @@ export default function BoardsPage() {
           fetchBoards()
           setEditingBoard(null)
         }}
+        advancedBoardTypes={advancedBoardTypes}
       />
 
       {/* Archive Board Confirmation */}
@@ -738,7 +910,7 @@ export default function BoardsPage() {
   )
 }
 
-// Extracted BoardRow component for reuse
+// Extracted BoardRow component for reuse (advanced mode only)
 interface BoardRowProps {
   board: Board
   menuOpenId: string | null
@@ -782,8 +954,6 @@ function BoardRow({
   organizationTimezone,
   router
 }: BoardRowProps) {
-  // Render a column value based on column id
-  // Get column width from config
   const getColumnWidth = (columnId: string): number => {
     const column = columns.find(c => c.id === columnId)
     return column?.width || 120
@@ -791,7 +961,7 @@ function BoardRow({
 
   const renderColumnValue = (columnId: string) => {
     const width = getColumnWidth(columnId)
-    
+
     switch (columnId) {
       case "name":
         return (
@@ -848,7 +1018,7 @@ function BoardRow({
   }
 
   return (
-    <div 
+    <div
       className="hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100"
       onClick={() => router.push(`/dashboard/jobs?boardId=${board.id}`)}
     >
@@ -863,7 +1033,7 @@ function BoardRow({
 
         {/* Task count indicator */}
         <div className="flex-shrink-0 text-sm text-gray-500">
-          {board.jobCount || 0} tasks
+          {board.taskInstanceCount || 0} tasks
         </div>
 
         {/* Column Settings */}
@@ -890,7 +1060,7 @@ function BoardRow({
 
           {/* Context menu */}
           {menuOpenId === board.id && (
-            <div 
+            <div
               ref={menuRef}
               className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-50"
               onClick={(e) => e.stopPropagation()}
@@ -906,9 +1076,9 @@ function BoardRow({
                 <Pencil className="w-4 h-4" />
                 Edit
               </button>
-              
+
               <div className="border-t my-1" />
-              
+
               {/* Quick status actions */}
               {normalizeStatus(board.status) !== "IN_PROGRESS" && normalizeStatus(board.status) !== "ARCHIVED" && (
                 <button
@@ -919,7 +1089,7 @@ function BoardRow({
                   Mark In Progress
                 </button>
               )}
-              
+
               {normalizeStatus(board.status) !== "COMPLETE" && normalizeStatus(board.status) !== "ARCHIVED" && (
                 <button
                   onClick={() => handleStatusChange(board.id, "COMPLETE")}
@@ -929,7 +1099,7 @@ function BoardRow({
                   Mark Complete
                 </button>
               )}
-              
+
               {normalizeStatus(board.status) !== "BLOCKED" && normalizeStatus(board.status) !== "ARCHIVED" && (
                 <button
                   onClick={() => handleStatusChange(board.id, "BLOCKED")}
@@ -939,9 +1109,9 @@ function BoardRow({
                   Mark Blocked
                 </button>
               )}
-              
+
               <div className="border-t my-1" />
-              
+
               <button
                 onClick={() => handleDuplicateBoard(board)}
                 className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -949,7 +1119,7 @@ function BoardRow({
                 <Copy className="w-4 h-4" />
                 Duplicate
               </button>
-              
+
               {normalizeStatus(board.status) === "ARCHIVED" ? (
                 <button
                   onClick={() => handleRestoreBoard(board.id)}
@@ -967,7 +1137,7 @@ function BoardRow({
                   Archive
                 </button>
               )}
-              
+
               {canDeleteBoard(board) && (
                 <button
                   onClick={() => handleDeleteBoard(board)}

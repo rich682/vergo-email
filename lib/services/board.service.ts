@@ -880,4 +880,210 @@ export class BoardService {
 
     return newBoard
   }
+
+  /**
+   * Generate 12 monthly boards for the current fiscal year if they don't exist.
+   * Idempotent: safe to call on every page load.
+   */
+  static async generateFiscalYearBoards(
+    organizationId: string,
+    fiscalYearStartMonth: number,
+    timezone: string,
+    createdById: string
+  ): Promise<void> {
+    const now = new Date()
+    const currentMonth = now.getMonth() // 0-indexed
+    const currentYear = now.getFullYear()
+
+    // Calculate fiscal year start
+    // If fiscal year starts in July (7) and we're in Feb (1), fiscal year started July of previous year
+    const fiscalMonthIndex = fiscalYearStartMonth - 1 // Convert to 0-indexed
+    let fiscalYearStart: Date
+    if (currentMonth >= fiscalMonthIndex) {
+      fiscalYearStart = new Date(currentYear, fiscalMonthIndex, 1)
+    } else {
+      fiscalYearStart = new Date(currentYear - 1, fiscalMonthIndex, 1)
+    }
+
+    // Check existing MONTHLY boards for this fiscal year range
+    const fiscalYearEnd = new Date(fiscalYearStart.getFullYear() + 1, fiscalYearStart.getMonth(), 1)
+    const existingBoards = await prisma.board.findMany({
+      where: {
+        organizationId,
+        cadence: "MONTHLY",
+        periodStart: {
+          gte: fiscalYearStart,
+          lt: fiscalYearEnd,
+        },
+      },
+      select: { periodStart: true },
+    })
+
+    // Build set of existing period months for quick lookup
+    const existingMonths = new Set(
+      existingBoards.map(b => {
+        if (!b.periodStart) return ""
+        return `${b.periodStart.getFullYear()}-${b.periodStart.getMonth()}`
+      })
+    )
+
+    // Generate missing months
+    const boardsToCreate: Array<{
+      name: string
+      periodStart: Date
+      periodEnd: Date
+    }> = []
+
+    for (let i = 0; i < 12; i++) {
+      const monthDate = new Date(fiscalYearStart.getFullYear(), fiscalYearStart.getMonth() + i, 1)
+      const key = `${monthDate.getFullYear()}-${monthDate.getMonth()}`
+
+      if (!existingMonths.has(key)) {
+        const periodEnd = endOfMonth(monthDate)
+        const name = generatePeriodBoardName("MONTHLY", monthDate, timezone)
+        boardsToCreate.push({ name, periodStart: monthDate, periodEnd })
+      }
+    }
+
+    if (boardsToCreate.length === 0) return
+
+    // Create all missing boards
+    for (const board of boardsToCreate) {
+      await prisma.board.create({
+        data: {
+          organizationId,
+          name: board.name,
+          cadence: "MONTHLY",
+          periodStart: board.periodStart,
+          periodEnd: board.periodEnd,
+          status: "NOT_STARTED",
+          automationEnabled: true,
+          createdById,
+        },
+      })
+    }
+
+    console.log(`[BoardService] Generated ${boardsToCreate.length} fiscal year boards for org ${organizationId}`)
+  }
+
+  /**
+   * Propagate a newly created task to all future monthly boards in the fiscal year.
+   * Creates copies of the task in each future board, linked by lineageId.
+   */
+  static async propagateTaskToFutureBoards(
+    taskInstanceId: string,
+    currentBoardId: string,
+    organizationId: string
+  ): Promise<void> {
+    const currentBoard = await prisma.board.findUnique({
+      where: { id: currentBoardId },
+    })
+    if (!currentBoard?.periodStart || currentBoard.cadence !== "MONTHLY") return
+
+    const sourceTask = await prisma.taskInstance.findUnique({
+      where: { id: taskInstanceId },
+      include: { collaborators: true },
+    })
+    if (!sourceTask) return
+
+    // Find all future MONTHLY boards
+    const futureBoards = await prisma.board.findMany({
+      where: {
+        organizationId,
+        cadence: "MONTHLY",
+        periodStart: { gt: currentBoard.periodStart },
+        status: { notIn: ["ARCHIVED", "CLOSED", "COMPLETE"] },
+      },
+      orderBy: { periodStart: "asc" },
+    })
+
+    if (futureBoards.length === 0) return
+
+    // Use the task's lineageId or its own id as lineage link
+    const lineageId = sourceTask.lineageId || sourceTask.id
+
+    // Update source task to have lineageId if it doesn't already
+    if (!sourceTask.lineageId) {
+      await prisma.taskInstance.update({
+        where: { id: taskInstanceId },
+        data: { lineageId },
+      })
+    }
+
+    const sourceAny = sourceTask as any
+
+    for (const board of futureBoards) {
+      // Check if a task with same lineageId already exists in this board
+      const existing = await prisma.taskInstance.findFirst({
+        where: { boardId: board.id, lineageId, organizationId },
+      })
+      if (existing) continue
+
+      const newTask = await prisma.taskInstance.create({
+        data: {
+          organizationId,
+          boardId: board.id,
+          lineageId,
+          name: sourceTask.name,
+          description: sourceTask.description,
+          ownerId: sourceTask.ownerId,
+          clientId: sourceTask.clientId,
+          status: "NOT_STARTED",
+          customFields: sourceTask.customFields as any,
+          labels: sourceTask.labels as any,
+          taskType: sourceAny.taskType || null,
+          reportDefinitionId: sourceAny.reportDefinitionId || null,
+          reportFilterBindings: sourceAny.reportFilterBindings || null,
+          reconciliationConfigId: sourceAny.reconciliationConfigId || null,
+        },
+      })
+
+      // Copy collaborators
+      if (sourceTask.collaborators.length > 0) {
+        await prisma.taskInstanceCollaborator.createMany({
+          data: sourceTask.collaborators.map(c => ({
+            taskInstanceId: newTask.id,
+            userId: c.userId,
+            role: c.role,
+            addedBy: c.addedBy,
+          })),
+        })
+      }
+    }
+
+    console.log(`[BoardService] Propagated task ${taskInstanceId} to ${futureBoards.length} future boards`)
+  }
+
+  /**
+   * Remove a task (by lineageId) from all future monthly boards.
+   * Called when a task is deleted from the current month.
+   */
+  static async removeTaskFromFutureBoards(
+    lineageId: string,
+    currentBoardId: string,
+    organizationId: string
+  ): Promise<void> {
+    const currentBoard = await prisma.board.findUnique({
+      where: { id: currentBoardId },
+    })
+    if (!currentBoard?.periodStart || currentBoard.cadence !== "MONTHLY") return
+
+    // Find and delete task instances with this lineageId in future boards
+    const result = await prisma.taskInstance.deleteMany({
+      where: {
+        organizationId,
+        lineageId,
+        board: {
+          cadence: "MONTHLY",
+          periodStart: { gt: currentBoard.periodStart },
+        },
+        // Only delete NOT_STARTED tasks in future boards (don't delete if work has started)
+        status: "NOT_STARTED",
+      },
+    })
+
+    if (result.count > 0) {
+      console.log(`[BoardService] Removed ${result.count} future task instances for lineage ${lineageId}`)
+    }
+  }
 }

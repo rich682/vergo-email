@@ -413,6 +413,27 @@ export async function DELETE(
     }
 
     const boardId = existingInstance.boardId
+    const existingAny = existingInstance as any
+
+    // In simplified mode, remove task from future monthly boards before deleting
+    if (boardId && existingAny.lineageId) {
+      try {
+        const org = await prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { features: true },
+        })
+        const orgFeatures = (org?.features as Record<string, any>) || {}
+        if (!orgFeatures.advancedBoardTypes) {
+          await BoardService.removeTaskFromFutureBoards(
+            existingAny.lineageId,
+            boardId,
+            organizationId
+          )
+        }
+      } catch (propagateError) {
+        console.error("[TaskInstances] Error removing task from future boards:", propagateError)
+      }
+    }
 
     const result = await TaskInstanceService.delete(id, organizationId, { hard })
 

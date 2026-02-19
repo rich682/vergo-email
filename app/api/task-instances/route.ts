@@ -142,6 +142,26 @@ export async function POST(request: NextRequest) {
       taskType: taskType || undefined
     })
 
+    // In simplified mode, propagate new tasks to future monthly boards
+    if (boardId) {
+      try {
+        const org = await prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { features: true },
+        })
+        const orgFeatures = (org?.features as Record<string, any>) || {}
+        if (!orgFeatures.advancedBoardTypes) {
+          await BoardService.propagateTaskToFutureBoards(
+            taskInstance.id,
+            boardId,
+            organizationId
+          )
+        }
+      } catch (propagateError) {
+        console.error("[TaskInstances] Error propagating task to future boards:", propagateError)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       taskInstance

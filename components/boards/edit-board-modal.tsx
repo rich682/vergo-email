@@ -40,7 +40,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { format } from "date-fns"
 import { formatPeriodDisplay } from "@/lib/utils/timezone"
 
-type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED"
+type BoardStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "ARCHIVED" | "CLOSED"
 type BoardCadence = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEAR_END" | "AD_HOC"
 
 interface TeamMember {
@@ -83,14 +83,22 @@ interface EditBoardModalProps {
   onOpenChange: (open: boolean) => void
   board: Board | null
   onBoardUpdated?: (board: any) => void
+  advancedBoardTypes?: boolean
 }
 
 const STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
   { value: "NOT_STARTED", label: "Not Started", color: "bg-gray-100 text-gray-600" },
   { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-100 text-blue-700" },
   { value: "COMPLETE", label: "Complete", color: "bg-green-100 text-green-700" },
+  { value: "CLOSED", label: "Closed", color: "bg-green-100 text-green-700" },
   { value: "BLOCKED", label: "Blocked", color: "bg-red-100 text-red-700" },
   { value: "ARCHIVED", label: "Archived", color: "bg-amber-100 text-amber-700" },
+]
+
+const SIMPLIFIED_STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
+  { value: "NOT_STARTED", label: "Not Started", color: "bg-gray-100 text-gray-600" },
+  { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-100 text-blue-700" },
+  { value: "CLOSED", label: "Closed", color: "bg-green-100 text-green-700" },
 ]
 
 const CADENCE_OPTIONS: { value: BoardCadence; label: string }[] = [
@@ -127,7 +135,8 @@ export function EditBoardModal({
   open,
   onOpenChange,
   board,
-  onBoardUpdated
+  onBoardUpdated,
+  advancedBoardTypes = true
 }: EditBoardModalProps) {
   // Form state
   const [name, setName] = useState("")
@@ -165,9 +174,7 @@ export function EditBoardModal({
     if (board && open) {
       setName(board.name)
       // Normalize legacy statuses
-      const normalizedStatus = board.status === "OPEN" as any ? "NOT_STARTED" : 
-                               board.status === "CLOSED" as any ? "COMPLETE" : 
-                               board.status
+      const normalizedStatus = board.status === "OPEN" as any ? "NOT_STARTED" : board.status
       setStatus(normalizedStatus)
       setCadence(board.cadence)
       setOwnerId(board.owner?.id || null)
@@ -279,7 +286,8 @@ export function EditBoardModal({
           )}
           
           <div className="py-4 space-y-4">
-            {/* Board Name */}
+            {/* Board Name - advanced only */}
+            {advancedBoardTypes && (
             <div className="grid gap-2">
               <Label htmlFor="edit-name">Board Name *</Label>
               <Input
@@ -289,6 +297,7 @@ export function EditBoardModal({
                 placeholder="e.g., January 2026 Close"
               />
             </div>
+            )}
 
             {/* Status */}
             <div className="grid gap-2">
@@ -298,7 +307,7 @@ export function EditBoardModal({
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map(opt => (
+                  {(advancedBoardTypes ? STATUS_OPTIONS : SIMPLIFIED_STATUS_OPTIONS).map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>
                       <span className={`px-2 py-0.5 rounded-full text-xs ${opt.color}`}>
                         {opt.label}
@@ -309,7 +318,8 @@ export function EditBoardModal({
               </Select>
             </div>
 
-            {/* Board Type (Cadence) */}
+            {/* Board Type (Cadence) - advanced only */}
+            {advancedBoardTypes && (
             <div className="grid gap-2">
               <Label>Board Type</Label>
               <Select
@@ -329,6 +339,7 @@ export function EditBoardModal({
               </Select>
               <p className="text-xs text-gray-500">Used for filtering and automation</p>
             </div>
+            )}
 
             {/* Read-only Period Display (for backward compatibility) */}
             {hasPeriodData && (
@@ -344,7 +355,8 @@ export function EditBoardModal({
               </div>
             )}
 
-            {/* Owner */}
+            {/* Owner - advanced only */}
+            {advancedBoardTypes && (
             <div className="grid gap-2">
               <Label>Owner</Label>
               <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
@@ -410,8 +422,10 @@ export function EditBoardModal({
                 </PopoverContent>
               </Popover>
             </div>
+            )}
 
-            {/* Collaborators */}
+            {/* Collaborators - advanced only */}
+            {advancedBoardTypes && (
             <div className="grid gap-2">
               <Label className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
@@ -489,14 +503,16 @@ export function EditBoardModal({
                 </PopoverContent>
               </Popover>
             </div>
+            )}
 
-            {/* Automation Section */}
+            {/* Automation Section - advanced only */}
+            {advancedBoardTypes && (
             <div className="border-t pt-4 mt-4">
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="h-4 w-4 text-amber-500" />
                 <Label className="text-sm font-medium">Automation</Label>
               </div>
-              
+
               <div className="space-y-3">
                 {/* Auto-create next period */}
                 <div className="flex items-center justify-between">
@@ -513,6 +529,7 @@ export function EditBoardModal({
                 {/* Skip weekends hidden - always enabled by default */}
               </div>
             </div>
+            )}
           </div>
 
           <DialogFooter>

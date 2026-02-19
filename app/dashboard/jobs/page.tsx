@@ -146,6 +146,7 @@ export default function JobsPage() {
   
   const [currentBoard, setCurrentBoard] = useState<Board | null>(null)
   const [organizationTimezone, setOrganizationTimezone] = useState<string | null>(null)
+  const [advancedBoardTypes, setAdvancedBoardTypes] = useState(false)
   
   // Data state
   const [jobs, setJobs] = useState<Job[]>([])
@@ -158,7 +159,6 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
-  const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDueDate, setNewJobDueDate] = useState("")
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
   const [newJobTaskType, setNewJobTaskType] = useState("")
@@ -226,6 +226,9 @@ export default function JobsPage() {
       if (response.ok) {
         const data = await response.json()
         setCurrentBoard(data.board)
+        if (data.advancedBoardTypes !== undefined) {
+          setAdvancedBoardTypes(data.advancedBoardTypes)
+        }
       }
     } catch (error) {
       console.error("Error fetching board:", error)
@@ -550,6 +553,7 @@ export default function JobsPage() {
       NOT_STARTED: { label: "Not Started", bg: "bg-gray-100", text: "text-gray-700" },
       IN_PROGRESS: { label: "In Progress", bg: "bg-blue-100", text: "text-blue-700" },
       COMPLETE: { label: "Complete", bg: "bg-green-100", text: "text-green-700" },
+      CLOSED: { label: "Closed", bg: "bg-green-100", text: "text-green-700" },
       BLOCKED: { label: "Blocked", bg: "bg-red-100", text: "text-red-700" },
       ARCHIVED: { label: "Archived", bg: "bg-gray-100", text: "text-gray-500" },
     }
@@ -580,7 +584,7 @@ export default function JobsPage() {
 
   const handleCreateJob = async () => {
     // Validation: name, owner, due date required
-    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate) return
+    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || !newJobTaskType) return
     
     setCreating(true)
     setCreateError(null)
@@ -591,7 +595,6 @@ export default function JobsPage() {
         credentials: "include",
         body: JSON.stringify({
           name: newJobName.trim(),
-          description: newJobDescription.trim() || undefined,
           dueDate: newJobDueDate,
           ownerId: newJobOwnerId,
           boardId: boardId || undefined,
@@ -620,7 +623,6 @@ export default function JobsPage() {
 
   const resetCreateForm = () => {
     setNewJobName("")
-    setNewJobDescription("")
     setNewJobDueDate("")
     setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
     setNewJobTaskType("")
@@ -692,7 +694,7 @@ export default function JobsPage() {
               <>
                 {/* Board Name Row */}
                 <div className="flex items-center gap-2 mb-2">
-                  {editingBoardName ? (
+                  {advancedBoardTypes && editingBoardName ? (
                     <div className="flex items-center gap-2">
                       <Input
                         value={editBoardName}
@@ -728,6 +730,7 @@ export default function JobsPage() {
                       <h1 className="text-2xl font-semibold text-gray-900">
                         {currentBoard.name}
                       </h1>
+                      {advancedBoardTypes && (
                       <button
                         onClick={() => {
                           setEditBoardName(currentBoard.name)
@@ -738,6 +741,7 @@ export default function JobsPage() {
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
+                      )}
                     </>
                   )}
                   
@@ -756,7 +760,10 @@ export default function JobsPage() {
                         <div className="fixed inset-0 z-10" onClick={() => setIsStatusDropdownOpen(false)} />
                         <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
                           <div className="py-1">
-                            {["NOT_STARTED", "IN_PROGRESS", "COMPLETE", "BLOCKED"].map(status => (
+                            {(advancedBoardTypes
+                              ? ["NOT_STARTED", "IN_PROGRESS", "COMPLETE", "BLOCKED"]
+                              : ["NOT_STARTED", "IN_PROGRESS", "CLOSED"]
+                            ).map(status => (
                               <button
                                 key={status}
                                 onClick={() => handleUpdateBoard({ status })}
@@ -786,15 +793,18 @@ export default function JobsPage() {
                         : "Not set"}
                     </span>
                   </div>
-                  
-                  {/* Board Type Row */}
+
+                  {/* Board Type Row - advanced only */}
+                  {advancedBoardTypes && (
                   <div className="flex items-center gap-2 text-sm">
                     <Tag className="w-4 h-4 text-gray-400" />
                     <span className="font-medium text-gray-700">Type:</span>
                     {getCadenceBadge(currentBoard.cadence)}
                   </div>
+                  )}
                   
-                  {/* Owner Row */}
+                  {/* Owner Row - advanced only */}
+                  {advancedBoardTypes && (
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="w-4 h-4 text-gray-400" />
                     <span className="font-medium text-gray-700">Owner:</span>
@@ -840,8 +850,10 @@ export default function JobsPage() {
                       </PopoverContent>
                     </Popover>
                   </div>
-                    
-                  {/* Collaborators Row - Separate Line */}
+                  )}
+
+                  {/* Collaborators Row - Separate Line - advanced only */}
+                  {advancedBoardTypes && (
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="w-4 h-4 text-gray-400" />
                     <span className="font-medium text-gray-700">Collaborators:</span>
@@ -917,8 +929,10 @@ export default function JobsPage() {
                       </Popover>
                     </div>
                   </div>
-                  
-                  {/* Automation Row */}
+                  )}
+
+                  {/* Automation Row - advanced only */}
+                  {advancedBoardTypes && (
                   <div className="flex items-center gap-4 text-sm">
                     <Zap className="w-4 h-4 text-gray-400" />
                     <div className="flex items-center gap-2">
@@ -931,6 +945,8 @@ export default function JobsPage() {
                     </div>
 {/* Skip weekends hidden - always enabled by default */}
                   </div>
+                  )}
+
                 </div>
               </>
             ) : (
@@ -1012,32 +1028,22 @@ export default function JobsPage() {
                   </div>
                 </div>
 
-                {/* Description - Optional */}
+                {/* Task Type */}
                 <div>
-                  <Label htmlFor="description" className="text-sm text-gray-500">Description (optional)</Label>
-                  <Input
-                    id="description"
-                    value={newJobDescription}
-                    onChange={(e) => setNewJobDescription(e.target.value)}
-                    placeholder="Optional description..."
-                    className="mt-1"
-                  />
-                </div>
-
-                {/* Task Type - Optional */}
-                <div>
-                  <Label htmlFor="taskType" className="text-sm text-gray-500">Task Type (optional)</Label>
+                  <Label htmlFor="taskType" className="text-sm">Task Type <span className="text-red-500">*</span></Label>
                   <select
                     id="taskType"
                     value={newJobTaskType}
                     onChange={(e) => setNewJobTaskType(e.target.value)}
                     className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
                   >
-                    <option value="">None</option>
-                    <option value="reconciliation">Reconciliation</option>
-                    <option value="report">Report</option>
-                    <option value="form">Form</option>
+                    <option value="" disabled>Select type...</option>
                     <option value="request">Request</option>
+                    <option value="form">Form</option>
+                    <option value="report">Report</option>
+                    <option value="reconciliation">Reconciliation</option>
+                    <option value="analysis">Analysis</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
 
@@ -1050,9 +1056,10 @@ export default function JobsPage() {
                     size="sm"
                     onClick={handleCreateJob}
                     disabled={
-                      !newJobName.trim() || 
-                      !newJobOwnerId || 
-                      !newJobDueDate || 
+                      !newJobName.trim() ||
+                      !newJobOwnerId ||
+                      !newJobDueDate ||
+                      !newJobTaskType ||
                       creating
                     }
                   >
@@ -1086,10 +1093,12 @@ export default function JobsPage() {
             className={`px-3 py-2 border rounded-md text-sm ${taskTypeFilter ? "border-blue-300 bg-blue-50 text-blue-700" : "text-gray-600"}`}
           >
             <option value="">All Types</option>
-            <option value="reconciliation">Reconciliation</option>
-            <option value="report">Report</option>
-            <option value="form">Form</option>
             <option value="request">Request</option>
+            <option value="form">Form</option>
+            <option value="report">Report</option>
+            <option value="reconciliation">Reconciliation</option>
+            <option value="analysis">Analysis</option>
+            <option value="other">Other</option>
           </select>
 
           {taskTypeFilter && (
@@ -1156,6 +1165,7 @@ export default function JobsPage() {
             setCurrentBoard(updatedBoard)
             setIsBoardSettingsOpen(false)
           }}
+          advancedBoardTypes={advancedBoardTypes}
         />
       )}
     </div>

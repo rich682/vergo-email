@@ -74,14 +74,22 @@ interface BoardInput {
 interface BoardDetailSidebarProps {
   board: BoardInput
   onUpdate: (updates: Partial<BoardInput>) => void
+  advancedBoardTypes?: boolean
 }
 
 const STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
   { value: "NOT_STARTED", label: "Not Started", color: "bg-gray-100 text-gray-600" },
   { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-100 text-blue-700" },
   { value: "COMPLETE", label: "Complete", color: "bg-green-100 text-green-700" },
+  { value: "CLOSED", label: "Closed", color: "bg-green-100 text-green-700" },
   { value: "BLOCKED", label: "Blocked", color: "bg-red-100 text-red-700" },
   { value: "ARCHIVED", label: "Archived", color: "bg-amber-100 text-amber-700" },
+]
+
+const SIMPLIFIED_STATUS_OPTIONS: { value: BoardStatus; label: string; color: string }[] = [
+  { value: "NOT_STARTED", label: "Not Started", color: "bg-gray-100 text-gray-600" },
+  { value: "IN_PROGRESS", label: "In Progress", color: "bg-blue-100 text-blue-700" },
+  { value: "CLOSED", label: "Closed", color: "bg-green-100 text-green-700" },
 ]
 
 const CADENCE_OPTIONS: { value: BoardCadence; label: string }[] = [
@@ -114,7 +122,7 @@ function formatPeriod(periodStart: string | null, cadence: BoardCadence | null, 
   return formatPeriodDisplay(periodStart, null, cadence, timezone)
 }
 
-export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps) {
+export function BoardDetailSidebar({ board, onUpdate, advancedBoardTypes = true }: BoardDetailSidebarProps) {
   // State for dropdowns
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false)
@@ -213,9 +221,9 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
   }
 
   // Normalize legacy statuses
-  const normalizedStatus = board.status === "OPEN" as any ? "NOT_STARTED" : 
-                           board.status === "CLOSED" as any ? "COMPLETE" : 
-                           board.status
+  const normalizedStatus = board.status === "OPEN" as any ? "NOT_STARTED" : board.status
+
+  const statusOptions = advancedBoardTypes ? STATUS_OPTIONS : SIMPLIFIED_STATUS_OPTIONS
 
   return (
     <div className="space-y-4 w-full max-w-xs">
@@ -231,7 +239,7 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
             <SelectValue placeholder="Select status" />
           </SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS.map(opt => (
+            {statusOptions.map(opt => (
               <SelectItem key={opt.value} value={opt.value}>
                 <span className={`px-2 py-0.5 rounded-full text-xs ${opt.color}`}>
                   {opt.label}
@@ -242,7 +250,8 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
         </Select>
       </div>
 
-      {/* Board Type / Cadence */}
+      {/* Board Type / Cadence - advanced only */}
+      {advancedBoardTypes && (
       <div className="space-y-2">
         <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Board Type</Label>
         <Select
@@ -263,6 +272,7 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
         </Select>
         <p className="text-xs text-gray-400">Used for filtering and automation</p>
       </div>
+      )}
 
       {/* Period (read-only) */}
       {board.periodStart && (
@@ -278,7 +288,8 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
         </div>
       )}
 
-      {/* Owner */}
+      {/* Owner - advanced only */}
+      {advancedBoardTypes && (
       <div className="space-y-2">
         <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</Label>
         <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
@@ -342,8 +353,10 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
           </PopoverContent>
         </Popover>
       </div>
+      )}
 
-      {/* Collaborators */}
+      {/* Collaborators - advanced only */}
+      {advancedBoardTypes && (
       <div className="space-y-2">
         <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
           <Users className="w-3 h-3" />
@@ -422,9 +435,10 @@ export function BoardDetailSidebar({ board, onUpdate }: BoardDetailSidebarProps)
           </PopoverContent>
         </Popover>
       </div>
+      )}
 
-      {/* Automation Section - only show for non-AD_HOC boards */}
-      {board.cadence && board.cadence !== "AD_HOC" && (
+      {/* Automation Section - only show for non-AD_HOC boards, advanced only */}
+      {advancedBoardTypes && board.cadence && board.cadence !== "AD_HOC" && (
         <div className="space-y-3 pt-3 border-t">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-amber-500" />
