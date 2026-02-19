@@ -609,7 +609,7 @@ export function Sidebar({
             >
               <Calendar className="w-4 h-4 flex-shrink-0" />
               <div className="flex flex-col">
-                <span className="text-xs font-medium">Book Onboarding</span>
+                <span className="text-xs font-medium">Book Training Call</span>
                 <span className="text-[11px] text-orange-500">Schedule a call</span>
               </div>
             </a>
