@@ -67,6 +67,8 @@ const TASK_TYPE_CONFIG: Record<string, { label: string; bg: string; text: string
   report: { label: "Report", bg: "bg-blue-50", text: "text-blue-700" },
   form: { label: "Form", bg: "bg-purple-50", text: "text-purple-700" },
   request: { label: "Request", bg: "bg-amber-50", text: "text-amber-700" },
+  analysis: { label: "Analysis", bg: "bg-cyan-50", text: "text-cyan-700" },
+  other: { label: "Other", bg: "bg-gray-50", text: "text-gray-700" },
 }
 
 function normalizeStatus(status: string): string {

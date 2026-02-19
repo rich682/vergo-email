@@ -58,6 +58,8 @@ const TYPE_LABELS: Record<string, string> = {
   form: "Form",
   reconciliation: "Reconciliation",
   report: "Report",
+  analysis: "Analysis",
+  other: "Other",
 }
 
 export function TaskLinkageStep({

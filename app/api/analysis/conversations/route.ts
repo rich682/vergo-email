@@ -11,7 +11,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.organizationId || !session.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -21,16 +21,21 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
+  const { searchParams } = new URL(request.url)
+  const taskInstanceId = searchParams.get("taskInstanceId")
+
   const conversations = await prisma.analysisConversation.findMany({
     where: {
       organizationId: session.user.organizationId,
       userId: session.user.id,
+      ...(taskInstanceId ? { taskInstanceId } : {}),
     },
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
       title: true,
       databaseIds: true,
+      taskInstanceId: true,
       createdAt: true,
       updatedAt: true,
       _count: { select: { messages: true } },
@@ -51,7 +56,9 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { title, databaseIds } = body as { title?: string; databaseIds?: string[] }
+  const { title, databaseIds, taskInstanceId } = body as {
+    title?: string; databaseIds?: string[]; taskInstanceId?: string
+  }
 
   const conversation = await prisma.analysisConversation.create({
     data: {
@@ -59,6 +66,7 @@ export async function POST(request: NextRequest) {
       userId: session.user.id,
       title: title || "New Analysis",
       databaseIds: databaseIds || [],
+      ...(taskInstanceId ? { taskInstanceId } : {}),
     },
   })
 

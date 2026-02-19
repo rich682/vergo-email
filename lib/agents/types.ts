@@ -7,13 +7,14 @@
 
 // ─── Agent Types ──────────────────────────────────────────────────────────────
 
-export type AgentTaskType = "reconciliation" | "report" | "form" | "request"
+export type AgentTaskType = "reconciliation" | "report" | "form" | "request" | "analysis"
 
 export const AGENT_TASK_TYPES: { value: AgentTaskType; label: string }[] = [
   { value: "reconciliation", label: "Reconciliation" },
   { value: "report", label: "Report" },
   { value: "form", label: "Form" },
   { value: "request", label: "Request" },
+  { value: "analysis", label: "Analysis" },
 ]
 
 export type AgentExecutionStatus =

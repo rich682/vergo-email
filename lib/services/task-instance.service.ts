@@ -31,13 +31,15 @@ export interface TaskInstanceLabels {
   stakeholders?: TaskInstanceStakeholder[]
 }
 
-export type TaskType = "reconciliation" | "report" | "form" | "request"
+export type TaskType = "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: "reconciliation", label: "Reconciliation" },
   { value: "report", label: "Report" },
   { value: "form", label: "Form" },
   { value: "request", label: "Request" },
+  { value: "analysis", label: "Analysis" },
+  { value: "other", label: "Other" },
 ]
 
 export interface CreateTaskInstanceInput {

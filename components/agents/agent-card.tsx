@@ -59,6 +59,11 @@ const TYPE_CONFIG: Record<string, { icon: typeof Scale; label: string; color: st
     label: "Request",
     color: "text-amber-600 bg-amber-50",
   },
+  analysis: {
+    icon: FileBarChart,
+    label: "Analysis",
+    color: "text-cyan-600 bg-cyan-50",
+  },
 }
 
 const DEFAULT_TYPE = { icon: Bot, label: "Agent", color: "text-gray-600 bg-gray-100" }

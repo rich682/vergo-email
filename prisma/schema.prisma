@@ -417,7 +417,7 @@ model TaskInstance {
   reconciliationConfigId String?
 
   // Task type - optional classification for agent integration
-  taskType               String?  // "reconciliation" | "report" | "form" | "request"
+  taskType               String?  // "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -442,6 +442,7 @@ model TaskInstance {
   taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
   reconciliationRuns ReconciliationRun[] // Reconciliation runs triggered from this task
   notifications      Notification[] // Notifications related to this task
+  analysisConversations AnalysisConversation[] // Analysis conversations linked to this task
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -728,7 +729,7 @@ model AutomationRule {
 
   // Task linkage
   lineageId      String?   // Links to recurring task lineage
-  taskType       String?   // "reconciliation" | "report" | "form" | "request"
+  taskType       String?   // "reconciliation" | "report" | "form" | "request" | "analysis"
 
   createdById    String?
   createdAt      DateTime @default(now())
@@ -1665,7 +1666,7 @@ model AccountingIntegration {
 model AgentDefinition {
   id              String   @id @default(cuid())
   organizationId  String
-  taskType        String?  // "reconciliation" | "report" | "form" | "request"
+  taskType        String?  // "reconciliation" | "report" | "form" | "request" | "analysis"
   name            String   // "Chase Bank Rec Agent"
   description     String?
   configId        String?  // ReconciliationConfig id, ReportDefinition id, etc.
@@ -1923,6 +1924,7 @@ model AnalysisConversation {
   organizationId  String
   userId          String
   title           String   @default("New Analysis")
+  taskInstanceId  String?  // Optional link to a TaskInstance for task-scoped analysis
 
   // Which databases this conversation can query (JSON array of Database IDs)
   databaseIds     Json     @default("[]")
@@ -1932,10 +1934,12 @@ model AnalysisConversation {
 
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user            User               @relation("AnalysisConversationUser", fields: [userId], references: [id])
+  taskInstance    TaskInstance?       @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   messages        AnalysisMessage[]
 
   @@index([organizationId, userId])
   @@index([userId, updatedAt])
+  @@index([taskInstanceId])
 }
 
 model AnalysisMessage {

@@ -30,7 +30,7 @@ import {
 import { 
   ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
   Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
-  Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Tag, Building2, MoreHorizontal,
+  Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Building2, MoreHorizontal,
   FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale, ClipboardList
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO, startOfDay } from "date-fns"
@@ -43,7 +43,6 @@ import { hasModuleAccess, canPerformAction, type ModuleKey } from "@/lib/permiss
 import { usePermissions } from "@/components/permissions-context"
 
 // Design system components
-import { Chip } from "@/components/ui/chip"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SectionHeader } from "@/components/ui/section-header"
@@ -51,8 +50,6 @@ import { SectionHeader } from "@/components/ui/section-header"
 // Send Request Modal
 import { SendRequestModal } from "@/components/jobs/send-request-modal"
 
-// Labels components
-import { ContactLabelsTable } from "@/components/jobs/contact-labels-table"
 
 // Collection components
 import { CollectionTab } from "@/components/jobs/collection/collection-tab"
@@ -75,8 +72,19 @@ import { ReportTab } from "@/components/jobs/report-tab"
 // Reconciliation tab
 import { ReconciliationTab } from "@/components/jobs/reconciliation/reconciliation-tab"
 
-// Agent widget
-import { AgentTaskWidget } from "@/components/agents/agent-task-widget"
+// Task-scoped tabs
+import { AnalysisTab } from "@/components/jobs/analysis-tab"
+import { AgentTab } from "@/components/jobs/agent-tab"
+
+// Tab-to-task-type mapping: which tabs are visible for each task type
+const TASK_TYPE_TAB_MAP: Record<string, string[]> = {
+  request: ["requests", "collection", "agent"],
+  form: ["forms", "agent"],
+  report: ["report", "agent"],
+  reconciliation: ["reconciliation", "agent"],
+  analysis: ["analysis", "agent"],
+  other: [],  // Overview only
+}
 
 
 // ============================================
@@ -264,8 +272,10 @@ export default function JobDetailPage() {
   const searchParams = useSearchParams()
   const jobId = params.id as string
 
+  type TabId = "overview" | "requests" | "forms" | "collection" | "report" | "reconciliation" | "analysis" | "agent"
+
   // Get initial tab from URL query parameter
-  const initialTab = searchParams.get("tab") as "overview" | "requests" | "collection" | "report" | "reconciliation" | null
+  const initialTab = searchParams.get("tab") as TabId | null
 
   // Core state
   const [job, setJob] = useState<Job | null>(null)
@@ -273,7 +283,8 @@ export default function JobDetailPage() {
   const { role: sessionRole, orgActionPermissions } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "forms" | "collection" | "report" | "reconciliation">(initialTab || "overview")
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab || "overview")
+  const [initialTabApplied, setInitialTabApplied] = useState(false)
   
   // Inline editing states
   const [editingName, setEditingName] = useState(false)
@@ -295,8 +306,6 @@ export default function JobDetailPage() {
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editDueDate, setEditDueDate] = useState("")
-  const [editLabels, setEditLabels] = useState<string[]>([])
-  const [newLabelInput, setNewLabelInput] = useState("")
 
   // Comment state
   const [newComment, setNewComment] = useState("")
@@ -344,13 +353,13 @@ export default function JobDetailPage() {
   const awaitingTasks = useMemo(() => tasks.filter(t => t.status === "AWAITING_RESPONSE"), [tasks])
   const itemMode = useMemo(() => job ? getItemMode(job, tasks, requests) : "setup", [job, tasks, requests])
   
-  const displayLabels = useMemo(() => {
-    if (!job) return []
-    const labels = job.labels
-    if (Array.isArray(labels)) return labels
-    if (labels && typeof labels === 'object' && 'tags' in labels) return (labels as any).tags || []
-    return []
-  }, [job])
+  // Tab visibility based on task type
+  const visibleTabs = useMemo(() => {
+    const tabs = new Set<string>(["overview"])
+    const typeTabs = TASK_TYPE_TAB_MAP[job?.taskType || ""] || []
+    typeTabs.forEach(t => tabs.add(t))
+    return tabs
+  }, [job?.taskType])
 
   // ============================================
   // Data Fetching
@@ -368,14 +377,6 @@ export default function JobDetailPage() {
         setEditName(taskInstance.name)
         setEditDescription(taskInstance.description || "")
         setEditDueDate(taskInstance.dueDate ? taskInstance.dueDate.split("T")[0] : "")
-        const jobLabels = taskInstance.labels
-        if (Array.isArray(jobLabels)) {
-          setEditLabels(jobLabels)
-        } else if (jobLabels?.tags) {
-          setEditLabels(jobLabels.tags)
-        } else {
-          setEditLabels([])
-        }
       } else if (response.status === 404) {
         router.push("/dashboard/boards")
       } else if (response.status === 401) {
@@ -490,6 +491,24 @@ export default function JobDetailPage() {
     ])
   }, [fetchJob, fetchRequests, fetchFormRequestCount, fetchCollaborators, fetchTeamMembers])
 
+  // Default to task-type tab when job loads (unless URL has explicit ?tab=)
+  useEffect(() => {
+    if (job && !initialTabApplied && !searchParams.get("tab")) {
+      const typeTabMap: Record<string, TabId> = {
+        request: "requests",
+        form: "forms",
+        report: "report",
+        reconciliation: "reconciliation",
+        analysis: "analysis",
+      }
+      const defaultTab = job.taskType ? typeTabMap[job.taskType] : undefined
+      if (defaultTab) {
+        setActiveTab(defaultTab)
+      }
+      setInitialTabApplied(true)
+    }
+  }, [job, initialTabApplied, searchParams])
+
   // Tier 2: Lazy-load data only when the overview tab is active
   useEffect(() => {
     if (activeTab === "overview") {
@@ -563,40 +582,6 @@ export default function JobDetailPage() {
     } catch (error) {
       console.error("Error updating task type:", error)
       fetchJob()
-    }
-  }
-
-  const handleAddLabel = async (label: string) => {
-    if (!label.trim() || displayLabels.includes(label)) return
-    const newLabels = [...displayLabels, label.trim()]
-    setEditLabels(newLabels)
-    setNewLabelInput("")
-    try {
-      await fetch(`/api/task-instances/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ labels: { tags: newLabels } })
-      })
-      fetchJob()
-    } catch (error) {
-      console.error("Error adding label:", error)
-    }
-  }
-
-  const handleRemoveLabel = async (label: string) => {
-    const newLabels = displayLabels.filter((l: string) => l !== label)
-    setEditLabels(newLabels)
-    try {
-      await fetch(`/api/task-instances/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ labels: { tags: newLabels } })
-      })
-      fetchJob()
-    } catch (error) {
-      console.error("Error removing label:", error)
     }
   }
 
@@ -831,8 +816,8 @@ export default function JobDetailPage() {
             Overview
           </button>
 
-          {/* Requests tab - visible with any requests access level (including task-scoped) */}
-          {hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
+          {/* Requests tab */}
+          {visibleTabs.has("requests") && hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -841,8 +826,8 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {/* Forms tab - visible with forms module access */}
-          {hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
+          {/* Forms tab */}
+          {visibleTabs.has("forms") && hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("forms")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "forms" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -851,8 +836,8 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {/* Documents tab - visible with any collection access level (including task-scoped) */}
-          {hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
+          {/* Documents tab */}
+          {visibleTabs.has("collection") && hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -861,7 +846,8 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
+          {/* Report tab */}
+          {visibleTabs.has("report") && hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -870,12 +856,33 @@ export default function JobDetailPage() {
             </button>
           )}
 
-          {hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
+          {/* Reconciliation tab */}
+          {visibleTabs.has("reconciliation") && hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
               Reconciliation ({job.reconciliationRunCount || 0})
+            </button>
+          )}
+
+          {/* Analysis tab */}
+          {visibleTabs.has("analysis") && (
+            <button
+              onClick={() => setActiveTab("analysis")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "analysis" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Analysis
+            </button>
+          )}
+
+          {/* Agent tab */}
+          {visibleTabs.has("agent") && (
+            <button
+              onClick={() => setActiveTab("agent")}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "agent" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              Agent
             </button>
           )}
 
@@ -930,6 +937,7 @@ export default function JobDetailPage() {
                                     job.taskType === "report" ? "bg-blue-50 text-blue-700 hover:bg-blue-100" :
                                     job.taskType === "form" ? "bg-purple-50 text-purple-700 hover:bg-purple-100" :
                                     job.taskType === "request" ? "bg-amber-50 text-amber-700 hover:bg-amber-100" :
+                                    job.taskType === "analysis" ? "bg-cyan-50 text-cyan-700 hover:bg-cyan-100" :
                                     "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                   }`}
                                 >
@@ -941,18 +949,13 @@ export default function JobDetailPage() {
                                     <div className="fixed inset-0 z-10" onClick={() => setIsTaskTypeDropdownOpen(false)} />
                                     <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]">
                                       <div className="py-1">
-                                        <button
-                                          onClick={() => handleTaskTypeChange(null)}
-                                          className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${!job.taskType ? "bg-gray-50 font-medium" : ""}`}
-                                        >
-                                          <span className="w-2 h-2 rounded-full bg-gray-300" />
-                                          None
-                                        </button>
                                         {[
-                                          { value: "reconciliation", label: "Reconciliation", color: "bg-emerald-500" },
-                                          { value: "report", label: "Report", color: "bg-blue-500" },
-                                          { value: "form", label: "Form", color: "bg-purple-500" },
                                           { value: "request", label: "Request", color: "bg-amber-500" },
+                                          { value: "form", label: "Form", color: "bg-purple-500" },
+                                          { value: "report", label: "Report", color: "bg-blue-500" },
+                                          { value: "reconciliation", label: "Reconciliation", color: "bg-emerald-500" },
+                                          { value: "analysis", label: "Analysis", color: "bg-cyan-500" },
+                                          { value: "other", label: "Other", color: "bg-gray-400" },
                                         ].map(opt => (
                                           <button
                                             key={opt.value}
@@ -974,6 +977,7 @@ export default function JobDetailPage() {
                                 job.taskType === "report" ? "bg-blue-50 text-blue-700" :
                                 job.taskType === "form" ? "bg-purple-50 text-purple-700" :
                                 job.taskType === "request" ? "bg-amber-50 text-amber-700" :
+                                job.taskType === "analysis" ? "bg-cyan-50 text-cyan-700" :
                                 "bg-gray-100 text-gray-600"
                               }`}>
                                 {job.taskType}
@@ -1147,34 +1151,6 @@ export default function JobDetailPage() {
                           </button>
                         )}
                       </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <Tag className="w-4 h-4 text-gray-400" />
-                    {displayLabels.map((label: string) => (
-                      <Chip
-                        key={label}
-                        label={label}
-                        color="blue"
-                        removable={permissions?.canEdit}
-                        onRemove={() => handleRemoveLabel(label)}
-                        size="sm"
-                      />
-                    ))}
-                    {permissions?.canEdit && (
-                      <Input
-                        placeholder="Add label..."
-                        value={newLabelInput}
-                        onChange={(e) => setNewLabelInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            handleAddLabel(newLabelInput)
-                          }
-                        }}
-                        className="w-28 h-7 text-xs"
-                      />
                     )}
                   </div>
 
@@ -1469,6 +1445,20 @@ export default function JobDetailPage() {
                 <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "reconciliations:manage", orgActionPermissions)} />
               </div>
             )}
+
+            {activeTab === "analysis" && (
+              <AnalysisTab jobId={jobId} taskName={job.name} />
+            )}
+
+            {activeTab === "agent" && (
+              <AgentTab
+                jobId={jobId}
+                lineageId={job.lineageId}
+                taskType={job.taskType ?? null}
+                taskName={job.name}
+                canEdit={permissions?.canEdit}
+              />
+            )}
           </div>
 
           {activeTab === "overview" && (
@@ -1551,15 +1541,6 @@ export default function JobDetailPage() {
                 </Card>
               )}
 
-              {/* Agent card — shown when task has a lineage (recurring task) */}
-              {job.lineageId && hasModuleAccess(sessionRole, "agents" as ModuleKey, orgActionPermissions) && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h4 className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-3">Agent</h4>
-                    <AgentTaskWidget lineageId={job.lineageId} readOnly={!permissions?.canEdit} showEmpty />
-                  </CardContent>
-                </Card>
-              )}
             </div>
           )}
         </div>
