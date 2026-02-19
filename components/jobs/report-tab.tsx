@@ -304,7 +304,8 @@ export function ReportTab({
       return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
     }
     if (fmt === "percent" && numValue !== null) {
-      return `${numValue.toLocaleString()}%`
+      const pct = numValue * 100
+      return `${pct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
     }
     if ((fmt === "number" || !fmt) && numValue !== null) {
       return numValue.toLocaleString()

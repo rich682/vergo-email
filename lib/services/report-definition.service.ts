@@ -115,6 +115,8 @@ export interface UpdateReportDefinitionInput {
   filterColumnKeys?: string[]
   // Baked-in filter values: { "location": ["Bixby, OK"], "pm": ["Caleb"] }
   filterBindings?: Record<string, string[]> | null
+  // Pivot column sorting: { type: "alphabetical"|"by_row", direction: "asc"|"desc", rowKey?: string }
+  pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
 }
 
 export interface ReportPreviewResult {
@@ -345,6 +347,8 @@ export class ReportDefinitionService {
         // Filter configuration
         ...(input.filterColumnKeys !== undefined && { filterColumnKeys: input.filterColumnKeys }),
         ...(input.filterBindings !== undefined && { filterBindings: input.filterBindings as any }),
+        // Pivot column sorting
+        ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
       },
       include: {
         database: {
@@ -411,6 +415,7 @@ export class ReportDefinitionService {
         pivotFormulaColumns: existing.pivotFormulaColumns as any,
         filterColumnKeys: existing.filterColumnKeys as any,
         filterBindings: existing.filterBindings as any,
+        pivotSortConfig: existing.pivotSortConfig as any,
         createdById,
       },
       include: {

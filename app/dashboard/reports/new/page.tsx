@@ -50,22 +50,118 @@ const LAYOUT_OPTIONS = [
   {
     value: "accounting",
     label: "Accounting",
-    description: "Accounts as rows, periods as columns with variance",
-    icon: LayoutGrid
+    description: "Single-entity view: accounts as rows, periods as columns",
+    icon: LayoutGrid,
+    example: "e.g. P&L Report, Balance Sheet",
   },
   {
     value: "pivot",
     label: "Matrix",
-    description: "One column's values become headers, define metric rows",
-    icon: Rows3
+    description: "Multi-entity comparison: metrics across projects or entities",
+    icon: Rows3,
+    example: "e.g. Project Review, Entity Comparison",
   },
   {
     value: "standard",
     label: "Standard",
-    description: "Database rows become report rows, select columns to display",
-    icon: Table2
+    description: "Flat table: database rows with selected columns and totals",
+    icon: Table2,
+    example: "e.g. Transaction Listing, Detailed Ledger",
   },
 ]
+
+function LayoutPreview({ type, isSelected }: { type: string; isSelected: boolean }) {
+  const headerBg = isSelected ? "bg-orange-200 text-orange-900" : "bg-gray-200 text-gray-600"
+  const cellBg = isSelected ? "bg-orange-50" : "bg-white"
+  const borderColor = isSelected ? "border-orange-200" : "border-gray-200"
+  const labelText = isSelected ? "text-orange-700" : "text-gray-500"
+  const valueText = isSelected ? "text-orange-900" : "text-gray-700"
+  const accentBg = isSelected ? "bg-orange-100" : "bg-gray-100"
+
+  if (type === "accounting") {
+    return (
+      <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
+        <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
+          <div className="px-1.5 py-1 border-r border-white/30"></div>
+          <div className="px-1.5 py-1 border-r border-white/30 text-right">Jan</div>
+          <div className="px-1.5 py-1 border-r border-white/30 text-right">Feb</div>
+          <div className="px-1.5 py-1 text-right">Var</div>
+        </div>
+        {[
+          ["Revenue", "50k", "55k", "+5k"],
+          ["COGS", "20k", "22k", "+2k"],
+          ["Gross Profit", "30k", "33k", "+3k"],
+        ].map(([label, ...vals], i) => (
+          <div key={i} className={`grid grid-cols-4 ${i === 2 ? accentBg + " font-medium" : cellBg} ${i < 2 ? "border-b " + borderColor : ""}`}>
+            <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText} truncate`}>{label}</div>
+            {vals.map((v, j) => (
+              <div key={j} className={`px-1.5 py-0.5 text-right ${j < 2 ? "border-r " + borderColor : ""} ${j === 2 ? (v.startsWith("+") ? "text-green-600" : "text-red-600") : valueText}`}>
+                {v}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (type === "pivot") {
+    return (
+      <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
+        <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
+          <div className="px-1.5 py-1 border-r border-white/30"></div>
+          <div className="px-1.5 py-1 border-r border-white/30 text-right">Proj A</div>
+          <div className="px-1.5 py-1 border-r border-white/30 text-right">Proj B</div>
+          <div className="px-1.5 py-1 text-right">Total</div>
+        </div>
+        {[
+          ["Revenue", "100k", "150k", "250k"],
+          ["Op. Income", "25k", "40k", "65k"],
+          ["GP%", "25%", "27%", "26%"],
+        ].map(([label, ...vals], i) => (
+          <div key={i} className={`grid grid-cols-4 ${cellBg} ${i < 2 ? "border-b " + borderColor : ""}`}>
+            <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText} truncate`}>{label}</div>
+            {vals.map((v, j) => (
+              <div key={j} className={`px-1.5 py-0.5 text-right ${j < 2 ? "border-r " + borderColor : ""} ${valueText}`}>
+                {v}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // Standard
+  return (
+    <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
+      <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
+        <div className="px-1.5 py-1 border-r border-white/30">Date</div>
+        <div className="px-1.5 py-1 border-r border-white/30">Ref</div>
+        <div className="px-1.5 py-1 border-r border-white/30 text-right">Amount</div>
+        <div className="px-1.5 py-1 text-right">Tax</div>
+      </div>
+      {[
+        ["Jan 15", "INV-01", "1,000", "150"],
+        ["Jan 20", "INV-02", "2,500", "375"],
+      ].map(([...vals], i) => (
+        <div key={i} className={`grid grid-cols-4 ${cellBg} border-b ${borderColor}`}>
+          {vals.map((v, j) => (
+            <div key={j} className={`px-1.5 py-0.5 ${j < 3 ? "border-r " + borderColor : ""} ${j >= 2 ? "text-right " + valueText : labelText}`}>
+              {v}
+            </div>
+          ))}
+        </div>
+      ))}
+      <div className={`grid grid-cols-4 ${accentBg} font-medium`}>
+        <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText}`}>Total</div>
+        <div className={`px-1.5 py-0.5 border-r ${borderColor}`}></div>
+        <div className={`px-1.5 py-0.5 text-right border-r ${borderColor} ${valueText}`}>3,500</div>
+        <div className={`px-1.5 py-0.5 text-right ${valueText}`}>525</div>
+      </div>
+    </div>
+  )
+}
 
 export default function NewReportPage() {
   const router = useRouter()
@@ -411,6 +507,10 @@ export default function NewReportPage() {
                       </div>
                       <p className={`text-xs ${isSelected ? "text-orange-700" : "text-gray-500"}`}>
                         {option.description}
+                      </p>
+                      <LayoutPreview type={option.value} isSelected={isSelected} />
+                      <p className={`mt-2 text-[10px] italic ${isSelected ? "text-orange-400" : "text-gray-400"}`}>
+                        {option.example}
                       </p>
                     </button>
                   )

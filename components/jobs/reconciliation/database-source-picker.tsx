@@ -88,19 +88,34 @@ export function DatabaseSourcePicker({
       .finally(() => setLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When database selection changes, build analysis
-  const handleDatabaseChange = (dbId: string) => {
+  // When database selection changes, build analysis and fetch sample values
+  const handleDatabaseChange = async (dbId: string) => {
     const db = databases.find((d) => d.id === dbId)
     if (!db) return
     setSelectedDb(db)
 
-    // Map database columns to reconciliation column types
+    // Fetch a few sample rows to populate preview values
+    let sampleRows: Record<string, unknown>[] = []
+    try {
+      const res = await fetch(`/api/databases/${dbId}/rows?limit=3`)
+      if (res.ok) {
+        const data = await res.json()
+        sampleRows = data.sampleRows || []
+      }
+    } catch {}
+
+    // Map database columns to reconciliation column types with sample values
     const columns: DetectedColumn[] = db.schema.columns
       .sort((a, b) => a.order - b.order)
       .map((col) => ({
         key: col.key,
         label: col.label,
-        sampleValues: [],
+        sampleValues: sampleRows
+          .map((row) => {
+            const val = row[col.key]
+            return val !== null && val !== undefined ? String(val) : ""
+          })
+          .filter(Boolean),
         suggestedType: mapDatabaseColumnType(col.dataType),
       }))
 

@@ -45,6 +45,7 @@ export interface ExecutePreviewInput {
     pivotColumnKey?: string | null
     metricRows?: MetricRow[]
     pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
+    pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
   }
   filters?: Record<string, string[]>  // Optional - column-value filters
 }
@@ -99,6 +100,7 @@ interface ReportWithConfig {
   dateColumnKey: string
   layout: "standard" | "pivot" | "accounting"
   compareMode?: "none" | "mom" | "yoy"
+  pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
 }
 
 // ============================================
@@ -140,6 +142,7 @@ export class ReportExecutionService {
       pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : report.pivotColumnKey,
       metricRows: liveConfig.metricRows ?? report.metricRows,
       pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
+      pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
     } : report
 
     const cadence = report.cadence as ReportCadence
@@ -409,10 +412,10 @@ export class ReportExecutionService {
       return { columns: [], rows: [], formulaRows: [] }
     }
 
-    // Get unique pivot values from current rows
-    const pivotValues = [...new Set(
+    // Get unique pivot values from current rows (unsorted — will sort after metric computation)
+    let pivotValues = [...new Set(
       currentRows.map(r => String(r[pivotColumnKey] || ""))
-    )].filter(v => v !== "").sort()
+    )].filter(v => v !== "")
 
     if (pivotValues.length === 0) {
       return { columns: [], rows: [], formulaRows: [] }
@@ -437,18 +440,6 @@ export class ReportExecutionService {
         }
       }
     }
-
-    // Build columns: first is label column, rest are pivot values
-    // Note: dataType on columns is "text" as a fallback; actual formatting is per-row via _format
-    const columns: TableColumn[] = [
-      { key: "_label", label: "", dataType: "text", type: "source" },
-      ...pivotValues.map(pv => ({
-        key: pv,
-        label: pv,
-        dataType: "number" as const, // Default; actual format comes from row
-        type: "source" as const,
-      }))
-    ]
 
     // Sort metrics by order and ensure format is set
     const sortedMetrics = [...metricRows]
@@ -565,6 +556,21 @@ export class ReportExecutionService {
       }
     }
 
+    // Sort pivot values according to config (after all metric values are computed)
+    const sortConfig = (report as ReportWithConfig).pivotSortConfig
+    pivotValues = this.sortPivotValues(pivotValues, sortConfig, metricValuesByPivot)
+
+    // Build columns: first is label column, rest are sorted pivot values
+    const columns: TableColumn[] = [
+      { key: "_label", label: "", dataType: "text", type: "source" },
+      ...pivotValues.map(pv => ({
+        key: pv,
+        label: pv,
+        dataType: "number" as const,
+        type: "source" as const,
+      }))
+    ]
+
     // Get formula columns for pivot layout
     const pivotFormulaColumns = (report.pivotFormulaColumns || []) as PivotFormulaColumn[]
     const sortedFormulaColumns = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
@@ -635,13 +641,18 @@ export class ReportExecutionService {
       }
     }
 
-    // Extract unique pivot values (sorted — ISO dates sort correctly)
+    // Extract unique pivot values
     const pivotValueSet = new Set<string>()
     for (const row of allRows) {
       const pv = String(row[pivotColumnKey] ?? "")
       if (pv) pivotValueSet.add(pv)
     }
-    const pivotValues = [...pivotValueSet].sort()
+    const sortConfig = (report as ReportWithConfig).pivotSortConfig
+    const sortDirection = sortConfig?.direction || "asc"
+    const pivotValues = [...pivotValueSet].sort((a, b) => {
+      const cmp = a.localeCompare(b)
+      return sortDirection === "desc" ? -cmp : cmp
+    })
 
     if (rowIdOrder.length === 0 || pivotValues.length === 0) {
       return { columns: [], rows: [], formulaRows: [] }
@@ -729,6 +740,51 @@ export class ReportExecutionService {
     }
 
     return { columns, rows: dataRows, formulaRows: [] }
+  }
+
+  /**
+   * Sort pivot column values according to the sort configuration.
+   * For "by_row" sorting, metricValuesByPivot must be pre-computed.
+   */
+  private static sortPivotValues(
+    pivotValues: string[],
+    sortConfig: { type: string; direction: string; rowKey?: string } | null | undefined,
+    metricValuesByPivot?: Record<string, Record<string, unknown>>
+  ): string[] {
+    const direction = sortConfig?.direction || "asc"
+
+    // Default or alphabetical: sort by pivot value string
+    if (!sortConfig || sortConfig.type === "alphabetical") {
+      return [...pivotValues].sort((a, b) => {
+        const cmp = a.localeCompare(b)
+        return direction === "desc" ? -cmp : cmp
+      })
+    }
+
+    // Sort by a metric row's value
+    if (sortConfig.type === "by_row" && sortConfig.rowKey && metricValuesByPivot) {
+      const rowKey = sortConfig.rowKey
+      return [...pivotValues].sort((a, b) => {
+        const valA = metricValuesByPivot[a]?.[rowKey]
+        const valB = metricValuesByPivot[b]?.[rowKey]
+
+        // Text values: alphabetical comparison
+        if (typeof valA === "string" || typeof valB === "string") {
+          const strA = String(valA ?? "")
+          const strB = String(valB ?? "")
+          const cmp = strA.localeCompare(strB)
+          return direction === "desc" ? -cmp : cmp
+        }
+
+        // Numeric values
+        const numA = typeof valA === "number" ? valA : -Infinity
+        const numB = typeof valB === "number" ? valB : -Infinity
+        return direction === "asc" ? numA - numB : numB - numA
+      })
+    }
+
+    // Fallback: alphabetical ascending
+    return [...pivotValues].sort((a, b) => a.localeCompare(b))
   }
 
   /**

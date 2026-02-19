@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   GripVertical,
   Check,
+  ArrowUpDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -218,6 +219,7 @@ export default function ReportBuilderPage() {
   const [pivotColumnKey, setPivotColumnKey] = useState<string | null>(null)
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
   const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
+  const [pivotSortConfig, setPivotSortConfig] = useState<{ type: string; direction: string; rowKey?: string } | null>(null)
 
   // Filter configuration - baked-in filter values
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
@@ -256,6 +258,7 @@ export default function ReportBuilderPage() {
       setPivotColumnKey(data.report.pivotColumnKey || null)
       setMetricRows(data.report.metricRows || [])
       setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
+      setPivotSortConfig(data.report.pivotSortConfig || null)
       // Variance state
       setCompareMode(data.report.compareMode || "none")
       // Filter configuration
@@ -319,6 +322,7 @@ export default function ReportBuilderPage() {
             pivotColumnKey,
             metricRows,
             pivotFormulaColumns,
+            pivotSortConfig,
           },
           // Apply active filters to preview
           filters: Object.keys(filterBindings).length > 0 ? filterBindings : undefined,
@@ -339,7 +343,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -396,6 +400,7 @@ export default function ReportBuilderPage() {
           pivotColumnKey,
           metricRows,
           pivotFormulaColumns,
+          pivotSortConfig,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
           // Filter configuration — derive filterColumnKeys from filterBindings
@@ -418,7 +423,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -447,7 +452,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -706,6 +711,105 @@ export default function ReportBuilderPage() {
                 )}
               </div>
             </div>
+
+            {/* === COLUMN SORTING (pivot + accounting only) === */}
+            {(report.layout === "pivot" || report.layout === "accounting") && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50 flex items-center gap-2">
+                  <ArrowUpDown className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-sm text-gray-700">Column Sorting</span>
+                </div>
+                <div className="p-3 space-y-3">
+                  {/* Sort By */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Sort By</Label>
+                    <Select
+                      value={pivotSortConfig?.type || "alphabetical"}
+                      onValueChange={(value) => {
+                        if (value === "alphabetical") {
+                          setPivotSortConfig({ type: "alphabetical", direction: pivotSortConfig?.direction || "asc" })
+                        } else {
+                          // by_row — auto-select first metric row if none chosen
+                          const firstRowKey = metricRows.length > 0 ? metricRows[0].key : undefined
+                          setPivotSortConfig({
+                            type: "by_row",
+                            direction: pivotSortConfig?.direction || "asc",
+                            rowKey: pivotSortConfig?.rowKey || firstRowKey,
+                          })
+                        }
+                        setHasUnsavedChanges(true)
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="alphabetical">Alphabetical</SelectItem>
+                        {report.layout === "pivot" && (
+                          <SelectItem value="by_row">By Row Value</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Direction */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Direction</Label>
+                    <Select
+                      value={pivotSortConfig?.direction || "asc"}
+                      onValueChange={(value) => {
+                        setPivotSortConfig(prev => ({
+                          type: prev?.type || "alphabetical",
+                          direction: value,
+                          ...(prev?.rowKey ? { rowKey: prev.rowKey } : {}),
+                        }))
+                        setHasUnsavedChanges(true)
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="asc">A → Z</SelectItem>
+                        <SelectItem value="desc">Z → A</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Sort by Row (only for pivot + by_row) */}
+                  {report.layout === "pivot" && pivotSortConfig?.type === "by_row" && (
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Sort by Row</Label>
+                      <Select
+                        value={pivotSortConfig?.rowKey || ""}
+                        onValueChange={(value) => {
+                          setPivotSortConfig(prev => ({
+                            type: "by_row",
+                            direction: prev?.direction || "asc",
+                            rowKey: value,
+                          }))
+                          setHasUnsavedChanges(true)
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select a row..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {metricRows
+                            .filter(m => m.type !== "comparison")
+                            .sort((a, b) => a.order - b.order)
+                            .map(m => (
+                              <SelectItem key={m.key} value={m.key}>
+                                {m.label}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* === VIEWERS CONFIGURATION === */}
             <ViewerManagement
@@ -1601,8 +1705,8 @@ function formatCellValue(value: unknown, dataType: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(numValue)
   }
   if (format === "percent" && numValue !== null) {
-    const pct = Math.round(numValue * 10000) / 100
-    return `${pct.toLocaleString()}%`
+    const pct = numValue * 100
+    return `${pct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
   }
   if ((format === "number" || !format) && numValue !== null) {
     return numValue.toLocaleString()

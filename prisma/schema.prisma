@@ -1383,7 +1383,11 @@ model ReportDefinition {
   // Record<string, string[]> e.g. { "location": ["Bixby, OK"], "pm": ["Caleb"] }
   // When set, these filters are enforced server-side for all viewers
   filterBindings   Json?
-  
+
+  // Pivot/accounting column sorting configuration
+  // { type: "alphabetical"|"by_row", direction: "asc"|"desc", rowKey?: string }
+  pivotSortConfig  Json?
+
   // Metadata
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
