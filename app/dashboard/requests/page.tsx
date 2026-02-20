@@ -91,29 +91,21 @@ interface LabelOption {
   color: string | null
 }
 
-// Status options for the dropdown - No reply, Replied, Read, Complete
-const STATUS_OPTIONS = [
-  { value: "NO_REPLY", label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
-  { value: "REPLIED", label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  { value: "READ", label: "Read", icon: BookOpen, bgColor: "bg-purple-100", textColor: "text-purple-700" },
-  { value: "COMPLETE", label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-]
-
-// All possible statuses for display (including legacy ones for backward compatibility)
+// Auto-derived status display for standard/data requests (read-only, 3 states)
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
-  // New statuses
+  // Core auto-derived statuses
   NO_REPLY: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   REPLIED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   READ: { label: "Read", icon: BookOpen, bgColor: "bg-purple-100", textColor: "text-purple-700" },
-  COMPLETE: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
   SEND_FAILED: { label: "Failed", icon: AlertTriangle, bgColor: "bg-red-100", textColor: "text-red-700" },
-  // Legacy statuses (mapped to new display)
+  // Legacy statuses (mapped to the 3 auto-derived states)
+  COMPLETE: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   AWAITING_RESPONSE: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   IN_PROGRESS: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   HAS_ATTACHMENTS: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
   VERIFYING: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
-  FULFILLED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
-  REJECTED: { label: "Complete", icon: CheckCircle, bgColor: "bg-green-100", textColor: "text-green-700" },
+  FULFILLED: { label: "Replied", icon: MessageSquare, bgColor: "bg-blue-100", textColor: "text-blue-700" },
+  REJECTED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   MANUAL_REVIEW: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
@@ -172,73 +164,6 @@ function StatusBadge({ status, readStatus }: { status: string; readStatus?: stri
       <Icon className="w-3 h-3" />
       {config.label}
     </span>
-  )
-}
-
-// Status dropdown for changing status
-function StatusDropdown({ 
-  taskId, 
-  currentStatus,
-  readStatus,
-  onStatusChange 
-}: { 
-  taskId: string
-  currentStatus: string
-  readStatus?: string | null
-  onStatusChange: () => void 
-}) {
-  const [updating, setUpdating] = useState(false)
-  const effectiveStatus = getEffectiveStatus(currentStatus, readStatus ?? null)
-
-  const handleStatusChange = async (newStatus: string) => {
-    if (newStatus === effectiveStatus) return
-    
-    setUpdating(true)
-    try {
-      const response = await fetch(`/api/requests/detail/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: newStatus })
-      })
-      
-      if (!response.ok) {
-        throw new Error("Failed to update status")
-      }
-      
-      onStatusChange()
-    } catch (err) {
-      console.error("Error updating status:", err)
-    } finally {
-      setUpdating(false)
-    }
-  }
-
-  return (
-    <Select 
-      value={effectiveStatus} 
-      onValueChange={handleStatusChange}
-      disabled={updating}
-    >
-      <SelectTrigger className="w-[150px] h-8 text-xs border-0 bg-transparent p-0 hover:bg-gray-50 rounded-full">
-        <SelectValue>
-          <StatusBadge status={currentStatus} readStatus={readStatus} />
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map(option => {
-          const Icon = option.icon
-          return (
-            <SelectItem key={option.value} value={option.value}>
-              <span className="flex items-center gap-2">
-                <Icon className="w-3 h-3" />
-                {option.label}
-              </span>
-            </SelectItem>
-          )
-        })}
-      </SelectContent>
-    </Select>
   )
 }
 
@@ -377,7 +302,6 @@ export default function RequestsPage() {
       if (contactSearch) formParams.set("contactSearch", contactSearch)
       // Map status filter to form statuses
       if (statusFilter === "NO_REPLY") formParams.set("status", "PENDING")
-      else if (statusFilter === "COMPLETE") formParams.set("status", "SUBMITTED")
 
       // Fetch in parallel
       const promises: Promise<Response>[] = []
@@ -634,18 +558,6 @@ export default function RequestsPage() {
   }
 
 
-  // Calculate summary stats - No reply, Replied, Read, Complete
-  // Use client-side data to properly split Replied vs Read based on readStatus
-  const noReplyStatuses = ["NO_REPLY", "AWAITING_RESPONSE", "IN_PROGRESS", "FLAGGED", "MANUAL_REVIEW", "ON_HOLD"]
-  const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
-  const completeStatuses = ["COMPLETE", "FULFILLED", "REJECTED"]
-
-  // Form requests: PENDING counts as "no reply", SUBMITTED as "complete", EXPIRED as "failed"
-  const noReplyCount = requests.filter(r => noReplyStatuses.includes(r.status) || r.formStatus === "PENDING").length
-  const repliedCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus !== "read" && !r._isFormRequest).length
-  const readCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus === "read" && !r._isFormRequest).length
-  const completeCount = requests.filter(r => completeStatuses.includes(r.status) || r.formStatus === "SUBMITTED").length
-
   if (loading && requests.length === 0) {
     return (
       <div className="p-8">
@@ -734,7 +646,6 @@ export default function RequestsPage() {
               <SelectItem value="NO_REPLY">No reply</SelectItem>
               <SelectItem value="REPLIED">Replied</SelectItem>
               <SelectItem value="READ">Read</SelectItem>
-              <SelectItem value="COMPLETE">Complete</SelectItem>
             </SelectContent>
           </Select>
 
@@ -941,13 +852,6 @@ export default function RequestsPage() {
                     <div className="flex items-center gap-2">
                       {request._isFormRequest && request.formStatus ? (
                         <FormStatusBadge status={request.formStatus} />
-                      ) : canManageRequests ? (
-                        <StatusDropdown
-                          taskId={request.id}
-                          currentStatus={request.status}
-                          readStatus={request.readStatus}
-                          onStatusChange={fetchRequests}
-                        />
                       ) : (
                         <StatusBadge status={request.status} readStatus={request.readStatus} />
                       )}
