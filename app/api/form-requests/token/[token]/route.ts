@@ -9,6 +9,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import { NotificationService } from "@/lib/services/notification.service"
+import { ActivityEventService } from "@/lib/activity-events"
+import { inngest } from "@/inngest/client"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function GET(
@@ -127,7 +130,60 @@ export async function POST(
 
     const result = await FormRequestService.submitByToken(token, responseData)
 
-    return NextResponse.json({ 
+    // Derive submitter name from the result (entity or user)
+    const submitterName = result.recipientEntity
+      ? `${result.recipientEntity.firstName}${result.recipientEntity.lastName ? ` ${result.recipientEntity.lastName}` : ""}`
+      : result.recipientUser?.name || "Someone"
+    const formName = (result as any).formDefinition?.name || "a form"
+
+    // Notify task participants about the form submission (non-blocking)
+    if (result.taskInstanceId) {
+      NotificationService.notifyTaskParticipants(
+        result.taskInstanceId,
+        result.organizationId,
+        "", // No authenticated user for token-based submissions
+        "form_response",
+        `${submitterName} submitted "${formName}"`,
+        `A form response has been submitted.`,
+        { formRequestId: result.id }
+      ).catch((err) => console.error("Failed to send form response notifications:", err))
+    }
+
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId: result.organizationId,
+      taskInstanceId: result.taskInstanceId || undefined,
+      formRequestId: result.id,
+      eventType: "form.submitted",
+      actorType: "user",
+      summary: `${submitterName} submitted "${formName}"`,
+      metadata: {
+        formRequestId: result.id,
+        formDefinitionId: (result as any).formDefinition?.id || null,
+        submitterName,
+        submitterEmail: result.recipientEntity?.email || result.recipientUser?.email || null,
+        viaToken: true,
+      },
+      targetId: result.id,
+      targetType: "form_request",
+    }).catch((err) => console.error("[ActivityEvent] form.submitted (token) failed:", err))
+
+    // Emit workflow trigger for form_submitted (non-blocking)
+    inngest.send({
+      name: "workflow/trigger",
+      data: {
+        triggerType: "form_submitted",
+        triggerEventId: result.id,
+        organizationId: result.organizationId,
+        metadata: {
+          formRequestId: result.id,
+          formDefinitionId: (result as any).formDefinition?.id || null,
+          taskInstanceId: result.taskInstanceId || null,
+        },
+      },
+    }).catch((err) => console.error("[FormSubmit] Failed to emit workflow trigger (token):", err))
+
+    return NextResponse.json({
       success: true,
       formRequest: result,
     })
