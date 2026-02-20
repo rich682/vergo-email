@@ -57,7 +57,6 @@ interface ReconciliationResultsProps {
   sourceBRows: Record<string, any>[]
   sourceALabel: string
   sourceBLabel: string
-  /** Columns from the config — only these are shown in results */
   sourceAColumns?: SourceColumnDef[]
   sourceBColumns?: SourceColumnDef[]
   status: string
@@ -138,10 +137,6 @@ function getCardValue(row: Record<string, any>): string | null {
   return null
 }
 
-/**
- * Find all potential matches from Source B for an unmatched Source A row.
- * Returns matches sorted by similarity score.
- */
 function findPotentialMatches(
   rowA: Record<string, any>,
   sourceBRows: Record<string, any>[],
@@ -157,27 +152,21 @@ function findPotentialMatches(
     const amountB = getAmountValue(rowB)
     if (amountB === null) continue
 
-    // Check if amounts match (within tolerance)
     const directDiff = Math.abs(amountA - amountB)
     const invertedDiff = Math.abs(amountA + amountB)
     const bestDiff = Math.min(directDiff, invertedDiff)
 
-    // Must be within 20% or $100 to be a potential match
     const threshold = Math.max(Math.abs(amountA) * 0.2, 100)
     if (bestDiff > threshold) continue
 
-    // Calculate similarity components
     let similarity = 0
     const differences: string[] = []
 
-    // Amount similarity (0-50 points)
     if (bestDiff < 0.01) similarity += 50
     else if (bestDiff <= 1) similarity += 40
     else similarity += Math.max(20, 50 - bestDiff)
-
     if (bestDiff >= 0.01) differences.push("Amount")
 
-    // Date similarity (0-25 points)
     const dateA = getDateValue(rowA)
     const dateB = getDateValue(rowB)
     if (dateA && dateB) {
@@ -197,7 +186,6 @@ function findPotentialMatches(
       similarity += 10
     }
 
-    // Card/reference similarity (0-15 points)
     const cardA = getCardValue(rowA)
     const cardB = getCardValue(rowB)
     if (cardA && cardB) {
@@ -210,7 +198,6 @@ function findPotentialMatches(
       similarity += 5
     }
 
-    // Text similarity (0-10 points)
     const textA = getTextValue(rowA).toLowerCase()
     const textB = getTextValue(rowB).toLowerCase()
     if (textA && textB) {
@@ -236,7 +223,19 @@ function findPotentialMatches(
   return matches.sort((a, b) => b.similarity - a.similarity)
 }
 
-type TabKey = "auto_matched" | "manual_match" | "not_matched" | "other"
+function getMatchBadge(match: MatchPair | null): { label: string; bg: string; text: string } {
+  if (!match) return { label: "Unmatched", bg: "bg-red-100", text: "text-red-700" }
+  if (match.method === "manual") return { label: "Manual", bg: "bg-blue-100", text: "text-blue-700" }
+  if (match.method === "exact" && match.confidence >= 100) {
+    return { label: match.signInverted ? "Exact (±)" : "Exact", bg: "bg-green-100", text: "text-green-700" }
+  }
+  if (match.confidence >= 75) {
+    return { label: `AI ${match.confidence}%`, bg: "bg-amber-100", text: "text-amber-700" }
+  }
+  return { label: `AI ${match.confidence}%`, bg: "bg-orange-100", text: "text-orange-700" }
+}
+
+type TabKey = "all" | "exact" | "manual" | "high_prob" | "low_prob" | "orphans"
 
 // ── Component ──────────────────────────────────────────────────────────
 
@@ -254,13 +253,12 @@ export function ReconciliationResults({
   status,
   onRefresh,
 }: ReconciliationResultsProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>("auto_matched")
+  const [activeTab, setActiveTab] = useState<TabKey>("all")
   const [acceptingMatch, setAcceptingMatch] = useState<string | null>(null)
   const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
   const isComplete = status === "COMPLETE"
 
-  // Use config columns (matching criteria) if available, otherwise fall back to all columns
   const colsA = useMemo(() => {
     if (sourceAColumns && sourceAColumns.length > 0) return sourceAColumns.map((c) => c.key)
     return getColumnKeys(sourceARows)
@@ -270,17 +268,49 @@ export function ReconciliationResults({
     return getColumnKeys(sourceBRows)
   }, [sourceBColumns, sourceBRows])
 
-  // Split matched items by type
-  const autoMatched = useMemo(
-    () => matchResults.matched.filter((m) => m.method !== "manual"),
+  // ── Computed match buckets ──────────────────────────────────────────
+
+  const matchByA = useMemo(() => {
+    const map = new Map<number, MatchPair>()
+    for (const m of matchResults.matched) {
+      map.set(m.sourceAIdx, m)
+    }
+    return map
+  }, [matchResults.matched])
+
+  const allRowsWithStatus = useMemo(() => {
+    return sourceARows.map((_, idx) => ({
+      aIdx: idx,
+      match: matchByA.get(idx) || null,
+    }))
+  }, [sourceARows, matchByA])
+
+  const exactMatches = useMemo(
+    () => matchResults.matched.filter((m) => m.method === "exact" && m.confidence >= 100),
     [matchResults.matched]
   )
+
   const manualMatched = useMemo(
     () => matchResults.matched.filter((m) => m.method === "manual"),
     [matchResults.matched]
   )
 
-  // For unmatched Source A rows, compute potential matches from unmatched Source B
+  const highProbMatches = useMemo(
+    () =>
+      matchResults.matched.filter(
+        (m) =>
+          m.method !== "manual" &&
+          !(m.method === "exact" && m.confidence >= 100) &&
+          m.confidence >= 75
+      ),
+    [matchResults.matched]
+  )
+
+  const lowProbMatches = useMemo(
+    () => matchResults.matched.filter((m) => m.method !== "manual" && m.confidence < 75),
+    [matchResults.matched]
+  )
+
   const unmatchedAWithPotentials = useMemo(() => {
     return matchResults.unmatchedA.map((aIdx) => {
       const rowA = sourceARows[aIdx]
@@ -289,17 +319,9 @@ export function ReconciliationResults({
     })
   }, [matchResults.unmatchedA, matchResults.unmatchedB, sourceARows, sourceBRows])
 
-  // "Not Matched" = ALL unmatched Source A rows (source of truth backbone)
-  const notMatchedItems = useMemo(
-    () => unmatchedAWithPotentials,
-    [unmatchedAWithPotentials]
-  )
+  const orphanBIndices = useMemo(() => matchResults.unmatchedB, [matchResults.unmatchedB])
 
-  // "Other" = Source B orphan rows only (not matched to any Source A)
-  const orphanBIndices = useMemo(
-    () => matchResults.unmatchedB,
-    [matchResults.unmatchedB]
-  )
+  // ── Actions ─────────────────────────────────────────────────────────
 
   const handleAcceptMatch = useCallback(async (sourceAIdx: number, sourceBIdx: number) => {
     const key = `${sourceAIdx}-${sourceBIdx}`
@@ -319,10 +341,11 @@ export function ReconciliationResults({
     }
   }, [configId, runId, onRefresh])
 
+  // ── Excel Download ──────────────────────────────────────────────────
+
   const handleDownloadExcel = useCallback(() => {
     const wb = XLSX.utils.book_new()
 
-    // Helper to build rows for matched pairs
     const buildMatchedRows = (matches: MatchPair[]) =>
       matches.map((match) => {
         const rowA = sourceARows[match.sourceAIdx]
@@ -330,65 +353,81 @@ export function ReconciliationResults({
         const row: Record<string, any> = {}
         for (const col of colsA) row[`${sourceALabel} ${col.replace(/_/g, " ")}`] = rowA?.[col] ?? ""
         for (const col of colsB) row[`${sourceBLabel} ${col.replace(/_/g, " ")}`] = rowB?.[col] ?? ""
-        row["Match Type"] = match.method === "exact" ? "Exact" : match.method === "manual" ? "Manual" : `AI ${match.confidence}%`
+        row["Match Status"] = getMatchBadge(match).label
         return row
       })
 
-    // 1. Auto-Matched sheet
-    const autoRows = buildMatchedRows(autoMatched)
-    const wsAuto = XLSX.utils.json_to_sheet(autoRows.length > 0 ? autoRows : [{ "No Data": "No auto-matched items" }])
-    XLSX.utils.book_append_sheet(wb, wsAuto, "Auto-Matched")
-
-    // 2. Manual Matches sheet
-    const manualRows = buildMatchedRows(manualMatched)
-    const wsManual = XLSX.utils.json_to_sheet(manualRows.length > 0 ? manualRows : [{ "No Data": "No manual matches" }])
-    XLSX.utils.book_append_sheet(wb, wsManual, "Manual Matches")
-
-    // 3. Not Matched sheet (all unmatched Source A rows)
-    const notMatchedRows = notMatchedItems.map(({ aIdx, potentials }) => {
+    // 1. All
+    const allRows = allRowsWithStatus.map(({ aIdx, match }) => {
       const rowA = sourceARows[aIdx]
+      const rowB = match ? sourceBRows[match.sourceBIdx] : null
       const row: Record<string, any> = {}
-      for (const col of colsA) row[col.replace(/_/g, " ")] = rowA?.[col] ?? ""
-      row["Potential Matches"] = potentials.length
-      row["Best Match %"] = potentials.length > 0 ? `${potentials[0].similarity}%` : "—"
+      for (const col of colsA) row[`${sourceALabel} ${col.replace(/_/g, " ")}`] = rowA?.[col] ?? ""
+      for (const col of colsB) row[`${sourceBLabel} ${col.replace(/_/g, " ")}`] = rowB?.[col] ?? ""
+      row["Match Status"] = getMatchBadge(match).label
       return row
     })
-    const wsNotMatched = XLSX.utils.json_to_sheet(notMatchedRows.length > 0 ? notMatchedRows : [{ "No Data": "All source of truth rows matched" }])
-    XLSX.utils.book_append_sheet(wb, wsNotMatched, "Not Matched")
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows.length > 0 ? allRows : [{ "No Data": "No rows" }]), "All")
 
-    // 4. Other sheet (Source B orphans)
-    const otherRows = orphanBIndices.map((bIdx) => {
+    // 2. 100% Matches
+    const exactRows = buildMatchedRows(exactMatches)
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exactRows.length > 0 ? exactRows : [{ "No Data": "No exact matches" }]), "100% Matches")
+
+    // 3. Manual Matches
+    const manualRows = buildMatchedRows(manualMatched)
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(manualRows.length > 0 ? manualRows : [{ "No Data": "No manual matches" }]), "Manual Matches")
+
+    // 4. High Probability
+    const highRows = buildMatchedRows(highProbMatches)
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(highRows.length > 0 ? highRows : [{ "No Data": "No high probability matches" }]), "High Probability")
+
+    // 5. Low Probability
+    const lowRows = buildMatchedRows(lowProbMatches)
+    const unmatchedRows = unmatchedAWithPotentials.map(({ aIdx }) => {
+      const rowA = sourceARows[aIdx]
+      const row: Record<string, any> = {}
+      for (const col of colsA) row[`${sourceALabel} ${col.replace(/_/g, " ")}`] = rowA?.[col] ?? ""
+      for (const col of colsB) row[`${sourceBLabel} ${col.replace(/_/g, " ")}`] = ""
+      row["Match Status"] = "Unmatched"
+      return row
+    })
+    const combinedLow = [...lowRows, ...unmatchedRows]
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(combinedLow.length > 0 ? combinedLow : [{ "No Data": "No low probability items" }]), "Low Probability")
+
+    // 6. Orphans
+    const orphanRows = orphanBIndices.map((bIdx) => {
       const rowB = sourceBRows[bIdx]
       const row: Record<string, any> = {}
       for (const col of colsB) row[col.replace(/_/g, " ")] = rowB?.[col] ?? ""
       return row
     })
-    const wsOther = XLSX.utils.json_to_sheet(otherRows.length > 0 ? otherRows : [{ "No Data": `No orphan ${sourceBLabel} rows` }])
-    XLSX.utils.book_append_sheet(wb, wsOther, "Other")
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(orphanRows.length > 0 ? orphanRows : [{ "No Data": `No orphan ${sourceBLabel} rows` }]), "Orphans")
 
-    // Write and download
     XLSX.writeFile(wb, `reconciliation-${runId.slice(0, 8)}.xlsx`)
-  }, [autoMatched, manualMatched, notMatchedItems, orphanBIndices, colsA, colsB, sourceARows, sourceBRows, sourceALabel, sourceBLabel, runId])
+  }, [allRowsWithStatus, exactMatches, manualMatched, highProbMatches, lowProbMatches, unmatchedAWithPotentials, orphanBIndices, colsA, colsB, sourceARows, sourceBRows, sourceALabel, sourceBLabel, runId])
+
+  // ── Tabs ────────────────────────────────────────────────────────────
 
   const tabs: { key: TabKey; label: string; count: number }[] = [
-    { key: "auto_matched", label: "Auto-Matched", count: autoMatched.length },
-    { key: "manual_match", label: "Manual Matches", count: manualMatched.length },
-    { key: "not_matched", label: "Not Matched", count: notMatchedItems.length },
-    { key: "other", label: "Other", count: orphanBIndices.length },
+    { key: "all", label: "All", count: sourceARows.length },
+    { key: "exact", label: "100% Matches", count: exactMatches.length },
+    { key: "manual", label: "Manual Matches", count: manualMatched.length },
+    { key: "high_prob", label: "High Probability", count: highProbMatches.length },
+    { key: "low_prob", label: "Low Probability", count: lowProbMatches.length + unmatchedAWithPotentials.length },
+    { key: "orphans", label: "Orphans", count: orphanBIndices.length },
   ]
 
   return (
     <div className="space-y-4">
-      {/* Tabs + Download */}
       <div className="flex items-center justify-between border-b border-gray-200">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
-                  ? "border-blue-600 text-blue-700"
+                  ? "border-orange-500 text-orange-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -396,16 +435,15 @@ export function ReconciliationResults({
             </button>
           ))}
         </div>
-        <Button onClick={handleDownloadExcel} size="sm" variant="outline" className="mb-1">
+        <Button onClick={handleDownloadExcel} size="sm" variant="outline" className="mb-1 ml-2 flex-shrink-0">
           <Download className="w-3 h-3 mr-1" />
           Download Excel
         </Button>
       </div>
 
-      {/* ── Auto-Matched Tab ──────────────────────────────────────── */}
-      {activeTab === "auto_matched" && (
-        <AutoMatchedTable
-          matches={autoMatched}
+      {activeTab === "all" && (
+        <AllTable
+          rows={allRowsWithStatus}
           sourceARows={sourceARows}
           sourceBRows={sourceBRows}
           colsA={colsA}
@@ -415,9 +453,21 @@ export function ReconciliationResults({
         />
       )}
 
-      {/* ── Manual Matches Tab ────────────────────────────────────── */}
-      {activeTab === "manual_match" && (
-        <ManualMatchesTable
+      {activeTab === "exact" && (
+        <MatchedPairsTable
+          matches={exactMatches}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+          emptyMessage="No 100% exact matches"
+        />
+      )}
+
+      {activeTab === "manual" && (
+        <MatchedPairsTable
           matches={manualMatched}
           sourceARows={sourceARows}
           sourceBRows={sourceBRows}
@@ -425,13 +475,27 @@ export function ReconciliationResults({
           colsB={colsB}
           sourceALabel={sourceALabel}
           sourceBLabel={sourceBLabel}
+          emptyMessage='No manual matches yet. Accept matches from the "Low Probability" tab.'
         />
       )}
 
-      {/* ── Not Matched Tab ───────────────────────────────────────── */}
-      {activeTab === "not_matched" && (
-        <NotMatchedTable
-          items={notMatchedItems}
+      {activeTab === "high_prob" && (
+        <MatchedPairsTable
+          matches={highProbMatches}
+          sourceARows={sourceARows}
+          sourceBRows={sourceBRows}
+          colsA={colsA}
+          colsB={colsB}
+          sourceALabel={sourceALabel}
+          sourceBLabel={sourceBLabel}
+          emptyMessage="No high probability matches (75%+)"
+        />
+      )}
+
+      {activeTab === "low_prob" && (
+        <LowProbabilityTab
+          lowProbMatches={lowProbMatches}
+          unmatchedItems={unmatchedAWithPotentials}
           sourceARows={sourceARows}
           sourceBRows={sourceBRows}
           colsA={colsA}
@@ -446,9 +510,8 @@ export function ReconciliationResults({
         />
       )}
 
-      {/* ── Other Tab (Source B orphans only) ─────────────────────── */}
-      {activeTab === "other" && (
-        <OtherTable
+      {activeTab === "orphans" && (
+        <OrphansTable
           orphanBIndices={orphanBIndices}
           sourceBRows={sourceBRows}
           colsB={colsB}
@@ -459,10 +522,10 @@ export function ReconciliationResults({
   )
 }
 
-// ── Auto-Matched Table ──────────────────────────────────────────────────
+// ── All Table ───────────────────────────────────────────────────────────
 
-function AutoMatchedTable({
-  matches,
+function AllTable({
+  rows,
   sourceARows,
   sourceBRows,
   colsA,
@@ -470,7 +533,7 @@ function AutoMatchedTable({
   sourceALabel,
   sourceBLabel,
 }: {
-  matches: MatchPair[]
+  rows: { aIdx: number; match: MatchPair | null }[]
   sourceARows: Record<string, any>[]
   sourceBRows: Record<string, any>[]
   colsA: string[]
@@ -505,7 +568,124 @@ function AutoMatchedTable({
                   {sourceBLabel} {col.replace(/_/g, " ")}
                 </th>
               ))}
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-20">
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map(({ aIdx, match }, i) => {
+              const rowA = sourceARows[aIdx]
+              const rowB = match ? sourceBRows[match.sourceBIdx] : null
+              const badge = getMatchBadge(match)
+              return (
+                <tr key={aIdx} className={`hover:bg-gray-50 ${!match ? "bg-red-50/50" : ""}`}>
+                  <td className="px-3 py-2 text-gray-400 border-r border-gray-200 text-center">
+                    {i + 1}
+                  </td>
+                  {colsA.map((col, ci) => (
+                    <td
+                      key={`a-${col}`}
+                      className={`px-3 py-2 text-gray-700 whitespace-nowrap ${
+                        ci === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                      }`}
+                    >
+                      {rowA ? formatCellValue(rowA[col]) : "—"}
+                    </td>
+                  ))}
+                  {colsB.map((col) => (
+                    <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                      {rowB ? formatCellValue(rowB[col]) : "—"}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.bg} ${badge.text}`}>
+                      {badge.label}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No rows in source file
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-4 py-2 bg-gray-50 border-t flex items-center gap-4 text-[10px] text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-blue-400" />
+          {sourceALabel}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-purple-400" />
+          {sourceBLabel}
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Exact</span>
+          <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AI 75%+</span>
+          <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">AI &lt;75%</span>
+          <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Manual</span>
+          <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">Unmatched</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Matched Pairs Table (reusable) ──────────────────────────────────────
+
+function MatchedPairsTable({
+  matches,
+  sourceARows,
+  sourceBRows,
+  colsA,
+  colsB,
+  sourceALabel,
+  sourceBLabel,
+  emptyMessage,
+}: {
+  matches: MatchPair[]
+  sourceARows: Record<string, any>[]
+  sourceBRows: Record<string, any>[]
+  colsA: string[]
+  colsB: string[]
+  sourceALabel: string
+  sourceBLabel: string
+  emptyMessage: string
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b sticky top-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 w-8">
+                #
+              </th>
+              {colsA.map((col, i) => (
+                <th
+                  key={`a-${col}`}
+                  className={`px-3 py-2 text-left text-[10px] font-semibold text-blue-600 uppercase tracking-wider whitespace-nowrap ${
+                    i === colsA.length - 1 ? "border-r-2 border-gray-300" : ""
+                  }`}
+                >
+                  {sourceALabel} {col.replace(/_/g, " ")}
+                </th>
+              ))}
+              {colsB.map((col) => (
+                <th
+                  key={`b-${col}`}
+                  className="px-3 py-2 text-left text-[10px] font-semibold text-purple-600 uppercase tracking-wider whitespace-nowrap"
+                >
+                  {sourceBLabel} {col.replace(/_/g, " ")}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24">
                 Match
               </th>
             </tr>
@@ -514,6 +694,7 @@ function AutoMatchedTable({
             {matches.map((match, i) => {
               const rowA = sourceARows[match.sourceAIdx]
               const rowB = sourceBRows[match.sourceBIdx]
+              const badge = getMatchBadge(match)
               return (
                 <tr key={i} className="hover:bg-gray-50">
                   <td className="px-3 py-2 text-gray-400 border-r border-gray-200 text-center">
@@ -535,14 +716,8 @@ function AutoMatchedTable({
                     </td>
                   ))}
                   <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        match.method === "exact" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {match.method === "exact"
-                        ? `Exact${match.confidence < 100 ? ` ${match.confidence}%` : ""}${match.signInverted ? " (±)" : ""}`
-                        : `AI ${match.confidence}%`}
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.bg} ${badge.text}`}>
+                      {badge.label}
                     </span>
                   </td>
                 </tr>
@@ -551,131 +726,22 @@ function AutoMatchedTable({
             {matches.length === 0 && (
               <tr>
                 <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-8 text-center text-sm text-gray-400">
-                  No auto-matched items
+                  {emptyMessage}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 bg-gray-50 border-t flex items-center gap-4 text-[10px] text-gray-500">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-blue-400" />
-          {sourceALabel}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-purple-400" />
-          {sourceBLabel}
-        </span>
-        <span className="ml-auto">
-          <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Exact</span>
-          {" = deterministic match · "}
-          <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">AI</span>
-          {" = fuzzy match · "}
-          <span className="text-gray-500">(±)</span>
-          {" = sign-inverted amount"}
-        </span>
-      </div>
     </div>
   )
 }
 
-// ── Manual Matches Table ────────────────────────────────────────────────
+// ── Low Probability Tab ─────────────────────────────────────────────────
 
-function ManualMatchesTable({
-  matches,
-  sourceARows,
-  sourceBRows,
-  colsA,
-  colsB,
-  sourceALabel,
-  sourceBLabel,
-}: {
-  matches: MatchPair[]
-  sourceARows: Record<string, any>[]
-  sourceBRows: Record<string, any>[]
-  colsA: string[]
-  colsB: string[]
-  sourceALabel: string
-  sourceBLabel: string
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-        <p className="text-sm text-green-800">
-          <strong>Manual Matches:</strong> These are matches you&apos;ve manually accepted from potential matches. Review and verify these matches.
-        </p>
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 z-10">
-              <tr>
-                {colsA.map((col) => (
-                  <th
-                    key={`a-${col}`}
-                    className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap bg-blue-600"
-                  >
-                    {sourceALabel} {col.replace(/_/g, " ")}
-                  </th>
-                ))}
-                {colsB.map((col) => (
-                  <th
-                    key={`b-${col}`}
-                    className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap bg-purple-600"
-                  >
-                    {sourceBLabel} {col.replace(/_/g, " ")}
-                  </th>
-                ))}
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-100 whitespace-nowrap">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {matches.map((match, i) => {
-                const rowA = sourceARows[match.sourceAIdx]
-                const rowB = sourceBRows[match.sourceBIdx]
-                return (
-                  <tr key={i} className="hover:bg-gray-50">
-                    {colsA.map((col) => (
-                      <td key={`a-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                        {rowA ? formatCellValue(rowA[col]) : "—"}
-                      </td>
-                    ))}
-                    {colsB.map((col) => (
-                      <td key={`b-${col}`} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                        {rowB ? formatCellValue(rowB[col]) : "—"}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2">
-                      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
-                        Manual
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-              {matches.length === 0 && (
-                <tr>
-                  <td colSpan={colsA.length + colsB.length + 1} className="px-4 py-8 text-center text-sm text-gray-400">
-                    No manual matches yet. Accept matches from the &quot;Not Matched&quot; tab.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Not Matched Table ───────────────────────────────────────────────────
-
-function NotMatchedTable({
-  items,
+function LowProbabilityTab({
+  lowProbMatches,
+  unmatchedItems,
   sourceARows,
   sourceBRows,
   colsA,
@@ -688,7 +754,8 @@ function NotMatchedTable({
   acceptingMatch,
   isComplete,
 }: {
-  items: { aIdx: number; potentials: PotentialMatch[] }[]
+  lowProbMatches: MatchPair[]
+  unmatchedItems: { aIdx: number; potentials: PotentialMatch[] }[]
   sourceARows: Record<string, any>[]
   sourceBRows: Record<string, any>[]
   colsA: string[]
@@ -702,62 +769,90 @@ function NotMatchedTable({
   isComplete: boolean
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-        <table className="w-full text-xs">
-          <thead className="bg-blue-600 sticky top-0 z-10">
-            <tr>
-              {colsA.map((col) => (
-                <th
-                  key={col}
-                  className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap"
-                >
-                  {sourceALabel} {col.replace(/_/g, " ")}
-                </th>
-              ))}
-              <th className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(({ aIdx, potentials }) => {
-              const rowA = sourceARows[aIdx]
-              const isExpanded = expandedRow === aIdx
+    <div className="space-y-4">
+      {lowProbMatches.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Low Confidence Matches ({lowProbMatches.length})
+          </h3>
+          <MatchedPairsTable
+            matches={lowProbMatches}
+            sourceARows={sourceARows}
+            sourceBRows={sourceBRows}
+            colsA={colsA}
+            colsB={colsB}
+            sourceALabel={sourceALabel}
+            sourceBLabel={sourceBLabel}
+            emptyMessage="No low probability matches"
+          />
+        </div>
+      )}
 
-              return (
-                <NotMatchedRow
-                  key={aIdx}
-                  aIdx={aIdx}
-                  rowA={rowA}
-                  potentials={potentials}
-                  sourceBRows={sourceBRows}
-                  colsA={colsA}
-                  colsB={colsB}
-                  sourceBLabel={sourceBLabel}
-                  isExpanded={isExpanded}
-                  onToggleExpand={() => onToggleExpand(aIdx)}
-                  onAcceptMatch={onAcceptMatch}
-                  acceptingMatch={acceptingMatch}
-                  isComplete={isComplete}
-                />
-              )
-            })}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={colsA.length + 1} className="px-4 py-8 text-center text-sm text-gray-400">
-                  No unmatched items with potential matches
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {unmatchedItems.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Unmatched ({unmatchedItems.length})
+          </h3>
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-red-600 sticky top-0 z-10">
+                  <tr>
+                    {colsA.map((col) => (
+                      <th
+                        key={col}
+                        className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {sourceALabel} {col.replace(/_/g, " ")}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-white uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unmatchedItems.map(({ aIdx, potentials }) => {
+                    const rowA = sourceARows[aIdx]
+                    const isExpanded = expandedRow === aIdx
+                    return (
+                      <UnmatchedRow
+                        key={aIdx}
+                        aIdx={aIdx}
+                        rowA={rowA}
+                        potentials={potentials}
+                        sourceBRows={sourceBRows}
+                        colsA={colsA}
+                        colsB={colsB}
+                        sourceBLabel={sourceBLabel}
+                        isExpanded={isExpanded}
+                        onToggleExpand={() => onToggleExpand(aIdx)}
+                        onAcceptMatch={onAcceptMatch}
+                        acceptingMatch={acceptingMatch}
+                        isComplete={isComplete}
+                      />
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lowProbMatches.length === 0 && unmatchedItems.length === 0 && (
+        <div className="text-center py-8 text-sm text-gray-400">
+          <CheckCircle2 className="w-6 h-6 text-green-400 mx-auto mb-1" />
+          No low probability matches or unmatched items
+        </div>
+      )}
     </div>
   )
 }
 
-function NotMatchedRow({
+// ── Unmatched Row (expandable) ──────────────────────────────────────────
+
+function UnmatchedRow({
   aIdx,
   rowA,
   potentials,
@@ -786,7 +881,6 @@ function NotMatchedRow({
 }) {
   return (
     <>
-      {/* Source A row (pink background) */}
       <tr className="bg-red-50 border-t border-gray-200 hover:bg-red-100">
         {colsA.map((col) => (
           <td key={col} className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
@@ -798,17 +892,12 @@ function NotMatchedRow({
             onClick={onToggleExpand}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 border border-blue-300 rounded hover:bg-blue-50 transition-colors"
           >
-            {isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
+            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             {isExpanded ? "Hide" : "Show"} Potential Matches ({potentials.length})
           </button>
         </td>
       </tr>
 
-      {/* Expanded: Potential matches from Source B */}
       {isExpanded && (
         <tr>
           <td colSpan={colsA.length + 1} className="p-0">
@@ -898,6 +987,13 @@ function NotMatchedRow({
                       </tr>
                     )
                   })}
+                  {potentials.length === 0 && (
+                    <tr>
+                      <td colSpan={colsB.length + 3} className="px-3 py-4 text-center text-xs text-gray-400">
+                        No potential matches found
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -908,9 +1004,9 @@ function NotMatchedRow({
   )
 }
 
-// ── Other Tab (Source B orphans only) ─────────────────────────────────────
+// ── Orphans Table ───────────────────────────────────────────────────────
 
-function OtherTable({
+function OrphansTable({
   orphanBIndices,
   sourceBRows,
   colsB,
@@ -973,4 +1069,3 @@ function OtherTable({
     </div>
   )
 }
-

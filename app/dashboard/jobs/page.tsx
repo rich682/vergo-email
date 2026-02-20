@@ -151,6 +151,7 @@ export default function JobsPage() {
   const { can } = usePermissions()
   const canCreateTasks = can("tasks:create")
   const canImportTasks = can("tasks:import")
+  const canAssignOwner = can("tasks:edit_any")
   
   // Board context from URL
   type BoardTab = "tasks" | "requests" | "inbox" | "documents" | "reports" | "forms" | "reconciliations" | "analysis"
@@ -1050,19 +1051,28 @@ export default function JobsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="owner" className="text-sm">Owner <span className="text-red-500">*</span></Label>
-                    <select
-                      id="owner"
-                      value={newJobOwnerId}
-                      onChange={(e) => setNewJobOwnerId(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
-                    >
-                      <option value="">Select...</option>
-                      {teamMembers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
-                        </option>
-                      ))}
-                    </select>
+                    {canAssignOwner ? (
+                      <select
+                        id="owner"
+                        value={newJobOwnerId}
+                        onChange={(e) => setNewJobOwnerId(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {teamMembers.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        id="owner"
+                        value={teamMembers.find(m => m.isCurrentUser)?.name || teamMembers.find(m => m.isCurrentUser)?.email || "You"}
+                        disabled
+                        className="mt-1"
+                      />
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="dueDate" className="text-sm">Target Date <span className="text-red-500">*</span></Label>
@@ -1168,16 +1178,16 @@ export default function JobsPage() {
           <BoardDocumentsTab boardId={boardId} />
         )}
         {activeTab === "reports" && boardId && (
-          <BoardReportsTab boardId={boardId} />
+          <BoardReportsTab boardId={boardId} tasks={jobs} />
         )}
         {activeTab === "forms" && boardId && (
-          <BoardFormsTab boardId={boardId} />
+          <BoardFormsTab boardId={boardId} tasks={jobs} />
         )}
         {activeTab === "reconciliations" && boardId && (
-          <BoardReconciliationsTab boardId={boardId} />
+          <BoardReconciliationsTab boardId={boardId} tasks={jobs} />
         )}
         {activeTab === "analysis" && boardId && (
-          <BoardAnalysisTab boardId={boardId} />
+          <BoardAnalysisTab boardId={boardId} tasks={jobs} />
         )}
 
         {/* Tasks Tab Content */}

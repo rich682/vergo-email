@@ -9,7 +9,7 @@
  * - Login-based: Internal users access after authentication
  */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams, useParams } from "next/navigation"
 import {
   ClipboardList,
@@ -95,6 +95,93 @@ interface FormRequestData {
 }
 
 type PageState = "loading" | "unauthorized" | "invalid_token" | "not_found" | "expired" | "submitted" | "ready" | "submitting" | "success" | "error"
+
+/**
+ * Currency input that displays formatted values ($1,234.56) while storing raw numbers.
+ * Shows formatted value when not focused, raw number when editing.
+ */
+function CurrencyInput({
+  id,
+  value,
+  onChange,
+  className,
+}: {
+  id: string
+  value: number | string
+  onChange: (value: number | string) => void
+  className?: string
+}) {
+  const [displayValue, setDisplayValue] = useState("")
+  const [isFocused, setIsFocused] = useState(false)
+
+  // Format number as currency string for display
+  const formatCurrency = useCallback((val: number | string): string => {
+    if (val === "" || val === null || val === undefined) return ""
+    const num = typeof val === "string" ? parseFloat(val) : val
+    if (isNaN(num)) return ""
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num)
+  }, [])
+
+  // Update display when external value changes (and not focused)
+  useEffect(() => {
+    if (!isFocused) {
+      setDisplayValue(value !== "" && value !== undefined ? formatCurrency(value) : "")
+    }
+  }, [value, isFocused, formatCurrency])
+
+  const handleFocus = () => {
+    setIsFocused(true)
+    // Show raw number for editing
+    const num = typeof value === "string" ? parseFloat(value) : value
+    setDisplayValue(num && !isNaN(num as number) ? String(num) : "")
+  }
+
+  const handleBlur = () => {
+    setIsFocused(false)
+    // Parse and store numeric value, then format for display
+    const parsed = parseFloat(displayValue)
+    if (!isNaN(parsed)) {
+      onChange(parsed)
+      setDisplayValue(formatCurrency(parsed))
+    } else {
+      onChange("")
+      setDisplayValue("")
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    // Allow digits, decimal point, and empty string while typing
+    if (raw === "" || /^-?\d*\.?\d*$/.test(raw)) {
+      setDisplayValue(raw)
+      const parsed = parseFloat(raw)
+      if (!isNaN(parsed)) {
+        onChange(parsed)
+      } else if (raw === "") {
+        onChange("")
+      }
+    }
+  }
+
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode="decimal"
+      value={displayValue}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      placeholder="$0.00"
+      className={className}
+    />
+  )
+}
 
 export default function FormFillPage() {
   const params = useParams()
@@ -652,20 +739,12 @@ export default function FormFillPage() {
                     />
                   )}
                   {field.type === "currency" && (
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                      <Input
-                        id={field.key}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        inputMode="decimal"
-                        value={(formValues[field.key] as number) || ""}
-                        onChange={(e) => updateField(field.key, e.target.value ? Number(e.target.value) : "")}
-                        placeholder="0.00"
-                        className={`pl-7 ${validationErrors[field.key] ? "border-red-500" : ""}`}
-                      />
-                    </div>
+                    <CurrencyInput
+                      id={field.key}
+                      value={(formValues[field.key] as number) ?? ""}
+                      onChange={(val) => updateField(field.key, val)}
+                      className={validationErrors[field.key] ? "border-red-500" : ""}
+                    />
                   )}
                   {field.type === "date" && (
                     <Input

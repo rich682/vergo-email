@@ -82,7 +82,6 @@ const ADMIN_ONLY_ROUTES = [
   "/dashboard/settings/team",
   "/dashboard/settings",
   "/api/org/settings",
-  "/api/org/team",
   "/api/org/accounting-calendar",
   "/api/admin",
 ]
