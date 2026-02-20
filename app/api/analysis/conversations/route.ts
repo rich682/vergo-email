@@ -23,12 +23,17 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const taskInstanceId = searchParams.get("taskInstanceId")
+  const boardId = searchParams.get("boardId")
+
+  // Users with view_all can see all org conversations; others only see their own
+  const canViewAll = canPerformAction(session.user.role, "analysis:view_all", session.user.orgActionPermissions)
 
   const conversations = await prisma.analysisConversation.findMany({
     where: {
       organizationId: session.user.organizationId,
-      userId: session.user.id,
+      ...(!canViewAll ? { userId: session.user.id } : {}),
       ...(taskInstanceId ? { taskInstanceId } : {}),
+      ...(boardId ? { taskInstance: { boardId } } : {}),
     },
     orderBy: { updatedAt: "desc" },
     select: {
@@ -39,6 +44,9 @@ export async function GET(request: NextRequest) {
       createdAt: true,
       updatedAt: true,
       _count: { select: { messages: true } },
+      taskInstance: {
+        select: { id: true, name: true },
+      },
     },
   })
 

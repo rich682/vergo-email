@@ -33,9 +33,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
-    // Non-admin must be a viewer of the config
+    // Non-admin must be a viewer of the config or have view_all_configs permission
     const isAdmin = session.user.role === "ADMIN"
-    if (!isAdmin) {
+    const canViewAllConfigs = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)
+    if (!isAdmin && !canViewAllConfigs) {
       const isViewer = await ReconciliationService.isViewer(configId, session.user.id)
       if (!isViewer) {
         return NextResponse.json(

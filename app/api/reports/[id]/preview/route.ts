@@ -103,8 +103,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 })
       }
 
-      // Strict viewer check: admin bypasses, everyone else must be a report definition viewer
-      if (!isAdmin) {
+      // Viewer check: admin and users with view_all_definitions bypass, everyone else must be a report definition viewer
+      const canViewAllReports = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)
+      if (!isAdmin && !canViewAllReports) {
         const isReportViewer = await prisma.reportDefinitionViewer.findFirst({
           where: { reportDefinitionId: id, userId: user.id },
         })

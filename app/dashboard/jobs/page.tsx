@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,9 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  Plus, 
-  Search, 
+import {
+  Plus,
+  Search,
   CheckCircle,
   Loader2,
   Sparkles,
@@ -33,7 +34,8 @@ import {
   Users,
   Tag,
   Zap,
-  ChevronDown
+  ChevronDown,
+  ChevronRight
 } from "lucide-react"
 import { format } from "date-fns"
 import { formatDateInTimezone, formatDateOnlyRange } from "@/lib/utils/timezone"
@@ -57,11 +59,19 @@ import { usePermissions } from "@/components/permissions-context"
 import { BoardRequestsTab } from "@/components/boards/board-requests-tab"
 import { BoardInboxTab } from "@/components/boards/board-inbox-tab"
 import { BoardDocumentsTab } from "@/components/boards/board-documents-tab"
+import { BoardReportsTab } from "@/components/boards/board-reports-tab"
+import { BoardFormsTab } from "@/components/boards/board-forms-tab"
+import { BoardReconciliationsTab } from "@/components/boards/board-reconciliations-tab"
+import { BoardAnalysisTab } from "@/components/boards/board-analysis-tab"
 import {
   ClipboardList,
   Send,
   Inbox,
-  FileText as FileTextIcon
+  FileText as FileTextIcon,
+  BarChart3,
+  FormInput,
+  Scale,
+  MessageSquare
 } from "lucide-react"
 
 // ============================================
@@ -143,9 +153,10 @@ export default function JobsPage() {
   const canImportTasks = can("tasks:import")
   
   // Board context from URL
+  type BoardTab = "tasks" | "requests" | "inbox" | "documents" | "reports" | "forms" | "reconciliations" | "analysis"
   const boardId = searchParams.get("boardId")
-  const tabParam = searchParams.get("tab") as "tasks" | "requests" | "inbox" | "documents" | null
-  const [activeTab, setActiveTab] = useState<"tasks" | "requests" | "inbox" | "documents">(tabParam || "tasks")
+  const tabParam = searchParams.get("tab") as BoardTab | null
+  const [activeTab, setActiveTab] = useState<BoardTab>(tabParam || "tasks")
   
   // Redirect to boards page if no board is selected
   // (Boards is the home page - no "All Tasks" view)
@@ -190,7 +201,7 @@ export default function JobsPage() {
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false)
 
   // Tab switching - updates URL param
-  const handleTabChange = useCallback((tab: "tasks" | "requests" | "inbox" | "documents") => {
+  const handleTabChange = useCallback((tab: BoardTab) => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     if (tab === "tasks") {
@@ -710,6 +721,20 @@ export default function JobsPage() {
       <div className="w-full px-6 py-6">
         {/* Onboarding checklist hidden for now - not at that product stage */}
 
+        {/* Breadcrumb - All Months link */}
+        {currentBoard && (
+          <div className="flex items-center gap-1.5 mb-3 text-sm">
+            <Link
+              href="/dashboard/boards"
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              All Months
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-gray-900 font-medium">{currentBoard.name}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex-1">
@@ -1100,12 +1125,16 @@ export default function JobsPage() {
         {/* Board Tabs */}
         {currentBoard && (
           <div className="border-b border-gray-200 mb-4">
-            <nav className="flex gap-1" aria-label="Board tabs">
+            <nav className="flex gap-1 overflow-x-auto" aria-label="Board tabs">
               {([
                 { id: "tasks" as const, label: "Tasks", icon: ClipboardList },
                 { id: "requests" as const, label: "Requests", icon: Send },
                 { id: "inbox" as const, label: "Inbox", icon: Inbox },
                 { id: "documents" as const, label: "Documents", icon: FileTextIcon },
+                { id: "reports" as const, label: "Reports", icon: BarChart3 },
+                { id: "forms" as const, label: "Forms", icon: FormInput },
+                { id: "reconciliations" as const, label: "Reconciliations", icon: Scale },
+                { id: "analysis" as const, label: "Analysis", icon: MessageSquare },
               ]).map((tab) => {
                 const Icon = tab.icon
                 const isActive = activeTab === tab.id
@@ -1113,7 +1142,7 @@ export default function JobsPage() {
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       isActive
                         ? 'border-orange-500 text-orange-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1137,6 +1166,18 @@ export default function JobsPage() {
         )}
         {activeTab === "documents" && boardId && (
           <BoardDocumentsTab boardId={boardId} />
+        )}
+        {activeTab === "reports" && boardId && (
+          <BoardReportsTab boardId={boardId} />
+        )}
+        {activeTab === "forms" && boardId && (
+          <BoardFormsTab boardId={boardId} />
+        )}
+        {activeTab === "reconciliations" && boardId && (
+          <BoardReconciliationsTab boardId={boardId} />
+        )}
+        {activeTab === "analysis" && boardId && (
+          <BoardAnalysisTab boardId={boardId} />
         )}
 
         {/* Tasks Tab Content */}

@@ -54,9 +54,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
     }
 
-    // Non-admin must be a viewer
+    // Non-admin must be a viewer or have view_all_databases permission
     const isAdmin = session.user.role === "ADMIN"
-    if (!isAdmin) {
+    const canViewAllDatabases = canPerformAction(session.user.role, "databases:view_all_databases", session.user.orgActionPermissions)
+    if (!isAdmin && !canViewAllDatabases) {
       const isViewer = await DatabaseService.isViewer(params.id, session.user.id)
       if (!isViewer) {
         return NextResponse.json(

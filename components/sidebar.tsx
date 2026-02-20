@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -237,6 +237,27 @@ export function Sidebar({
   // Check if we're on the tasks/boards page
   const isOnTasksPage = pathname === "/dashboard/boards" || pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
 
+  // Fetch current month board ID for direct navigation
+  const [currentBoardHref, setCurrentBoardHref] = useState("/dashboard/boards")
+  useEffect(() => {
+    let cancelled = false
+    const fetchCurrentBoard = async () => {
+      try {
+        const res = await fetch("/api/boards/current", { credentials: "include" })
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          if (data.boardId) {
+            setCurrentBoardHref(`/dashboard/jobs?boardId=${data.boardId}`)
+          }
+        }
+      } catch {
+        // Fallback to boards list page
+      }
+    }
+    fetchCurrentBoard()
+    return () => { cancelled = true }
+  }, [])
+
   // --- Helper classes for collapsed / expanded states ---
   const navCls = (active: boolean) =>
     [
@@ -269,7 +290,7 @@ export function Sidebar({
     >
       {/* Logo / Collapse Toggle */}
       <div className={`h-14 flex items-center flex-shrink-0 ${collapsed ? "justify-center px-2" : "justify-between px-4"}`}>
-        <Link href="/dashboard/boards" className="flex items-center flex-shrink-0">
+        <Link href={currentBoardHref} className="flex items-center flex-shrink-0">
           {collapsed ? (
             <svg width="18" height="20" viewBox="0 0 22 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M0 2.14941H5.18129L10.4949 17.1862L15.8305 2.14941H21.0339L12.9422 22.2352H8.04755L0 2.14941Z" fill="black"/>
@@ -310,11 +331,11 @@ export function Sidebar({
         )}
         {collapsed && <div className="pt-1" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
-          {/* Tasks */}
+          {/* Tasks / Book Close */}
           {hasAccess("boards") && (
             <li>
               <Link
-                href="/dashboard/boards"
+                href={currentBoardHref}
                 title={collapsed ? UI_LABELS.jobsNavLabel : undefined}
                 className={navCls(isOnTasksPage)}
               >
@@ -400,6 +421,23 @@ export function Sidebar({
               </li>
             )
           })()}
+
+          {/* Analysis */}
+          {hasAccess("analysis") && (() => {
+            const isActive = pathname === "/dashboard/analysis" || pathname.startsWith("/dashboard/analysis/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/analysis"
+                  title={collapsed ? "Analysis" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <AnalysisIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Analysis</span>
+                </Link>
+              </li>
+            )
+          })()}
         </ul>
 
         {/* ── Data ── */}
@@ -427,22 +465,6 @@ export function Sidebar({
             )
           })()}
 
-          {/* Analysis */}
-          {hasAccess("analysis") && (() => {
-            const isActive = pathname === "/dashboard/analysis" || pathname.startsWith("/dashboard/analysis/")
-            return (
-              <li>
-                <Link
-                  href="/dashboard/analysis"
-                  title={collapsed ? "Analysis" : undefined}
-                  className={navCls(isActive)}
-                >
-                  <AnalysisIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Analysis</span>
-                </Link>
-              </li>
-            )
-          })()}
         </ul>
 
         {/* Spacer */}

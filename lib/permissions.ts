@@ -180,6 +180,7 @@ export type ActionKey =
   | "agents:execute"
   // Analysis
   | "analysis:view"
+  | "analysis:view_all"
   | "analysis:manage"
   | "analysis:query"
 
@@ -228,7 +229,7 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "collection:view_all", "collection:manage",
   "reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
   "agents:view", "agents:manage", "agents:execute",
-  "analysis:view", "analysis:manage", "analysis:query",
+  "analysis:view", "analysis:view_all", "analysis:manage", "analysis:query",
 ]
 
 /**
@@ -291,6 +292,7 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "agents:manage": true,
     "agents:execute": true,
     "analysis:view": true,
+    "analysis:view_all": true,
     "analysis:manage": true,
     "analysis:query": true,
   },
@@ -345,6 +347,7 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "agents:manage": false,
     "agents:execute": false,
     "analysis:view": false,
+    "analysis:view_all": false,
     "analysis:manage": false,
     "analysis:query": false,
   },
@@ -474,6 +477,7 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     label: "Analysis",
     actions: [
       { key: "analysis:view", label: "View datasets and analysis conversations" },
+      { key: "analysis:view_all", label: "View all analysis conversations (not just own)" },
       { key: "analysis:manage", label: "Upload, rename & delete datasets" },
       { key: "analysis:query", label: "Ask questions about data (chat)" },
     ],
@@ -498,7 +502,7 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   contacts:        ["contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types"],
   agents:          ["agents:view", "agents:manage", "agents:execute"],
-  analysis:        ["analysis:view", "analysis:manage", "analysis:query"],
+  analysis:        ["analysis:view", "analysis:view_all", "analysis:manage", "analysis:query"],
 }
 
 // ─── Core Permission Functions ────────────────────────────────────────────────

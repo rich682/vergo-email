@@ -700,23 +700,7 @@ export default function FormBuilderPage() {
                 />
               </div>
 
-              <div>
-                <Label>Field Key</Label>
-                <Input
-                  value={safeString(editingField.key)}
-                  onChange={(e) =>
-                    setEditingField({
-                      ...editingField,
-                      key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
-                    })
-                  }
-                  placeholder="field_key"
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for database mapping. Lowercase, underscores only.
-                </p>
-              </div>
+              {/* Field key is auto-generated and managed internally */}
 
               <div>
                 <Label>Type</Label>
