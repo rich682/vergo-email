@@ -27,12 +27,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const readStatusFilter = searchParams.get("readStatus") // unread | read | all
     const riskFilter = searchParams.get("riskLevel") // high | medium | low
+    const boardId = searchParams.get("boardId") // optional board filter
     const page = parseInt(searchParams.get("page") || "1", 10)
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100)
     const skip = (page - 1) * limit
 
     // Get job access filter based on role and action permissions
     const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
+
+    // Build task instance filter (combines access filter + optional board filter)
+    const taskInstanceFilter: any = {
+      ...(jobAccessFilter || {}),
+      ...(boardId ? { boardId } : {}),
+    }
 
     // Build where clause for messages
     const where: any = {
@@ -42,7 +49,7 @@ export async function GET(request: NextRequest) {
         organizationId,
         isDraft: false,
         taskInstanceId: { not: null },
-        ...(jobAccessFilter ? { taskInstance: jobAccessFilter } : {}),
+        ...(Object.keys(taskInstanceFilter).length > 0 ? { taskInstance: taskInstanceFilter } : {}),
       },
     }
 

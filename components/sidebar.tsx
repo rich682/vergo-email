@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
@@ -225,8 +225,6 @@ export function Sidebar({
   onMouseEnter,
   onMouseLeave,
 }: SidebarProps) {
-  const [inboxUnread, setInboxUnread] = useState(0)
-
   // Check if user is admin (still needed for settings/team which are always admin-only)
   const isAdmin = userRole?.toUpperCase() === "ADMIN"
   const pathname = usePathname()
@@ -236,25 +234,8 @@ export function Sidebar({
     return (module: ModuleKey) => hasModuleAccess(userRole, module, orgActionPermissions)
   }, [userRole, orgActionPermissions])
 
-  // Fetch inbox unread count
-  useEffect(() => {
-    const fetchInboxCount = async () => {
-      try {
-        const res = await fetch("/api/inbox/count")
-        if (res.ok) {
-          const data = await res.json()
-          setInboxUnread(data.unread || 0)
-        }
-      } catch {}
-    }
-    fetchInboxCount()
-    const interval = setInterval(fetchInboxCount, 60000)
-    return () => clearInterval(interval)
-  }, [])
-
   // Check if we're on the tasks/boards page
   const isOnTasksPage = pathname === "/dashboard/boards" || pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
-  const isOnInboxPage = pathname === "/dashboard/inbox"
 
   // --- Helper classes for collapsed / expanded states ---
   const navCls = (active: boolean) =>
@@ -343,23 +324,6 @@ export function Sidebar({
             </li>
           )}
 
-          {/* Requests */}
-          {hasAccess("requests") && (() => {
-            const isActive = pathname === "/dashboard/requests" || pathname.startsWith("/dashboard/requests/")
-            return (
-              <li>
-                <Link
-                  href="/dashboard/requests"
-                  title={collapsed ? "Requests" : undefined}
-                  className={navCls(isActive)}
-                >
-                  <RequestsIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Requests</span>
-                </Link>
-              </li>
-            )
-          })()}
-
           {/* Automations */}
           {hasAccess("agents") && (() => {
             const isActive = pathname === "/dashboard/automations" || pathname.startsWith("/dashboard/automations/")
@@ -373,120 +337,6 @@ export function Sidebar({
                   <AgentsIcon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className={labelCls}>Agents</span>
                 </Link>
-              </li>
-            )
-          })()}
-        </ul>
-
-        {/* ── Collect ── */}
-        {!collapsed && (
-          <div className="px-4 pt-4 pb-1">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Collect</span>
-          </div>
-        )}
-        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
-        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
-          {/* Inbox */}
-          {hasAccess("inbox") && (
-            <li>
-              <Link
-                href="/dashboard/inbox"
-                title={collapsed ? "Inbox" : undefined}
-                className={navCls(isOnInboxPage)}
-              >
-                <div className="relative flex-shrink-0">
-                  <InboxIcon className="w-[18px] h-[18px]" />
-                  {inboxUnread > 0 && collapsed && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-600 rounded-full" />
-                  )}
-                </div>
-                <span className={labelCls}>Inbox</span>
-                {inboxUnread > 0 && !collapsed && (
-                  <span className="bg-blue-600 text-white text-[10px] font-bold min-w-[16px] h-[16px] rounded-full flex items-center justify-center px-1">
-                    {inboxUnread > 99 ? "99+" : inboxUnread}
-                  </span>
-                )}
-              </Link>
-            </li>
-          )}
-
-          {/* Documents */}
-          {hasAccess("collection") && (() => {
-            const isActive = pathname === "/dashboard/collection" || (pathname.startsWith("/dashboard/collection/") && pathname !== "/dashboard/collection/expenses" && pathname !== "/dashboard/collection/invoices")
-            return (
-              <li>
-                <Link
-                  href="/dashboard/collection"
-                  title={collapsed ? "Documents" : undefined}
-                  className={navCls(isActive)}
-                >
-                  <DocumentIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                  <span className={labelCls}>Documents</span>
-                </Link>
-              </li>
-            )
-          })()}
-
-          {/* Expenses - feature-flagged */}
-          {hasAccess("collection") && (() => {
-            const hasModule = !!orgFeatures.expenses
-            const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/expenses"
-            const isActive = !hasModule && pathname === "/dashboard/collection/expenses"
-            return (
-              <li>
-                {hasModule ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={collapsed ? "Expenses" : undefined}
-                    className={navCls(false)}
-                  >
-                    <ExpensesIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                    <span className={labelCls}>Expenses</span>
-                  </a>
-                ) : (
-                  <Link
-                    href={href}
-                    title={collapsed ? "Expenses" : undefined}
-                    className={navCls(isActive)}
-                  >
-                    <ExpensesIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                    <span className={labelCls}>Expenses</span>
-                  </Link>
-                )}
-              </li>
-            )
-          })()}
-
-          {/* Invoices - feature-flagged */}
-          {hasAccess("collection") && (() => {
-            const hasModule = !!orgFeatures.invoices
-            const href = hasModule ? MODULE_EXTERNAL_URL : "/dashboard/collection/invoices"
-            const isActive = !hasModule && pathname === "/dashboard/collection/invoices"
-            return (
-              <li>
-                {hasModule ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={collapsed ? "Invoices" : undefined}
-                    className={navCls(false)}
-                  >
-                    <InvoicesIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                    <span className={labelCls}>Invoices</span>
-                  </a>
-                ) : (
-                  <Link
-                    href={href}
-                    title={collapsed ? "Invoices" : undefined}
-                    className={navCls(isActive)}
-                  >
-                    <InvoicesIcon className="w-[18px] h-[18px] flex-shrink-0" />
-                    <span className={labelCls}>Invoices</span>
-                  </Link>
-                )}
               </li>
             )
           })()}

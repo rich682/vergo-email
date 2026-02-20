@@ -22,6 +22,7 @@ import {
   FileUp,
   Loader2,
   Database,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,26 +75,6 @@ const FIELD_TYPE_CONFIG: Record<
   file: { label: "File Upload", icon: FileUp },
 }
 
-// Map database data types to form field types
-const DB_TYPE_TO_FIELD_TYPE: Record<string, FormFieldType> = {
-  text: "text",
-  longText: "longText",
-  number: "number",
-  currency: "currency",
-  date: "date",
-  select: "dropdown",
-  dropdown: "dropdown",  // Direct mapping for dropdown type
-  boolean: "checkbox",
-  file: "file",
-  // Fallbacks for common variations
-  string: "text",
-  integer: "number",
-  float: "number",
-  decimal: "currency",
-  datetime: "date",
-  bool: "checkbox",
-}
-
 interface FormData {
   id: string
   name: string
@@ -122,7 +103,8 @@ export default function FormBuilderPage() {
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  
+  const [saveWarning, setSaveWarning] = useState<string | null>(null)
+
   // Ref to track latest form data for auto-save
   const formRef = useRef<FormData | null>(null)
   formRef.current = form
@@ -132,13 +114,6 @@ export default function FormBuilderPage() {
   const [isNewField, setIsNewField] = useState(false)
   const [showFieldDialog, setShowFieldDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
-  const [showColumnPicker, setShowColumnPicker] = useState(false)
-  // Track selected columns and their required status for bulk add
-  const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>({})
-  const [columnRequired, setColumnRequired] = useState<Record<string, boolean>>({})
-  // Database options for linking
-  const [databases, setDatabases] = useState<Array<{ id: string; name: string; schema: { columns: Array<{ key: string; label: string; dataType: string; dropdownOptions?: string[] }> } }>>([])
-  const [loadingDatabases, setLoadingDatabases] = useState(false)
   const [viewers, setViewers] = useState<Viewer[]>([])
 
   // Redirect if user lacks manage permission
@@ -159,7 +134,7 @@ export default function FormBuilderPage() {
         // Safely parse JSON fields in case they come as strings
         let fields = data.form.fields || []
         let settings = data.form.settings || {}
-        
+
         // Handle case where Prisma returns JSON as string
         if (typeof fields === 'string') {
           try { fields = JSON.parse(fields) } catch { fields = [] }
@@ -167,7 +142,7 @@ export default function FormBuilderPage() {
         if (typeof settings === 'string') {
           try { settings = JSON.parse(settings) } catch { settings = {} }
         }
-        
+
         // Ensure fields is an array and sanitize each field
         const safeFields = (Array.isArray(fields) ? fields : []).map((f: any) => ({
           key: typeof f.key === 'string' ? f.key : String(f.key || ''),
@@ -178,18 +153,18 @@ export default function FormBuilderPage() {
           options: Array.isArray(f.options) ? f.options.map((o: any) => String(o)) : undefined,
           order: typeof f.order === 'number' ? f.order : 0,
         }))
-        
+
         // Ensure settings has boolean values
         const safeSettings = {
           allowEdit: Boolean(settings?.allowEdit),
           enforceDeadline: Boolean(settings?.enforceDeadline),
         }
-        
+
         // Ensure name and description are strings
         const safeName = typeof data.form.name === 'string' ? data.form.name : String(data.form.name || '')
-        const safeDescription = typeof data.form.description === 'string' ? data.form.description : 
+        const safeDescription = typeof data.form.description === 'string' ? data.form.description :
                                 data.form.description ? String(data.form.description) : null
-        
+
         // Explicitly extract only needed fields - don't spread data.form to avoid unknown properties
         const formState = {
           id: String(data.form.id || ''),
@@ -237,22 +212,6 @@ export default function FormBuilderPage() {
     fetchForm()
   }, [fetchForm])
 
-  // Fetch available databases for linking
-  const fetchDatabases = useCallback(async () => {
-    try {
-      setLoadingDatabases(true)
-      const response = await fetch("/api/databases", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setDatabases(data.databases || [])
-      }
-    } catch (error) {
-      console.error("Error fetching databases:", error)
-    } finally {
-      setLoadingDatabases(false)
-    }
-  }, [])
-
   // Refs for debounced auto-save
   const savingRef = useRef(false)
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -274,7 +233,8 @@ export default function FormBuilderPage() {
       savingRef.current = true
       setSaving(true)
       setSaveError(null)
-      
+      setSaveWarning(null)
+
       // Ensure dropdown fields have options array (validation requirement)
       const fieldsToSave = currentForm.fields.map(field => {
         if (field.type === "dropdown" && (!field.options || field.options.length === 0)) {
@@ -293,7 +253,6 @@ export default function FormBuilderPage() {
           description: currentForm.description,
           fields: fieldsToSave,
           settings: currentForm.settings,
-          databaseId: currentForm.databaseId,
         }),
       })
 
@@ -301,6 +260,35 @@ export default function FormBuilderPage() {
         const errorData = await response.json().catch(() => ({}))
         console.error('Save failed:', response.status, errorData)
         throw new Error(errorData.error || errorData.message || "Failed to save")
+      }
+
+      const responseData = await response.json()
+
+      // Check for sync warning
+      if (responseData.warning) {
+        setSaveWarning(responseData.warning)
+      }
+
+      // Update local form state with refreshed data from server (includes updated databaseId)
+      if (responseData.form) {
+        const updatedForm = responseData.form
+        setForm(prev => prev ? {
+          ...prev,
+          databaseId: updatedForm.databaseId || prev.databaseId,
+          database: updatedForm.database ? {
+            id: String(updatedForm.database.id || ''),
+            name: String(updatedForm.database.name || ''),
+            schema: {
+              columns: Array.isArray(updatedForm.database.schema?.columns)
+                ? updatedForm.database.schema.columns.map((col: any) => ({
+                    key: String(col.key || ''),
+                    label: String(col.label || ''),
+                    dataType: String(col.dataType || 'text'),
+                  }))
+                : [],
+            },
+          } : prev.database,
+        } : prev)
       }
 
       setHasChanges(false)
@@ -318,12 +306,12 @@ export default function FormBuilderPage() {
   const scheduleAutoSave = useCallback(() => {
     // Update last change time
     lastChangeRef.current = Date.now()
-    
+
     // Clear any existing timer
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current)
     }
-    
+
     // Set new timer - save 500ms after last change
     saveTimerRef.current = setTimeout(() => {
       saveForm()
@@ -345,13 +333,6 @@ export default function FormBuilderPage() {
     scheduleAutoSave()
   }
 
-  // Get available database columns that haven't been added as fields yet
-  const getAvailableColumns = () => {
-    if (!form?.database?.schema?.columns) return []
-    const usedKeys = new Set(form.fields.map(f => f.key))
-    return form.database.schema.columns.filter(col => !usedKeys.has(col.key))
-  }
-
   const addCustomField = () => {
     const newField: FormField = {
       key: `field_${Date.now()}`,
@@ -363,46 +344,6 @@ export default function FormBuilderPage() {
     setEditingField(newField)
     setIsNewField(true)
     setShowFieldDialog(true)
-  }
-
-  const addSelectedColumns = () => {
-    if (!form) return
-    const columnsToAdd = getAvailableColumns().filter(col => selectedColumns[col.key])
-    if (columnsToAdd.length === 0) return
-
-    const newFields: FormField[] = columnsToAdd.map((col, index) => {
-      const fieldType = DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text"
-      const field: FormField = {
-        key: col.key,
-        label: col.label,
-        type: fieldType,
-        required: columnRequired[col.key] || false,
-        order: form.fields.length + index,
-      }
-      // Copy dropdown options from database column if it's a dropdown type
-      if (fieldType === "dropdown" && col.dropdownOptions && col.dropdownOptions.length > 0) {
-        field.options = col.dropdownOptions
-      }
-      return field
-    })
-
-    updateForm({ fields: [...form.fields, ...newFields] })
-    setShowColumnPicker(false)
-    setSelectedColumns({})
-    setColumnRequired({})
-  }
-
-  const addField = () => {
-    // If database is linked and has available columns, show column picker
-    // Otherwise, add a custom field directly
-    const availableCols = getAvailableColumns()
-    if (availableCols.length > 0) {
-      setSelectedColumns({})
-      setColumnRequired({})
-      setShowColumnPicker(true)
-    } else {
-      addCustomField()
-    }
   }
 
   const editField = (field: FormField) => {
@@ -489,7 +430,7 @@ export default function FormBuilderPage() {
                 />
                 <p className="text-sm text-gray-500">
                   {Array.isArray(form.fields) ? form.fields.length : 0} fields
-                  {form.database && ` • Linked to ${safeString(form.database.name)}`}
+                  {form.database && ` • Responses stored in ${safeString(form.database.name)}`}
                 </p>
               </div>
             </div>
@@ -509,10 +450,15 @@ export default function FormBuilderPage() {
                   Save failed - click to retry
                 </button>
               )}
-              {!saving && !saveError && hasChanges && (
+              {!saving && !saveError && saveWarning && (
+                <span className="text-sm text-amber-500" title={saveWarning}>
+                  Saved with warning
+                </span>
+              )}
+              {!saving && !saveError && !saveWarning && hasChanges && (
                 <span className="text-sm text-orange-500">Saving...</span>
               )}
-              {!saving && !saveError && !hasChanges && (
+              {!saving && !saveError && !saveWarning && !hasChanges && (
                 <span className="text-sm text-green-600">Saved</span>
               )}
               <Button
@@ -536,7 +482,7 @@ export default function FormBuilderPage() {
             <div className="flex items-center justify-between">
               <h2 className="font-medium text-gray-900">Form Fields</h2>
               <Button
-                onClick={addField}
+                onClick={addCustomField}
                 size="sm"
                 className="bg-orange-500 hover:bg-orange-600 text-white"
               >
@@ -549,7 +495,7 @@ export default function FormBuilderPage() {
               <div className="bg-white rounded-lg border border-dashed border-gray-300 p-8 text-center">
                 <Type className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">
-                  No fields yet. Click "Add Field" to get started.
+                  No fields yet. Click &quot;Add Field&quot; to get started.
                 </p>
               </div>
             ) : (
@@ -732,7 +678,7 @@ export default function FormBuilderPage() {
         </div>
       </div>
 
-      {/* Field Editor Dialog */}
+      {/* Field Editor Dialog — all fields are fully editable */}
       <Dialog open={showFieldDialog} onOpenChange={setShowFieldDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -740,151 +686,106 @@ export default function FormBuilderPage() {
               {isNewField ? "Add Field" : "Edit Field"}
             </DialogTitle>
           </DialogHeader>
-          {editingField && (() => {
-            // Check if this field is from a database column
-            const isDbField = form?.database?.schema?.columns?.some(
-              col => col.key === editingField.key
-            )
-            
-            return (
-              <div className="space-y-4 py-4">
-                {/* Database fields: show read-only info + required toggle */}
-                {isDbField && !isNewField ? (
-                  <>
-                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Label</span>
-                        <span className="text-sm font-medium">{safeString(editingField.label)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Type</span>
-                        <span className="text-sm font-medium">{FIELD_TYPE_CONFIG[editingField.type]?.label || editingField.type}</span>
-                      </div>
-                      {editingField.type === "dropdown" && editingField.options && (
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-500">Options</span>
-                          <span className="text-sm font-medium">{editingField.options.length} options</span>
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-400 mt-2">
-                        This field is linked to a database column. Edit the database to change label, type, or options.
-                      </p>
-                    </div>
-                    
-                    <div className="flex items-center justify-between pt-2">
-                      <Label>Required</Label>
-                      <Switch
-                        checked={editingField.required}
-                        onCheckedChange={(checked) =>
-                          setEditingField({ ...editingField, required: checked })
-                        }
-                      />
-                    </div>
-                  </>
-                ) : (
-                  /* Custom fields: show full editor */
-                  <>
-                    <div>
-                      <Label>Label *</Label>
-                      <Input
-                        value={safeString(editingField.label)}
-                        onChange={(e) =>
-                          setEditingField({ ...editingField, label: e.target.value })
-                        }
-                        placeholder="Field label"
-                        className="mt-1.5"
-                      />
-                    </div>
-
-                    <div>
-                      <Label>Field Key</Label>
-                      <Input
-                        value={safeString(editingField.key)}
-                        onChange={(e) =>
-                          setEditingField({
-                            ...editingField,
-                            key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
-                          })
-                        }
-                        placeholder="field_key"
-                        className="mt-1.5"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Used for database mapping. Lowercase, underscores only.
-                      </p>
-                    </div>
-
-                    <div>
-                      <Label>Type</Label>
-                      <Select
-                        value={safeString(editingField.type)}
-                        onValueChange={(value) =>
-                          setEditingField({
-                            ...editingField,
-                            type: value as FormFieldType,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="mt-1.5">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(FIELD_TYPE_CONFIG).map(([type, config]) => (
-                            <SelectItem key={type} value={type}>
-                              {config.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {editingField.type === "dropdown" && (
-                      <div>
-                        <Label>Options (one per line)</Label>
-                        <Textarea
-                          value={editingField.options?.join("\n") || ""}
-                          onChange={(e) =>
-                            setEditingField({
-                              ...editingField,
-                              options: e.target.value.split("\n").filter(Boolean),
-                            })
-                          }
-                          placeholder="Option 1&#10;Option 2&#10;Option 3"
-                          className="mt-1.5"
-                          rows={4}
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <Label>Help Text (optional)</Label>
-                      <Input
-                        value={safeString(editingField.helpText) || ""}
-                        onChange={(e) =>
-                          setEditingField({
-                            ...editingField,
-                            helpText: e.target.value,
-                          })
-                        }
-                        placeholder="Additional instructions for this field"
-                        className="mt-1.5"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <Label>Required</Label>
-                      <Switch
-                        checked={editingField.required}
-                        onCheckedChange={(checked) =>
-                          setEditingField({ ...editingField, required: checked })
-                        }
-                      />
-                    </div>
-                  </>
-                )}
+          {editingField && (
+            <div className="space-y-4 py-4">
+              <div>
+                <Label>Label *</Label>
+                <Input
+                  value={safeString(editingField.label)}
+                  onChange={(e) =>
+                    setEditingField({ ...editingField, label: e.target.value })
+                  }
+                  placeholder="Field label"
+                  className="mt-1.5"
+                />
               </div>
-            )
-          })()}
+
+              <div>
+                <Label>Field Key</Label>
+                <Input
+                  value={safeString(editingField.key)}
+                  onChange={(e) =>
+                    setEditingField({
+                      ...editingField,
+                      key: e.target.value.replace(/[^a-z0-9_]/gi, "_").toLowerCase(),
+                    })
+                  }
+                  placeholder="field_key"
+                  className="mt-1.5"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for database mapping. Lowercase, underscores only.
+                </p>
+              </div>
+
+              <div>
+                <Label>Type</Label>
+                <Select
+                  value={safeString(editingField.type)}
+                  onValueChange={(value) =>
+                    setEditingField({
+                      ...editingField,
+                      type: value as FormFieldType,
+                    })
+                  }
+                >
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(FIELD_TYPE_CONFIG).map(([type, config]) => (
+                      <SelectItem key={type} value={type}>
+                        {config.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editingField.type === "dropdown" && (
+                <div>
+                  <Label>Options (one per line)</Label>
+                  <Textarea
+                    value={editingField.options?.join("\n") || ""}
+                    onChange={(e) =>
+                      setEditingField({
+                        ...editingField,
+                        options: e.target.value.split("\n").filter(Boolean),
+                      })
+                    }
+                    placeholder="Option 1&#10;Option 2&#10;Option 3"
+                    className="mt-1.5"
+                    rows={4}
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label>Help Text (optional)</Label>
+                <Input
+                  value={safeString(editingField.helpText) || ""}
+                  onChange={(e) =>
+                    setEditingField({
+                      ...editingField,
+                      helpText: e.target.value,
+                    })
+                  }
+                  placeholder="Additional instructions for this field"
+                  className="mt-1.5"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label>Required</Label>
+                <Switch
+                  checked={editingField.required}
+                  onCheckedChange={(checked) =>
+                    setEditingField({ ...editingField, required: checked })
+                  }
+                />
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowFieldDialog(false)}>
               Cancel
@@ -900,10 +801,7 @@ export default function FormBuilderPage() {
       </Dialog>
 
       {/* Settings Dialog */}
-      <Dialog open={showSettingsDialog} onOpenChange={(open) => {
-        setShowSettingsDialog(open)
-        if (open) fetchDatabases()
-      }}>
+      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Form Settings</DialogTitle>
@@ -942,66 +840,30 @@ export default function FormBuilderPage() {
               />
             </div>
 
-            {/* Database Linking */}
+            {/* Response Database Info (read-only) */}
             <div className="pt-4 border-t">
               <div className="flex items-center gap-2 mb-3">
                 <Database className="w-4 h-4 text-gray-500" />
-                <Label>Link to Database</Label>
+                <Label>Response Database</Label>
               </div>
-              <p className="text-xs text-gray-500 mb-2">
-                Form responses will be stored as rows in the linked database.
-              </p>
-              {loadingDatabases ? (
-                <div className="flex items-center gap-2 py-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                  <span className="text-sm text-gray-500">Loading databases...</span>
+              {form.databaseId && form.database ? (
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700 font-medium">{safeString(form.database.name)}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Responses are automatically stored in this database. The schema is kept in sync with your form fields.
+                  </p>
+                  <Link
+                    href={`/dashboard/databases/${form.databaseId}`}
+                    className="text-xs text-orange-600 hover:underline mt-2 inline-flex items-center gap-1"
+                  >
+                    View database <ExternalLink className="w-3 h-3" />
+                  </Link>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={form.databaseId || "none"}
-                    onValueChange={(value) => {
-                      const newDatabaseId = value === "none" ? null : value
-                      const selectedDb = databases.find(db => db.id === value)
-                      updateForm({
-                        databaseId: newDatabaseId,
-                        database: selectedDb ? {
-                          id: selectedDb.id,
-                          name: selectedDb.name,
-                          schema: selectedDb.schema,
-                        } : null,
-                      })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a database" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No database</SelectItem>
-                      {databases.map((db) => (
-                        <SelectItem key={db.id} value={db.id}>
-                          {db.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {form.databaseId && form.database && (
-                <div className="mt-2 bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs font-medium text-gray-600 mb-1.5">
-                    Database columns available as form fields:
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500">
+                    A database will be automatically created when you add fields to this form. Responses will be stored there.
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {form.database.schema?.columns?.map((col) => (
-                      <span
-                        key={col.key}
-                        className="px-2 py-0.5 bg-white rounded border text-xs text-gray-600"
-                      >
-                        {col.label}
-                      </span>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
@@ -1012,101 +874,6 @@ export default function FormBuilderPage() {
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Column Picker Dialog - shown when database is linked */}
-      <Dialog open={showColumnPicker} onOpenChange={setShowColumnPicker}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add Fields from Database</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-gray-500 mb-4">
-              Select which database columns to add as form fields.
-            </p>
-            <div className="border rounded-lg divide-y max-h-80 overflow-y-auto">
-              {/* Header */}
-              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500">
-                <div className="w-6" />
-                <div className="flex-1">Field</div>
-                <div className="w-20 text-center">Required</div>
-              </div>
-              {/* Columns */}
-              {getAvailableColumns().map((col) => {
-                const fieldType = DB_TYPE_TO_FIELD_TYPE[col.dataType] || "text"
-                const isSelected = selectedColumns[col.key] || false
-                const isRequired = columnRequired[col.key] || false
-                return (
-                  <div
-                    key={col.key}
-                    className={`flex items-center gap-3 px-4 py-3 transition-colors ${
-                      isSelected ? "bg-orange-50" : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) =>
-                        setSelectedColumns(prev => ({
-                          ...prev,
-                          [col.key]: e.target.checked
-                        }))
-                      }
-                      className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{safeString(col.label)}</p>
-                      <p className="text-xs text-gray-500">
-                        {FIELD_TYPE_CONFIG[fieldType]?.label || "Text"}
-                        {fieldType === "dropdown" && col.dropdownOptions && col.dropdownOptions.length > 0 && (
-                          <span className="ml-1 text-gray-400">
-                            ({col.dropdownOptions.length} options)
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="w-20 flex justify-center">
-                      <Switch
-                        checked={isRequired}
-                        onCheckedChange={(checked) =>
-                          setColumnRequired(prev => ({
-                            ...prev,
-                            [col.key]: checked
-                          }))
-                        }
-                        disabled={!isSelected}
-                        className={!isSelected ? "opacity-40" : ""}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {getAvailableColumns().length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">
-                All database columns have been added as fields.
-              </p>
-            )}
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowColumnPicker(false)
-                addCustomField()
-              }}
-            >
-              Create Custom Field
-            </Button>
-            <Button
-              onClick={addSelectedColumns}
-              disabled={Object.values(selectedColumns).filter(Boolean).length === 0}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
-            >
-              Add {Object.values(selectedColumns).filter(Boolean).length || ""} Field{Object.values(selectedColumns).filter(Boolean).length !== 1 ? "s" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>

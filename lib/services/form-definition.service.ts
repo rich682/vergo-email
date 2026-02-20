@@ -6,18 +6,32 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import type { 
-  FormField, 
-  FormSettings, 
-  CreateFormDefinitionInput, 
+import type {
+  FormField,
+  FormFieldType,
+  FormSettings,
+  CreateFormDefinitionInput,
   UpdateFormDefinitionInput,
-  DEFAULT_FORM_SETTINGS 
+  DEFAULT_FORM_SETTINGS
 } from "@/lib/types/form"
+import { DatabaseService, type DatabaseSchemaColumn, type DatabaseSchema } from "@/lib/services/database.service"
 
 // Default settings for new forms
 const defaultSettings: FormSettings = {
   allowEdit: false,
   enforceDeadline: false,
+}
+
+// Map form field types to database column types
+const FIELD_TYPE_TO_DB_TYPE: Record<FormFieldType, DatabaseSchemaColumn["dataType"]> = {
+  text: "text",
+  longText: "text",
+  number: "number",
+  currency: "currency",
+  date: "date",
+  dropdown: "dropdown",
+  checkbox: "boolean",
+  file: "file",
 }
 
 export class FormDefinitionService {
@@ -424,5 +438,153 @@ export class FormDefinitionService {
       select: { id: true },
     })
     return !!viewer
+  }
+
+  /**
+   * Auto-create or sync a database from the form's field definitions.
+   *
+   * - If no database exists: creates one with columns derived from form fields.
+   * - If database exists and was auto-created (sourceType === "form"): syncs columns
+   *   (adds new, updates changed, keeps removed columns for data preservation).
+   * - If database exists but was manually linked: only regenerates columnMapping.
+   */
+  static async syncDatabaseFromFields(
+    formId: string,
+    organizationId: string,
+    createdById: string
+  ): Promise<{ databaseId: string; columnMapping: Record<string, string> }> {
+    const form = await prisma.formDefinition.findFirst({
+      where: { id: formId, organizationId },
+      include: {
+        database: {
+          select: {
+            id: true,
+            name: true,
+            sourceType: true,
+            schema: true,
+          },
+        },
+      },
+    })
+
+    if (!form) {
+      throw new Error("Form not found")
+    }
+
+    const fields = (form.fields || []) as unknown as FormField[]
+    if (fields.length === 0) {
+      throw new Error("Cannot sync database with no fields")
+    }
+
+    // Convert form fields to database columns
+    const derivedColumns: DatabaseSchemaColumn[] = fields.map((field, idx) => ({
+      key: field.key,
+      label: field.label,
+      dataType: FIELD_TYPE_TO_DB_TYPE[field.type as FormFieldType] || "text",
+      required: field.required,
+      order: field.order ?? idx,
+      ...(field.type === "dropdown" && field.options ? { dropdownOptions: field.options } : {}),
+    }))
+
+    // Build 1:1 column mapping (form field key === database column key)
+    const columnMapping: Record<string, string> = {}
+    for (const field of fields) {
+      columnMapping[field.key] = field.key
+    }
+
+    const expectedDbName = `Form: ${form.name} Responses`
+
+    if (!form.databaseId || !form.database) {
+      // --- CREATE new database ---
+      const database = await DatabaseService.createDatabase({
+        name: expectedDbName,
+        description: `Auto-created from form "${form.name}". Managed by the form editor.`,
+        schema: { columns: derivedColumns, version: 1 },
+        organizationId,
+        createdById,
+      })
+
+      // Mark as form-managed
+      await prisma.database.update({
+        where: { id: database.id },
+        data: { sourceType: "form" },
+      })
+
+      // Link database to form and set column mapping
+      await prisma.formDefinition.update({
+        where: { id: formId },
+        data: {
+          databaseId: database.id,
+          columnMapping: columnMapping as any,
+        },
+      })
+
+      return { databaseId: database.id, columnMapping }
+    }
+
+    const existingDb = form.database
+
+    if (existingDb.sourceType !== "form") {
+      // --- MANUALLY LINKED database: only update columnMapping ---
+      const dbSchema = existingDb.schema as unknown as DatabaseSchema
+      const mapping = this.generateColumnMapping(fields, dbSchema)
+      await prisma.formDefinition.update({
+        where: { id: formId },
+        data: { columnMapping: mapping as any },
+      })
+      return { databaseId: existingDb.id, columnMapping: mapping }
+    }
+
+    // --- SYNC existing form-managed database ---
+    const currentSchema = existingDb.schema as unknown as DatabaseSchema
+    const currentColumns = currentSchema?.columns || []
+    const currentColumnsByKey = new Map(currentColumns.map(c => [c.key, c]))
+    const fieldKeys = new Set(fields.map(f => f.key))
+
+    // Build updated column list: update existing, add new, keep removed
+    const updatedColumns: DatabaseSchemaColumn[] = []
+
+    // First, process current fields (add/update)
+    for (const derived of derivedColumns) {
+      const existing = currentColumnsByKey.get(derived.key)
+      if (existing) {
+        // Update: take new label, type, required, options from form field
+        updatedColumns.push(derived)
+      } else {
+        // New column
+        updatedColumns.push(derived)
+      }
+      currentColumnsByKey.delete(derived.key)
+    }
+
+    // Then, keep orphaned columns (removed from form but may have data)
+    for (const [, orphanedCol] of currentColumnsByKey) {
+      updatedColumns.push({
+        ...orphanedCol,
+        order: updatedColumns.length, // Push to end
+      })
+    }
+
+    // Update database schema and name
+    const newSchema: DatabaseSchema = {
+      columns: updatedColumns,
+      version: (currentSchema?.version || 0) + 1,
+    }
+
+    await prisma.database.update({
+      where: { id: existingDb.id },
+      data: {
+        schema: newSchema as any,
+        ...(existingDb.name !== expectedDbName && { name: expectedDbName }),
+      },
+    })
+
+    // Update form column mapping
+    await prisma.formDefinition.update({
+      where: { id: formId },
+      data: { columnMapping: columnMapping as any },
+    })
+
+    return { databaseId: existingDb.id, columnMapping }
   }
 }

@@ -4,23 +4,11 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
-import { ArrowLeft, Plus, ClipboardList, Database, Loader2 } from "lucide-react"
+import { ArrowLeft, Plus, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-
-interface DatabaseOption {
-  id: string
-  name: string
-}
 
 export default function NewFormPage() {
   const router = useRouter()
@@ -38,39 +26,10 @@ export default function NewFormPage() {
   // Form data
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [selectedDatabaseId, setSelectedDatabaseId] = useState<string>("")
-
-  // Database options
-  const [databases, setDatabases] = useState<DatabaseOption[]>([])
-  const [loadingDatabases, setLoadingDatabases] = useState(true)
-
-  // Fetch databases on mount
-  useEffect(() => {
-    const fetchDatabases = async () => {
-      try {
-        setLoadingDatabases(true)
-        const response = await fetch("/api/databases", { credentials: "include" })
-        if (response.ok) {
-          const data = await response.json()
-          setDatabases(data.databases || [])
-        }
-      } catch (error) {
-        console.error("Error fetching databases:", error)
-      } finally {
-        setLoadingDatabases(false)
-      }
-    }
-    fetchDatabases()
-  }, [])
 
   const handleCreate = async () => {
     if (!name.trim()) {
       alert("Please enter a form name")
-      return
-    }
-
-    if (!selectedDatabaseId) {
-      alert("Please select a database to store form responses")
       return
     }
 
@@ -83,7 +42,6 @@ export default function NewFormPage() {
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || undefined,
-          databaseId: selectedDatabaseId,
           fields: [],
           settings: {
             allowEdit: false,
@@ -130,7 +88,7 @@ export default function NewFormPage() {
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Create New Form</h1>
               <p className="text-sm text-gray-500">
-                Set up a form and link it to a database for response storage
+                Create a form to collect structured data
               </p>
             </div>
           </div>
@@ -148,7 +106,7 @@ export default function NewFormPage() {
               <div>
                 <h2 className="font-medium text-gray-900">Form Details</h2>
                 <p className="text-sm text-gray-500">
-                  Give your form a name, description, and select a database
+                  Give your form a name and description. A database will be automatically created to store responses.
                 </p>
               </div>
             </div>
@@ -176,51 +134,6 @@ export default function NewFormPage() {
                   rows={3}
                 />
               </div>
-
-              <div>
-                <Label>Response Database *</Label>
-                {loadingDatabases ? (
-                  <div className="flex items-center gap-2 mt-1.5 py-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    <span className="text-sm text-gray-500">Loading databases...</span>
-                  </div>
-                ) : databases.length === 0 ? (
-                  <div className="mt-1.5 p-4 bg-gray-50 rounded-lg text-center">
-                    <Database className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">
-                      No databases yet.{" "}
-                      <Link
-                        href="/dashboard/databases/new"
-                        className="text-orange-600 hover:underline"
-                      >
-                        Create a database
-                      </Link>{" "}
-                      first to store form responses.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <Select
-                      value={selectedDatabaseId}
-                      onValueChange={setSelectedDatabaseId}
-                    >
-                      <SelectTrigger className="mt-1.5">
-                        <SelectValue placeholder="Select a database for responses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {databases.map((db) => (
-                          <SelectItem key={db.id} value={db.id}>
-                            {db.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      Form responses will be saved as rows in this database
-                    </p>
-                  </>
-                )}
-              </div>
             </div>
           </div>
 
@@ -228,7 +141,7 @@ export default function NewFormPage() {
           <div className="flex items-center justify-end mt-8 pt-6 border-t">
             <Button
               onClick={handleCreate}
-              disabled={loading || !name.trim() || !selectedDatabaseId || loadingDatabases}
+              disabled={loading || !name.trim()}
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {loading ? (

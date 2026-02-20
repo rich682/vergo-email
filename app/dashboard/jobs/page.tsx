@@ -54,6 +54,15 @@ import { JobRow } from "@/components/jobs/configurable-table"
 import { KanbanView } from "@/components/jobs/kanban-view"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { usePermissions } from "@/components/permissions-context"
+import { BoardRequestsTab } from "@/components/boards/board-requests-tab"
+import { BoardInboxTab } from "@/components/boards/board-inbox-tab"
+import { BoardDocumentsTab } from "@/components/boards/board-documents-tab"
+import {
+  ClipboardList,
+  Send,
+  Inbox,
+  FileText as FileTextIcon
+} from "lucide-react"
 
 // ============================================
 // Types
@@ -135,6 +144,8 @@ export default function JobsPage() {
   
   // Board context from URL
   const boardId = searchParams.get("boardId")
+  const tabParam = searchParams.get("tab") as "tasks" | "requests" | "inbox" | "documents" | null
+  const [activeTab, setActiveTab] = useState<"tasks" | "requests" | "inbox" | "documents">(tabParam || "tasks")
   
   // Redirect to boards page if no board is selected
   // (Boards is the home page - no "All Tasks" view)
@@ -177,6 +188,18 @@ export default function JobsPage() {
   
   // Board settings modal
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false)
+
+  // Tab switching - updates URL param
+  const handleTabChange = useCallback((tab: "tasks" | "requests" | "inbox" | "documents") => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams.toString())
+    if (tab === "tasks") {
+      params.delete("tab")
+    } else {
+      params.set("tab", tab)
+    }
+    router.replace(`/dashboard/jobs?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
 
   // Stakeholder options (populated by fetchStakeholderOptions)
   const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
@@ -1074,6 +1097,50 @@ export default function JobsPage() {
           )}
         </div>
 
+        {/* Board Tabs */}
+        {currentBoard && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="flex gap-1" aria-label="Board tabs">
+              {([
+                { id: "tasks" as const, label: "Tasks", icon: ClipboardList },
+                { id: "requests" as const, label: "Requests", icon: Send },
+                { id: "inbox" as const, label: "Inbox", icon: Inbox },
+                { id: "documents" as const, label: "Documents", icon: FileTextIcon },
+              ]).map((tab) => {
+                const Icon = tab.icon
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      isActive
+                        ? 'border-orange-500 text-orange-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+        )}
+
+        {/* Tab Content */}
+        {activeTab === "requests" && boardId && (
+          <BoardRequestsTab boardId={boardId} />
+        )}
+        {activeTab === "inbox" && boardId && (
+          <BoardInboxTab boardId={boardId} />
+        )}
+        {activeTab === "documents" && boardId && (
+          <BoardDocumentsTab boardId={boardId} />
+        )}
+
+        {/* Tasks Tab Content */}
+        {activeTab === "tasks" && (<>
         {/* Search & Filters */}
         <div className="mb-4 flex items-center gap-3">
           <div className="relative max-w-sm">
@@ -1142,8 +1209,9 @@ export default function JobsPage() {
             onStatusChange={handleStatusChange}
           />
         )}
+      </>)}
       </div>
-      
+
       {/* AI Bulk Upload Modal */}
       <AIBulkUploadModal
         open={isBulkUploadOpen}

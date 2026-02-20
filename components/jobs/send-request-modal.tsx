@@ -258,9 +258,17 @@ export function SendRequestModal({
     email: string
     type: "user" | "entity"
     subLabel?: string
+    contactType?: string
+    groupIds?: string[]
   }>>([])
   const [loadingAllRecipients, setLoadingAllRecipients] = useState(false)
   const [recipientSelectionSearch, setRecipientSelectionSearch] = useState("")
+  // Group metadata for bulk selection chips
+  const [availableGroups, setAvailableGroups] = useState<Array<{
+    id: string
+    name: string
+    color: string | null
+  }>>([])
   
   // Selected recipients for draft generation (used in selecting_recipients step)
   const [selectedRecipientsForDraft, setSelectedRecipientsForDraft] = useState<Map<string, {
@@ -346,9 +354,11 @@ export function SendRequestModal({
 
       // Fetch all entities/contacts
       const entitiesResponse = await fetch("/api/entities", { credentials: "include" })
+      let entitiesData: any[] = []
       if (entitiesResponse.ok) {
         const entities = await entitiesResponse.json()
-        for (const entity of entities) {
+        entitiesData = Array.isArray(entities) ? entities : entities.entities || []
+        for (const entity of entitiesData) {
           if (entity.email) {
             const fullName = entity.firstName + (entity.lastName ? ` ${entity.lastName}` : "")
             allRecipients.push({
@@ -357,10 +367,25 @@ export function SendRequestModal({
               email: entity.email,
               type: "entity",
               subLabel: entity.contactType?.toLowerCase(),
+              contactType: entity.contactType || undefined,
+              groupIds: entity.groups?.map((g: any) => g.id) || [],
             })
           }
         }
       }
+
+      // Extract unique group metadata for bulk selection chips
+      const groupMap = new Map<string, { id: string; name: string; color: string | null }>()
+      for (const entity of entitiesData) {
+        if (entity.email && entity.groups) {
+          for (const g of entity.groups) {
+            if (g.id && !groupMap.has(g.id)) {
+              groupMap.set(g.id, { id: g.id, name: g.name, color: g.color || null })
+            }
+          }
+        }
+      }
+      setAvailableGroups(Array.from(groupMap.values()))
 
       setAllAvailableRecipients(allRecipients)
     } catch (err) {
@@ -387,6 +412,90 @@ export function SendRequestModal({
       return newMap
     })
   }, [])
+
+  // Bulk selection constants and computed values
+  const BULK_CONTACT_TYPES = useMemo(() => [
+    { id: "EMPLOYEE", label: "Employees" },
+    { id: "VENDOR", label: "Vendors" },
+    { id: "CLIENT", label: "Clients" },
+    { id: "CONTRACTOR", label: "Contractors" },
+    { id: "MANAGEMENT", label: "Management" },
+  ], [])
+
+  // Map contact type → list of recipient IDs
+  const contactTypeRecipientMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const r of allAvailableRecipients) {
+      if (r.type === "entity" && r.contactType) {
+        const existing = map.get(r.contactType) || []
+        existing.push(r.id)
+        map.set(r.contactType, existing)
+      }
+    }
+    return map
+  }, [allAvailableRecipients])
+
+  // Map groupId → list of recipient IDs
+  const groupRecipientMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const r of allAvailableRecipients) {
+      if (r.type === "entity" && r.groupIds) {
+        for (const gid of r.groupIds) {
+          const existing = map.get(gid) || []
+          existing.push(r.id)
+          map.set(gid, existing)
+        }
+      }
+    }
+    return map
+  }, [allAvailableRecipients])
+
+  // All team member (user) IDs
+  const teamMemberIds = useMemo(() => {
+    return allAvailableRecipients.filter(r => r.type === "user").map(r => r.id)
+  }, [allAvailableRecipients])
+
+  // Check if all IDs in a bulk category are selected
+  const isBulkActive = useCallback((recipientIds: string[]) => {
+    if (recipientIds.length === 0) return false
+    return recipientIds.every(id => selectedRecipientsForDraft.has(id))
+  }, [selectedRecipientsForDraft])
+
+  // Check if some but not all IDs in a bulk category are selected
+  const isBulkPartial = useCallback((recipientIds: string[]) => {
+    if (recipientIds.length === 0) return false
+    const selectedCount = recipientIds.filter(id => selectedRecipientsForDraft.has(id)).length
+    return selectedCount > 0 && selectedCount < recipientIds.length
+  }, [selectedRecipientsForDraft])
+
+  // Toggle all recipients in a bulk category
+  const toggleBulkSelection = useCallback((recipientIds: string[]) => {
+    setSelectedRecipientsForDraft(prev => {
+      const newMap = new Map(prev)
+      const allSelected = recipientIds.every(id => newMap.has(id))
+
+      if (allSelected) {
+        for (const id of recipientIds) {
+          newMap.delete(id)
+        }
+      } else {
+        for (const id of recipientIds) {
+          if (!newMap.has(id)) {
+            const recipient = allAvailableRecipients.find(r => r.id === id)
+            if (recipient) {
+              newMap.set(id, {
+                id: recipient.id,
+                name: recipient.name,
+                email: recipient.email,
+                type: recipient.type,
+              })
+            }
+          }
+        }
+      }
+      return newMap
+    })
+  }, [allAvailableRecipients])
 
   // Fetch labels for this job
   const fetchLabels = useCallback(async () => {
@@ -1197,6 +1306,90 @@ export function SendRequestModal({
                 <Users className="w-4 h-4 text-orange-500" />
                 <span>{selectedRecipientsForDraft.size} recipient{selectedRecipientsForDraft.size !== 1 ? 's' : ''} selected</span>
               </div>
+            )}
+
+            {/* Quick Select Chips */}
+            {!loadingAllRecipients && allAvailableRecipients.length > 0 && (
+              (() => {
+                const hasTeam = teamMemberIds.length > 0
+                const hasTypes = BULK_CONTACT_TYPES.some(ct => (contactTypeRecipientMap.get(ct.id) || []).length > 0)
+                const hasGroups = availableGroups.some(g => (groupRecipientMap.get(g.id) || []).length > 0)
+                if (!hasTeam && !hasTypes && !hasGroups) return null
+                return (
+                  <div className="space-y-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Quick Select</span>
+                    <div className="flex flex-wrap gap-2">
+                      {/* All Team Members */}
+                      {teamMemberIds.length > 0 && (
+                        <button
+                          onClick={() => toggleBulkSelection(teamMemberIds)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                            isBulkActive(teamMemberIds)
+                              ? 'bg-orange-500 text-white border-orange-500'
+                              : isBulkPartial(teamMemberIds)
+                              ? 'bg-orange-100 text-orange-700 border-orange-300'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Users className="w-3 h-3" />
+                          All Team Members ({teamMemberIds.length})
+                          {isBulkActive(teamMemberIds) && <Check className="w-3 h-3" />}
+                        </button>
+                      )}
+
+                      {/* Contact Type chips */}
+                      {BULK_CONTACT_TYPES.map(ct => {
+                        const ids = contactTypeRecipientMap.get(ct.id) || []
+                        if (ids.length === 0) return null
+                        return (
+                          <button
+                            key={ct.id}
+                            onClick={() => toggleBulkSelection(ids)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                              isBulkActive(ids)
+                                ? 'bg-orange-500 text-white border-orange-500'
+                                : isBulkPartial(ids)
+                                ? 'bg-orange-100 text-orange-700 border-orange-300'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {ct.label} ({ids.length})
+                            {isBulkActive(ids) && <Check className="w-3 h-3" />}
+                          </button>
+                        )
+                      })}
+
+                      {/* Group chips */}
+                      {availableGroups.map(group => {
+                        const ids = groupRecipientMap.get(group.id) || []
+                        if (ids.length === 0) return null
+                        return (
+                          <button
+                            key={group.id}
+                            onClick={() => toggleBulkSelection(ids)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                              isBulkActive(ids)
+                                ? 'bg-orange-500 text-white border-orange-500'
+                                : isBulkPartial(ids)
+                                ? 'bg-orange-100 text-orange-700 border-orange-300'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {group.color && (
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: group.color }}
+                              />
+                            )}
+                            {group.name} ({ids.length})
+                            {isBulkActive(ids) && <Check className="w-3 h-3" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()
             )}
 
             {/* Recipient List */}

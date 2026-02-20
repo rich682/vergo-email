@@ -108,6 +108,24 @@ export async function PATCH(
       body
     )
 
+    // Auto-sync database when fields are updated
+    if (body.fields && body.fields.length > 0) {
+      try {
+        await FormDefinitionService.syncDatabaseFromFields(
+          id,
+          session.user.organizationId,
+          session.user.id
+        )
+        // Re-fetch form to include updated databaseId/columnMapping
+        const refreshed = await FormDefinitionService.findById(id, session.user.organizationId)
+        return NextResponse.json({ form: refreshed })
+      } catch (syncError) {
+        console.error("Database sync failed:", syncError)
+        // Form was saved — return it with a warning, don't fail the save
+        return NextResponse.json({ form, warning: "Form saved but database sync failed" })
+      }
+    }
+
     return NextResponse.json({ form })
   } catch (error: any) {
     console.error("Error updating form:", error)
