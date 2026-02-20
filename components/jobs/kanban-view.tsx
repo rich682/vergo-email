@@ -113,13 +113,6 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
     bgColor: "bg-blue-100",
   },
   {
-    id: "blocked",
-    title: "Blocked",
-    statuses: ["BLOCKED", "STUCK"],
-    color: "text-red-600",
-    bgColor: "bg-red-100",
-  },
-  {
     id: "complete",
     title: "Complete",
     statuses: ["COMPLETE", "COMPLETED"],

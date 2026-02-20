@@ -14,7 +14,6 @@ interface StatusOption {
 const STATUS_OPTIONS: StatusOption[] = [
   { value: "NOT_STARTED", label: "Not Started", color: "text-gray-700", bgColor: "bg-gray-100" },
   { value: "IN_PROGRESS", label: "In Progress", color: "text-blue-700", bgColor: "bg-blue-100" },
-  { value: "BLOCKED", label: "Blocked", color: "text-red-700", bgColor: "bg-red-100" },
   { value: "COMPLETE", label: "Complete", color: "text-green-700", bgColor: "bg-green-100" },
   { value: "ARCHIVED", label: "Archived", color: "text-amber-700", bgColor: "bg-amber-100" },
 ]
@@ -97,9 +96,8 @@ export function StatusCell({ value, onChange, className = "" }: StatusCellProps)
           }}
         >
           {STATUS_OPTIONS.filter(opt => opt.value !== "ARCHIVED").map((option) => {
-            const dotColor = option.value === "NOT_STARTED" ? "bg-gray-400" 
+            const dotColor = option.value === "NOT_STARTED" ? "bg-gray-400"
               : option.value === "IN_PROGRESS" ? "bg-blue-500"
-              : option.value === "BLOCKED" ? "bg-red-500"
               : "bg-green-500"
             return (
               <button
