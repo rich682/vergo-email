@@ -468,6 +468,15 @@ export async function POST(
       }
     }
 
+    // Auto-transition task instance to IN_PROGRESS when emails are sent
+    if (successCount > 0) {
+      try {
+        await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+      } catch (err: any) {
+        console.error("[Database Send] Failed to auto-transition task to IN_PROGRESS:", err.message)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       summary: {

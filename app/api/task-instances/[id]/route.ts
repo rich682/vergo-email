@@ -18,6 +18,7 @@ import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
 import { ReportGenerationService } from "@/lib/services/report-generation.service"
 import { NotificationService } from "@/lib/services/notification.service"
+import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { periodKeyFromDate } from "@/lib/utils/period"
@@ -284,6 +285,55 @@ export async function PATCH(
       )
     }
 
+    // ─── Activity Event Logging (non-blocking) ─────────────────────────
+    const actorName = session.user.name || session.user.email || "Someone"
+
+    // Detect field changes by comparing existingInstance to request body
+    const fieldChanges: Array<{ field: string; oldValue: unknown; newValue: unknown; displayField?: string }> = []
+
+    if (name !== undefined && name?.trim() !== existingInstance.name) {
+      fieldChanges.push({ field: "name", oldValue: existingInstance.name, newValue: name?.trim(), displayField: "name" })
+    }
+    if (description !== undefined && (description?.trim() || null) !== existingInstance.description) {
+      fieldChanges.push({ field: "description", oldValue: existingInstance.description ? "[previous]" : null, newValue: description?.trim() ? "[updated]" : null, displayField: "description" })
+    }
+    if (ownerId && ownerId !== existingInstance.ownerId) {
+      fieldChanges.push({ field: "owner", oldValue: existingInstance.ownerId, newValue: ownerId, displayField: "owner" })
+    }
+    if (dueDate !== undefined) {
+      const oldDue = existingInstance.dueDate?.toISOString() || null
+      const newDue = dueDate ? new Date(dueDate).toISOString() : null
+      if (oldDue !== newDue) {
+        fieldChanges.push({ field: "due_date", oldValue: oldDue, newValue: newDue, displayField: "due date" })
+      }
+    }
+    if (notes !== undefined && notes !== existingInstance.notes) {
+      fieldChanges.push({ field: "notes", oldValue: existingInstance.notes ? "[previous]" : null, newValue: notes ? "[updated]" : null, displayField: "notes" })
+    }
+    if (clientId !== undefined && clientId !== (existingInstance as any).clientId) {
+      fieldChanges.push({ field: "client", oldValue: (existingInstance as any).clientId, newValue: clientId, displayField: "client" })
+    }
+    if (taskType !== undefined && taskType !== (existingInstance as any).taskType) {
+      fieldChanges.push({ field: "type", oldValue: (existingInstance as any).taskType, newValue: taskType, displayField: "task type" })
+    }
+    if (reportDefinitionId !== undefined && reportDefinitionId !== existingInstance.reportDefinitionId) {
+      fieldChanges.push({ field: "report_config", oldValue: existingInstance.reportDefinitionId, newValue: reportDefinitionId, displayField: "report configuration" })
+    }
+    if (reconciliationConfigId !== undefined && reconciliationConfigId !== (existingInstance as any).reconciliationConfigId) {
+      fieldChanges.push({ field: "recon_config", oldValue: (existingInstance as any).reconciliationConfigId, newValue: reconciliationConfigId, displayField: "reconciliation configuration" })
+    }
+
+    if (fieldChanges.length > 0) {
+      ActivityEventService.logFieldChanges({
+        organizationId,
+        taskInstanceId: id,
+        actorId: userId,
+        actorName,
+        changes: fieldChanges,
+        boardId: taskInstance.boardId || undefined,
+      })
+    }
+
     // Generate report when report configuration is set on a REPORTS task
     // This creates/updates a GeneratedReport entry for the current period
     if (reportDefinitionId !== undefined && reportDefinitionId && taskInstance.boardId) {
@@ -332,9 +382,9 @@ export async function PATCH(
       }
     }
 
-    // Send status change notifications (non-blocking)
+    // Send status change notifications + activity event (non-blocking)
     if (status && status !== existingInstance.status) {
-      const actorName = session.user.name || "Someone"
+      const statusActorName = session.user.name || "Someone"
       const taskName = existingInstance.name || "a task"
       const displayStatus = customStatus || status
       NotificationService.notifyTaskParticipants(
@@ -342,10 +392,22 @@ export async function PATCH(
         organizationId,
         userId,
         "status_change",
-        `${actorName} changed status of "${taskName}"`,
+        `${statusActorName} changed status of "${taskName}"`,
         `Status changed to ${displayStatus}`,
         { oldStatus: existingInstance.status, newStatus: displayStatus }
       ).catch((err) => console.error("Failed to send status change notifications:", err))
+
+      // Log activity event for status change
+      ActivityEventService.logStatusChange({
+        organizationId,
+        taskInstanceId: id,
+        actorId: userId,
+        actorName: statusActorName,
+        oldStatus: existingInstance.status,
+        newStatus: effectiveStatus || status,
+        customStatus,
+        boardId: taskInstance.boardId || undefined,
+      })
     }
 
     // Sync board status if task instance has a board and status was changed
@@ -472,6 +534,22 @@ export async function DELETE(
         { status: 404 }
       )
     }
+
+    // Log activity event for archive/delete (non-blocking)
+    ActivityEventService.log({
+      organizationId,
+      taskInstanceId: hard ? undefined : id, // Don't reference deleted tasks
+      boardId: boardId || undefined,
+      eventType: hard ? "task.deleted" : "task.archived",
+      actorId: userId,
+      actorType: "user",
+      summary: `${session.user.name || "Someone"} ${hard ? "permanently deleted" : "archived"} "${existingInstance.name || "a task"}"`,
+      metadata: {
+        taskName: existingInstance.name,
+        previousStatus: existingInstance.status,
+        hard,
+      },
+    }).catch((err) => console.error("[ActivityEvent] task archive/delete failed:", err))
 
     // Sync board status
     let boardStatusUpdate = null

@@ -610,6 +610,21 @@ export class EmailSendingService {
       }
     })
 
+    // Log activity event (non-blocking)
+    try {
+      const { ActivityEventService } = await import("@/lib/activity-events")
+      ActivityEventService.logEmailSent({
+        organizationId: data.organizationId,
+        taskInstanceId: data.jobId || undefined,
+        requestId: task.id,
+        actorId: data.userId || undefined,
+        subject: data.subject,
+        recipientName: data.toName,
+        recipientEmail: data.to,
+        requestName: data.campaignName,
+      })
+    } catch { /* ignore import failures */ }
+
     return {
       taskId: task.id,
       threadId,

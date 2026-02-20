@@ -9,6 +9,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { FormRequestService } from "@/lib/services/form-request.service"
 import { NotificationService } from "@/lib/services/notification.service"
+import { ActivityEventService } from "@/lib/activity-events"
 import { inngest } from "@/inngest/client"
 
 export async function POST(
@@ -52,6 +53,23 @@ export async function POST(
         { formRequestId: updated.id }
       ).catch((err) => console.error("Failed to send form response notifications:", err))
     }
+
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId: session.user.organizationId,
+      taskInstanceId: updated.taskInstanceId || undefined,
+      formRequestId: updated.id,
+      eventType: "form.submitted",
+      actorId: session.user.id,
+      actorType: "user",
+      summary: `${session.user.name || "Someone"} submitted "${(updated as any).formDefinition?.name || "a form"}"`,
+      metadata: {
+        formRequestId: updated.id,
+        formDefinitionId: (updated as any).formDefinitionId || null,
+      },
+      targetId: updated.id,
+      targetType: "form_request",
+    }).catch((err) => console.error("[ActivityEvent] form.submitted failed:", err))
 
     // Emit workflow trigger for form_submitted
     try {

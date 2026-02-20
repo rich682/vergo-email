@@ -68,6 +68,10 @@ interface RequestTask {
       color: string | null
     }>
   } | null
+  // Form request specific fields (populated when row comes from form-requests API)
+  _isFormRequest?: boolean
+  _formRequestId?: string
+  formStatus?: string // "PENDING" | "SUBMITTED" | "EXPIRED" - original form status
 }
 
 interface JobOption {
@@ -113,6 +117,31 @@ const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: st
   FLAGGED: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   MANUAL_REVIEW: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
   ON_HOLD: { label: "No reply", icon: Clock, bgColor: "bg-amber-100", textColor: "text-amber-700" },
+}
+
+// Form request statuses (read-only, not manually editable)
+const FORM_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
+  PENDING:   { label: "Pending",   icon: Clock,          bgColor: "bg-amber-100",  textColor: "text-amber-700" },
+  SUBMITTED: { label: "Submitted", icon: CheckCircle,    bgColor: "bg-green-100",  textColor: "text-green-700" },
+  EXPIRED:   { label: "Expired",   icon: AlertTriangle,  bgColor: "bg-red-100",    textColor: "text-red-700" },
+}
+
+// Form status badge component (read-only)
+function FormStatusBadge({ status }: { status: string }) {
+  const config = FORM_STATUS_DISPLAY[status] || {
+    label: status,
+    icon: Clock,
+    bgColor: "bg-gray-100",
+    textColor: "text-gray-700"
+  }
+  const Icon = config.icon
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
+      <Icon className="w-3 h-3" />
+      {config.label}
+    </span>
+  )
 }
 
 /**
@@ -286,11 +315,12 @@ export default function RequestsPage() {
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
   const [attachmentFilter, setAttachmentFilter] = useState<string>("all")
+  const [typeFilter, setTypeFilter] = useState<string>("all")
 
 
   // Check if any filters are active
-  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" || 
-    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all"
+  const hasActiveFilters = boardFilter !== "all" || jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" ||
+    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all" || typeFilter !== "all"
 
   // Fetch boards for filter
   useEffect(() => {
@@ -309,85 +339,193 @@ export default function RequestsPage() {
     fetchBoards()
   }, [])
 
-  // Fetch all requests
+  // Fetch all requests (standard/data from /api/requests + form from /api/form-requests/list)
   const fetchRequests = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      
-      const params = new URLSearchParams()
-      if (boardFilter !== "all") params.set("boardId", boardFilter)
-      if (jobFilter !== "all") params.set("jobId", jobFilter)
-      if (ownerFilter !== "all") params.set("ownerId", ownerFilter)
-      // For READ filter, fetch REPLIED from server and filter client-side
-      if (statusFilter !== "all" && statusFilter !== "READ") params.set("status", statusFilter)
-      if (statusFilter === "READ") params.set("status", "REPLIED") // READ is a subset of REPLIED
-      if (labelFilter !== "all") params.set("labelId", labelFilter)
-      if (attachmentFilter !== "all") params.set("hasAttachments", attachmentFilter)
-      
-      const response = await fetch(
-        `/api/requests?${params.toString()}`,
-        { credentials: "include" }
-      )
-      
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to fetch requests")
+
+      // Build shared filter params
+      const baseParams = new URLSearchParams()
+      if (boardFilter !== "all") baseParams.set("boardId", boardFilter)
+      if (jobFilter !== "all") baseParams.set("jobId", jobFilter)
+      if (ownerFilter !== "all") baseParams.set("ownerId", ownerFilter)
+      if (dateFrom) baseParams.set("dateFrom", dateFrom)
+      if (dateTo) baseParams.set("dateTo", dateTo)
+
+      // Determine which APIs to call based on type filter
+      const fetchStandardData = typeFilter !== "form"
+      const fetchFormData = typeFilter !== "standard" && typeFilter !== "data"
+
+      // Build requests API params
+      const requestsParams = new URLSearchParams(baseParams)
+      if (typeFilter === "standard" || typeFilter === "data") {
+        requestsParams.set("requestType", typeFilter)
       }
-      
-      const data = await response.json()
-      let filteredRequests = data.requests || []
-      
+      // Exclude form-type from requests API when also fetching from form-requests API
+      if (fetchFormData && fetchStandardData) {
+        requestsParams.set("excludeFormRequests", "true")
+      }
+      // For READ filter, fetch REPLIED from server and filter client-side
+      if (statusFilter !== "all" && statusFilter !== "READ") requestsParams.set("status", statusFilter)
+      if (statusFilter === "READ") requestsParams.set("status", "REPLIED")
+      if (labelFilter !== "all") requestsParams.set("labelId", labelFilter)
+      if (attachmentFilter !== "all") requestsParams.set("hasAttachments", attachmentFilter)
+
+      // Build form-requests API params
+      const formParams = new URLSearchParams(baseParams)
+      if (contactSearch) formParams.set("contactSearch", contactSearch)
+      // Map status filter to form statuses
+      if (statusFilter === "NO_REPLY") formParams.set("status", "PENDING")
+      else if (statusFilter === "COMPLETE") formParams.set("status", "SUBMITTED")
+
+      // Fetch in parallel
+      const promises: Promise<Response>[] = []
+      if (fetchStandardData) {
+        promises.push(fetch(`/api/requests?${requestsParams.toString()}`, { credentials: "include" }))
+      }
+      if (fetchFormData) {
+        // Skip form fetch for statuses that don't apply to forms (REPLIED, READ)
+        const skipFormFetch = statusFilter === "REPLIED" || statusFilter === "READ"
+        if (!skipFormFetch) {
+          promises.push(fetch(`/api/form-requests/list?${formParams.toString()}`, { credentials: "include" }))
+        }
+      }
+
+      const responses = await Promise.all(promises)
+
+      let emailRequests: RequestTask[] = []
+      let formRequestsNormalized: RequestTask[] = []
+      let apiJobs: JobOption[] = []
+      let apiOwners: OwnerOption[] = []
+      let apiLabels: LabelOption[] = []
+      let apiStatusSummary: Record<string, number> = {}
+
+      let responseIdx = 0
+
+      // Parse standard/data requests response
+      if (fetchStandardData) {
+        const res = responses[responseIdx++]
+        if (!res.ok) {
+          const errData = await res.json()
+          throw new Error(errData.error || "Failed to fetch requests")
+        }
+        const data = await res.json()
+        emailRequests = data.requests || []
+        apiJobs = data.jobs || []
+        apiOwners = data.owners || []
+        apiLabels = data.labels || []
+        apiStatusSummary = data.statusSummary || {}
+      }
+
+      // Parse form requests response
+      if (fetchFormData && responseIdx < responses.length) {
+        const res = responses[responseIdx++]
+        if (res.ok) {
+          const formData = await res.json()
+          const formRequests = formData.formRequests || []
+
+          // Normalize FormRequest rows to match RequestTask shape
+          formRequestsNormalized = formRequests.map((fr: any) => ({
+            id: `form-${fr.id}`,
+            campaignName: fr.formDefinition?.name || "Form Request",
+            requestType: "form" as const,
+            status: fr.status === "SUBMITTED" ? "COMPLETE" : fr.status === "EXPIRED" ? "SEND_FAILED" : "NO_REPLY",
+            formStatus: fr.status, // Keep original for display
+            createdAt: fr.createdAt,
+            updatedAt: fr.updatedAt || fr.createdAt,
+            remindersEnabled: fr.remindersEnabled || false,
+            remindersFrequencyHours: null,
+            readStatus: null,
+            hasAttachments: (fr._count?.attachments || 0) > 0,
+            _count: { messages: 0 },
+            entity: fr.recipientEntity ? {
+              id: fr.recipientEntity.id,
+              firstName: fr.recipientEntity.firstName,
+              lastName: fr.recipientEntity.lastName,
+              email: fr.recipientEntity.email,
+              companyName: fr.recipientEntity.companyName,
+            } : fr.recipientUser ? {
+              id: fr.recipientUser.id,
+              firstName: fr.recipientUser.name?.split(' ')[0] || fr.recipientUser.email,
+              lastName: fr.recipientUser.name?.split(' ').slice(1).join(' ') || null,
+              email: fr.recipientUser.email,
+              companyName: null,
+            } : null,
+            job: fr.taskInstance ? {
+              id: fr.taskInstance.id,
+              name: fr.taskInstance.name,
+              ownerId: fr.taskInstance.ownerId,
+              boardId: fr.taskInstance.boardId,
+              board: fr.taskInstance.board,
+              owner: fr.taskInstance.owner,
+              jobLabels: fr.taskInstance.taskInstanceLabels,
+            } : null,
+            _isFormRequest: true,
+            _formRequestId: fr.id,
+          }))
+        }
+      }
+
+      // Merge both datasets
+      let allRequests = [...emailRequests, ...formRequestsNormalized]
+
       // Client-side filtering for READ status (readStatus === "read" within REPLIED)
       if (statusFilter === "READ") {
-        filteredRequests = filteredRequests.filter((r: RequestTask) => r.readStatus === "read")
+        allRequests = allRequests.filter((r: RequestTask) => r.readStatus === "read")
       }
 
       // Client-side filtering for contact search
       if (contactSearch) {
         const searchLower = contactSearch.toLowerCase()
-        filteredRequests = filteredRequests.filter((r: RequestTask) => {
+        allRequests = allRequests.filter((r: RequestTask) => {
           const name = `${r.entity?.firstName || ""} ${r.entity?.lastName || ""}`.toLowerCase()
           const email = (r.entity?.email || "").toLowerCase()
           return name.includes(searchLower) || email.includes(searchLower)
         })
       }
-      
-      // Client-side filtering for date range
+
+      // Client-side filtering for date range (for email requests; form requests filtered server-side)
       if (dateFrom) {
         const fromDate = parseISO(dateFrom)
-        filteredRequests = filteredRequests.filter((r: RequestTask) => 
+        allRequests = allRequests.filter((r: RequestTask) =>
           isAfter(parseISO(r.createdAt), fromDate) || format(parseISO(r.createdAt), 'yyyy-MM-dd') === dateFrom
         )
       }
       if (dateTo) {
         const toDate = parseISO(dateTo)
-        filteredRequests = filteredRequests.filter((r: RequestTask) => 
+        allRequests = allRequests.filter((r: RequestTask) =>
           isBefore(parseISO(r.createdAt), toDate) || format(parseISO(r.createdAt), 'yyyy-MM-dd') === dateTo
         )
       }
-      
-      setRequests(filteredRequests)
-      setTotal(data.total || 0)
-      setJobs(data.jobs || [])
-      setOwners(data.owners || [])
-      setLabels(data.labels || [])
-      setStatusSummary(data.statusSummary || {})
+
+      // Sort merged results by date descending
+      allRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+      setRequests(allRequests)
+      setTotal(allRequests.length)
+      // Only update filter dropdowns when we fetched from the requests API (which provides them)
+      if (fetchStandardData) {
+        setJobs(apiJobs)
+        setOwners(apiOwners)
+        setLabels(apiLabels)
+        setStatusSummary(apiStatusSummary)
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter])
+  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
 
   useEffect(() => {
     fetchRequests()
   }, [fetchRequests])
 
-  // Fetch message IDs for replied requests (for Review button)
+  // Fetch message IDs for replied requests (for Review button) - skip form requests
   useEffect(() => {
     const fetchReplyMessageIds = async () => {
-      const repliedRequests = requests.filter(r => hasReply(r.status))
+      const repliedRequests = requests.filter(r => hasReply(r.status) && !r._isFormRequest)
       if (repliedRequests.length === 0) return
 
       const messageIds: Record<string, string> = {}
@@ -435,19 +573,28 @@ export default function RequestsPage() {
     setDateFrom("")
     setDateTo("")
     setAttachmentFilter("all")
+    setTypeFilter("all")
   }
 
   // Handle opening request - go directly to review page if replies exist
   const handleOpenThread = (request: RequestTask) => {
+    // Form requests: navigate to task page
+    if (request._isFormRequest) {
+      if (request.job?.id) {
+        router.push(`/dashboard/jobs/${request.job.id}`)
+      }
+      return
+    }
+
     const hasReplies = hasReply(request.status) || (request._count?.messages || 0) > 1
     const messageId = replyMessageIds[request.id]
-    
+
     // If request has replies and we have the message ID, go to review page
     if (hasReplies && messageId) {
       router.push(`/dashboard/review/${messageId}`)
       return
     }
-    
+
     // If request has replies but we're still loading message ID, fetch and navigate
     if (hasReplies && !messageId) {
       // Fetch the message ID and navigate
@@ -477,7 +624,7 @@ export default function RequestsPage() {
         })
       return
     }
-    
+
     // No replies - go to job detail page
     if (request.job?.id) {
       router.push(`/dashboard/jobs/${request.job.id}`)
@@ -492,11 +639,12 @@ export default function RequestsPage() {
   const noReplyStatuses = ["NO_REPLY", "AWAITING_RESPONSE", "IN_PROGRESS", "FLAGGED", "MANUAL_REVIEW", "ON_HOLD"]
   const repliedStatuses = ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING"]
   const completeStatuses = ["COMPLETE", "FULFILLED", "REJECTED"]
-  
-  const noReplyCount = requests.filter(r => noReplyStatuses.includes(r.status)).length
-  const repliedCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus !== "read").length
-  const readCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus === "read").length
-  const completeCount = requests.filter(r => completeStatuses.includes(r.status)).length
+
+  // Form requests: PENDING counts as "no reply", SUBMITTED as "complete", EXPIRED as "failed"
+  const noReplyCount = requests.filter(r => noReplyStatuses.includes(r.status) || r.formStatus === "PENDING").length
+  const repliedCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus !== "read" && !r._isFormRequest).length
+  const readCount = requests.filter(r => repliedStatuses.includes(r.status) && r.readStatus === "read" && !r._isFormRequest).length
+  const completeCount = requests.filter(r => completeStatuses.includes(r.status) || r.formStatus === "SUBMITTED").length
 
   if (loading && requests.length === 0) {
     return (
@@ -587,6 +735,19 @@ export default function RequestsPage() {
               <SelectItem value="REPLIED">Replied</SelectItem>
               <SelectItem value="READ">Read</SelectItem>
               <SelectItem value="COMPLETE">Complete</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Type Filter */}
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="standard">Standard</SelectItem>
+              <SelectItem value="data">Data</SelectItem>
+              <SelectItem value="form">Form</SelectItem>
             </SelectContent>
           </Select>
 
@@ -732,6 +893,7 @@ export default function RequestsPage() {
                       {request.campaignName || "Untitled"}
                     </div>
                   </td>
+
                   <td className="px-4 py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                       request.requestType === 'data' 
@@ -777,7 +939,9 @@ export default function RequestsPage() {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      {canManageRequests ? (
+                      {request._isFormRequest && request.formStatus ? (
+                        <FormStatusBadge status={request.formStatus} />
+                      ) : canManageRequests ? (
                         <StatusDropdown
                           taskId={request.id}
                           currentStatus={request.status}
@@ -787,7 +951,7 @@ export default function RequestsPage() {
                       ) : (
                         <StatusBadge status={request.status} readStatus={request.readStatus} />
                       )}
-                      {canManageRequests && request.status === "SEND_FAILED" && (
+                      {canManageRequests && request.status === "SEND_FAILED" && !request._isFormRequest && (
                         <RetryButton requestId={request.id} onRetry={fetchRequests} />
                       )}
                     </div>

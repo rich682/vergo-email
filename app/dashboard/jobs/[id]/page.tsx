@@ -27,11 +27,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { 
-  ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle, 
-  Clock, Archive, Mail, User, UserPlus, MessageSquare, Send, AlertCircle,
+import {
+  ArrowLeft, Edit2, Save, X, Trash2, Calendar, Users, CheckCircle,
+  Clock, Archive, Mail, User, UserPlus, UserMinus, MessageSquare, Send, AlertCircle,
   Plus, ChevronDown, ChevronUp, Bell, RefreshCw, Building2, MoreHorizontal,
-  FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale, ClipboardList
+  FileText, FolderOpen, FileSpreadsheet, ExternalLink, Scale, ClipboardList,
+  ArrowRightLeft, Pencil, Paperclip, Tag, ShieldCheck, Play, CheckSquare, AlertTriangle
 } from "lucide-react"
 import { formatDistanceToNow, format, differenceInDays, differenceInHours, parseISO, startOfDay } from "date-fns"
 import { parseDateOnly } from "@/lib/utils/timezone"
@@ -173,7 +174,23 @@ interface JobTask {
 
 interface TimelineEvent {
   id: string
-  type: "comment" | "email_sent" | "email_reply" | "reminder_sent"
+  type:
+    | "comment"
+    | "email_sent"
+    | "email_reply"
+    | "reminder_sent"
+    | "status_change"
+    | "field_edit"
+    | "collaborator_added"
+    | "collaborator_removed"
+    | "form_sent"
+    | "form_submitted"
+    | "attachment_uploaded"
+    | "label_created"
+    | "evidence_reviewed"
+    | "task_archived"
+    | "auto_in_progress"
+    | "email_bounced"
   timestamp: string
   content: string
   author?: { name: string | null; email: string }
@@ -181,6 +198,7 @@ interface TimelineEvent {
   taskName?: string
   recipientName?: string
   recipientEmail?: string
+  metadata?: Record<string, unknown>
 }
 
 interface RequestRecipient {
@@ -317,6 +335,7 @@ export default function JobDetailPage() {
   const [awaitingExpanded, setAwaitingExpanded] = useState(true)
   const [requestsExpanded, setRequestsExpanded] = useState(false)
   const [timelineExpanded, setTimelineExpanded] = useState(true)
+  const [timelineFilter, setTimelineFilter] = useState<"all" | "emails" | "comments" | "changes">("all")
   const [collectionExpanded, setCollectionExpanded] = useState(false)
   
 
@@ -447,7 +466,8 @@ export default function JobDetailPage() {
 
   const fetchTimeline = useCallback(async () => {
     try {
-      const response = await fetch(`/api/task-instances/${jobId}/timeline`, { credentials: "include" })
+      const filterParam = timelineFilter !== "all" ? `&filter=${timelineFilter}` : ""
+      const response = await fetch(`/api/task-instances/${jobId}/timeline?limit=50${filterParam}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setTimelineEvents(data.events || [])
@@ -455,7 +475,7 @@ export default function JobDetailPage() {
     } catch (error) {
       console.error("Error fetching timeline:", error)
     }
-  }, [jobId])
+  }, [jobId, timelineFilter])
 
 
   const fetchCollaborators = useCallback(async () => {
@@ -1191,62 +1211,68 @@ export default function JobDetailPage() {
                     <SectionHeader title="Activity" icon={<Clock className="w-4 h-4 text-gray-500" />} collapsible expanded={timelineExpanded} onToggle={() => setTimelineExpanded(!timelineExpanded)} />
                     {timelineExpanded && (
                       <div className="mt-3">
+                        {/* Filter tabs */}
+                        <div className="flex gap-1 mb-3">
+                          {(["all", "emails", "comments", "changes"] as const).map((f) => (
+                            <button
+                              key={f}
+                              onClick={() => setTimelineFilter(f)}
+                              className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                                timelineFilter === f
+                                  ? "bg-gray-900 text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              }`}
+                            >
+                              {f === "all" ? "All" : f === "emails" ? "Emails" : f === "comments" ? "Comments" : "Changes"}
+                            </button>
+                          ))}
+                        </div>
+
                         {timelineEvents.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
                         ) : (
                           <div className="space-y-2">
-                            {timelineEvents.map(event => (
-                              <div key={event.id} className="flex items-start gap-3 py-2">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                  event.type === "email_sent" ? "bg-blue-100" :
-                                  event.type === "email_reply" ? "bg-green-100" :
-                                  event.type === "reminder_sent" ? "bg-amber-100" :
-                                  "bg-gray-100"
-                                }`}>
-                                  {event.type === "email_sent" ? (
-                                    <Mail className="w-3 h-3 text-blue-600" />
-                                  ) : event.type === "email_reply" ? (
-                                    <MessageSquare className="w-3 h-3 text-green-600" />
-                                  ) : event.type === "reminder_sent" ? (
-                                    <Clock className="w-3 h-3 text-amber-600" />
-                                  ) : (
-                                    <MessageSquare className="w-3 h-3 text-gray-500" />
-                                  )}
+                            {timelineEvents.map(event => {
+                              // Icon and color mapping
+                              const iconConfig = (() => {
+                                switch (event.type) {
+                                  case "email_sent": return { icon: <Mail className="w-3 h-3 text-blue-600" />, bg: "bg-blue-100" }
+                                  case "email_reply": return { icon: <MessageSquare className="w-3 h-3 text-green-600" />, bg: "bg-green-100" }
+                                  case "email_bounced": return { icon: <AlertTriangle className="w-3 h-3 text-red-600" />, bg: "bg-red-100" }
+                                  case "reminder_sent": return { icon: <Clock className="w-3 h-3 text-amber-600" />, bg: "bg-amber-100" }
+                                  case "status_change": return { icon: <ArrowRightLeft className="w-3 h-3 text-purple-600" />, bg: "bg-purple-100" }
+                                  case "field_edit": return { icon: <Pencil className="w-3 h-3 text-gray-500" />, bg: "bg-gray-100" }
+                                  case "collaborator_added": return { icon: <UserPlus className="w-3 h-3 text-indigo-600" />, bg: "bg-indigo-100" }
+                                  case "collaborator_removed": return { icon: <UserMinus className="w-3 h-3 text-red-600" />, bg: "bg-red-100" }
+                                  case "form_sent": return { icon: <FileText className="w-3 h-3 text-teal-600" />, bg: "bg-teal-100" }
+                                  case "form_submitted": return { icon: <CheckSquare className="w-3 h-3 text-emerald-600" />, bg: "bg-emerald-100" }
+                                  case "attachment_uploaded": return { icon: <Paperclip className="w-3 h-3 text-sky-600" />, bg: "bg-sky-100" }
+                                  case "label_created": return { icon: <Tag className="w-3 h-3 text-pink-600" />, bg: "bg-pink-100" }
+                                  case "evidence_reviewed": return { icon: <ShieldCheck className="w-3 h-3 text-lime-600" />, bg: "bg-lime-100" }
+                                  case "task_archived": return { icon: <Archive className="w-3 h-3 text-orange-600" />, bg: "bg-orange-100" }
+                                  case "auto_in_progress": return { icon: <Play className="w-3 h-3 text-blue-500" />, bg: "bg-blue-100" }
+                                  case "comment":
+                                  default: return { icon: <MessageSquare className="w-3 h-3 text-gray-500" />, bg: "bg-gray-100" }
+                                }
+                              })()
+
+                              return (
+                                <div key={event.id} className="flex items-start gap-3 py-2">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${iconConfig.bg}`}>
+                                    {iconConfig.icon}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-gray-700">
+                                      {/* Use the pre-rendered summary from ActivityEvent when available */}
+                                      {event.content}
+                                    </p>
+                                    <span className="text-[10px] text-gray-400">
+                                      {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm text-gray-700">
-                                    {event.type === "email_sent" && (
-                                      <>
-                                        <span className="font-medium">{event.author?.name || event.author?.email?.split("@")[0] || "System"}</span>
-                                        {" sent a request to "}
-                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "recipient"}</span>
-                                      </>
-                                    )}
-                                    {event.type === "email_reply" && (
-                                      <>
-                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "Contact"}</span>
-                                        {" replied to a request"}
-                                      </>
-                                    )}
-                                    {event.type === "reminder_sent" && (
-                                      <>
-                                        {"Reminder sent to "}
-                                        <span className="font-medium">{event.recipientName || event.recipientEmail || "recipient"}</span>
-                                      </>
-                                    )}
-                                    {event.type === "comment" && (
-                                      <>
-                                        <span className="font-medium">{event.author?.name || event.author?.email?.split("@")[0] || "Unknown"}</span>
-                                        {" left a comment"}
-                                      </>
-                                    )}
-                                  </p>
-                                  <span className="text-[10px] text-gray-400">
-                                    {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </div>

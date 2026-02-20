@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
+import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { CollectedItemStatus, CollectedItemSource } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 
@@ -201,6 +202,13 @@ export async function POST(
       uploadedByUserId: userId,
       uploadedByEmail: userEmail
     })
+
+    // Auto-transition task instance to IN_PROGRESS when collection item is uploaded
+    try {
+      await TaskInstanceService.markInProgressIfNotStarted(jobId, organizationId)
+    } catch (err: any) {
+      console.error("[Collection] Failed to auto-transition task to IN_PROGRESS:", err.message)
+    }
 
     return NextResponse.json({
       success: true,

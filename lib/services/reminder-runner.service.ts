@@ -172,6 +172,29 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
 
       remindersSent++
       console.log(JSON.stringify({ event: "reminder_sent", requestId: request.id, reminderStateId: reminderState.id, reminderNumber }))
+
+      // Log activity event for reminder (non-blocking)
+      try {
+        const { ActivityEventService } = await import("@/lib/activity-events")
+        const recipientName = request.entity
+          ? `${request.entity.firstName} ${request.entity.lastName || ""}`.trim()
+          : undefined
+        ActivityEventService.log({
+          organizationId: request.organizationId,
+          taskInstanceId: request.taskInstanceId || undefined,
+          requestId: request.id,
+          eventType: "reminder.sent",
+          actorType: "system",
+          summary: `Reminder #${reminderNumber} sent${recipientName ? ` to ${recipientName}` : ""}`,
+          metadata: {
+            reminderNumber,
+            recipientName,
+            recipientEmail: request.entity?.email,
+            requestName: request.campaignName,
+          },
+          targetType: "reminder",
+        }).catch((err) => console.error("[ActivityEvent] reminder.sent failed:", err))
+      } catch { /* ignore import failures */ }
     } catch (error: any) {
       console.error(JSON.stringify({ event: "reminder_send_failed", reminderStateId: reminderState.id, error: error?.message }))
       errors.push(`Reminder ${reminderState.id}: ${error.message}`)

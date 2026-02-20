@@ -444,6 +444,7 @@ model TaskInstance {
   reconciliationRuns ReconciliationRun[] // Reconciliation runs triggered from this task
   notifications      Notification[] // Notifications related to this task
   analysisConversations AnalysisConversation[] // Analysis conversations linked to this task
+  activityEvents     ActivityEvent[] // Unified activity audit trail
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -1863,6 +1864,58 @@ model WorkflowAuditLog {
 
   @@index([workflowRunId])
   @@index([organizationId, createdAt])
+}
+
+// ─── Activity Events (Unified Audit Trail) ─────────────────────────────────
+// Persistent, event-sourced log for all task-level and org-level activity.
+// Powers per-task timeline, per-request tracking, and org-wide activity feeds.
+
+model ActivityEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+
+  // Scoping — at least one should be set for meaningful queries
+  taskInstanceId String?  @map("jobId")     // Per-task timeline queries
+  requestId      String?  @map("taskId")    // Per-request tracking (email threads)
+  formRequestId  String?                     // Per-form-request tracking
+  boardId        String?                     // Board-level events
+
+  // Event classification
+  eventType      String   // Dot-notated: "task.status_changed", "email.sent", "comment.added", etc.
+
+  // Actor
+  actorId        String?  // User ID (null for system-generated events)
+  actorType      String   @default("user")  // "user" | "system" | "agent" | "workflow"
+
+  // Human-readable summary (pre-rendered for fast timeline display)
+  summary        String   // e.g., "Richard changed status from NOT_STARTED to IN_PROGRESS"
+
+  // Structured metadata (old/new values, recipient info, etc.)
+  metadata       Json?    // Shape varies by eventType
+
+  // Related entity references for filtering
+  targetId       String?  // ID of affected sub-entity (commentId, attachmentId, etc.)
+  targetType     String?  // "comment" | "attachment" | "collaborator" | "label" | etc.
+
+  createdAt      DateTime @default(now())
+
+  // Relations
+  taskInstance   TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+
+  // Per-task timeline (primary use case)
+  @@index([taskInstanceId, createdAt])
+  // Per-request timeline
+  @@index([requestId, createdAt])
+  // Org-wide activity feed
+  @@index([organizationId, createdAt])
+  // "My activity" feed
+  @@index([organizationId, actorId, createdAt])
+  // Filtered timeline within a task
+  @@index([taskInstanceId, eventType, createdAt])
+  // Board-level activity
+  @@index([boardId, createdAt])
+  // Per-form-request tracking
+  @@index([formRequestId, createdAt])
 }
 
 // ─── Request Templates ─────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { TaskInstanceLabelService, MetadataFieldSchema } from "@/lib/services/task-instance-label.service"
 import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
+import { ActivityEventService } from "@/lib/activity-events"
 
 // GET /api/task-instances/[id]/labels - List all labels for a task instance
 export async function GET(
@@ -138,6 +139,19 @@ export async function POST(
       color,
       metadataSchema,
     })
+
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId,
+      taskInstanceId,
+      eventType: "label.created",
+      actorId: session.user.id,
+      actorType: "user",
+      summary: `${session.user.name || "Someone"} created label "${name}"`,
+      metadata: { labelId: label.id, name, color },
+      targetId: label.id,
+      targetType: "label",
+    }).catch((err) => console.error("[ActivityEvent] label.created failed:", err))
 
     return NextResponse.json({
       success: true,

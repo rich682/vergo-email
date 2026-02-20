@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { NotificationService } from "@/lib/services/notification.service"
+import { ActivityEventService } from "@/lib/activity-events"
 import { UserRole } from "@prisma/client"
 
 export const dynamic = 'force-dynamic'
@@ -75,6 +76,17 @@ export async function POST(
 
     const comment = await TaskInstanceService.addComment(id, userId, content.trim(), organizationId, mentions)
 
+    // Auto-transition task instance to IN_PROGRESS when a comment is added
+    // Skip for report, analysis, and reconciliation task types (these require more explicit activity)
+    const skipAutoTransitionTypes = ["report", "analysis", "reconciliation"]
+    if (!skipAutoTransitionTypes.includes(instance.taskType || "")) {
+      try {
+        await TaskInstanceService.markInProgressIfNotStarted(id, organizationId)
+      } catch (err: any) {
+        console.error("[Comments] Failed to auto-transition task to IN_PROGRESS:", err.message)
+      }
+    }
+
     // Send notifications to task participants (non-blocking)
     const actorName = session.user.name || "Someone"
     const taskName = instance.name || "a task"
@@ -120,6 +132,19 @@ export async function POST(
       ).catch((err) => console.error("Failed to send comment notifications:", err))
     }
 
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId,
+      taskInstanceId: id,
+      eventType: "comment.added",
+      actorId: userId,
+      actorType: "user",
+      summary: `${actorName} left a comment`,
+      metadata: { commentId: comment.id, preview: commentPreview },
+      targetId: comment.id,
+      targetType: "comment",
+    }).catch((err) => console.error("[ActivityEvent] comment.added failed:", err))
+
     return NextResponse.json({
       success: true,
       comment,
@@ -152,11 +177,25 @@ export async function DELETE(
       return NextResponse.json({ error: "commentId is required" }, { status: 400 })
     }
 
+    const { id: taskInstanceId } = await params
     const deleted = await TaskInstanceService.deleteComment(commentId, userId, organizationId)
 
     if (!deleted) {
       return NextResponse.json({ error: "Comment not found or access denied" }, { status: 404 })
     }
+
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId,
+      taskInstanceId,
+      eventType: "comment.deleted",
+      actorId: userId,
+      actorType: "user",
+      summary: `${session.user.name || "Someone"} deleted a comment`,
+      metadata: { commentId },
+      targetId: commentId,
+      targetType: "comment",
+    }).catch((err) => console.error("[ActivityEvent] comment.deleted failed:", err))
 
     return NextResponse.json({
       success: true,

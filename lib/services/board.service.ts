@@ -485,6 +485,20 @@ export class BoardService {
       data: { isSnapshot: true, status: "COMPLETE" }
     })
 
+    // Log activity event for board completion snapshot (non-blocking)
+    try {
+      const { ActivityEventService } = await import("@/lib/activity-events")
+      ActivityEventService.log({
+        organizationId,
+        boardId,
+        eventType: "task.snapshot_created",
+        actorId: userId,
+        actorType: "user",
+        summary: "Board completed — all tasks snapshotted",
+        metadata: { boardId },
+      }).catch((err) => console.error("[ActivityEvent] snapshot_created failed:", err))
+    } catch { /* ignore import failures */ }
+
     // 2. Auto-create next period board if automation enabled
     const board = await prisma.board.findUnique({
       where: { id: boardId },

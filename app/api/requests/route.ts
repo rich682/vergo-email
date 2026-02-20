@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
     const labelId = searchParams.get("labelId")
     const readStatus = searchParams.get("readStatus") // unread | read | replied
     const hasAttachments = searchParams.get("hasAttachments") // yes | no
-    
+    const requestType = searchParams.get("requestType") // "standard" | "data" | "form"
+    const excludeFormRequests = searchParams.get("excludeFormRequests") // "true" to exclude form-type requests
+
     // Pagination params
     const page = parseInt(searchParams.get("page") || "1", 10)
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100) // Max 100
@@ -52,7 +54,13 @@ export async function GET(request: NextRequest) {
       // Exclude draft requests from standard listing (isDraft requests need explicit review)
       isDraft: false,
       // Role-based access: only show requests from task instances user can access
-      ...(jobAccessFilter && { taskInstance: jobAccessFilter })
+      ...(jobAccessFilter && { taskInstance: jobAccessFilter }),
+      // Exclude form-type requests when frontend merges form data from separate endpoint
+      ...(excludeFormRequests === "true" && { requestType: { not: "form" } }),
+      // Filter by specific request type (standard includes null for legacy records)
+      ...(requestType && !excludeFormRequests && {
+        requestType: requestType === "standard" ? { in: ["standard", null] } : requestType
+      })
     }
 
     // Filter by read status

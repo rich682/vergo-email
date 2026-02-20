@@ -126,6 +126,7 @@ export interface TaskInstanceWithStats {
   customFields?: Record<string, any> | null
   structuredData?: any
   isSnapshot: boolean
+  taskType?: string | null
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null
@@ -571,6 +572,20 @@ export class TaskInstanceService {
       where: { id },
       data: { status: JobStatus.IN_PROGRESS }
     })
+
+    // Log activity event (non-blocking)
+    try {
+      const { ActivityEventService } = await import("@/lib/activity-events")
+      ActivityEventService.log({
+        organizationId,
+        taskInstanceId: id,
+        boardId: instance.boardId || undefined,
+        eventType: "task.auto_in_progress",
+        actorType: "system",
+        summary: "Task automatically moved to In Progress",
+        metadata: { oldStatus: "NOT_STARTED", newStatus: "IN_PROGRESS" },
+      }).catch((err) => console.error("[ActivityEvent] auto_in_progress failed:", err))
+    } catch { /* ignore import failures */ }
 
     // Also update parent board status if needed
     if (instance.boardId) {

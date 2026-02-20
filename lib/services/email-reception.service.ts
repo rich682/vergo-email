@@ -385,6 +385,24 @@ export class EmailReceptionService {
       return { updatedRequest, message }
     })
 
+    // Log activity event for inbound email (non-blocking)
+    try {
+      const { ActivityEventService } = await import("@/lib/activity-events")
+      if (!isAutoReply) {
+        const senderName = this.extractNameFromEmail(data.from)
+        ActivityEventService.logEmailReplyReceived({
+          organizationId: request.organizationId,
+          taskInstanceId: request.taskInstanceId || undefined,
+          requestId: request.id,
+          subject: data.subject,
+          senderName,
+          senderEmail: data.from,
+          messageId: message.id,
+          isBounce,
+        })
+      }
+    } catch { /* ignore import failures */ }
+
     if (hasAttachments && request.taskInstanceId && attachmentData.length > 0 && !isAutoReply) {
       const submitterName = this.extractNameFromEmail(data.from)
       

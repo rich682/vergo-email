@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { EvidenceService } from "@/lib/services/evidence.service"
 import { CollectedItemStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
+import { ActivityEventService } from "@/lib/activity-events"
 
 export const maxDuration = 120;
 export const dynamic = "force-dynamic"
@@ -82,6 +83,10 @@ export async function POST(
           "APPROVED" as CollectedItemStatus,
           userId
         )
+        ActivityEventService.logEvidenceAction({
+          organizationId, taskInstanceId: jobId, actorId: userId,
+          actorName: session.user.name || "Someone", itemIds: validIds, action: "approve",
+        })
         const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
@@ -97,6 +102,10 @@ export async function POST(
           "REJECTED" as CollectedItemStatus,
           userId
         )
+        ActivityEventService.logEvidenceAction({
+          organizationId, taskInstanceId: jobId, actorId: userId,
+          actorName: session.user.name || "Someone", itemIds: validIds, action: "reject",
+        })
         const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
@@ -112,6 +121,10 @@ export async function POST(
           "UNREVIEWED" as CollectedItemStatus,
           userId
         )
+        ActivityEventService.logEvidenceAction({
+          organizationId, taskInstanceId: jobId, actorId: userId,
+          actorName: session.user.name || "Someone", itemIds: validIds, action: "reset",
+        })
         const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({
           success: true,
@@ -139,6 +152,12 @@ export async function POST(
           } catch (error) {
             console.error(`Error deleting item ${id}:`, error)
           }
+        }
+        if (deleted > 0) {
+          ActivityEventService.logEvidenceAction({
+            organizationId, taskInstanceId: jobId, actorId: userId,
+            actorName: session.user.name || "Someone", itemIds: validIds.slice(0, deleted), action: "delete",
+          })
         }
         const approvalStatus = await EvidenceService.checkTaskInstanceApprovalStatus(jobId, organizationId)
         return NextResponse.json({

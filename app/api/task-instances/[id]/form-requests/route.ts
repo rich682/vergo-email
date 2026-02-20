@@ -14,6 +14,7 @@ import { FormNotificationService } from "@/lib/services/form-notification.servic
 import { NotificationService } from "@/lib/services/notification.service"
 import { UserRole } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
+import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(
@@ -256,6 +257,28 @@ export async function POST(
       }
     } catch (notifError: any) {
       console.error("[FormRequests] In-app notification failed:", notifError.message)
+    }
+
+    // Auto-transition task instance to IN_PROGRESS when form requests are sent
+    if (totalCount > 0) {
+      try {
+        await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, session.user.organizationId)
+      } catch (err: any) {
+        console.error("[FormRequests] Failed to auto-transition task to IN_PROGRESS:", err.message)
+      }
+    }
+
+    // Log activity event (non-blocking)
+    if (totalCount > 0) {
+      ActivityEventService.log({
+        organizationId: session.user.organizationId,
+        taskInstanceId,
+        eventType: "form.request_sent",
+        actorId: session.user.id,
+        actorType: "user",
+        summary: `${session.user.name || "Someone"} sent ${totalCount} form request(s)`,
+        metadata: { formDefinitionId, recipientCount: totalCount },
+      }).catch((err) => console.error("[ActivityEvent] form.request_sent failed:", err))
     }
 
     return NextResponse.json({ count: totalCount, formRequests: allFormRequests }, { status: 201 })

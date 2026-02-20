@@ -664,6 +664,16 @@ export class FormRequestService {
       },
     })
 
+    // Auto-transition task instance to IN_PROGRESS when a form is submitted
+    if (formRequest.taskInstance?.id) {
+      try {
+        const { TaskInstanceService } = await import("./task-instance.service")
+        await TaskInstanceService.markInProgressIfNotStarted(formRequest.taskInstance.id, formRequest.organizationId)
+      } catch (err: any) {
+        console.error("[FormRequest] Failed to auto-transition task to IN_PROGRESS:", err.message)
+      }
+    }
+
     // Create CollectedItem records for form attachments
     if (formRequest.attachments && formRequest.attachments.length > 0 && formRequest.taskInstance?.id) {
       const recipientName = formRequest.recipientUser?.name || 

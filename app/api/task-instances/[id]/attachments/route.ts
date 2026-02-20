@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { AttachmentService } from "@/lib/services/attachment.service"
+import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
+import { ActivityEventService } from "@/lib/activity-events"
 
 export const dynamic = "force-dynamic"
 
@@ -171,6 +173,26 @@ export async function POST(
       mimeType: file.type || undefined,
       uploadedById: userId
     })
+
+    // Auto-transition task instance to IN_PROGRESS when attachment is uploaded
+    try {
+      await TaskInstanceService.markInProgressIfNotStarted(taskInstanceId, organizationId)
+    } catch (err: any) {
+      console.error("[Attachments] Failed to auto-transition task to IN_PROGRESS:", err.message)
+    }
+
+    // Log activity event (non-blocking)
+    ActivityEventService.log({
+      organizationId,
+      taskInstanceId,
+      eventType: "attachment.uploaded",
+      actorId: userId,
+      actorType: "user",
+      summary: `${session.user.name || "Someone"} uploaded "${file.name}"`,
+      metadata: { filename: file.name, fileSize: file.size, mimeType: file.type },
+      targetId: attachment.id,
+      targetType: "attachment",
+    }).catch((err) => console.error("[ActivityEvent] attachment.uploaded failed:", err))
 
     return NextResponse.json({ attachment }, { status: 201 })
   } catch (error: any) {

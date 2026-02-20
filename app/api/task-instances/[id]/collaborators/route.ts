@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { NotificationService } from "@/lib/services/notification.service"
+import { ActivityEventService } from "@/lib/activity-events"
 import { UserRole } from "@prisma/client"
 
 export const dynamic = 'force-dynamic'
@@ -89,6 +90,18 @@ export async function POST(
       actorId: userId,
     }).catch((err) => console.error("Failed to send collaborator notification:", err))
 
+    // Log activity event (non-blocking)
+    ActivityEventService.logCollaboratorChange({
+      organizationId,
+      taskInstanceId,
+      actorId: userId,
+      actorName,
+      targetUserId: collaboratorUserId,
+      targetUserName: (collaborator as any)?.user?.name,
+      targetUserEmail: (collaborator as any)?.user?.email,
+      action: "added",
+    })
+
     return NextResponse.json({
       success: true,
       collaborator
@@ -140,6 +153,16 @@ export async function DELETE(
     if (!removed) {
       return NextResponse.json({ error: "Collaborator not found" }, { status: 404 })
     }
+
+    // Log activity event (non-blocking)
+    ActivityEventService.logCollaboratorChange({
+      organizationId,
+      taskInstanceId,
+      actorId: userId,
+      actorName: session.user.name || "Someone",
+      targetUserId: collaboratorUserId,
+      action: "removed",
+    })
 
     return NextResponse.json({
       success: true,
