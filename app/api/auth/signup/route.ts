@@ -10,6 +10,8 @@ import bcrypt from "bcryptjs"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
 import { isValidEmail } from "@/lib/utils/validate-email"
 import { normalizeEmail } from "@/lib/utils/email"
+import { validateOrigin } from "@/lib/utils/csrf"
+import { validatePassword } from "@/lib/utils/password-validation"
 
 // ── Simple in-memory rate limiter (per IP) ──────────────────────────────
 const RATE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -38,6 +40,11 @@ setInterval(() => {
 }, 10 * 60 * 1000) // every 10 minutes
 
 export async function POST(request: NextRequest) {
+  // CSRF protection
+  if (!validateOrigin(request)) {
+    return NextResponse.json({ error: "Invalid request origin" }, { status: 403 })
+  }
+
   try {
     // ── Rate limiting ──────────────────────────────────────────────────
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
@@ -110,9 +117,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!password || typeof password !== "string" || password.length < 8) {
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.valid) {
       return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
+        { error: pwCheck.error },
         { status: 400 }
       )
     }
@@ -210,22 +218,24 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Create debug/test users for each role (hidden from customer UI, visible in admin dashboard)
-      const debugPasswordHash = await bcrypt.hash("VergoDebug2026!", 10)
-      const debugRoles = ["ADMIN", "MANAGER", "MEMBER"] as const
-      for (const debugRole of debugRoles) {
-        await tx.user.create({
-          data: {
-            email: `debug-${debugRole.toLowerCase()}@${organization.id}.vergo.local`,
-            passwordHash: debugPasswordHash,
-            name: `Debug ${debugRole.charAt(0) + debugRole.slice(1).toLowerCase()}`,
-            role: debugRole,
-            organizationId: organization.id,
-            emailVerified: true,
-            isDebugUser: true,
-            onboardingCompleted: true,
-          }
-        })
+      // Create debug/test users only when explicitly enabled (never in production)
+      if (process.env.ENABLE_DEBUG_USERS === "true") {
+        const debugPasswordHash = await bcrypt.hash(process.env.DEBUG_USER_PASSWORD || crypto.randomUUID(), 10)
+        const debugRoles = ["ADMIN", "MANAGER", "MEMBER"] as const
+        for (const debugRole of debugRoles) {
+          await tx.user.create({
+            data: {
+              email: `debug-${debugRole.toLowerCase()}@${organization.id}.vergo.local`,
+              passwordHash: debugPasswordHash,
+              name: `Debug ${debugRole.charAt(0) + debugRole.slice(1).toLowerCase()}`,
+              role: debugRole,
+              organizationId: organization.id,
+              emailVerified: true,
+              isDebugUser: true,
+              onboardingCompleted: true,
+            }
+          })
+        }
       }
 
       return { organization, user, onboardingGroup, userEntity }

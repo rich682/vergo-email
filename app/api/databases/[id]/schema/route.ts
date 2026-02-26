@@ -32,17 +32,8 @@ interface SchemaUpdateRequest {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:import", session.user.orgActionPermissions)) {
@@ -53,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const database = await prisma.database.findFirst({
       where: {
         id: params.id,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       select: {
         id: true,

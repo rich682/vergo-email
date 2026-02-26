@@ -7,7 +7,9 @@ vi.mock('next-auth', () => ({
     user: {
       id: 'test-user-id',
       email: 'test@example.com',
-      organizationId: 'test-org-id'
+      organizationId: 'test-org-id',
+      role: 'ADMIN',
+      orgActionPermissions: null
     }
   })),
   authOptions: {}

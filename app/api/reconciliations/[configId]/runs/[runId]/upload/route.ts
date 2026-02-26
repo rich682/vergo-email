@@ -5,11 +5,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { getStorageService } from "@/lib/services/storage.service"
 import { canPerformAction } from "@/lib/permissions"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export const maxDuration = 60
 interface RouteParams {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { configId, runId } = await params
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -28,12 +28,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "You do not have permission to upload reconciliation files" }, { status: 403 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    const { allowed } = await checkRateLimit(`upload:recon:${session.user.id}`, 10)
+    if (!allowed) {
+      return NextResponse.json({ error: "Too many uploads. Please try again later." }, { status: 429 })
     }
 
     // Non-admin must be a viewer of the config or have view_all_configs permission
@@ -61,14 +58,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Validate file size (max 25MB)
+    const MAX_RECON_FILE_SIZE = 25 * 1024 * 1024
+    if (file.size > MAX_RECON_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 25MB." },
+        { status: 413 }
+      )
+    }
+
     // Get config for column mapping
-    const config = await ReconciliationService.getConfig(configId, user.organizationId)
+    const config = await ReconciliationService.getConfig(configId, session.user.organizationId)
     if (!config) {
       return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 })
     }
 
     // Verify run exists
-    const run = await ReconciliationService.getRun(runId, user.organizationId)
+    const run = await ReconciliationService.getRun(runId, session.user.organizationId)
     if (!run) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 })
     }
@@ -95,7 +101,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await storage.upload(buffer, fileKey, file.type)
 
     // Save parsed data to run
-    await ReconciliationService.updateRunSource(runId, user.organizationId, source as "A" | "B", {
+    await ReconciliationService.updateRunSource(runId, session.user.organizationId, source as "A" | "B", {
       fileKey,
       fileName: file.name,
       rows: parseResult.rows,

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { InboxMessageCard, type InboxItem } from "@/components/inbox/inbox-message-card"
 import {
@@ -41,31 +41,63 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
   // Virtual scrolling ref
   const parentRef = useRef<HTMLDivElement>(null)
 
+  // Fetch inbox with AbortController to prevent stale updates on rapid filter changes
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
+
+    const doFetch = async () => {
+      try {
+        const params = new URLSearchParams()
+        params.set("boardId", boardId)
+        params.set("page", page.toString())
+        params.set("limit", "50")
+        if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
+        if (riskFilter) params.set("riskLevel", riskFilter)
+
+        console.log("[InboxTab] fetchInbox start", { boardId, page, readStatusFilter, riskFilter })
+        const res = await fetch(`/api/inbox?${params}`, { signal: controller.signal })
+        if (res.ok) {
+          const json = await res.json()
+          if (!controller.signal.aborted) {
+            console.log("[InboxTab] fetchInbox success", { itemCount: json.items?.length, total: json.total, page: json.page })
+            setData(json)
+          }
+        } else {
+          console.error("[InboxTab] fetchInbox failed", { status: res.status, boardId })
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") return
+        console.error("[InboxTab] fetchInbox error:", err)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    doFetch()
+    return () => controller.abort()
+  }, [boardId, page, readStatusFilter, riskFilter])
+
+  // Keep fetchInbox as a manual refresh function (for use after accept actions)
   const fetchInbox = useCallback(async () => {
     try {
+      setLoading(true)
       const params = new URLSearchParams()
       params.set("boardId", boardId)
       params.set("page", page.toString())
       params.set("limit", "50")
       if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
       if (riskFilter) params.set("riskLevel", riskFilter)
-
       const res = await fetch(`/api/inbox?${params}`)
       if (res.ok) {
-        const json = await res.json()
-        setData(json)
+        setData(await res.json())
       }
     } catch (err) {
-      console.error("Failed to fetch inbox:", err)
+      console.error("[InboxTab] fetchInbox error:", err)
     } finally {
       setLoading(false)
     }
   }, [boardId, page, readStatusFilter, riskFilter])
-
-  useEffect(() => {
-    setLoading(true)
-    fetchInbox()
-  }, [fetchInbox])
 
   const handleAcceptSuggestion = async (requestId: string, actionType: string) => {
     setAcceptingId(requestId)
@@ -114,14 +146,14 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
     }
   }
 
-  const bulkEligibleCount = data
+  const bulkEligibleCount = useMemo(() => data
     ? data.items.filter(
         (item) =>
           item.completionPercentage >= 90 &&
           item.requestStatus !== "COMPLETE" &&
           item.requestStatus !== "FULFILLED"
       ).length
-    : 0
+    : 0, [data])
 
   const items = data?.items || []
   const rowVirtualizer = useVirtualizer({

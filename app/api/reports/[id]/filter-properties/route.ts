@@ -27,22 +27,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     // Get the report definition with its database
     const report = await prisma.reportDefinition.findFirst({
-      where: { id, organizationId: user.organizationId },
+      where: { id, organizationId: session.user.organizationId },
       include: {
         database: {
           select: {

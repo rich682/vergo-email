@@ -23,24 +23,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
-    const report = await ReportDefinitionService.getReportDefinition(id, user.organizationId)
+    const report = await ReportDefinitionService.getReportDefinition(id, session.user.organizationId)
 
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 })
@@ -62,17 +53,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
@@ -86,7 +68,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (name && typeof name === "string" && name.trim()) {
       const existingReport = await prisma.reportDefinition.findFirst({
         where: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           name: name.trim(),
           id: { not: id },
         },
@@ -103,7 +85,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Update the report definition
     const report = await ReportDefinitionService.updateReportDefinition(
       id,
-      user.organizationId,
+      session.user.organizationId,
       {
         name: name?.trim(),
         description: description?.trim(),
@@ -144,17 +126,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
@@ -172,7 +145,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ linkedTaskCount })
     }
 
-    await ReportDefinitionService.deleteReportDefinition(id, user.organizationId)
+    await ReportDefinitionService.deleteReportDefinition(id, session.user.organizationId)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

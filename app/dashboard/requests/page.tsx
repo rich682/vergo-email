@@ -320,10 +320,10 @@ export default function RequestsPage() {
 
       let emailRequests: RequestTask[] = []
       let formRequestsNormalized: RequestTask[] = []
-      let apiJobs: JobOption[] = []
-      let apiOwners: OwnerOption[] = []
-      let apiLabels: LabelOption[] = []
-      let apiStatusSummary: Record<string, number> = {}
+      let apiJobs: JobOption[] | undefined
+      let apiOwners: OwnerOption[] | undefined
+      let apiLabels: LabelOption[] | undefined
+      let apiStatusSummary: Record<string, number> | undefined
 
       let responseIdx = 0
 
@@ -336,10 +336,11 @@ export default function RequestsPage() {
         }
         const data = await res.json()
         emailRequests = data.requests || []
-        apiJobs = data.jobs || []
-        apiOwners = data.owners || []
-        apiLabels = data.labels || []
-        apiStatusSummary = data.statusSummary || {}
+        // Dropdown/summary data is only returned on initial fetch (page 1)
+        if (data.jobs !== undefined) apiJobs = data.jobs
+        if (data.owners !== undefined) apiOwners = data.owners
+        if (data.labels !== undefined) apiLabels = data.labels
+        if (data.statusSummary !== undefined) apiStatusSummary = data.statusSummary
       }
 
       // Parse form requests response
@@ -428,12 +429,12 @@ export default function RequestsPage() {
 
       setRequests(allRequests)
       setTotal(allRequests.length)
-      // Only update filter dropdowns when we fetched from the requests API (which provides them)
+      // Only update filter dropdowns when API returned them (skipped on pagination for performance)
       if (fetchStandardData) {
-        setJobs(apiJobs)
-        setOwners(apiOwners)
-        setLabels(apiLabels)
-        setStatusSummary(apiStatusSummary)
+        if (apiJobs !== undefined) setJobs(apiJobs)
+        if (apiOwners !== undefined) setOwners(apiOwners)
+        if (apiLabels !== undefined) setLabels(apiLabels)
+        if (apiStatusSummary !== undefined) setStatusSummary(apiStatusSummary)
       }
     } catch (err: any) {
       setError(err.message)

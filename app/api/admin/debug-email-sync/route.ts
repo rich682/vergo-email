@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    if (session.user.role?.toUpperCase() !== "ADMIN") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const resetCursor = searchParams.get("resetCursor") === "true"
 

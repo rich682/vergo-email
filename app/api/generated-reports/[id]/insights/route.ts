@@ -31,20 +31,11 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (!canPerformAction(user.role, "reports:view_generated", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
@@ -54,7 +45,7 @@ export async function GET(
     const report = await prisma.generatedReport.findFirst({
       where: {
         id: generatedReportId,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       include: {
         reportDefinition: {
@@ -68,9 +59,9 @@ export async function GET(
     }
 
     // Access check: users with view_all_definitions see all, others must be an explicit viewer
-    if (!canPerformAction(user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
       const isViewer = await prisma.generatedReportViewer.findUnique({
-        where: { generatedReportId_userId: { generatedReportId: generatedReportId, userId: user.id } }
+        where: { generatedReportId_userId: { generatedReportId: generatedReportId, userId: session.user.id } }
       })
       if (!isViewer) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 })
@@ -89,7 +80,7 @@ export async function GET(
     }
 
     // No cached insights - generate new ones
-    const insights = await generateAndCacheInsights(report, user.organizationId)
+    const insights = await generateAndCacheInsights(report, session.user.organizationId)
 
     return NextResponse.json({
       ...insights,
@@ -111,20 +102,11 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (!canPerformAction(user.role, "reports:view_generated", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
@@ -134,7 +116,7 @@ export async function POST(
     const report = await prisma.generatedReport.findFirst({
       where: {
         id: generatedReportId,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       include: {
         reportDefinition: {
@@ -148,9 +130,9 @@ export async function POST(
     }
 
     // Access check: users with view_all_definitions see all, others must be an explicit viewer
-    if (!canPerformAction(user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
       const isViewer = await prisma.generatedReportViewer.findUnique({
-        where: { generatedReportId_userId: { generatedReportId, userId: user.id } }
+        where: { generatedReportId_userId: { generatedReportId, userId: session.user.id } }
       })
       if (!isViewer) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 })
@@ -158,7 +140,7 @@ export async function POST(
     }
 
     // Force regenerate insights
-    const insights = await generateAndCacheInsights(report, user.organizationId)
+    const insights = await generateAndCacheInsights(report, session.user.organizationId)
 
     return NextResponse.json({
       ...insights,

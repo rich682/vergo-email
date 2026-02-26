@@ -14,7 +14,7 @@ export function sanitizeHtml(html: string): string {
       "tr", "u", "ul",
     ],
     ALLOWED_ATTR: [
-      "href", "src", "alt", "title", "class", "style", "target", "rel",
+      "href", "src", "alt", "title", "class", "target", "rel",
       "width", "height", "colspan", "rowspan", "align", "valign",
     ],
     ALLOW_DATA_ATTR: false,

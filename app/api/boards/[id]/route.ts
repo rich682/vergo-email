@@ -33,42 +33,58 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const includeJobs = searchParams.get("includeJobs") === "true"
 
+    console.log("[API] GET /api/boards/[id]", { boardId, includeJobs })
     const board = includeJobs
       ? await BoardService.getByIdWithJobs(boardId, organizationId)
       : await BoardService.getById(boardId, organizationId)
 
     if (!board) {
+      console.warn("[API] GET /api/boards/[id] — board not found", { boardId })
       return NextResponse.json({ error: "Board not found" }, { status: 404 })
     }
 
     // Access check: users with boards:view_all see all, others must be owner or collaborator
-    if (!canPerformAction(userRole, "boards:view_all", session.user.orgActionPermissions)) {
-      const isOwner = board.ownerId === userId
-      const isCollaborator = await prisma.boardCollaborator.findUnique({
-        where: { boardId_userId: { boardId, userId } }
+    // Fetch org features in parallel with access checks
+    const hasFullAccess = canPerformAction(userRole, "boards:view_all", session.user.orgActionPermissions)
+
+    // Run access checks + org features fetch in parallel
+    const [accessResult, org] = await Promise.all([
+      // Access check (only if needed)
+      hasFullAccess
+        ? Promise.resolve({ granted: true })
+        : (async () => {
+            const isOwner = board.ownerId === userId
+            if (isOwner) return { granted: true }
+            // Run collaborator + task access checks in parallel
+            const [isCollaborator, hasTaskAccess] = await Promise.all([
+              prisma.boardCollaborator.findUnique({
+                where: { boardId_userId: { boardId, userId } }
+              }),
+              prisma.taskInstance.findFirst({
+                where: {
+                  boardId,
+                  organizationId,
+                  OR: [
+                    { ownerId: userId },
+                    { collaborators: { some: { userId } } }
+                  ]
+                },
+                select: { id: true }
+              })
+            ])
+            return { granted: !!(isCollaborator || hasTaskAccess) }
+          })(),
+      // Org features fetch (always needed)
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { features: true },
       })
-      // Also check if user owns or collaborates on any task in this board
-      const hasTaskAccess = await prisma.taskInstance.findFirst({
-        where: {
-          boardId,
-          organizationId,
-          OR: [
-            { ownerId: userId },
-            { collaborators: { some: { userId } } }
-          ]
-        },
-        select: { id: true }
-      })
-      if (!isOwner && !isCollaborator && !hasTaskAccess) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 })
-      }
+    ])
+
+    if (!accessResult.granted) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
-    // Fetch org features to pass advancedBoardTypes flag
-    const org = await prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { features: true },
-    })
     const orgFeatures = (org?.features as Record<string, any>) || {}
     const advancedBoardTypes = orgFeatures.advancedBoardTypes === true
 
@@ -116,13 +132,15 @@ export async function PATCH(
     const userRole = session.user.role
     const boardId = params.id
 
+    // Fetch board for access check + status comparison (single fetch, reused below)
+    const currentBoard = await BoardService.getById(boardId, organizationId)
+    if (!currentBoard) {
+      return NextResponse.json({ error: "Board not found" }, { status: 404 })
+    }
+
     // Access check: admins can modify any board, owners can edit their own, others need boards:manage
     if (!checkIsAdmin(userRole)) {
-      const existingBoard = await BoardService.getById(boardId, organizationId)
-      if (!existingBoard) {
-        return NextResponse.json({ error: "Board not found" }, { status: 404 })
-      }
-      const isOwner = existingBoard.ownerId === userId
+      const isOwner = currentBoard.ownerId === userId
       if (!isOwner) {
         // Non-owners need boards:manage permission
         if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
@@ -147,24 +165,6 @@ export async function PATCH(
       skipWeekends
     } = body
 
-    // Check for duplicate name if name is being updated
-    if (name && typeof name === "string" && name.trim()) {
-      const existingBoard = await prisma.board.findFirst({
-        where: {
-          organizationId,
-          name: name.trim(),
-          id: { not: boardId },
-        },
-        select: { id: true },
-      })
-      if (existingBoard) {
-        return NextResponse.json(
-          { error: `A board with the name "${name.trim()}" already exists` },
-          { status: 409 }
-        )
-      }
-    }
-
     // Validate status if provided
     if (status && !VALID_STATUSES.includes(status)) {
       return NextResponse.json(
@@ -181,13 +181,27 @@ export async function PATCH(
       )
     }
 
-    // Period fields are now optional - no validation requirement
+    // Parallelize: duplicate name check + org fiscal year fetch
+    const [duplicateBoard, organization] = await Promise.all([
+      (name && typeof name === "string" && name.trim())
+        ? prisma.board.findFirst({
+            where: { organizationId, name: name.trim(), id: { not: boardId } },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { fiscalYearStartMonth: true }
+      })
+    ])
 
-    // Fetch organization's fiscal year settings for period calculations
-    const organization = await prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { fiscalYearStartMonth: true }
-    })
+    if (duplicateBoard) {
+      return NextResponse.json(
+        { error: `A board with the name "${name.trim()}" already exists` },
+        { status: 409 }
+      )
+    }
+
     const fiscalYearStartMonth = organization?.fiscalYearStartMonth ?? 1
 
     // Process period dates with server-side derivation
@@ -203,7 +217,7 @@ export async function PATCH(
         // Normalize the start date based on cadence
         const effectiveCadence = cadence !== undefined ? cadence : undefined
         finalPeriodStart = normalizePeriodStart(effectiveCadence as BoardCadence, parsedStart, { fiscalYearStartMonth }) || parsedStart
-        
+
         // Derive periodEnd server-side
         const derivedEnd = derivePeriodEnd(effectiveCadence as BoardCadence, finalPeriodStart, { fiscalYearStartMonth })
         finalPeriodEnd = derivedEnd || (periodEnd ? new Date(periodEnd) : null)
@@ -215,7 +229,6 @@ export async function PATCH(
 
     // Check if we need to trigger auto-creation (status changing to COMPLETE)
     let shouldTriggerAutomation = false
-    const currentBoard = await BoardService.getById(boardId, organizationId)
     if (status === "COMPLETE") {
       if (currentBoard && currentBoard.status !== "COMPLETE") {
         shouldTriggerAutomation = true

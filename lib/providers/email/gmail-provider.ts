@@ -5,6 +5,11 @@ import { EmailProviderDriver, EmailSendParams } from "./email-provider"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { decrypt } from "@/lib/encryption"
 
+/** Strip CR/LF to prevent email header injection */
+function sanitizeHeader(value: string): string {
+  return value.replace(/[\r\n]/g, "")
+}
+
 export class GmailProvider implements EmailProviderDriver {
   private getClient(account: ConnectedEmailAccount): OAuth2Client {
     const client = new OAuth2Client(
@@ -61,15 +66,20 @@ export class GmailProvider implements EmailProviderDriver {
     const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${account.email.split('@')[1] || 'gmail.com'}>`
 
     // Build message headers - include threading headers if this is a reply
+    // Sanitize user-controlled values to prevent CRLF header injection
+    const safeTo = sanitizeHeader(params.to)
+    const safeReplyTo = sanitizeHeader(params.replyTo)
+    const safeSubject = sanitizeHeader(params.subject)
+
     const headerParts = [
-      `To: ${params.to}`,
+      `To: ${safeTo}`,
       `From: ${account.email}`,
-      `Reply-To: ${params.replyTo}`,
+      `Reply-To: ${safeReplyTo}`,
       `Message-ID: ${messageIdHeader}`,
-      `Subject: ${params.subject}`,
+      `Subject: ${safeSubject}`,
       "MIME-Version: 1.0",
       // List-Unsubscribe for deliverability (signals to inbox providers this is a legitimate sender)
-      `List-Unsubscribe: <mailto:${params.replyTo}?subject=Unsubscribe>`,
+      `List-Unsubscribe: <mailto:${safeReplyTo}?subject=Unsubscribe>`,
       `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
     ]
 

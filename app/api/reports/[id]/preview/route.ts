@@ -23,17 +23,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
 
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     // Parse request body
@@ -73,7 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (taskInstanceId) {
       // Task-scoped preview: read filters from the task record (server-side enforcement)
       const task = await prisma.taskInstance.findFirst({
-        where: { id: taskInstanceId, organizationId: user.organizationId },
+        where: { id: taskInstanceId, organizationId: session.user.organizationId },
         select: {
           id: true,
           reportDefinitionId: true,
@@ -96,9 +87,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
 
       // Verify user has access to this task
-      const isOwner = task.ownerId === user.id
-      const isCollaborator = task.collaborators.some(c => c.userId === user.id)
-      const isAdmin = user.role === "ADMIN"
+      const isOwner = task.ownerId === session.user.id
+      const isCollaborator = task.collaborators.some(c => c.userId === session.user.id)
+      const isAdmin = session.user.role === "ADMIN"
       if (!isOwner && !isCollaborator && !isAdmin) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 })
       }
@@ -107,7 +98,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const canViewAllReports = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)
       if (!isAdmin && !canViewAllReports) {
         const isReportViewer = await prisma.reportDefinitionViewer.findFirst({
-          where: { reportDefinitionId: id, userId: user.id },
+          where: { reportDefinitionId: id, userId: session.user.id },
         })
         if (!isReportViewer) {
           return NextResponse.json(
@@ -129,7 +120,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     } else {
       // No task context: admin/manager previewing in report builder
-      if (!canPerformAction(user.role, "reports:manage", session.user.orgActionPermissions)) {
+      if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
         return NextResponse.json(
           { error: "Permission denied — reports:manage required for standalone preview" },
           { status: 403 }
@@ -142,7 +133,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Execute preview
     const result = await ReportExecutionService.executePreview({
       reportDefinitionId: id,
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
       currentPeriodKey,
       compareMode: compareMode || "none",
       liveConfig,
@@ -170,28 +161,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
 
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     // Legacy preview is only used by report builder — require reports:manage
-    if (!canPerformAction(user.role, "reports:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 
     // Execute preview without period filtering
     const result = await ReportExecutionService.executePreview({
       reportDefinitionId: id,
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
     })
 
     return NextResponse.json(result)

@@ -1597,7 +1597,7 @@ export default function JobDetailPage() {
           } : null
         }}
         stakeholderContacts={[]}
-        onSuccess={() => { fetchJob(); fetchRequests(); fetchFormRequestCount(); fetchTasks(); fetchTimeline(); }}
+        onSuccess={() => { Promise.all([fetchJob(), fetchRequests(), fetchFormRequestCount(), fetchTasks(), fetchTimeline()]) }}
       />
 
       <SendFormModal

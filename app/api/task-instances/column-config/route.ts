@@ -44,17 +44,8 @@ function mergeWithDefaults(savedColumns: any[]): any[] {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true }
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -66,7 +57,7 @@ export async function GET(request: NextRequest) {
     if (boardId) {
       config = await prisma.jobColumnConfig.findFirst({
         where: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           boardId: boardId
         }
       })
@@ -76,7 +67,7 @@ export async function GET(request: NextRequest) {
     if (!config) {
       config = await prisma.jobColumnConfig.findFirst({
         where: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           boardId: null
         }
       })
@@ -101,21 +92,12 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     if (!canPerformAction(session.user.role, "boards:edit_columns", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to edit column configuration" }, { status: 403 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true }
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     const body = await request.json()
@@ -129,7 +111,7 @@ export async function PATCH(request: NextRequest) {
     const config = await prisma.jobColumnConfig.upsert({
       where: {
         organizationId_boardId: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           boardId: boardId || null
         }
       },
@@ -138,7 +120,7 @@ export async function PATCH(request: NextRequest) {
         updatedAt: new Date()
       },
       create: {
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
         boardId: boardId || null,
         columns: columns
       }

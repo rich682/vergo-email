@@ -52,19 +52,20 @@ export async function GET(
       )
     }
 
-    // Check view permission
-    const canView = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'view', orgActionPermissions)
+    // Check all permissions in parallel (each may hit DB for collaborator checks)
+    const [canView, canEdit, canUpdateStatus, canManageCollaborators] = await Promise.all([
+      TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'view', orgActionPermissions),
+      TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'edit', orgActionPermissions),
+      TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'update_status', orgActionPermissions),
+      TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'manage_collaborators', orgActionPermissions),
+    ])
+
     if (!canView) {
       return NextResponse.json(
         { error: "Access denied" },
         { status: 403 }
       )
     }
-
-    // Include permission info for UI
-    const canEdit = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'edit', orgActionPermissions)
-    const canUpdateStatus = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'update_status', orgActionPermissions)
-    const canManageCollaborators = await TaskInstanceService.canUserAccess(userId, userRole, taskInstance, 'manage_collaborators', orgActionPermissions)
 
     const labels = taskInstance.labels as any
     const stakeholders = labels?.stakeholders || []

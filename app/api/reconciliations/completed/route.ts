@@ -16,7 +16,7 @@ import { canPerformAction } from "@/lib/permissions"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -24,20 +24,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ runs: [] })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     // Non-admin users only see runs for configs they are viewers of
     let configIdFilter: { in: string[] } | undefined = undefined
-    if (user.role !== "ADMIN") {
+    if (session.user.role !== "ADMIN") {
       const viewerEntries = await prisma.reconciliationConfigViewer.findMany({
-        where: { userId: user.id },
+        where: { userId: session.user.id },
         select: { reconciliationConfigId: true },
       })
       configIdFilter = { in: viewerEntries.map(v => v.reconciliationConfigId) }
@@ -49,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const runs = await prisma.reconciliationRun.findMany({
       where: {
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
         status: { in: ["COMPLETE", "REVIEW"] },
         ...(configIdFilter ? { configId: configIdFilter } : {}),
         ...(boardIdFilter ? { boardId: boardIdFilter } : {}),

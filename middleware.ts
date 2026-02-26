@@ -96,11 +96,6 @@ export default withAuth(
           return true
         }
 
-        // Allow public attachment downloads by storage key
-        if (pathname.startsWith("/api/attachments/by-key/")) {
-          return true
-        }
-
         return !!token
       },
     },

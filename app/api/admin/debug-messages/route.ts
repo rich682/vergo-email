@@ -16,6 +16,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
+
   try {
     // Get recent outbound messages with their messageIdHeader and threadId
     const outboundMessages = await prisma.message.findMany({
@@ -138,6 +142,10 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
   }
 
   try {

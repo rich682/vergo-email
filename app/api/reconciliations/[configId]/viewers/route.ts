@@ -21,27 +21,18 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (!canPerformAction(user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 
     const { configId } = await params
 
     const config = await prisma.reconciliationConfig.findFirst({
-      where: { id: configId, organizationId: user.organizationId },
+      where: { id: configId, organizationId: session.user.organizationId },
       select: { id: true },
     })
 
@@ -74,20 +65,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (!canPerformAction(user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 
@@ -108,7 +90,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     if (userIds.length > 0) {
       const validUsers = await prisma.user.findMany({
-        where: { id: { in: userIds }, organizationId: user.organizationId },
+        where: { id: { in: userIds }, organizationId: session.user.organizationId },
         select: { id: true },
       })
       const validUserIds = new Set(validUsers.map((u) => u.id))
@@ -118,7 +100,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const viewers = await ReconciliationService.setViewers(configId, user.organizationId, userIds, user.id)
+    const viewers = await ReconciliationService.setViewers(configId, session.user.organizationId, userIds, session.user.id)
 
     return NextResponse.json({
       viewers: viewers.map((v) => ({

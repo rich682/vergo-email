@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -108,8 +108,11 @@ export function BoardDocumentsTab({ boardId }: BoardDocumentsTabProps) {
 
   const hasActiveFilters = jobFilter !== "all" || submitterSearch !== ""
 
+  // AbortController ref for cancelling in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // Fetch items for this board
-  const fetchItems = useCallback(async () => {
+  const fetchItems = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
@@ -119,28 +122,40 @@ export function BoardDocumentsTab({ boardId }: BoardDocumentsTabProps) {
       if (jobFilter !== "all") params.set("jobId", jobFilter)
       if (submitterSearch) params.set("submitter", submitterSearch)
 
+      console.log("[DocumentsTab] fetchItems start", { boardId, jobFilter, submitterSearch })
       const response = await fetch(
         `/api/collection?${params.toString()}`,
-        { credentials: "include" }
+        { credentials: "include", signal }
       )
 
       if (!response.ok) {
         const data = await response.json()
+        console.error("[DocumentsTab] fetchItems failed", { status: response.status, error: data.error })
         throw new Error(data.error || "Failed to fetch collection")
       }
 
+      if (signal?.aborted) return
+
       const data = await response.json()
+      console.log("[DocumentsTab] fetchItems success", { itemCount: data.items?.length, jobCount: data.jobs?.length })
       setItems(data.items || [])
       setJobs(data.jobs || [])
     } catch (err: any) {
+      if (err.name === "AbortError") return
+      console.error("[DocumentsTab] fetchItems error:", err.message)
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [boardId, jobFilter, submitterSearch])
 
+  // Fetch with AbortController — cancels previous in-flight request on re-fetch
   useEffect(() => {
-    fetchItems()
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    fetchItems(controller.signal)
+    return () => controller.abort()
   }, [fetchItems])
 
   const handleDownload = async (item: CollectedItem) => {
@@ -214,7 +229,12 @@ export function BoardDocumentsTab({ boardId }: BoardDocumentsTabProps) {
     return (
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">{error}</p>
-        <Button variant="outline" onClick={fetchItems}>
+        <Button variant="outline" onClick={() => {
+          abortControllerRef.current?.abort()
+          const controller = new AbortController()
+          abortControllerRef.current = controller
+          fetchItems(controller.signal)
+        }}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Retry
         </Button>
@@ -254,7 +274,12 @@ export function BoardDocumentsTab({ boardId }: BoardDocumentsTabProps) {
             />
           </div>
 
-          <Button variant="ghost" size="sm" onClick={fetchItems}>
+          <Button variant="ghost" size="sm" onClick={() => {
+            abortControllerRef.current?.abort()
+            const controller = new AbortController()
+            abortControllerRef.current = controller
+            fetchItems(controller.signal)
+          }}>
             <RefreshCw className="w-4 h-4" />
           </Button>
 

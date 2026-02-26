@@ -15,6 +15,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
+
   try {
     // Get ALL inbound messages in the system (not just for this org, for debugging)
     const allInboundMessages = await prisma.message.findMany({

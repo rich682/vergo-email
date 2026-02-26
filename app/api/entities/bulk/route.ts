@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { CSVImportService } from "@/lib/services/csv-import.service"
 import { canPerformAction } from "@/lib/permissions"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -16,6 +17,11 @@ export async function POST(request: NextRequest) {
 
   if (!canPerformAction(session.user.role, "contacts:import", session.user.orgActionPermissions)) {
     return NextResponse.json({ error: "You do not have permission to import contacts" }, { status: 403 })
+  }
+
+  const { allowed } = await checkRateLimit(`upload:bulk:${session.user.id}`, 10)
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many uploads. Please try again later." }, { status: 429 })
   }
 
   try {
@@ -41,6 +47,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
+      )
+    }
+
+    // Validate file size (max 5MB)
+    const MAX_CSV_SIZE = 5 * 1024 * 1024
+    if (file.size > MAX_CSV_SIZE) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 5MB." },
+        { status: 413 }
       )
     }
 

@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
 import { canPerformAction } from "@/lib/permissions"
 import { ReportDefinitionService } from "@/lib/services/report-definition.service"
 
@@ -18,17 +17,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
@@ -50,9 +40,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const report = await ReportDefinitionService.duplicateReportDefinition(
       params.id,
-      user.organizationId,
+      session.user.organizationId,
       name.trim(),
-      user.id
+      session.user.id
     )
 
     return NextResponse.json({ report }, { status: 201 })

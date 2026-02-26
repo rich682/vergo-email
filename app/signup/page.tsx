@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { validatePassword, PASSWORD_HINT } from "@/lib/utils/password-validation"
 import { Building2, Mail, User, Lock, Loader2, ArrowRight, CheckCircle, Sparkles, Eye, EyeOff } from "lucide-react"
 
 export default function SignupPage() {
@@ -30,8 +31,9 @@ export default function SignupPage() {
       return
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.valid) {
+      setError(pwCheck.error!)
       return
     }
 
@@ -302,7 +304,7 @@ export default function SignupPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-xs text-gray-500">Must be at least 8 characters</p>
+              <p className="text-xs text-gray-500">{PASSWORD_HINT}</p>
             </div>
 
             <div className="space-y-1.5">

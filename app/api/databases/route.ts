@@ -16,24 +16,15 @@ import { canPerformAction } from "@/lib/permissions"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
       return NextResponse.json({ databases: [] })
     }
 
-    const databases = await DatabaseService.listDatabases(user.organizationId)
+    const databases = await DatabaseService.listDatabases(session.user.organizationId)
 
     // Users with view_all_databases see everything; others only see databases they created or are viewers of
     const canViewAll = canPerformAction(session.user.role, "databases:view_all_databases", session.user.orgActionPermissions)
@@ -62,17 +53,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
@@ -92,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Check for duplicate name within the organization
     const existingDb = await prisma.database.findFirst({
-      where: { organizationId: user.organizationId, name: name.trim() },
+      where: { organizationId: session.user.organizationId, name: name.trim() },
       select: { id: true },
     })
     if (existingDb) {
@@ -125,7 +107,7 @@ export async function POST(request: NextRequest) {
         data: {
           name: name.trim(),
           description: description?.trim() || sourceDef.description,
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           schema: sourceDef.schema,
           identifierKeys: ["remote_id"],
           rows: [],
@@ -133,7 +115,7 @@ export async function POST(request: NextRequest) {
           sourceType,
           isReadOnly: true,
           syncFilter: syncFilter || null,
-          createdById: user.id,
+          createdById: session.user.id,
         },
         include: {
           createdBy: { select: { name: true, email: true } },
@@ -156,8 +138,8 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       description: description?.trim(),
       schema: schema as DatabaseSchema,
-      organizationId: user.organizationId,
-      createdById: user.id,
+      organizationId: session.user.organizationId,
+      createdById: session.user.id,
       initialRows: initialRows as DatabaseRow[] | undefined,
     })
 

@@ -20,17 +20,8 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
@@ -43,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     )
 
     const database = await prisma.database.findFirst({
-      where: { id: params.id, organizationId: user.organizationId },
+      where: { id: params.id, organizationId: session.user.organizationId },
       select: { rows: true, schema: true },
     })
 
@@ -67,17 +58,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
@@ -98,7 +80,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const database = await prisma.database.findFirst({
-      where: { id: params.id, organizationId: user.organizationId },
+      where: { id: params.id, organizationId: session.user.organizationId },
     })
 
     if (!database) {

@@ -7,8 +7,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { normalizeEmail } from "@/lib/utils/email"
 import { prisma } from "@/lib/prisma"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
+import { validateOrigin } from "@/lib/utils/csrf"
 
 export async function POST(request: NextRequest) {
+  // CSRF protection
+  if (!validateOrigin(request)) {
+    return NextResponse.json({ error: "Invalid request origin" }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const { email } = body

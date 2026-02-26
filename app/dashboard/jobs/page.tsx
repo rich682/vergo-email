@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -175,7 +175,14 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   // Filter state
   const [taskTypeFilter, setTaskTypeFilter] = useState("")
 
@@ -203,6 +210,7 @@ export default function JobsPage() {
 
   // Tab switching - updates URL param
   const handleTabChange = useCallback((tab: BoardTab) => {
+    console.log("[BoardPage] tab change", { from: activeTab, to: tab, boardId })
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     if (tab === "tasks") {
@@ -211,7 +219,7 @@ export default function JobsPage() {
       params.set("tab", tab)
     }
     router.replace(`/dashboard/jobs?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+  }, [searchParams, router, activeTab, boardId])
 
   // Stakeholder options (populated by fetchStakeholderOptions)
   const [availableContactTypes, setAvailableContactTypes] = useState<{ value: string; label: string; count: number }[]>([])
@@ -236,16 +244,21 @@ export default function JobsPage() {
       }
       // Always include archived - they appear in their own "Archived" group section
       params.set("includeArchived", "true")
-      
+
+      console.log("[BoardPage] fetchJobs start", { boardId })
       const response = await fetch(`/api/task-instances?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
+        console.log("[BoardPage] fetchJobs success", { count: data.taskInstances?.length ?? 0, boardId })
         setJobs(data.taskInstances || [])
       } else if (response.status === 401) {
+        console.warn("[BoardPage] fetchJobs 401 — redirecting to signin")
         window.location.href = "/auth/signin?callbackUrl=/dashboard/jobs"
+      } else {
+        console.error("[BoardPage] fetchJobs failed", { status: response.status, boardId })
       }
     } catch (error) {
-      console.error("Error fetching jobs:", error)
+      console.error("[BoardPage] fetchJobs error:", error)
     } finally {
       setLoading(false)
     }
@@ -257,16 +270,20 @@ export default function JobsPage() {
       return
     }
     try {
+      console.log("[BoardPage] fetchBoard start", { boardId })
       const response = await fetch(`/api/boards/${boardId}`)
       if (response.ok) {
         const data = await response.json()
+        console.log("[BoardPage] fetchBoard success", { boardId, boardName: data.board?.name })
         setCurrentBoard(data.board)
         if (data.advancedBoardTypes !== undefined) {
           setAdvancedBoardTypes(data.advancedBoardTypes)
         }
+      } else {
+        console.error("[BoardPage] fetchBoard failed", { status: response.status, boardId })
       }
     } catch (error) {
-      console.error("Error fetching board:", error)
+      console.error("[BoardPage] fetchBoard error:", error)
     }
   }, [boardId])
 
@@ -277,23 +294,27 @@ export default function JobsPage() {
         const data = await response.json()
         setTeamMembers(data.teamMembers || [])
         const currentUser = data.teamMembers?.find((m: any) => m.isCurrentUser)
-        if (currentUser && !newJobOwnerId) {
-          setNewJobOwnerId(currentUser.id)
+        if (currentUser) {
+          setNewJobOwnerId((prev) => prev || currentUser.id)
         }
       }
     } catch (error) {
       console.error("Error fetching team members:", error)
     }
-  }, [newJobOwnerId])
+  }, [])
 
   const fetchStakeholderOptions = useCallback(async () => {
     try {
-      // Fetch contact type counts
-      const typesResponse = await fetch("/api/contacts/type-counts", { credentials: "include" })
+      // Fetch contact types and groups in parallel
+      const [typesResponse, groupsResponse] = await Promise.all([
+        fetch("/api/contacts/type-counts", { credentials: "include" }),
+        fetch("/api/groups", { credentials: "include" }),
+      ])
+
       if (typesResponse.ok) {
         const data = await typesResponse.json()
         const types: { value: string; label: string; count: number }[] = []
-        
+
         // Add built-in types
         const builtInCounts = data.builtInCounts || {}
         const typeLabels: Record<string, string> = {
@@ -304,7 +325,7 @@ export default function JobsPage() {
           "PARTNER": "Partners",
           "OTHER": "Other"
         }
-        
+
         Object.entries(builtInCounts).forEach(([type, count]) => {
           if (count && (count as number) > 0) {
             types.push({
@@ -314,7 +335,7 @@ export default function JobsPage() {
             })
           }
         })
-        
+
         // Add custom types
         const customTypes = data.customTypes || []
         customTypes.forEach((ct: { label: string; count: number }) => {
@@ -324,12 +345,10 @@ export default function JobsPage() {
             count: ct.count
           })
         })
-        
+
         setAvailableContactTypes(types)
       }
-      
-      // Fetch groups - API returns array directly
-      const groupsResponse = await fetch("/api/groups", { credentials: "include" })
+
       if (groupsResponse.ok) {
         const data = await groupsResponse.json()
         // API returns array directly, not { groups: [...] }
@@ -345,17 +364,11 @@ export default function JobsPage() {
     }
   }, [])
 
-  useEffect(() => { fetchJobs() }, [fetchJobs])
-  useEffect(() => { fetchBoard() }, [fetchBoard])
-  useEffect(() => { fetchTeamMembers() }, [fetchTeamMembers]) // Fetch team members on page load for inline editing
-  useEffect(() => { 
-    if (isCreateOpen) {
-      fetchStakeholderOptions()
-    }
-  }, [isCreateOpen, fetchStakeholderOptions])
-  
-  // Fetch organization timezone
+  // Consolidated mount fetch — parallel load of all board data
   useEffect(() => {
+    if (!boardId) return
+    console.log("[BoardPage] parallel mount fetch start", { boardId })
+
     const fetchOrgSettings = async () => {
       try {
         const response = await fetch("/api/org/accounting-calendar")
@@ -367,8 +380,24 @@ export default function JobsPage() {
         console.error("Error fetching org settings:", error)
       }
     }
-    fetchOrgSettings()
-  }, [])
+
+    Promise.all([
+      fetchJobs(),
+      fetchBoard(),
+      fetchTeamMembers(),
+      fetchOrgSettings(),
+    ]).then(() => {
+      console.log("[BoardPage] parallel mount fetch complete")
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId])
+
+  // Lazy-load stakeholder options only when create modal opens
+  useEffect(() => {
+    if (isCreateOpen) {
+      fetchStakeholderOptions()
+    }
+  }, [isCreateOpen, fetchStakeholderOptions])
 
   // ============================================
   // Handlers
@@ -668,14 +697,14 @@ export default function JobsPage() {
   // Filtered & Grouped Data
   // ============================================
 
-  const filteredJobs = jobs.filter(job => {
+  const filteredJobs = useMemo(() => jobs.filter(job => {
     // Task type filter
     if (taskTypeFilter) {
       if (job.taskType !== taskTypeFilter) return false
     }
     // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
+    if (debouncedSearch) {
+      const query = debouncedSearch.toLowerCase()
       return (
         job.name.toLowerCase().includes(query) ||
         job.description?.toLowerCase().includes(query) ||
@@ -684,10 +713,10 @@ export default function JobsPage() {
       )
     }
     return true
-  })
+  }), [jobs, taskTypeFilter, debouncedSearch])
 
   // Transform jobs to JobRow format for ConfigurableTable
-  const jobRows: JobRow[] = filteredJobs.map(job => ({
+  const jobRows: JobRow[] = useMemo(() => filteredJobs.map(job => ({
     id: job.id,
     name: job.name,
     status: job.status,
@@ -703,7 +732,7 @@ export default function JobsPage() {
     taskType: job.taskType || null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-  }))
+  })), [filteredJobs])
 
   // ============================================
   // Render

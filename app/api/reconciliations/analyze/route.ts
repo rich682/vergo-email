@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { canPerformAction } from "@/lib/permissions"
 
@@ -16,20 +15,12 @@ export const maxDuration = 60
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to manage reconciliations" }, { status: 403 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     const formData = await request.formData()

@@ -25,20 +25,11 @@ const syncConfigSchema = z.object({
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (user.role !== "ADMIN") {
+    if (session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 })
     }
 
@@ -53,7 +44,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const integration = await prisma.accountingIntegration.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: session.user.organizationId },
     })
 
     if (!integration || !integration.isActive) {

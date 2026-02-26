@@ -195,10 +195,14 @@ async function runSeed() {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify secret token
+    // Verify secret token — MIGRATION_SECRET must be explicitly set
+    const expectedSecret = process.env.MIGRATION_SECRET
+    if (!expectedSecret) {
+      console.error("[Migrate] MIGRATION_SECRET env var is not set — denying access")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const authHeader = request.headers.get("authorization")
-    const expectedSecret = process.env.MIGRATION_SECRET || "dev-secret-change-in-production"
-    
     if (!authHeader || authHeader !== `Bearer ${expectedSecret}`) {
       return NextResponse.json(
         { error: "Unauthorized" },

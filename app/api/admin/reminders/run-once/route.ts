@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
+
   try {
     const result = await runDueRemindersOnce()
     return NextResponse.json({ success: true, ...result })

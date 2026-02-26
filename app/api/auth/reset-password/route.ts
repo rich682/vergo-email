@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
+import { validateOrigin } from "@/lib/utils/csrf"
+import { validatePassword } from "@/lib/utils/password-validation"
 
 /**
  * GET - Validate that a reset token is valid
@@ -67,6 +69,11 @@ export async function GET(request: NextRequest) {
  * POST - Reset password with valid token
  */
 export async function POST(request: NextRequest) {
+  // CSRF protection
+  if (!validateOrigin(request)) {
+    return NextResponse.json({ error: "Invalid request origin" }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
     const { token, password } = body
@@ -78,9 +85,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!password || typeof password !== "string" || password.length < 8) {
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.valid) {
       return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
+        { error: pwCheck.error },
         { status: 400 }
       )
     }

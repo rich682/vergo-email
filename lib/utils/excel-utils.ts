@@ -161,7 +161,7 @@ export function parseExcelFile(buffer: Buffer | ArrayBuffer): ExcelParseResult {
   // Get the first sheet
   const firstSheetName = workbook.SheetNames[0]
   if (!firstSheetName) {
-    throw new Error("Excel file has no sheets")
+    throw new Error("File contains no data")
   }
 
   const worksheet = workbook.Sheets[firstSheetName]
@@ -177,7 +177,7 @@ export function parseExcelFile(buffer: Buffer | ArrayBuffer): ExcelParseResult {
   }) as unknown[][]
 
   if (rawData.length === 0) {
-    throw new Error("Excel file is empty")
+    throw new Error("File is empty")
   }
 
   // First row is headers

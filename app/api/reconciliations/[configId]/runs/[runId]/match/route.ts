@@ -5,7 +5,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { ReconciliationMatchingService } from "@/lib/services/reconciliation-matching.service"
 import { ReconciliationRunStatus } from "@prisma/client"
@@ -21,20 +20,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { configId, runId } = await params
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     if (!canPerformAction(session.user.role, "reconciliations:resolve", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to run reconciliation matching" }, { status: 403 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     // Non-admin must be a viewer of the config or have view_all_configs permission
@@ -51,7 +42,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get run with config
-    const run = await ReconciliationService.getRun(runId, user.organizationId)
+    const run = await ReconciliationService.getRun(runId, session.user.organizationId)
     if (!run) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 })
     }
@@ -61,7 +52,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Set status to PROCESSING
-    await ReconciliationService.updateRunStatus(runId, user.organizationId, ReconciliationRunStatus.PROCESSING)
+    await ReconciliationService.updateRunStatus(runId, session.user.organizationId, ReconciliationRunStatus.PROCESSING)
 
     const sourceAConfig = run.config.sourceAConfig as any
     const sourceBConfig = run.config.sourceBConfig as any
@@ -89,7 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Save results
-    await ReconciliationService.saveMatchResults(runId, user.organizationId, {
+    await ReconciliationService.saveMatchResults(runId, session.user.organizationId, {
       matchResults: {
         matched: result.matched,
         unmatchedA: result.unmatchedA,
@@ -108,7 +99,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         data: {
           triggerType: "data_uploaded",
           triggerEventId: runId,
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           metadata: {
             configId,
             runId,

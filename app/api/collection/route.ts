@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
+    console.log("[API] GET /api/collection", { boardId: searchParams.get("boardId"), jobId: searchParams.get("jobId") })
     const boardId = searchParams.get("boardId")
     const source = searchParams.get("source") as CollectedItemSource | null
     const jobId = searchParams.get("jobId")
@@ -102,110 +103,111 @@ export async function GET(request: NextRequest) {
       where.submittedBy = { contains: submitter, mode: "insensitive" }
     }
 
-    // Get total count for pagination (with filters)
-    const filteredCount = await prisma.collectedItem.count({ where })
-
-    let items = await prisma.collectedItem.findMany({
-      where,
-      include: {
-        taskInstance: {
-          select: {
-            id: true,
-            name: true,
-            ownerId: true,
-            boardId: true,
-            board: {
-              select: {
-                id: true,
-                name: true
+    // Parallelize: items + count + total + dropdown queries all at once
+    const [filteredCount, items, total, jobs, owners] = await Promise.all([
+      // Filtered count for pagination
+      prisma.collectedItem.count({ where }),
+      // Main items query
+      prisma.collectedItem.findMany({
+        where,
+        include: {
+          taskInstance: {
+            select: {
+              id: true,
+              name: true,
+              ownerId: true,
+              boardId: true,
+              board: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              },
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
               }
-            },
-            owner: {
-              select: {
-                id: true,
-                name: true,
-                email: true
+            }
+          },
+          request: {
+            select: {
+              id: true,
+              campaignName: true,
+              entity: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  companyName: true
+                }
               }
+            }
+          },
+          message: {
+            select: {
+              id: true,
+              isAutoReply: true
             }
           }
         },
-        request: {
-          select: {
-            id: true,
-            campaignName: true,
-            entity: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-                companyName: true
-              }
-            }
-          }
+        orderBy: { receivedAt: "desc" },
+        skip,
+        take: limit
+      }),
+      // Total count (without filters for summary)
+      prisma.collectedItem.count({
+        where: { organizationId }
+      }),
+      // Unique jobs for filter dropdown, filtered by access
+      prisma.taskInstance.findMany({
+        where: {
+          organizationId,
+          ...(jobAccessFilter || {})
         },
-        message: {
-          select: {
-            id: true,
-            isAutoReply: true
-          }
-        }
-      },
-      orderBy: { receivedAt: "desc" },
-      skip,
-      take: limit
-    })
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: { name: "asc" }
+      }),
+      // Unique owners for filter dropdown
+      prisma.user.findMany({
+        where: { organizationId },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        },
+        orderBy: { name: "asc" }
+      }),
+    ])
 
     // Filter by owner if specified (owner is on the task instance)
+    let filteredItems = items
     if (ownerId) {
-      items = items.filter(item => item.taskInstance?.ownerId === ownerId)
+      filteredItems = items.filter(item => item.taskInstance?.ownerId === ownerId)
     }
 
     // Transform items to match frontend interface (taskInstance -> job, request -> task)
-    const transformedItems = items.map(item => ({
+    const transformedItems = filteredItems.map(item => ({
       ...item,
       jobId: item.taskInstanceId,
       job: item.taskInstance,
       task: item.request,
     }))
 
-    // Get total count (without filters for summary)
-    const total = await prisma.collectedItem.count({
-      where: { organizationId }
-    })
-
-    // Get unique jobs for filter dropdown, filtered by access
-    const jobs = await prisma.taskInstance.findMany({
-      where: { 
-        organizationId,
-        ...(jobAccessFilter || {})
-      },
-      select: {
-        id: true,
-        name: true
-      },
-      orderBy: { name: "asc" }
-    })
-
-    // Get unique owners for filter dropdown
-    const owners = await prisma.user.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        name: true,
-        email: true
-      },
-      orderBy: { name: "asc" }
-    })
-
     return NextResponse.json({
       success: true,
       items: transformedItems,
       total,
-      filteredTotal: ownerId ? items.length : filteredCount,
+      filteredTotal: ownerId ? filteredItems.length : filteredCount,
       page,
       limit,
-      totalPages: Math.ceil((ownerId ? items.length : filteredCount) / limit),
+      totalPages: Math.ceil((ownerId ? filteredItems.length : filteredCount) / limit),
       jobs,
       owners
     })

@@ -14,21 +14,12 @@ import { prisma } from "@/lib/prisma"
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     const integration = await prisma.accountingIntegration.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: session.user.organizationId },
     })
 
     if (!integration) {
@@ -38,7 +29,7 @@ export async function GET(request: NextRequest) {
     // Get row counts for synced databases
     const syncedDatabases = await prisma.database.findMany({
       where: {
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
         sourceType: { not: null },
       },
       select: {

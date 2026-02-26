@@ -20,26 +20,17 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (!canPerformAction(user.role, "databases:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to sync databases" }, { status: 403 })
     }
 
     // Validate database exists and belongs to org
     const database = await prisma.database.findFirst({
-      where: { id: params.id, organizationId: user.organizationId },
+      where: { id: params.id, organizationId: session.user.organizationId },
     })
 
     if (!database) {
@@ -63,7 +54,7 @@ export async function POST(
 
     // Verify accounting integration is active
     const integration = await prisma.accountingIntegration.findUnique({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: session.user.organizationId },
     })
 
     if (!integration || !integration.isActive) {
@@ -110,7 +101,7 @@ export async function POST(
         data: {
           triggerType: "database_changed",
           triggerEventId: params.id,
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           metadata: {
             databaseId: params.id,
             rowCount: result.rowCount,

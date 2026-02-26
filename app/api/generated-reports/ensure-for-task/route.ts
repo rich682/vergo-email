@@ -21,17 +21,8 @@ export const maxDuration = 30
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:generate", session.user.orgActionPermissions)) {
@@ -78,7 +69,7 @@ export async function POST(request: NextRequest) {
     const taskInstance = await prisma.taskInstance.findFirst({
       where: {
         id: taskInstanceId,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       select: {
         id: true,
@@ -98,10 +89,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to this task (owner, collaborator, or admin)
-    const isOwner = taskInstance.ownerId === user.id
-    const isCollaborator = taskInstance.collaborators.some(c => c.userId === user.id)
+    const isOwner = taskInstance.ownerId === session.user.id
+    const isCollaborator = taskInstance.collaborators.some(c => c.userId === session.user.id)
     const userWithRole = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { id: session.user.id },
       select: { role: true },
     })
     const isAdmin = userWithRole?.role === "ADMIN"
@@ -116,7 +107,7 @@ export async function POST(request: NextRequest) {
     // Strict viewer check: admin bypasses, everyone else must be a report definition viewer
     if (!isAdmin) {
       const isReportViewer = await prisma.reportDefinitionViewer.findFirst({
-        where: { reportDefinitionId, userId: user.id },
+        where: { reportDefinitionId, userId: session.user.id },
       })
       if (!isReportViewer) {
         return NextResponse.json(
@@ -149,7 +140,7 @@ export async function POST(request: NextRequest) {
       where: {
         taskInstanceId,
         periodKey,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       select: { id: true },
     })
@@ -166,13 +157,13 @@ export async function POST(request: NextRequest) {
 
     // Generate and store the report using server-side filters
     const report = await ReportGenerationService.generateForPeriod({
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
       reportDefinitionId,
       filterBindings: effectiveFilterBindings,
       taskInstanceId,
       boardId: taskInstance.boardId!,
       periodKey,
-      generatedBy: user.id,
+      generatedBy: session.user.id,
     })
 
     return NextResponse.json({ 

@@ -39,6 +39,10 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
+
   const organizationId = session.user.organizationId
   const checks: HealthCheck[] = []
   const startTime = Date.now()

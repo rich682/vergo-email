@@ -132,8 +132,10 @@ export class MicrosoftProvider implements EmailProviderDriver {
       await new Promise(resolve => setTimeout(resolve, 1000))
       
       // Search for the recently sent message
+      // Escape single quotes for OData filter syntax (double them) and strip CRLF
+      const safeSubject = params.subject.replace(/[\r\n]/g, "").replace(/'/g, "''")
       const searchResp = await fetch(
-        `${GRAPH_BASE}/me/mailFolders/sentItems/messages?$filter=subject eq '${encodeURIComponent(params.subject)}'&$select=id,internetMessageId,conversationId&$top=1&$orderby=sentDateTime desc`,
+        `${GRAPH_BASE}/me/mailFolders/sentItems/messages?$filter=subject eq '${encodeURIComponent(safeSubject)}'&$select=id,internetMessageId,conversationId&$top=1&$orderby=sentDateTime desc`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

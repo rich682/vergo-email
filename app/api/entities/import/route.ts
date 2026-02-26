@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { UnifiedImportService } from "@/lib/services/unified-import.service"
 import { canPerformAction } from "@/lib/permissions"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export const maxDuration = 60
 export async function POST(request: NextRequest) {
@@ -14,6 +15,11 @@ export async function POST(request: NextRequest) {
 
   if (!canPerformAction(session.user.role, "contacts:import", session.user.orgActionPermissions)) {
     return NextResponse.json({ error: "You do not have permission to import contacts" }, { status: 403 })
+  }
+
+  const { allowed } = await checkRateLimit(`upload:entity-import:${session.user.id}`, 10)
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many uploads. Please try again later." }, { status: 429 })
   }
 
   const formData = await request.formData()
@@ -33,6 +39,15 @@ export async function POST(request: NextRequest) {
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "File is required" }, { status: 400 })
+  }
+
+  // Validate file size (max 10MB)
+  const MAX_IMPORT_SIZE = 10 * 1024 * 1024
+  if (file.size > MAX_IMPORT_SIZE) {
+    return NextResponse.json(
+      { error: "File too large. Maximum size is 10MB." },
+      { status: 413 }
+    )
   }
 
   try {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -224,11 +224,15 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
   const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" ||
     labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all" || typeFilter !== "all"
 
+  // AbortController ref for cancelling in-flight requests on filter change / unmount
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // Fetch all requests for this board
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true)
       setError(null)
+      console.log("[RequestsTab] fetchRequests start", { boardId, filters: { jobFilter, ownerFilter, statusFilter, typeFilter } })
 
       const baseParams = new URLSearchParams()
       baseParams.set("boardId", boardId)
@@ -256,25 +260,29 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
       if (contactSearch) formParams.set("contactSearch", contactSearch)
       if (statusFilter === "NO_REPLY") formParams.set("status", "PENDING")
 
+      const fetchOpts: RequestInit = { credentials: "include", signal }
       const promises: Promise<Response>[] = []
       if (fetchStandardData) {
-        promises.push(fetch(`/api/requests?${requestsParams.toString()}`, { credentials: "include" }))
+        promises.push(fetch(`/api/requests?${requestsParams.toString()}`, fetchOpts))
       }
       if (fetchFormData) {
         const skipFormFetch = statusFilter === "REPLIED" || statusFilter === "READ"
         if (!skipFormFetch) {
-          promises.push(fetch(`/api/form-requests/list?${formParams.toString()}`, { credentials: "include" }))
+          promises.push(fetch(`/api/form-requests/list?${formParams.toString()}`, fetchOpts))
         }
       }
 
       const responses = await Promise.all(promises)
 
+      // Bail out if aborted between fetch and state update
+      if (signal?.aborted) return
+
       let emailRequests: RequestTask[] = []
       let formRequestsNormalized: RequestTask[] = []
-      let apiJobs: JobOption[] = []
-      let apiOwners: OwnerOption[] = []
-      let apiLabels: LabelOption[] = []
-      let apiStatusSummary: Record<string, number> = {}
+      let apiJobs: JobOption[] | undefined
+      let apiOwners: OwnerOption[] | undefined
+      let apiLabels: LabelOption[] | undefined
+      let apiStatusSummary: Record<string, number> | undefined
 
       let responseIdx = 0
 
@@ -286,10 +294,11 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
         }
         const data = await res.json()
         emailRequests = data.requests || []
-        apiJobs = data.jobs || []
-        apiOwners = data.owners || []
-        apiLabels = data.labels || []
-        apiStatusSummary = data.statusSummary || {}
+        // Dropdown/summary data is only returned on initial fetch (page 1)
+        if (data.jobs !== undefined) apiJobs = data.jobs
+        if (data.owners !== undefined) apiOwners = data.owners
+        if (data.labels !== undefined) apiLabels = data.labels
+        if (data.statusSummary !== undefined) apiStatusSummary = data.statusSummary
       }
 
       if (fetchFormData && responseIdx < responses.length) {
@@ -369,47 +378,70 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
 
       allRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
+      if (signal?.aborted) return
+
+      console.log("[RequestsTab] fetchRequests success", { count: allRequests.length, emailCount: emailRequests.length, formCount: formRequestsNormalized.length })
       setRequests(allRequests)
       setTotal(allRequests.length)
+      // Only update filter dropdowns when API returned them (skipped on pagination for performance)
       if (fetchStandardData) {
-        setJobs(apiJobs)
-        setOwners(apiOwners)
-        setLabels(apiLabels)
-        setStatusSummary(apiStatusSummary)
+        if (apiJobs !== undefined) setJobs(apiJobs)
+        if (apiOwners !== undefined) setOwners(apiOwners)
+        if (apiLabels !== undefined) setLabels(apiLabels)
+        if (apiStatusSummary !== undefined) setStatusSummary(apiStatusSummary)
       }
     } catch (err: any) {
+      if (err.name === "AbortError") return // Silently ignore aborted fetches
+      console.error("[RequestsTab] fetchRequests error:", err.message)
       setError(err.message)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [boardId, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
 
+  // Fetch with AbortController — cancels previous in-flight request on re-fetch
   useEffect(() => {
-    fetchRequests()
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    fetchRequests(controller.signal)
+    return () => controller.abort()
   }, [fetchRequests])
 
-  // Fetch message IDs for replied requests
+  // Fetch message IDs for replied requests — parallel batch fetch with abort
   useEffect(() => {
+    const controller = new AbortController()
+
     const fetchReplyMessageIds = async () => {
-      const repliedRequests = requests.filter(r => hasReply(r.status) && !r._isFormRequest)
+      const repliedRequests = requests.filter(r => hasReply(r.status) && !r._isFormRequest && !replyMessageIds[r.id])
       if (repliedRequests.length === 0) return
 
-      const messageIds: Record<string, string> = {}
-
-      for (const request of repliedRequests) {
-        if (replyMessageIds[request.id]) continue
-        try {
-          const response = await fetch(`/api/requests/detail/${request.id}/messages`, { credentials: "include" })
-          if (response.ok) {
-            const messages = await response.json()
-            const inboundMessage = messages
-              .filter((m: any) => m.direction === "INBOUND")
-              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
-            if (inboundMessage) {
-              messageIds[request.id] = inboundMessage.id
+      console.log("[RequestsTab] fetching reply message IDs (parallel)", { count: repliedRequests.length })
+      const results = await Promise.all(
+        repliedRequests.map(async (request) => {
+          try {
+            const response = await fetch(`/api/requests/detail/${request.id}/messages`, { credentials: "include", signal: controller.signal })
+            if (response.ok) {
+              const messages = await response.json()
+              const inboundMessage = messages
+                .filter((m: any) => m.direction === "INBOUND")
+                .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+              if (inboundMessage) {
+                return { requestId: request.id, messageId: inboundMessage.id }
+              }
             }
+          } catch (err: any) {
+            if (err.name === "AbortError") return null
           }
-        } catch (err) {}
+          return null
+        })
+      )
+
+      if (controller.signal.aborted) return
+
+      const messageIds: Record<string, string> = {}
+      for (const result of results) {
+        if (result) messageIds[result.requestId] = result.messageId
       }
 
       if (Object.keys(messageIds).length > 0) {
@@ -420,6 +452,9 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
     if (requests.length > 0) {
       fetchReplyMessageIds()
     }
+
+    return () => controller.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests])
 
   const clearFilters = () => {
@@ -488,7 +523,12 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
     return (
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">{error}</p>
-        <Button variant="outline" onClick={fetchRequests}>
+        <Button variant="outline" onClick={() => {
+          abortControllerRef.current?.abort()
+          const controller = new AbortController()
+          abortControllerRef.current = controller
+          fetchRequests(controller.signal)
+        }}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Retry
         </Button>
@@ -606,7 +646,12 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
             />
           </div>
 
-          <Button variant="ghost" size="sm" onClick={fetchRequests}>
+          <Button variant="ghost" size="sm" onClick={() => {
+            abortControllerRef.current?.abort()
+            const controller = new AbortController()
+            abortControllerRef.current = controller
+            fetchRequests(controller.signal)
+          }}>
             <RefreshCw className="w-4 h-4" />
           </Button>
 

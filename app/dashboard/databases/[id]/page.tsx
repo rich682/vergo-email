@@ -1629,7 +1629,7 @@ export default function DatabaseDetailPage() {
           <DialogHeader>
             <DialogTitle>Import Data</DialogTitle>
             <DialogDescription>
-              Upload an Excel file to add new rows. Duplicate entries (based on identifier columns) will be rejected.
+              Upload a spreadsheet to add new rows. Duplicate entries (based on identifier columns) will be rejected.
             </DialogDescription>
           </DialogHeader>
 
@@ -1678,7 +1678,7 @@ export default function DatabaseDetailPage() {
                   </div>
                 )}
                 <p className="text-xs text-gray-400">
-                  Tip: Select your data in Excel (including the header row), copy it (Ctrl+C / Cmd+C), then paste here.
+                  Tip: Select your data in a spreadsheet (including the header row), copy it (Ctrl+C / Cmd+C), then paste here.
                 </p>
               </div>
             ) : !importFile ? (
@@ -1687,7 +1687,7 @@ export default function DatabaseDetailPage() {
                 onDrop={(e) => {
                   e.preventDefault()
                   const file = e.dataTransfer.files[0]
-                  if (file && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
+                  if (file && (file.name.endsWith(".csv") || file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
                     handleFileSelect(file)
                   }
                 }}
@@ -1696,7 +1696,7 @@ export default function DatabaseDetailPage() {
               >
                 <input
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".csv,.xlsx,.xls"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) handleFileSelect(file)
@@ -1710,10 +1710,10 @@ export default function DatabaseDetailPage() {
                 >
                   <FileUp className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                   <p className="text-gray-600">
-                    Drop an Excel file here or{" "}
+                    Drop a file here or{" "}
                     <span className="text-orange-600 font-medium">browse</span>
                   </p>
-                  <p className="text-sm text-gray-400 mt-1">.xlsx or .xls files</p>
+                  <p className="text-sm text-gray-400 mt-1">.csv, .xlsx, or .xls files</p>
                 </button>
               </div>
             ) : previewing ? (

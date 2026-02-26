@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { configId } = await params
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -26,15 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ config: null })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    const config = await ReconciliationService.getConfig(configId, user.organizationId)
+    const config = await ReconciliationService.getConfig(configId, session.user.organizationId)
     if (!config) {
       return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 })
     }
@@ -63,20 +55,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { configId } = await params
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to edit reconciliations" }, { status: 403 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     const body = await request.json()
@@ -85,7 +69,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.name && typeof body.name === "string" && body.name.trim()) {
       const existing = await prisma.reconciliationConfig.findFirst({
         where: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           name: body.name.trim(),
           id: { not: configId },
         },
@@ -99,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    await ReconciliationService.updateConfig(configId, user.organizationId, body)
+    await ReconciliationService.updateConfig(configId, session.user.organizationId, body)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -112,7 +96,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { configId } = await params
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -120,15 +104,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "You do not have permission to delete reconciliations" }, { status: 403 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    await ReconciliationService.deleteConfig(configId, user.organizationId)
+    await ReconciliationService.deleteConfig(configId, session.user.organizationId)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[Reconciliations] Error deleting config:", error)

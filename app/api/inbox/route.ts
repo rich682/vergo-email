@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
       where.request.riskLevel = riskFilter
     }
 
-    // Count
-    const totalCount = await prisma.message.count({ where })
-
-    // Fetch messages with related data
-    const messages = await prisma.message.findMany({
+    // Count + Fetch in parallel for faster response
+    console.log("[API] GET /api/inbox", { boardId, readStatusFilter, riskFilter, page, limit })
+    const [totalCount, messages] = await Promise.all([
+      prisma.message.count({ where }),
+      prisma.message.findMany({
       where,
       select: {
         id: true,
@@ -122,6 +122,7 @@ export async function GET(request: NextRequest) {
       skip,
       take: limit,
     })
+    ])
 
     // Build enriched response
     const inboxItems = messages.map((msg) => {
@@ -189,6 +190,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    console.log("[API] GET /api/inbox result", { itemCount: inboxItems.length, total: totalCount, page })
     return NextResponse.json({
       success: true,
       items: inboxItems,

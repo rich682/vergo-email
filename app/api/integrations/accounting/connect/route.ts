@@ -17,20 +17,11 @@ import { MergeAccountingService } from "@/lib/services/merge-accounting.service"
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    if (user.role !== "ADMIN") {
+    if (session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 })
     }
 
@@ -53,9 +44,9 @@ export async function POST(request: NextRequest) {
 
     // Upsert the integration record
     await prisma.accountingIntegration.upsert({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: session.user.organizationId },
       create: {
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
         accountToken: encrypt(result.account_token),
         integrationName: result.integration.name,
         integrationSlug: result.integration.slug,
@@ -82,7 +73,7 @@ export async function POST(request: NextRequest) {
         "@/lib/services/accounting-sync.service"
       )
       await AccountingSyncService.syncContacts(
-        user.organizationId,
+        session.user.organizationId,
         result.account_token
       )
     } catch (e) {

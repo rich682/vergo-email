@@ -323,7 +323,7 @@ export default function NewDatabasePage() {
       
       const firstSheet = workbook.SheetNames[0]
       if (!firstSheet) {
-        throw new Error("Excel file has no sheets")
+        throw new Error("File has no sheets")
       }
       
       const worksheet = workbook.Sheets[firstSheet]
@@ -334,7 +334,7 @@ export default function NewDatabasePage() {
       })
       
       if (rawData.length === 0) {
-        throw new Error("Excel file is empty")
+        throw new Error("File is empty")
       }
       
       // Extract headers
@@ -391,7 +391,7 @@ export default function NewDatabasePage() {
       setInferredColumns(inferred)
       
     } catch (err: any) {
-      setParseError(err.message || "Failed to parse Excel file")
+      setParseError(err.message || "Failed to parse file")
       setParsedHeaders([])
       setSampleRows([])
       setInferredColumns([])
@@ -401,7 +401,7 @@ export default function NewDatabasePage() {
   const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     const file = e.dataTransfer.files[0]
-    if (file && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
+    if (file && (file.name.endsWith(".csv") || file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
       handleFileUpload(file)
     }
   }, [handleFileUpload])
@@ -757,7 +757,7 @@ export default function NewDatabasePage() {
                   <FileUp className="w-8 h-8 text-gray-400 group-hover:text-orange-500 mb-3" />
                   <h3 className="font-medium text-gray-900">Upload spreadsheet</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Import schema from Excel headers with optional sample data
+                    Import schema from spreadsheet headers with optional sample data
                   </p>
                 </button>
 
@@ -1057,7 +1057,7 @@ export default function NewDatabasePage() {
                 <div>
                   <h2 className="text-lg font-medium text-gray-900">Upload Spreadsheet</h2>
                   <p className="text-sm text-gray-500">
-                    Upload an Excel file to auto-detect schema from headers
+                    Upload a spreadsheet to auto-detect schema from headers
                   </p>
                 </div>
                 <Button
@@ -1085,7 +1085,7 @@ export default function NewDatabasePage() {
                 >
                   <input
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".csv,.xlsx,.xls"
                     onChange={handleFileSelect}
                     className="hidden"
                     id="file-upload"
@@ -1093,10 +1093,10 @@ export default function NewDatabasePage() {
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                     <p className="text-gray-600">
-                      Drag and drop an Excel file here, or{" "}
+                      Drag and drop a file here, or{" "}
                       <span className="text-orange-600 font-medium">browse</span>
                     </p>
-                    <p className="text-sm text-gray-400 mt-1">.xlsx or .xls files</p>
+                    <p className="text-sm text-gray-400 mt-1">.csv, .xlsx, or .xls files</p>
                   </label>
                 </div>
               ) : parseError ? (

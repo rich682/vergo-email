@@ -12,7 +12,7 @@ import { canPerformAction } from "@/lib/permissions"
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -20,15 +20,7 @@ export async function GET() {
       return NextResponse.json({ configs: [] })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
-    const configs = await ReconciliationService.listConfigs(user.organizationId)
+    const configs = await ReconciliationService.listConfigs(session.user.organizationId)
 
     // Users with view_all_configs see everything; others see only configs they created or are viewers of
     const canViewAll = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)
@@ -53,16 +45,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true, role: true },
-    })
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reconciliations:manage", session.user.orgActionPermissions)) {
@@ -78,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Check for duplicate name within the organization
     const existing = await prisma.reconciliationConfig.findFirst({
-      where: { organizationId: user.organizationId, name: name.trim() },
+      where: { organizationId: session.user.organizationId, name: name.trim() },
       select: { id: true },
     })
     if (existing) {
@@ -89,7 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = await ReconciliationService.createConfig({
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
       name,
       sourceType,
       sourceAConfig: sourceAConfig || { label: "Source A", columns: [] },

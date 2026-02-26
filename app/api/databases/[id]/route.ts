@@ -21,24 +21,15 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to view databases" }, { status: 403 })
     }
 
-    const database = await DatabaseService.getDatabase(params.id, user.organizationId)
+    const database = await DatabaseService.getDatabase(params.id, session.user.organizationId)
 
     if (!database) {
       return NextResponse.json({ error: "Database not found" }, { status: 404 })
@@ -72,17 +63,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
@@ -104,7 +86,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (name && typeof name === "string" && name.trim()) {
       const existingDb = await prisma.database.findFirst({
         where: {
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
           name: name.trim(),
           id: { not: params.id },
         },
@@ -139,7 +121,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Check if filters are changing on an accounting-sourced database
     let filtersChanged = false
     if (syncFilter !== undefined) {
-      const existingDb = await DatabaseService.getDatabase(params.id, user.organizationId)
+      const existingDb = await DatabaseService.getDatabase(params.id, session.user.organizationId)
       if (existingDb?.sourceType) {
         const oldFilter = JSON.stringify(existingDb.syncFilter || null)
         const newFilter = JSON.stringify(syncFilter)
@@ -149,7 +131,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const database = await DatabaseService.updateDatabase(
       params.id,
-      user.organizationId,
+      session.user.organizationId,
       {
         name: name?.trim(),
         description: description?.trim(),
@@ -159,7 +141,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Clear rows if filters changed — old data was synced with different filters
     if (filtersChanged) {
-      await DatabaseService.clearDatabaseRows(params.id, user.organizationId)
+      await DatabaseService.clearDatabaseRows(params.id, session.user.organizationId)
     }
 
     return NextResponse.json({ database, filtersChanged })
@@ -181,24 +163,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
     }
 
-    await DatabaseService.deleteDatabase(params.id, user.organizationId)
+    await DatabaseService.deleteDatabase(params.id, session.user.organizationId)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

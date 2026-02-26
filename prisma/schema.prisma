@@ -454,6 +454,8 @@ model TaskInstance {
   @@index([boardId])
   @@index([lineageId])
   @@index([reconciliationConfigId])
+  @@index([organizationId, boardId, status]) // Board page: filtered task queries
+  @@index([organizationId, ownerId, status]) // My tasks: owner-scoped queries
   @@map("Job")
 }
 
@@ -603,6 +605,8 @@ model Request {
   @@index([organizationId, campaignType])
   @@index([organizationId, isDraft]) // For filtering draft vs active requests
   @@index([draftSourceRequestId]) // For looking up source request content
+  @@index([organizationId, taskInstanceId, isDraft]) // Requests tab: board-scoped request queries
+  @@index([organizationId, taskInstanceId, status]) // Inbox: request status filtering
   @@map("Task")
 }
 
@@ -653,6 +657,7 @@ model Message {
   @@index([threadId])
   @@index([isAutoReply])
   @@index([reviewStatus])
+  @@index([direction, isAutoReply, requestId]) // Inbox: inbound message filtering
 }
 
 model AgentSchedule {

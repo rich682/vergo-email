@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     // Parse tags filter
     const tags = tagsParam ? tagsParam.split(",").map(t => t.trim()).filter(Boolean) : undefined
 
+    console.log("[API] GET /api/task-instances", { boardId, status, includeArchived, userId: userId.slice(0, 8) })
     const result = await TaskInstanceService.findByOrganization(organizationId, {
       userId,  // Pass for role-based filtering
       userRole,  // Pass for role-based filtering
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined
     })
+    console.log("[API] GET /api/task-instances result", { count: result.taskInstances.length, total: result.total })
 
     // Map instances to include effective status (custom status takes precedence)
     const instancesWithEffectiveStatus = result.taskInstances.map(instance => {

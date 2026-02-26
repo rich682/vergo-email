@@ -16,24 +16,15 @@ import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportCadence,
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)) {
       return NextResponse.json({ reports: [] })
     }
 
-    const reports = await ReportDefinitionService.listReportDefinitions(user.organizationId)
+    const reports = await ReportDefinitionService.listReportDefinitions(session.user.organizationId)
 
     // If user can view all definitions, return everything; otherwise filter to owned/viewable
     if (canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
@@ -66,17 +57,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
@@ -85,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Check if advanced board types is enabled
     const organization = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: session.user.organizationId },
       select: { features: true },
     })
     const orgFeatures = (organization?.features as Record<string, any>) || {}
@@ -111,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // Check for duplicate name within the organization
     const existingReport = await prisma.reportDefinition.findFirst({
-      where: { organizationId: user.organizationId, name: name.trim() },
+      where: { organizationId: session.user.organizationId, name: name.trim() },
       select: { id: true },
     })
     if (existingReport) {
@@ -196,8 +178,8 @@ export async function POST(request: NextRequest) {
       metricRows: metricRows as MetricRow[] | undefined,
       rowColumnKey,
       valueColumnKey,
-      organizationId: user.organizationId,
-      createdById: user.id,
+      organizationId: session.user.organizationId,
+      createdById: session.user.id,
     })
 
     return NextResponse.json({ report }, { status: 201 })

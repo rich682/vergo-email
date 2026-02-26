@@ -11,6 +11,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService, DatabaseSchema } from "@/lib/services/database.service"
 import { parseExcelWithSchema } from "@/lib/utils/excel-utils"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export const maxDuration = 60
 interface RouteParams {
@@ -20,24 +21,20 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
+    const { allowed } = await checkRateLimit(`upload:db-import:${session.user.id}`, 10)
+    if (!allowed) {
+      return NextResponse.json({ error: "Too many uploads. Please try again later." }, { status: 429 })
     }
 
     // Get the database
     const database = await prisma.database.findFirst({
       where: {
         id: params.id,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       select: {
         name: true,
@@ -62,6 +59,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
+    // Validate file size (max 25MB)
+    const MAX_IMPORT_SIZE = 25 * 1024 * 1024
+    if (file.size > MAX_IMPORT_SIZE) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 25MB." },
+        { status: 413 }
+      )
+    }
+
     const buffer = await file.arrayBuffer()
     
     try {
@@ -80,7 +86,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // Use the service to preview import with full categorization
       const preview = await DatabaseService.previewImport(
         params.id,
-        user.organizationId,
+        session.user.organizationId,
         rows
       )
 
@@ -101,7 +107,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     } catch (parseError: any) {
       return NextResponse.json({
         valid: false,
-        errors: [parseError.message || "Failed to parse Excel file"],
+        errors: [parseError.message || "Failed to parse file"],
         warnings: [],
         rowCount: 0,
         newRowCount: 0,

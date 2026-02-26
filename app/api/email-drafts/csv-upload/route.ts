@@ -10,6 +10,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { parseCSV, CSVParseError } from "@/lib/utils/csv-parser"
 import { canPerformAction } from "@/lib/permissions"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -25,6 +26,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "You do not have permission to manage drafts" }, { status: 403 })
   }
 
+  const { allowed } = await checkRateLimit(`upload:csv:${session.user.id}`, 10)
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many uploads. Please try again later." }, { status: 429 })
+  }
+
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File
@@ -33,6 +39,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
+      )
+    }
+
+    // Validate file size (max 5MB)
+    const MAX_CSV_SIZE = 5 * 1024 * 1024
+    if (file.size > MAX_CSV_SIZE) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 5MB." },
+        { status: 413 }
       )
     }
 

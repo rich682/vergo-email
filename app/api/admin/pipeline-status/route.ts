@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
+
   try {
     // Check database connectivity
     let canWriteDb = false

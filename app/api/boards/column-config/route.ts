@@ -47,22 +47,13 @@ function mergeWithDefaults(savedColumns: any[], defaultColumns: any[]): any[] {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true }
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     // Get org features which may contain boardColumns config
     const org = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: session.user.organizationId },
       select: { features: true }
     })
 
@@ -92,7 +83,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -100,21 +91,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "You do not have permission to edit board column configuration" }, { status: 403 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { organizationId: true }
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     const body = await request.json()
     const { columns, taskColumns } = body
 
     // Get current features
     const org = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: session.user.organizationId },
       select: { features: true }
     })
 
@@ -133,7 +115,7 @@ export async function PATCH(request: NextRequest) {
 
     // Save updated features
     await prisma.organization.update({
-      where: { id: user.organizationId },
+      where: { id: session.user.organizationId },
       data: {
         features: updatedFeatures
       }

@@ -24,21 +24,12 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     // Require reports:manage permission
-    if (!canPerformAction(user.role, "reports:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 
@@ -46,7 +37,7 @@ export async function GET(
 
     // Verify report exists and belongs to org
     const report = await prisma.reportDefinition.findFirst({
-      where: { id, organizationId: user.organizationId },
+      where: { id, organizationId: session.user.organizationId },
       select: { id: true },
     })
 
@@ -88,21 +79,12 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
-    }
-
     // Require reports:manage permission
-    if (!canPerformAction(user.role, "reports:manage", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 
@@ -129,7 +111,7 @@ export async function PUT(
       const validUsers = await prisma.user.findMany({
         where: {
           id: { in: userIds },
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
         },
         select: { id: true },
       })
@@ -148,9 +130,9 @@ export async function PUT(
     // Set viewers (replaces full list)
     const viewers = await ReportDefinitionService.setViewers(
       id,
-      user.organizationId,
+      session.user.organizationId,
       userIds,
-      user.id
+      session.user.id
     )
 
     return NextResponse.json({

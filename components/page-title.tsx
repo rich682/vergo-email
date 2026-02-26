@@ -11,8 +11,13 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/requests": "Requests",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/team": "Team",
+  "/dashboard/settings/accounting": "Settings",
+  "/dashboard/settings/integrations": "Settings",
+  "/dashboard/settings/role-permissions": "Settings",
   "/dashboard/profile": "Profile Settings",
   "/dashboard/collection": "Collection",
+  "/dashboard/collection/invoices": "Collection",
+  "/dashboard/collection/expenses": "Collection",
   "/dashboard/reconciliations": "Reconciliations",
   "/dashboard/reconciliations/new": "New Reconciliation",
   "/dashboard/reports": "Reports",
@@ -22,6 +27,9 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/forms": "Forms",
   "/dashboard/forms/new": "New Form",
   "/dashboard/automations": "Agents",
+  "/dashboard/automations/new": "Agents",
+  "/dashboard/agents": "Agents",
+  "/dashboard/campaigns": "Campaigns",
   "/dashboard/analysis": "Analytics",
 }
 
@@ -41,8 +49,18 @@ export function PageTitle() {
       title = "Report Template"
     } else if (pathname.startsWith("/dashboard/databases/")) {
       title = "Database"
+    } else if (pathname.startsWith("/dashboard/analysis/chat/")) {
+      title = "Analytics"
     } else if (pathname.startsWith("/dashboard/forms/")) {
       title = "Form"
+    } else if (pathname.startsWith("/dashboard/reconciliations/")) {
+      title = "Reconciliations"
+    } else if (pathname.startsWith("/dashboard/automations/")) {
+      title = "Agents"
+    } else if (pathname.startsWith("/dashboard/agents/")) {
+      title = "Agents"
+    } else if (pathname.startsWith("/dashboard/requests/")) {
+      title = "Requests"
     }
   }
   

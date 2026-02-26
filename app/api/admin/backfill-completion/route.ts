@@ -239,14 +239,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Only allow admins to run this
-  // You can add role checking here if needed
-  // if (session.user.role !== "ADMIN") {
-  //   return NextResponse.json(
-  //     { error: "Forbidden - Admin only" },
-  //     { status: 403 }
-  //   )
-  // }
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+  }
 
   try {
     console.log("Starting backfill of completion percentages via API...")

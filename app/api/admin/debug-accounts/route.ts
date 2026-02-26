@@ -10,12 +10,16 @@ import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
   }
 
   try {
@@ -63,12 +67,16 @@ export async function GET(request: NextRequest) {
 // POST to reset sync cursor for an account (force re-bootstrap)
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
-  
+
   if (!session?.user?.organizationId) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     )
+  }
+
+  if (session.user.role?.toUpperCase() !== "ADMIN") {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 })
   }
 
   try {

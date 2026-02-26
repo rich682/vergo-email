@@ -24,17 +24,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "databases:import", session.user.orgActionPermissions)) {
@@ -45,7 +36,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const database = await prisma.database.findFirst({
       where: {
         id: params.id,
-        organizationId: user.organizationId,
+        organizationId: session.user.organizationId,
       },
       select: {
         id: true,
@@ -100,8 +91,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // Import the rows with optional update support
       const result = await DatabaseService.importRows(
         params.id,
-        user.organizationId,
-        user.id,
+        session.user.organizationId,
+        session.user.id,
         rows,
         { updateExisting }
       )
@@ -140,7 +131,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           data: {
             triggerType: "database_changed",
             triggerEventId: params.id,
-            organizationId: user.organizationId,
+            organizationId: session.user.organizationId,
             metadata: {
               databaseId: params.id,
               added: result.added,

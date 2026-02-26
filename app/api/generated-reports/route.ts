@@ -17,17 +17,8 @@ export const maxDuration = 45;
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true, role: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
@@ -44,11 +35,11 @@ export async function GET(request: NextRequest) {
     const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
 
     // Determine viewer filter: users with view_all_definitions see all, others only see reports they're viewers of
-    const viewerUserId = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions) ? undefined : user.id
+    const viewerUserId = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions) ? undefined : session.user.id
 
     // Fetch reports
     const reports = await ReportGenerationService.list({
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
       reportDefinitionId,
       periodKey,
       boardId,
@@ -57,7 +48,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Also fetch distinct periods for filtering (only from visible reports for non-admins)
-    const periods = await ReportGenerationService.getDistinctPeriods(user.organizationId, viewerUserId)
+    const periods = await ReportGenerationService.getDistinctPeriods(session.user.organizationId, viewerUserId)
 
     return NextResponse.json({ reports, periods })
   } catch (error) {
@@ -73,17 +64,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, organizationId: true },
-    })
-
-    if (!user?.organizationId) {
-      return NextResponse.json({ error: "No organization found" }, { status: 400 })
     }
 
     if (!canPerformAction(session.user.role, "reports:generate", session.user.orgActionPermissions)) {
@@ -122,11 +104,11 @@ export async function POST(request: NextRequest) {
 
     // Create the manual report
     const report = await ReportGenerationService.createManualReport({
-      organizationId: user.organizationId,
+      organizationId: session.user.organizationId,
       reportDefinitionId,
       filterBindings,
       periodKey,
-      createdBy: user.id,
+      createdBy: session.user.id,
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     })
 
@@ -136,7 +118,7 @@ export async function POST(request: NextRequest) {
       const validUsers = await prisma.user.findMany({
         where: {
           id: { in: viewerIds },
-          organizationId: user.organizationId,
+          organizationId: session.user.organizationId,
         },
         select: { id: true },
       })
@@ -148,7 +130,7 @@ export async function POST(request: NextRequest) {
           data: validUserIds.map(userId => ({
             generatedReportId: report.id,
             userId,
-            addedBy: user.id,
+            addedBy: session.user.id,
           })),
           skipDuplicates: true,
         })

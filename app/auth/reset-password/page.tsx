@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { validatePassword, PASSWORD_HINT } from "@/lib/utils/password-validation"
 import Image from "next/image"
 import { ArrowLeft, Lock, CheckCircle, AlertCircle, Loader2, ArrowRight } from "lucide-react"
 
@@ -58,8 +59,9 @@ function ResetPasswordContent() {
       return
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.valid) {
+      setError(pwCheck.error!)
       return
     }
 
@@ -220,7 +222,7 @@ function ResetPasswordContent() {
                   className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                 />
               </div>
-              <p className="text-xs text-gray-500">Must be at least 8 characters</p>
+              <p className="text-xs text-gray-500">{PASSWORD_HINT}</p>
             </div>
 
             <div className="space-y-1.5">

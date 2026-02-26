@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Parse query params for filters and pagination
     const { searchParams } = new URL(request.url)
+    console.log("[API] GET /api/requests", { boardId: searchParams.get("boardId"), status: searchParams.get("status"), type: searchParams.get("requestType") })
     const boardId = searchParams.get("boardId")
     const jobId = searchParams.get("jobId")
     const ownerId = searchParams.get("ownerId")
@@ -198,62 +199,68 @@ export async function GET(request: NextRequest) {
 
     const filteredTasks = tasks
 
-    // Fire dropdown + status queries in parallel for better performance
-    const [jobsWithRequests, owners, labelsFromJobs, statusCounts] = await Promise.all([
-      // Get only task instances that have sent requests (exclude drafts), filtered by access
-      prisma.taskInstance.findMany({
-        where: { 
-          organizationId,
-          requests: {
-            some: { isDraft: false }
-          },
-          ...(jobAccessFilter || {})
-        },
-        select: {
-          id: true,
-          name: true
-        },
-        orderBy: { name: "asc" }
-      }),
-      // Get unique owners for filter dropdown
-      prisma.user.findMany({
-        where: { organizationId },
-        select: {
-          id: true,
-          name: true,
-          email: true
-        },
-        orderBy: { name: "asc" }
-      }),
-      // Get all labels from task instances that have active requests (not drafts)
-      prisma.taskInstanceLabel.findMany({
-        where: {
-          taskInstance: {
-            organizationId,
-            requests: {
-              some: { isDraft: false }
-            }
-          }
-        },
-        select: {
-          id: true,
-          name: true,
-          color: true
-        },
-        distinct: ["name"],
-        orderBy: { name: "asc" }
-      }),
-      // Get status counts (exclude drafts from counts)
-      prisma.request.groupBy({
-        by: ["status"],
-        where: {
-          organizationId,
-          taskInstanceId: { not: null },
-          isDraft: false
-        },
-        _count: true
-      }),
-    ])
+    // Skip expensive dropdown/status queries on pagination requests (page > 1)
+    // Frontend caches these from the first fetch — only re-fetch on page 1 or filter changes
+    const isInitialFetch = page <= 1
+
+    // Fire dropdown + status queries in parallel for better performance (only on initial fetch)
+    const [jobsWithRequests, owners, labelsFromJobs, statusCounts] = isInitialFetch
+      ? await Promise.all([
+          // Get only task instances that have sent requests (exclude drafts), filtered by access
+          prisma.taskInstance.findMany({
+            where: {
+              organizationId,
+              requests: {
+                some: { isDraft: false }
+              },
+              ...(jobAccessFilter || {})
+            },
+            select: {
+              id: true,
+              name: true
+            },
+            orderBy: { name: "asc" }
+          }),
+          // Get unique owners for filter dropdown
+          prisma.user.findMany({
+            where: { organizationId },
+            select: {
+              id: true,
+              name: true,
+              email: true
+            },
+            orderBy: { name: "asc" }
+          }),
+          // Get all labels from task instances that have active requests (not drafts)
+          prisma.taskInstanceLabel.findMany({
+            where: {
+              taskInstance: {
+                organizationId,
+                requests: {
+                  some: { isDraft: false }
+                }
+              }
+            },
+            select: {
+              id: true,
+              name: true,
+              color: true
+            },
+            distinct: ["name"],
+            orderBy: { name: "asc" }
+          }),
+          // Get status counts (exclude drafts from counts)
+          prisma.request.groupBy({
+            by: ["status"],
+            where: {
+              organizationId,
+              taskInstanceId: { not: null },
+              isDraft: false
+            },
+            _count: true
+          }),
+        ])
+      : [[], [], [], []]
 
     const statusSummary = statusCounts.reduce((acc, item) => {
       acc[item.status] = item._count
@@ -266,18 +273,24 @@ export async function GET(request: NextRequest) {
       job: task.taskInstance, // Frontend expects 'job' field
     }))
 
-    return NextResponse.json({
+    const response: Record<string, any> = {
       success: true,
       requests: mappedTasks,
-      total: ownerId ? filteredTasks.length : totalCount, // Use filtered count if owner filter applied client-side
+      total: ownerId ? filteredTasks.length : totalCount,
       page,
       limit,
       totalPages: Math.ceil((ownerId ? filteredTasks.length : totalCount) / limit),
-      jobs: jobsWithRequests, // Only jobs with requests
-      owners,
-      labels: labelsFromJobs, // Labels for filtering
-      statusSummary
-    })
+    }
+
+    // Only include dropdown/summary data on initial fetch to reduce payload size on pagination
+    if (isInitialFetch) {
+      response.jobs = jobsWithRequests
+      response.owners = owners
+      response.labels = labelsFromJobs
+      response.statusSummary = statusSummary
+    }
+
+    return NextResponse.json(response)
   } catch (error: any) {
     console.error("Error fetching requests:", error)
     return NextResponse.json(
