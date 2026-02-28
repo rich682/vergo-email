@@ -46,6 +46,12 @@ export async function POST(request: NextRequest) {
       accountToken
     )
 
+    // Update the lastSyncAt timestamp
+    await prisma.accountingIntegration.update({
+      where: { organizationId: session.user.organizationId },
+      data: { lastSyncAt: new Date() },
+    })
+
     return NextResponse.json({
       success: true,
       message: `${contactsSynced} contacts synced`,
