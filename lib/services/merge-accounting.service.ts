@@ -253,6 +253,15 @@ export class MergeAccountingService {
           end_user_organization_name: data.endUserOrganizationName,
           end_user_origin_id: data.endUserOriginId,
           categories: ["accounting"],
+          common_models: [
+            { model_id: "accounting.Account", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.Contact", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.Invoice", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.JournalEntry", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.Payment", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.GeneralLedgerTransaction", enabled_actions: ["FETCH"] },
+            { model_id: "accounting.GeneralLedgerTransactionLine", enabled_actions: ["FETCH"] },
+          ],
         },
       }
     )

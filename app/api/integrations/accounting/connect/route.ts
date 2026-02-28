@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
 
     const defaultSyncConfig = {
       contacts: true,
+      glTransactions: true,
     }
 
     // Upsert the integration record
