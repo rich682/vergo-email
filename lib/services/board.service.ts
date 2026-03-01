@@ -526,7 +526,16 @@ export class BoardService {
       }
     })
 
-    if (!completedBoard || !completedBoard.cadence) return null
+    if (!completedBoard || !completedBoard.cadence) {
+      console.warn(
+        `[BoardService] createNextPeriodBoard: Could not find board ${completedBoardId} for org ${organizationId}`
+      )
+      return null
+    }
+
+    console.log(
+      `[BoardService] Creating next period board from: "${completedBoard.name}" (${completedBoard.id}) with ${completedBoard._count?.taskInstances || 0} tasks`
+    )
 
     const referenceDate = completedBoard.periodStart || new Date()
     const fiscalYearStartMonth = completedBoard.organization?.fiscalYearStartMonth ?? 1
@@ -598,8 +607,16 @@ export class BoardService {
       }
     })
 
+    console.log(`[BoardService] Created new board: "${newBoard.name}" (${newBoard.id})`)
+
     // Copy task lineages to the new board
-    await this.spawnTaskInstancesForNextPeriod(completedBoardId, newBoard.id, organizationId)
+    try {
+      await this.spawnTaskInstancesForNextPeriod(completedBoardId, newBoard.id, organizationId)
+      console.log(`[BoardService] Task spawning completed for new board ${newBoard.id}`)
+    } catch (error) {
+      console.error(`[BoardService] Error spawning tasks for new board ${newBoard.id}:`, error)
+      // Don't throw - board was created successfully, task spawning failure shouldn't block it
+    }
 
     // Emit workflow trigger for board creation
     try {
@@ -647,6 +664,10 @@ export class BoardService {
         taskInstanceLabels: { include: { contactLabels: true } },
       }
     })
+
+    console.log(
+      `[BoardService] Spawning tasks: found ${previousInstances.length} tasks from board ${previousBoardId} to copy to board ${nextBoardId}`
+    )
 
     for (const prev of previousInstances) {
       const prevAny = prev as any
