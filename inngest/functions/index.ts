@@ -932,6 +932,18 @@ Use plain language. Be concise.`
                 seriesCreated++
                 totalCreated++
                 console.log(`[Board Automation]   Created board: "${newBoard.name}" (${newBoard.id})`)
+
+                // Catch up on task spawning for the previous board
+                // (in case it had tasks added after its next-period board was auto-created)
+                try {
+                  const tasksCaughtUp = await BoardService.catchUpTaskSpawning(currentBoardId, latestBoard.organizationId)
+                  if (tasksCaughtUp && tasksCaughtUp > 0) {
+                    console.log(`[Board Automation]   Caught up ${tasksCaughtUp} unspawned tasks for board ${currentBoardId}`)
+                  }
+                } catch (error) {
+                  console.error(`[Board Automation]   Failed to catch up tasks for board ${currentBoardId}:`, error)
+                }
+
                 currentBoardId = newBoard.id
                 currentPeriodStart = newBoard.periodStart
               } else {
@@ -943,9 +955,20 @@ Use plain language. Be concise.`
                     periodStart: nextPeriodStart
                   }
                 })
-                
+
                 if (existingBoard) {
                   console.log(`[Board Automation]   Board already exists: "${existingBoard.name}" (${existingBoard.id})`)
+
+                  // Catch up on task spawning for the previous board
+                  try {
+                    const tasksCaughtUp = await BoardService.catchUpTaskSpawning(currentBoardId, latestBoard.organizationId)
+                    if (tasksCaughtUp && tasksCaughtUp > 0) {
+                      console.log(`[Board Automation]   Caught up ${tasksCaughtUp} unspawned tasks for board ${currentBoardId}`)
+                    }
+                  } catch (error) {
+                    console.error(`[Board Automation]   Failed to catch up tasks for board ${currentBoardId}:`, error)
+                  }
+
                   currentBoardId = existingBoard.id
                   currentPeriodStart = existingBoard.periodStart
                 } else {

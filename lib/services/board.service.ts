@@ -760,6 +760,132 @@ export class BoardService {
   }
 
   /**
+   * Catch up on task spawning: if a board has tasks that haven't been spawned to the next period yet,
+   * spawn them now. Useful for handling cases where the next board was created before all tasks were
+   * added to the previous board.
+   *
+   * Returns the number of tasks spawned, or null if no next board exists.
+   */
+  static async catchUpTaskSpawning(
+    boardId: string,
+    organizationId: string
+  ): Promise<number | null> {
+    const board = await prisma.board.findUnique({
+      where: { id: boardId },
+      select: {
+        id: true,
+        cadence: true,
+        periodStart: true,
+        organizationId: true,
+      }
+    })
+
+    if (!board || board.organizationId !== organizationId || !board.cadence || !board.periodStart) {
+      return null
+    }
+
+    // Find the next period's board
+    const nextPeriodStart = calculateNextPeriodStart(
+      board.cadence,
+      board.periodStart,
+      "UTC", // Use UTC as fallback since we're just doing ID-based lookup
+      { fiscalYearStartMonth: 1 }
+    )
+
+    if (!nextPeriodStart) return null
+
+    const nextBoard = await prisma.board.findFirst({
+      where: {
+        organizationId,
+        cadence: board.cadence,
+        periodStart: nextPeriodStart,
+      },
+      select: { id: true }
+    })
+
+    if (!nextBoard) {
+      console.log(`[BoardService] No next board exists for period ${nextPeriodStart.toISOString()}, skipping catch-up`)
+      return null
+    }
+
+    // Find tasks in this board that haven't been spawned to the next board yet
+    const unspawnedTasks = await prisma.taskInstance.findMany({
+      where: {
+        boardId,
+        organizationId,
+        lineageId: { not: null }, // Only tasks with lineage can be spawned
+      },
+      include: {
+        collaborators: true,
+        taskInstanceLabels: { include: { contactLabels: true } },
+      }
+    })
+
+    // Filter out tasks that already exist in the next board
+    let tasksToSpawn = unspawnedTasks
+
+    if (tasksToSpawn.length > 0) {
+      const existingLineageIds = await prisma.taskInstance
+        .findMany({
+          where: {
+            boardId: nextBoard.id,
+            organizationId,
+            lineageId: { in: unspawnedTasks.map(t => t.lineageId).filter(Boolean) as string[] }
+          },
+          select: { lineageId: true }
+        })
+        .then(tasks => new Set(tasks.map(t => t.lineageId)))
+
+      tasksToSpawn = tasksToSpawn.filter(t => !existingLineageIds.has(t.lineageId))
+    }
+
+    console.log(
+      `[BoardService] Catching up: found ${tasksToSpawn.length} unspawned tasks from board ${boardId} to spawn to ${nextBoard.id}`
+    )
+
+    // Spawn the unspawned tasks
+    for (const task of tasksToSpawn) {
+      const taskAny = task as any
+      const newInstance = await prisma.taskInstance.create({
+        data: {
+          organizationId,
+          boardId: nextBoard.id,
+          lineageId: task.lineageId,
+          name: task.name,
+          description: task.description,
+          ownerId: task.ownerId,
+          clientId: task.clientId,
+          status: "NOT_STARTED",
+          customFields: task.customFields,
+          labels: task.labels,
+          taskType: taskAny.taskType || null,
+          reconciliationConfigId: taskAny.reconciliationConfigId || null,
+          reportDefinitionId: taskAny.reportDefinitionId || null,
+          reportFilterBindings: taskAny.reportFilterBindings || null,
+        }
+      })
+
+      // Copy collaborators
+      if (task.collaborators.length > 0) {
+        await prisma.taskInstanceCollaborator.createMany({
+          data: task.collaborators.map(c => ({
+            taskInstanceId: newInstance.id,
+            userId: c.userId,
+            role: c.role,
+            addedBy: c.addedBy
+          }))
+        })
+      }
+    }
+
+    console.log(
+      `[BoardService] Catch-up spawned ${tasksToSpawn.length} tasks from board ${boardId} to board ${nextBoard.id}`
+    )
+
+    return tasksToSpawn.length
+  }
+
+  /**
    * Sync board status based on the statuses of its task instances
    */
   static async syncStatus(
