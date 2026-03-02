@@ -54,14 +54,17 @@ async function main() {
   const getClient = (index: number) => clients.length > 0 ? clients[index % clients.length].id : undefined
 
   // ============ BOARDS ============
-  let marchClose = await prisma.board.findFirst({ where: { name: 'March 2026 Close', organizationId: orgId } })
+  let marchClose = await prisma.board.findFirst({ where: { name: 'March 2026', organizationId: orgId } })
+  if (!marchClose) {
+    marchClose = await prisma.board.findFirst({ where: { name: 'March 2026 Close', organizationId: orgId } })
+  }
   let taxSeason = await prisma.board.findFirst({ where: { name: 'Tax Season 2026', organizationId: orgId } })
   let q1Wrap = await prisma.board.findFirst({ where: { name: 'Q1 2026 Year-End Wrap', organizationId: orgId } })
 
   if (!marchClose) {
     marchClose = await prisma.board.create({
       data: {
-        name: 'March 2026 Close',
+        name: 'March 2026',
         description: 'March 2026 month-end close procedures',
         status: 'IN_PROGRESS',
         cadence: 'MONTHLY',
