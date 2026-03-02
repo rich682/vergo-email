@@ -345,6 +345,22 @@ export function Sidebar({
             </li>
           )}
 
+          {/* Accounts Payable (external link, feature-flagged) */}
+          {orgFeatures.accountsPayable && (
+            <li>
+              <a
+                href="https://apply.getvergo.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                title={collapsed ? "Accounts Payable" : undefined}
+                className={navCls(false)}
+              >
+                <ExpensesIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                <span className={labelCls}>Accounts Payable</span>
+              </a>
+            </li>
+          )}
+
           {/* Automations */}
           {hasAccess("agents") && (() => {
             const isActive = pathname === "/dashboard/automations" || pathname.startsWith("/dashboard/automations/")

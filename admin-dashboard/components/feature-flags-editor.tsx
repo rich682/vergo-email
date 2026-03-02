@@ -7,8 +7,7 @@ import { useState } from "react"
  * Add new modules here as they become available.
  */
 const MODULE_LIST = [
-  { key: "expenses", label: "Expense Management", description: "Expense tracking, approvals, and reimbursements" },
-  { key: "invoices", label: "Invoices / AP", description: "Invoice processing and accounts payable" },
+  { key: "accountsPayable", label: "Accounts Payable", description: "Expense tracking, invoices, approvals, and reimbursements" },
   { key: "agentsEnabled", label: "AI Agents", description: "AI-powered agents for reconciliation and task automation" },
   { key: "advancedBoardTypes", label: "Advanced Board Types", description: "Enable all board cadences and manual board creation. OFF = simplified monthly book close mode." },
 ]
