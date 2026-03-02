@@ -244,6 +244,54 @@ async function main() {
       clientIdx: 4,
     },
 
+    // Form tasks
+    {
+      name: 'Employee Time & Attendance Collection',
+      desc: 'Collect timesheet forms from all hourly employees for March payroll processing',
+      status: JobStatus.IN_PROGRESS,
+      dueDate: '2026-03-15',
+      boardId: marchClose.id,
+      taskType: 'form',
+      subtasks: [
+        { title: 'Send timesheet forms to all hourly staff', status: SubtaskStatus.DONE },
+        { title: 'Follow up on missing submissions', status: SubtaskStatus.IN_PROGRESS },
+        { title: 'Review and approve timesheets', status: SubtaskStatus.NOT_STARTED },
+      ]
+    },
+    {
+      name: 'Vendor Onboarding Forms - Q1 New Vendors',
+      desc: 'Collect W-9, ACH authorization, and compliance forms from new vendors added in Q1',
+      status: JobStatus.NOT_STARTED,
+      dueDate: '2026-03-22',
+      boardId: marchClose.id,
+      taskType: 'form',
+      clientIdx: 8,
+    },
+
+    // Analysis tasks
+    {
+      name: 'March Expense Variance Analysis',
+      desc: 'Analyze March operating expenses vs budget, identify and explain variances over 10%',
+      status: JobStatus.IN_PROGRESS,
+      dueDate: '2026-03-28',
+      boardId: marchClose.id,
+      taskType: 'analysis',
+      subtasks: [
+        { title: 'Pull actuals vs budget by department', status: SubtaskStatus.DONE },
+        { title: 'Flag variances exceeding 10% threshold', status: SubtaskStatus.IN_PROGRESS },
+        { title: 'Gather explanations from department heads', status: SubtaskStatus.NOT_STARTED },
+        { title: 'Prepare variance memo for CFO', status: SubtaskStatus.NOT_STARTED },
+      ]
+    },
+    {
+      name: 'Cash Position & Liquidity Analysis',
+      desc: 'Weekly cash position analysis — review balances, forecast upcoming obligations, flag shortfalls',
+      status: JobStatus.COMPLETE,
+      dueDate: '2026-03-07',
+      boardId: marchClose.id,
+      taskType: 'analysis',
+    },
+
     // Not Started tasks (late March items)
     {
       name: 'Post March Accruals',
@@ -427,6 +475,37 @@ async function main() {
       boardId: taxSeason.id,
       taskType: 'report',
     },
+    {
+      name: 'Client Tax Organizer Forms',
+      desc: 'Send tax organizer questionnaires to individual clients for 1040 preparation',
+      status: JobStatus.IN_PROGRESS,
+      dueDate: '2026-03-10',
+      boardId: taxSeason.id,
+      taskType: 'form',
+      subtasks: [
+        { title: 'Send organizer forms to all individual clients', status: SubtaskStatus.DONE },
+        { title: 'Follow up on incomplete submissions', status: SubtaskStatus.IN_PROGRESS },
+        { title: 'Review completed organizers for missing items', status: SubtaskStatus.NOT_STARTED },
+      ]
+    },
+    {
+      name: 'R&D Credit Analysis - TechStartup',
+      desc: 'Detailed analysis of qualifying R&D expenses for Section 41 credit calculation',
+      status: JobStatus.COMPLETE,
+      dueDate: '2026-03-10',
+      boardId: taxSeason.id,
+      taskType: 'analysis',
+      clientIdx: 1,
+    },
+    {
+      name: 'Multi-State Nexus Analysis - RetailPlus',
+      desc: 'Analyze sales and presence in each state to determine filing obligations',
+      status: JobStatus.IN_PROGRESS,
+      dueDate: '2026-03-12',
+      boardId: taxSeason.id,
+      taskType: 'analysis',
+      clientIdx: 3,
+    },
 
     // ────────── Q1 2026 YEAR-END WRAP ──────────
     // In Progress
@@ -504,6 +583,22 @@ async function main() {
       dueDate: '2026-04-10',
       boardId: q1Wrap.id,
       taskType: 'other',
+    },
+    {
+      name: 'Employee Benefits Enrollment Forms',
+      desc: 'Collect Q2 benefits enrollment and change forms from all employees',
+      status: JobStatus.NOT_STARTED,
+      dueDate: '2026-04-01',
+      boardId: q1Wrap.id,
+      taskType: 'form',
+    },
+    {
+      name: 'Profitability Analysis by Client',
+      desc: 'Analyze Q1 revenue and cost allocation by client to identify top and underperforming accounts',
+      status: JobStatus.NOT_STARTED,
+      dueDate: '2026-04-15',
+      boardId: q1Wrap.id,
+      taskType: 'analysis',
     },
   ]
 
