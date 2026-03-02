@@ -1367,7 +1367,7 @@ export default function ReportBuilderPage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto h-full">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-auto max-h-full">
                 <table className="border-collapse" style={{ tableLayout: 'auto', width: 'max-content' }}>
                   <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-20">
                     <tr>
