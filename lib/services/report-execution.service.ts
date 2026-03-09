@@ -414,32 +414,51 @@ export class ReportExecutionService {
       return { columns: [], rows: [], formulaRows: [] }
     }
 
-    // Get unique pivot values from current rows (unsorted — will sort after metric computation)
-    let pivotValues = [...new Set(
-      currentRows.map(r => String(r[pivotColumnKey] || ""))
-    )].filter(v => v !== "")
+    // Build pivot values from current rows, disambiguating duplicates.
+    // Each row becomes its own column. If two rows share the same pivot value
+    // (e.g., both are "Chipotle"), we assign unique internal keys ("Chipotle", "Chipotle (2)")
+    // while preserving the original label for display.
+    const pivotLabelByKey: Record<string, string> = {} // internalKey → display label
+    const nameCounts: Record<string, number> = {}
+    let pivotValues: string[] = []
+
+    for (const row of currentRows) {
+      const rawVal = String(row[pivotColumnKey] || "")
+      if (!rawVal) continue
+      nameCounts[rawVal] = (nameCounts[rawVal] || 0) + 1
+      const count = nameCounts[rawVal]
+      const internalKey = count === 1 ? rawVal : `${rawVal} (${count})`
+      pivotValues.push(internalKey)
+      pivotLabelByKey[internalKey] = rawVal
+    }
 
     if (pivotValues.length === 0) {
       return { columns: [], rows: [], formulaRows: [] }
     }
 
-    // Build data map: { pivotValue: rowData }
+    // Build data map: { internalKey: rowData }
     const currentDataByPivot: Record<string, Record<string, unknown>> = {}
-    for (const row of currentRows) {
-      const pivotVal = String(row[pivotColumnKey] || "")
-      if (pivotVal) {
-        currentDataByPivot[pivotVal] = row
+    {
+      const nameIdx: Record<string, number> = {}
+      for (const row of currentRows) {
+        const rawVal = String(row[pivotColumnKey] || "")
+        if (!rawVal) continue
+        nameIdx[rawVal] = (nameIdx[rawVal] || 0) + 1
+        const internalKey = nameIdx[rawVal] === 1 ? rawVal : `${rawVal} (${nameIdx[rawVal]})`
+        currentDataByPivot[internalKey] = row
       }
     }
 
-    // Build compare data map if available
+    // Build compare data map if available (match by same disambiguated keys)
     const compareDataByPivot: Record<string, Record<string, unknown>> = {}
     if (compareRows) {
+      const nameIdx: Record<string, number> = {}
       for (const row of compareRows) {
-        const pivotVal = String(row[pivotColumnKey] || "")
-        if (pivotVal) {
-          compareDataByPivot[pivotVal] = row
-        }
+        const rawVal = String(row[pivotColumnKey] || "")
+        if (!rawVal) continue
+        nameIdx[rawVal] = (nameIdx[rawVal] || 0) + 1
+        const internalKey = nameIdx[rawVal] === 1 ? rawVal : `${rawVal} (${nameIdx[rawVal]})`
+        compareDataByPivot[internalKey] = row
       }
     }
 
@@ -567,7 +586,7 @@ export class ReportExecutionService {
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
-        label: pv,
+        label: pivotLabelByKey[pv] || pv,
         dataType: "number" as const,
         type: "source" as const,
       }))
