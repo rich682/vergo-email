@@ -584,7 +584,7 @@ export default function BoardsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map(y => (
+              {Array.from({ length: 7 }, (_, i) => currentYear - 4 + i).map(y => (
                 <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
               ))}
             </SelectContent>
