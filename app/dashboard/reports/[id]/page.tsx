@@ -328,8 +328,14 @@ export default function ReportBuilderPage() {
             pivotFormulaColumns,
             pivotSortConfig,
           },
-          // Apply active filters to preview
-          filters: Object.keys(filterBindings).length > 0 ? filterBindings : undefined,
+          // Apply active filters to preview (only include keys with non-empty value arrays)
+          filters: (() => {
+            const active: Record<string, string[]> = {}
+            for (const [k, v] of Object.entries(filterBindings)) {
+              if (v && v.length > 0) active[k] = v
+            }
+            return Object.keys(active).length > 0 ? active : undefined
+          })(),
         }),
       })
 
@@ -1327,19 +1333,6 @@ export default function ReportBuilderPage() {
               </div>
             )}
 
-            {/* Debug diagnostics — temporary */}
-            {previewData?.diagnostics?.debug && (
-              <div className="mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-600 text-xs font-mono whitespace-pre-wrap">
-                Debug: targetPeriod="{previewData.diagnostics.debug.currentPeriodKey}"
-                {" "}parsedKey="{previewData.diagnostics.debug.sampleParsedPeriodKey}"
-                {" "}match={previewData.diagnostics.debug.match}
-                {" "}availablePeriods={previewData.diagnostics.debug.availablePeriodCount}
-                {" "}parseFailures={previewData.diagnostics.parseFailures}
-                {" "}hasFilters={String(previewData.diagnostics.debug.hasFilters)}
-                {" "}totalRows={previewData.diagnostics.totalDatabaseRows}
-                {" "}current={previewData.current?.rowCount ?? "null"}
-              </div>
-            )}
           </div>
 
           {/* Preview content */}
