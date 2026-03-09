@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, Database, Search, MoreHorizontal, Trash2 } from "lucide-react"
+import { Plus, Database, Search, MoreHorizontal, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -12,6 +12,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { usePermissions } from "@/components/permissions-context"
 
 interface DatabaseItem {
@@ -37,6 +45,10 @@ export default function DatabasesPage() {
   const [databases, setDatabases] = useState<DatabaseItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameName, setRenameName] = useState("")
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameError, setRenameError] = useState("")
 
   const fetchDatabases = useCallback(async () => {
     try {
@@ -78,6 +90,31 @@ export default function DatabasesPage() {
     } catch (error) {
       console.error("Error deleting database:", error)
       alert("Failed to delete database")
+    }
+  }
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return
+    setRenameLoading(true)
+    setRenameError("")
+    try {
+      const response = await fetch(`/api/databases/${renameTarget.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      })
+      if (response.ok) {
+        setDatabases(prev => prev.map(db => db.id === renameTarget.id ? { ...db, name: renameName.trim() } : db))
+        setRenameTarget(null)
+      } else {
+        const data = await response.json()
+        setRenameError(data.error || "Failed to rename database")
+      }
+    } catch {
+      setRenameError("Failed to rename database")
+    } finally {
+      setRenameLoading(false)
     }
   }
 
@@ -208,6 +245,12 @@ export default function DatabasesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
+                              onClick={() => { setRenameTarget({ id: db.id, name: db.name }); setRenameName(db.name); setRenameError("") }}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => handleDelete(db.id, db.name)}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -224,6 +267,32 @@ export default function DatabasesPage() {
             </table>
           </div>
         )}
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Database</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-input">Name</Label>
+            <Input
+              id="rename-input"
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError("") }}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              autoFocus
+            />
+            {renameError && <p className="text-sm text-red-600">{renameError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={renameLoading || !renameName.trim() || renameName.trim() === renameTarget?.name}>
+              {renameLoading ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

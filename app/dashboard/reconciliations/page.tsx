@@ -3,9 +3,16 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Scale, CheckCircle, AlertTriangle, Clock, Loader2, Plus, Users, Filter, Calendar, ExternalLink, Eye } from "lucide-react"
+import { Scale, CheckCircle, AlertTriangle, Clock, Loader2, Plus, Users, Filter, Calendar, ExternalLink, Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -17,9 +24,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 import { usePermissions } from "@/components/permissions-context"
 
@@ -93,6 +102,12 @@ export default function ReconciliationsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [periodFilter, setPeriodFilter] = useState<string>("all")
 
+  // Rename state
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameName, setRenameName] = useState("")
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameError, setRenameError] = useState("")
+
   // Reconciliation detail modal
   const [reconViewerOpen, setReconViewerOpen] = useState(false)
   const [viewingRecon, setViewingRecon] = useState<CompletedReconRun | null>(null)
@@ -153,6 +168,51 @@ export default function ReconciliationsPage() {
     })
   }, [completedRuns, statusFilter, periodFilter])
 
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return
+    setRenameLoading(true)
+    setRenameError("")
+    try {
+      const response = await fetch(`/api/reconciliations/${renameTarget.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      })
+      if (response.ok) {
+        setConfigs(prev => prev.map(c => c.id === renameTarget.id ? { ...c, name: renameName.trim() } : c))
+        setRenameTarget(null)
+      } else {
+        const data = await response.json()
+        setRenameError(data.error || "Failed to rename reconciliation")
+      }
+    } catch {
+      setRenameError("Failed to rename reconciliation")
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
+  const handleDeleteConfig = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      return
+    }
+    try {
+      const response = await fetch(`/api/reconciliations/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (response.ok) {
+        setConfigs(prev => prev.filter(c => c.id !== id))
+      } else {
+        const error = await response.json()
+        alert(error.error || "Failed to delete reconciliation")
+      }
+    } catch {
+      alert("Failed to delete reconciliation")
+    }
+  }
+
   return (
     <div className="p-8 space-y-8">
       {/* ============================================ */}
@@ -202,6 +262,7 @@ export default function ReconciliationsPage() {
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Last Run</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Variance</th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viewers</th>
+                    <th className="w-10 px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -215,7 +276,7 @@ export default function ReconciliationsPage() {
                     return (
                       <tr
                         key={config.id}
-                        className="hover:bg-gray-50 cursor-pointer"
+                        className="hover:bg-gray-50 cursor-pointer group"
                         onClick={() => router.push(`/dashboard/reconciliations/${config.id}`)}
                       >
                         <td className="px-4 py-2">
@@ -281,6 +342,34 @@ export default function ReconciliationsPage() {
                             <Users className="w-3.5 h-3.5 mr-1" />
                             {config.viewers?.length || 0}
                           </Button>
+                        </td>
+                        <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => { setRenameTarget({ id: config.id, name: config.name }); setRenameName(config.name); setRenameError("") }}
+                              >
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteConfig(config.id, config.name)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
                     )
@@ -564,6 +653,32 @@ export default function ReconciliationsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Reconciliation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-recon-input">Name</Label>
+            <Input
+              id="rename-recon-input"
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError("") }}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              autoFocus
+            />
+            {renameError && <p className="text-sm text-red-600">{renameError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={renameLoading || !renameName.trim() || renameName.trim() === renameTarget?.name}>
+              {renameLoading ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

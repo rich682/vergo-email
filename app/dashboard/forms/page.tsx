@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, ClipboardList, Search, MoreHorizontal, Trash2, Database, Clock, Loader2, ExternalLink, CheckCircle } from "lucide-react"
+import { Plus, ClipboardList, Search, MoreHorizontal, Trash2, Database, Clock, Loader2, ExternalLink, CheckCircle, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -12,6 +12,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import type { FormField } from "@/lib/types/form"
 import { usePermissions } from "@/components/permissions-context"
@@ -74,6 +82,10 @@ export default function FormsPage() {
   const [forms, setForms] = useState<FormItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameName, setRenameName] = useState("")
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameError, setRenameError] = useState("")
 
   // Section 2: Form responses state
   const [formTasks, setFormTasks] = useState<FormTaskSummary[]>([])
@@ -160,6 +172,31 @@ export default function FormsPage() {
     } catch (error) {
       console.error("Error deleting form:", error)
       alert("Failed to delete form")
+    }
+  }
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return
+    setRenameLoading(true)
+    setRenameError("")
+    try {
+      const response = await fetch(`/api/forms/${renameTarget.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      })
+      if (response.ok) {
+        setForms(prev => prev.map(f => f.id === renameTarget.id ? { ...f, name: renameName.trim() } : f))
+        setRenameTarget(null)
+      } else {
+        const data = await response.json()
+        setRenameError(data.error || "Failed to rename form")
+      }
+    } catch {
+      setRenameError("Failed to rename form")
+    } finally {
+      setRenameLoading(false)
     }
   }
 
@@ -294,6 +331,12 @@ export default function FormsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
+                              onClick={() => { setRenameTarget({ id: form.id, name: safeString(form.name) }); setRenameName(safeString(form.name)); setRenameError("") }}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => handleDelete(form.id, safeString(form.name))}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -423,6 +466,32 @@ export default function FormsPage() {
           </table>
         </div>
       </section>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Form</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-form-input">Name</Label>
+            <Input
+              id="rename-form-input"
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError("") }}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              autoFocus
+            />
+            {renameError && <p className="text-sm text-red-600">{renameError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={renameLoading || !renameName.trim() || renameName.trim() === renameTarget?.name}>
+              {renameLoading ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

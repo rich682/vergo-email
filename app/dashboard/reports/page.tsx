@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Copy } from "lucide-react"
+import { Plus, FileText, Search, MoreHorizontal, Trash2, Database, LayoutGrid, Table2, Calendar, Filter, Download, Clock, ExternalLink, Loader2, X, RefreshCw, FunctionSquare, TrendingUp, Copy, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -117,6 +117,10 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<ReportItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameName, setRenameName] = useState("")
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [renameError, setRenameError] = useState("")
 
   // Generated reports state
   const [generatedReports, setGeneratedReports] = useState<GeneratedReportItem[]>([])
@@ -440,6 +444,31 @@ export default function ReportsPage() {
     }
   }
 
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return
+    setRenameLoading(true)
+    setRenameError("")
+    try {
+      const response = await fetch(`/api/reports/${renameTarget.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      })
+      if (response.ok) {
+        setReports(prev => prev.map(r => r.id === renameTarget.id ? { ...r, name: renameName.trim() } : r))
+        setRenameTarget(null)
+      } else {
+        const data = await response.json()
+        setRenameError(data.error || "Failed to rename report")
+      }
+    } catch {
+      setRenameError("Failed to rename report")
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
   const openDuplicateModal = (report: ReportItem) => {
     setDuplicatingReport(report)
     setDuplicateName(`${report.name} (Copy)`)
@@ -637,6 +666,12 @@ export default function ReportsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => { setRenameTarget({ id: report.id, name: report.name }); setRenameName(report.name); setRenameError("") }}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => openDuplicateModal(report)}
                             >
@@ -1200,6 +1235,32 @@ export default function ReportsPage() {
                   Duplicate
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Report</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-report-input">Name</Label>
+            <Input
+              id="rename-report-input"
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError("") }}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              autoFocus
+            />
+            {renameError && <p className="text-sm text-red-600">{renameError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={renameLoading || !renameName.trim() || renameName.trim() === renameTarget?.name}>
+              {renameLoading ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
