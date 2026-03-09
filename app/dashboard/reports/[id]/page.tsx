@@ -1329,13 +1329,15 @@ export default function ReportBuilderPage() {
 
             {/* Debug diagnostics — temporary */}
             {previewData?.diagnostics?.debug && (
-              <div className="mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-600 text-xs font-mono">
-                Debug: dateColumnKey="{previewData.diagnostics.debug.dateColumnKey}"
-                {" "}cadence="{previewData.diagnostics.debug.cadence}"
-                {" "}sampleValue="{previewData.diagnostics.debug.sampleDateValue}"
-                {" "}(type: {previewData.diagnostics.debug.sampleDateType})
+              <div className="mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-600 text-xs font-mono whitespace-pre-wrap">
+                Debug: targetPeriod="{previewData.diagnostics.debug.currentPeriodKey}"
                 {" "}parsedKey="{previewData.diagnostics.debug.sampleParsedPeriodKey}"
-                {" "}rowKeys=[{previewData.diagnostics.debug.allKeys?.join(", ")}]
+                {" "}match={previewData.diagnostics.debug.match}
+                {" "}availablePeriods={previewData.diagnostics.debug.availablePeriodCount}
+                {" "}parseFailures={previewData.diagnostics.parseFailures}
+                {" "}hasFilters={String(previewData.diagnostics.debug.hasFilters)}
+                {" "}totalRows={previewData.diagnostics.totalDatabaseRows}
+                {" "}current={previewData.current?.rowCount ?? "null"}
               </div>
             )}
           </div>

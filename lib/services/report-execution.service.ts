@@ -169,9 +169,13 @@ export class ReportExecutionService {
       diagnostics.debug = {
         dateColumnKey,
         cadence,
+        currentPeriodKey: currentPeriodKey || "NOT_SET",
         sampleDateValue: sampleDateValue === undefined ? "UNDEFINED" : sampleDateValue === null ? "NULL" : String(sampleDateValue),
         sampleDateType: typeof sampleDateValue,
         sampleParsedPeriodKey: sampleParsed,
+        match: sampleParsed === currentPeriodKey ? "YES" : `NO (${JSON.stringify(sampleParsed)} !== ${JSON.stringify(currentPeriodKey)})`,
+        availablePeriodCount: getPeriodsFromRows(allRows, dateColumnKey, cadence).length,
+        hasFilters: !!(filters && Object.keys(filters).length > 0),
         allKeys: Object.keys(sampleRow).slice(0, 10),
       }
     }
