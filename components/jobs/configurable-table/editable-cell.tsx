@@ -57,7 +57,10 @@ export function EditableCell({ column, job, teamMembers, onUpdate }: EditableCel
       return (
         <DateCell
           value={job.dueDate}
-          onChange={handleChange}
+          targetDateRule={job.targetDateRule}
+          onRuleChange={(rule) => onUpdate(job.id, "targetDateRule", rule)}
+          boardPeriodStart={job.boardPeriodStart}
+          boardPeriodEnd={job.boardPeriodEnd}
         />
       )
 

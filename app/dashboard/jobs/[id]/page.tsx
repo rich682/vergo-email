@@ -76,6 +76,9 @@ import { ReconciliationTab } from "@/components/jobs/reconciliation/reconciliati
 // Task-scoped tabs
 import { AnalysisTab } from "@/components/jobs/analysis-tab"
 import { AgentTab } from "@/components/jobs/agent-tab"
+import { TargetDateRuleSelector } from "@/components/jobs/target-date-rule-selector"
+import { describeTargetDateRule, isValidTargetDateRule } from "@/lib/target-date-rules"
+import type { TargetDateRule } from "@/lib/target-date-rules"
 
 // Tab-to-task-type mapping: which tabs are visible for each task type
 const TASK_TYPE_TAB_MAP: Record<string, string[]> = {
@@ -147,6 +150,7 @@ interface Job {
   reconciliationConfigId?: string | null
   // Task type for agent integration
   taskType?: string | null
+  targetDateRule?: Record<string, any> | null
 }
 
 interface Permissions {
@@ -1112,54 +1116,59 @@ export default function JobDetailPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 mb-3 text-sm">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="font-medium">Target Date:</span>
+                  <div className="flex items-start gap-2 mb-3 text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <span className="font-medium mt-0.5">Target Date:</span>
                     {editingDueDate ? (
-                      <Input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                        onBlur={() => {
-                          const newDate = editDueDate || null
-                          const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
-                          if (newDate !== currentDate) {
-                            handleSaveField("dueDate", newDate)
-                          } else {
-                            setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-                            setEditingDueDate(false)
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const newDate = editDueDate || null
-                            const currentDate = job.dueDate ? job.dueDate.split("T")[0] : null
-                            if (newDate !== currentDate) {
-                              handleSaveField("dueDate", newDate)
-                            } else {
-                              setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
+                      <div className="flex-1">
+                        <TargetDateRuleSelector
+                          value={job.targetDateRule && isValidTargetDateRule(job.targetDateRule) ? job.targetDateRule as TargetDateRule : null}
+                          onChange={async (rule) => {
+                            setSaving(true)
+                            try {
+                              const response = await fetch(`/api/task-instances/${jobId}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                credentials: "include",
+                                body: JSON.stringify({ targetDateRule: rule })
+                              })
+                              if (response.ok) {
+                                const data = await response.json()
+                                setJob(data.taskInstance)
+                              }
+                            } catch (error) {
+                              console.error("Error updating target date rule:", error)
+                            } finally {
+                              setSaving(false)
                               setEditingDueDate(false)
                             }
-                          }
-                          if (e.key === "Escape") {
-                            setEditDueDate(job.dueDate ? job.dueDate.split("T")[0] : "")
-                            setEditingDueDate(false)
-                          }
-                        }}
-                        autoFocus
-                        className="w-48 h-8"
-                      />
+                          }}
+                          boardPeriodStart={job.board?.periodStart}
+                          boardPeriodEnd={job.board?.periodEnd}
+                        />
+                        <button
+                          onClick={() => setEditingDueDate(false)}
+                          className="text-xs text-gray-400 hover:text-gray-600 mt-1"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     ) : (
                       <div className="group flex items-center gap-2">
                         {job.dueDate ? (
                           <span className={`${
-                            differenceInDays(parseDateForDisplay(job.dueDate), new Date()) < 0 
-                              ? "text-red-600 font-medium" 
+                            differenceInDays(parseDateForDisplay(job.dueDate), new Date()) < 0
+                              ? "text-red-600 font-medium"
                               : differenceInDays(parseDateForDisplay(job.dueDate), new Date()) <= 3
                               ? "text-amber-600 font-medium"
                               : "text-gray-700"
                           }`}>
                             {format(parseDateForDisplay(job.dueDate), "EEEE, MMMM d, yyyy")}
+                            {job.targetDateRule && isValidTargetDateRule(job.targetDateRule) && (
+                              <span className="text-gray-400 font-normal ml-1.5 text-xs">
+                                ({describeTargetDateRule(job.targetDateRule as TargetDateRule)})
+                              </span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-gray-400 italic">Not set</span>

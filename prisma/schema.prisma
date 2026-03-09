@@ -400,7 +400,8 @@ model TaskInstance {
   clientId       String? // Optional: primary client (Entity) for this job
   ownerId        String // Required: accountable user for this job
   status         JobStatus @default(NOT_STARTED)
-  dueDate        DateTime? // Target completion date
+  dueDate        DateTime? // Target completion date (computed from targetDateRule + board period)
+  targetDateRule Json?      // Accounting-friendly pattern: { type: "day_of_month", day: 28 } etc.
   labels         Json? // Flexible tagging/categorization
   boardId        String? // Optional: parent Board for period-based organization
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering

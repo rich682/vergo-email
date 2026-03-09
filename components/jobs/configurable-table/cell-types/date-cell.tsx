@@ -1,96 +1,57 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { Calendar, X } from "lucide-react"
 import { format, isValid } from "date-fns"
 import { parseDateOnlySafe } from "@/lib/utils/timezone"
+import { TargetDateRuleSelector } from "@/components/jobs/target-date-rule-selector"
+import { isValidTargetDateRule } from "@/lib/target-date-rules"
+import type { TargetDateRule } from "@/lib/target-date-rules"
 
 interface DateCellProps {
-  value: string | null // ISO date string
-  onChange: (value: string | null) => void
+  value: string | null // ISO date string (computed dueDate)
+  targetDateRule?: Record<string, any> | null
+  onRuleChange?: (rule: TargetDateRule) => void
+  boardPeriodStart?: string | null
+  boardPeriodEnd?: string | null
   className?: string
 }
 
-export function DateCell({ value, onChange, className = "" }: DateCellProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-
+export function DateCell({
+  value,
+  targetDateRule,
+  onRuleChange,
+  boardPeriodStart,
+  boardPeriodEnd,
+  className = "",
+}: DateCellProps) {
   // Use centralized date-only parsing to avoid timezone shift
   const parsedDate = parseDateOnlySafe(value)
   const isValidDate = parsedDate && isValid(parsedDate)
   const displayValue = isValidDate ? format(parsedDate, "MMM d") : null
-  const inputValue = value ? value.split("T")[0] : "" // Use date part directly for input
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsEditing(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+  const currentRule =
+    targetDateRule && isValidTargetDateRule(targetDateRule)
+      ? (targetDateRule as TargetDateRule)
+      : null
 
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-    }
-  }, [isEditing])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value
-    if (newValue) {
-      // Convert to ISO string with time preserved
-      const date = new Date(newValue + "T12:00:00")
-      onChange(date.toISOString())
-    } else {
-      onChange(null)
-    }
-    setIsEditing(false)
-  }
-
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onChange(null)
-  }
-
-  if (isEditing) {
+  // If we have a rule change handler, use the compact selector
+  if (onRuleChange) {
     return (
-      <div ref={containerRef} className={`relative ${className}`}>
-        <input
-          ref={inputRef}
-          type="date"
-          value={inputValue}
-          onChange={handleChange}
-          onBlur={() => setIsEditing(false)}
-          className="h-8 px-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+      <div className={className}>
+        <TargetDateRuleSelector
+          value={currentRule}
+          onChange={onRuleChange}
+          boardPeriodStart={boardPeriodStart}
+          boardPeriodEnd={boardPeriodEnd}
+          compact
         />
       </div>
     )
   }
 
+  // Read-only fallback: just display the date
   return (
-    <div ref={containerRef} className={className}>
-      <button
-        onClick={() => setIsEditing(true)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-gray-50 transition-colors group"
-      >
-        <Calendar className="w-4 h-4 text-gray-400" />
-        {displayValue ? (
-          <>
-            <span className="text-sm text-gray-700">{displayValue}</span>
-            <button
-              onClick={handleClear}
-              className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-gray-200 transition-opacity"
-            >
-              <X className="w-3 h-3 text-gray-400" />
-            </button>
-          </>
-        ) : (
-          <span className="text-sm text-gray-400">Set date</span>
-        )}
-      </button>
+    <div className={`flex items-center gap-1.5 px-2 py-1 text-sm text-gray-700 ${className}`}>
+      {displayValue ? displayValue : <span className="text-gray-400">—</span>}
     </div>
   )
 }

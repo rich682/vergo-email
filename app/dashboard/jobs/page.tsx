@@ -63,6 +63,8 @@ import { BoardReportsTab } from "@/components/boards/board-reports-tab"
 import { BoardFormsTab } from "@/components/boards/board-forms-tab"
 import { BoardReconciliationsTab } from "@/components/boards/board-reconciliations-tab"
 import { BoardAnalysisTab } from "@/components/boards/board-analysis-tab"
+import { TargetDateRuleSelector } from "@/components/jobs/target-date-rule-selector"
+import type { TargetDateRule } from "@/lib/target-date-rules"
 import {
   ClipboardList,
   Send,
@@ -110,6 +112,7 @@ interface Job {
   customFields?: Record<string, any>
   collectedItemCount?: number
   taskType?: string | null
+  targetDateRule?: Record<string, any> | null
 }
 
 interface BoardOwner {
@@ -189,7 +192,7 @@ export default function JobsPage() {
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newJobName, setNewJobName] = useState("")
-  const [newJobDueDate, setNewJobDueDate] = useState("")
+  const [newJobTargetDateRule, setNewJobTargetDateRule] = useState<TargetDateRule | null>(null)
   const [newJobOwnerId, setNewJobOwnerId] = useState("")
   const [newJobTaskType, setNewJobTaskType] = useState("")
   const [creating, setCreating] = useState(false)
@@ -439,7 +442,15 @@ export default function JobsPage() {
       })
       if (response.ok) {
         const data = await response.json()
-        setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates, owner: data.taskInstance?.owner || j.owner } : j))
+        const ti = data.taskInstance
+        setJobs(prev => prev.map(j => j.id === jobId ? {
+          ...j,
+          ...updates,
+          owner: ti?.owner || j.owner,
+          // Server recomputes dueDate from targetDateRule
+          ...(ti?.dueDate !== undefined ? { dueDate: ti.dueDate } : {}),
+          ...(ti?.targetDateRule !== undefined ? { targetDateRule: ti.targetDateRule } : {}),
+        } : j))
       } else {
         throw new Error("Failed to update")
       }
@@ -461,7 +472,7 @@ export default function JobsPage() {
         body: JSON.stringify({
           name: `${job.name} (Copy)`,
           description: job.description,
-          dueDate: job.dueDate,
+          targetDateRule: job.targetDateRule || undefined,
           ownerId: job.ownerId,
           labels: job.labels,
           boardId: boardId || undefined,
@@ -647,8 +658,8 @@ export default function JobsPage() {
   }
 
   const handleCreateJob = async () => {
-    // Validation: name, owner, due date required
-    if (!newJobName.trim() || !newJobOwnerId || !newJobDueDate || !newJobTaskType) return
+    // Validation: name, owner, target date rule required
+    if (!newJobName.trim() || !newJobOwnerId || !newJobTargetDateRule || !newJobTaskType) return
     
     setCreating(true)
     setCreateError(null)
@@ -659,7 +670,7 @@ export default function JobsPage() {
         credentials: "include",
         body: JSON.stringify({
           name: newJobName.trim(),
-          dueDate: newJobDueDate,
+          targetDateRule: newJobTargetDateRule,
           ownerId: newJobOwnerId,
           boardId: boardId || undefined,
           taskType: newJobTaskType || undefined
@@ -687,7 +698,7 @@ export default function JobsPage() {
 
   const resetCreateForm = () => {
     setNewJobName("")
-    setNewJobDueDate("")
+    setNewJobTargetDateRule(null)
     setNewJobOwnerId(teamMembers.find(m => m.isCurrentUser)?.id || "")
     setNewJobTaskType("")
     setCreateError(null)
@@ -730,9 +741,12 @@ export default function JobsPage() {
     taskCount: job.taskCount || 0,
     respondedCount: job.respondedCount || 0,
     taskType: job.taskType || null,
+    targetDateRule: job.targetDateRule || null,
+    boardPeriodStart: currentBoard?.periodStart || null,
+    boardPeriodEnd: currentBoard?.periodEnd || null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-  })), [filteredJobs])
+  })), [filteredJobs, currentBoard?.periodStart, currentBoard?.periodEnd])
 
   // ============================================
   // Render
@@ -1076,41 +1090,42 @@ export default function JobsPage() {
                   />
                 </div>
 
-                {/* Owner & Target Date - Side by side */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="owner" className="text-sm">Owner <span className="text-red-500">*</span></Label>
-                    {canAssignOwner ? (
-                      <select
-                        id="owner"
-                        value={newJobOwnerId}
-                        onChange={(e) => setNewJobOwnerId(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {teamMembers.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Input
-                        id="owner"
-                        value={teamMembers.find(m => m.isCurrentUser)?.name || teamMembers.find(m => m.isCurrentUser)?.email || "You"}
-                        disabled
-                        className="mt-1"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="dueDate" className="text-sm">Target Date <span className="text-red-500">*</span></Label>
+                {/* Owner */}
+                <div>
+                  <Label htmlFor="owner" className="text-sm">Owner <span className="text-red-500">*</span></Label>
+                  {canAssignOwner ? (
+                    <select
+                      id="owner"
+                      value={newJobOwnerId}
+                      onChange={(e) => setNewJobOwnerId(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                    >
+                      <option value="">Select...</option>
+                      {teamMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name || member.email} {member.isCurrentUser ? "(You)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
                     <Input
-                      id="dueDate"
-                      type="date"
-                      value={newJobDueDate}
-                      onChange={(e) => setNewJobDueDate(e.target.value)}
+                      id="owner"
+                      value={teamMembers.find(m => m.isCurrentUser)?.name || teamMembers.find(m => m.isCurrentUser)?.email || "You"}
+                      disabled
                       className="mt-1"
+                    />
+                  )}
+                </div>
+
+                {/* Target Date Rule */}
+                <div>
+                  <Label className="text-sm">Target Date <span className="text-red-500">*</span></Label>
+                  <div className="mt-1">
+                    <TargetDateRuleSelector
+                      value={newJobTargetDateRule}
+                      onChange={setNewJobTargetDateRule}
+                      boardPeriodStart={currentBoard?.periodStart}
+                      boardPeriodEnd={currentBoard?.periodEnd}
                     />
                   </div>
                 </div>
@@ -1145,7 +1160,7 @@ export default function JobsPage() {
                     disabled={
                       !newJobName.trim() ||
                       !newJobOwnerId ||
-                      !newJobDueDate ||
+                      !newJobTargetDateRule ||
                       !newJobTaskType ||
                       creating
                     }

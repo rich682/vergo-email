@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { periodKeyFromDate } from "@/lib/utils/period"
 import { canPerformAction } from "@/lib/permissions"
+import { isValidTargetDateRule, computeDueDateFromRule, TargetDateRule } from "@/lib/target-date-rules"
 
 export async function GET(
   request: NextRequest,
@@ -132,10 +133,10 @@ export async function PATCH(
       )
     }
 
-    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId, taskType } = body
+    const { name, description, clientId, status, dueDate, labels, stakeholders, ownerId, notes, customFields, createLineage, reportDefinitionId, reportFilterBindings, reconciliationConfigId, taskType, targetDateRule } = body
 
     // Determine if this is a status-only update (collaborators can do this)
-    const isStatusOnlyUpdate = status && !name && !description && !clientId && !dueDate && !labels && !stakeholders && !ownerId && !notes && !customFields && !createLineage && !reportDefinitionId && !reportFilterBindings && !reconciliationConfigId && !taskType
+    const isStatusOnlyUpdate = status && !name && !description && !clientId && !dueDate && !labels && !stakeholders && !ownerId && !notes && !customFields && !createLineage && !reportDefinitionId && !reportFilterBindings && !reconciliationConfigId && !taskType && !targetDateRule
 
     if (isStatusOnlyUpdate) {
       // Collaborators can update status
@@ -257,13 +258,40 @@ export async function PATCH(
       }
     }
 
+    // Compute dueDate from targetDateRule when provided
+    let computedDueDate: Date | null | undefined = dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined
+    let validatedRule: TargetDateRule | null | undefined = undefined
+
+    if (targetDateRule !== undefined) {
+      if (targetDateRule === null) {
+        validatedRule = null
+        // Clearing the rule — also clear dueDate unless explicitly set
+        if (dueDate === undefined) computedDueDate = null
+      } else if (isValidTargetDateRule(targetDateRule)) {
+        validatedRule = targetDateRule as TargetDateRule
+        const boardId = existingInstance.boardId
+        let periodStart: string | null = null
+        let periodEnd: string | null = null
+        if (boardId) {
+          const board = await prisma.board.findUnique({
+            where: { id: boardId },
+            select: { periodStart: true, periodEnd: true }
+          })
+          periodStart = board?.periodStart?.toISOString() || null
+          periodEnd = board?.periodEnd?.toISOString() || null
+        }
+        computedDueDate = computeDueDateFromRule(validatedRule, periodStart, periodEnd)
+      }
+    }
+
     const taskInstance = await TaskInstanceService.update(id, organizationId, {
       name: name?.trim(),
       description: description !== undefined ? description?.trim() || null : undefined,
       clientId: clientId !== undefined ? clientId || null : undefined,
       ownerId: ownerId || undefined,
       status: effectiveStatus || undefined,
-      dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : undefined,
+      dueDate: computedDueDate,
+      targetDateRule: validatedRule,
       labels: updatedLabels,
       notes: notes !== undefined ? notes : undefined,
       customFields: customFields !== undefined ? customFields : undefined,
@@ -316,6 +344,9 @@ export async function PATCH(
     }
     if (taskType !== undefined && taskType !== (existingInstance as any).taskType) {
       fieldChanges.push({ field: "type", oldValue: (existingInstance as any).taskType, newValue: taskType, displayField: "task type" })
+    }
+    if (validatedRule !== undefined) {
+      fieldChanges.push({ field: "target_date_rule", oldValue: (existingInstance as any).targetDateRule, newValue: validatedRule, displayField: "target date pattern" })
     }
     if (reportDefinitionId !== undefined && reportDefinitionId !== existingInstance.reportDefinitionId) {
       fieldChanges.push({ field: "report_config", oldValue: existingInstance.reportDefinitionId, newValue: reportDefinitionId, displayField: "report configuration" })

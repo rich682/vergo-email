@@ -20,6 +20,7 @@ import { TaskInstanceService } from "@/lib/services/task-instance.service"
 import { BoardService } from "@/lib/services/board.service"
 import { JobStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
+import { isValidTargetDateRule, computeDueDateFromRule, TargetDateRule } from "@/lib/target-date-rules"
 
 export async function GET(request: NextRequest) {
   try {
@@ -119,7 +120,8 @@ export async function POST(request: NextRequest) {
       ownerId,
       boardId,
       lineageId,
-      taskType
+      taskType,
+      targetDateRule
     } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -127,6 +129,26 @@ export async function POST(request: NextRequest) {
         { error: "Item name is required" },
         { status: 400 }
       )
+    }
+
+    // Compute dueDate from targetDateRule if provided
+    let computedDueDate: Date | undefined = dueDate ? new Date(dueDate) : undefined
+    let validatedRule: TargetDateRule | undefined = undefined
+
+    if (targetDateRule && isValidTargetDateRule(targetDateRule)) {
+      validatedRule = targetDateRule as TargetDateRule
+      // Fetch board period context if available
+      let periodStart: string | null = null
+      let periodEnd: string | null = null
+      if (boardId) {
+        const board = await prisma.board.findUnique({
+          where: { id: boardId },
+          select: { periodStart: true, periodEnd: true }
+        })
+        periodStart = board?.periodStart?.toISOString() || null
+        periodEnd = board?.periodEnd?.toISOString() || null
+      }
+      computedDueDate = computeDueDateFromRule(validatedRule, periodStart, periodEnd)
     }
 
     // Create the TaskInstance
@@ -137,7 +159,8 @@ export async function POST(request: NextRequest) {
       description: description?.trim() || undefined,
       clientId: clientId || undefined,
       boardId: boardId || undefined,
-      dueDate: dueDate ? new Date(dueDate) : undefined,
+      dueDate: computedDueDate,
+      targetDateRule: validatedRule || undefined,
       labels: labels || undefined,
       tags: tags || undefined,
       lineageId: lineageId || undefined,

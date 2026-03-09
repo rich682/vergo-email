@@ -22,6 +22,9 @@ interface ParsedItem {
   priority?: "high" | "medium" | "low"
   ownerId?: string
   ownerName?: string
+  taskType?: string
+  targetDateRule?: Record<string, any>
+  targetDateText?: string
 }
 
 interface AIBulkUploadModalProps {
@@ -282,10 +285,11 @@ export function AIBulkUploadModal({ open, onOpenChange, onImportComplete, boardI
           body: JSON.stringify({
             name: item.name,
             description: item.description || undefined,
-            dueDate: item.dueDate || undefined,
+            targetDateRule: item.targetDateRule || undefined,
+            dueDate: (!item.targetDateRule && item.dueDate) ? item.dueDate : undefined,
             ownerId: item.ownerId || undefined,
             boardId: boardId || undefined,
-            type: "GENERIC" // Default for AI bulk add
+            taskType: item.taskType || undefined,
           })
         })
         imported++
@@ -543,8 +547,14 @@ Submit payroll	2026-01-25	Mike	Process payroll"
                           {item.description}
                         </p>
                       )}
-                      <div className="flex items-center gap-3 mt-1.5">
-                        {item.dueDate && (
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        {item.targetDateText && (
+                          <span className="flex items-center gap-1 text-xs text-gray-500">
+                            <Calendar className="w-3 h-3" />
+                            {item.targetDateText}
+                          </span>
+                        )}
+                        {!item.targetDateText && item.dueDate && (
                           <span className="flex items-center gap-1 text-xs text-gray-500">
                             <Calendar className="w-3 h-3" />
                             {item.dueDate}
@@ -554,6 +564,11 @@ Submit payroll	2026-01-25	Mike	Process payroll"
                           <span className="flex items-center gap-1 text-xs text-gray-500">
                             <User className="w-3 h-3" />
                             {item.ownerName}
+                          </span>
+                        )}
+                        {item.taskType && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                            {item.taskType}
                           </span>
                         )}
                         {item.priority && (

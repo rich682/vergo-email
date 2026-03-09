@@ -54,6 +54,7 @@ export interface CreateTaskInstanceInput {
   labels?: TaskInstanceLabels
   tags?: string[]
   taskType?: TaskType
+  targetDateRule?: Record<string, any> | null
 }
 
 export interface UpdateTaskInstanceInput {
@@ -80,6 +81,7 @@ export interface UpdateTaskInstanceInput {
   reconciliationConfigId?: string | null
   // Task type for agent integration
   taskType?: TaskType | null
+  targetDateRule?: Record<string, any> | null
   // Completion tracking
   completedAt?: Date | null
 }
@@ -121,6 +123,7 @@ export interface TaskInstanceWithStats {
   } | null
   status: JobStatus
   dueDate: Date | null
+  targetDateRule?: Record<string, any> | null
   labels: TaskInstanceLabels | null
   notes?: string | null
   customFields?: Record<string, any> | null
@@ -299,6 +302,7 @@ export class TaskInstanceService {
         clientId: input.clientId,
         boardId: input.boardId,
         dueDate: input.dueDate,
+        targetDateRule: input.targetDateRule || undefined,
         labels: labels as any,
         taskType: input.taskType || null,
         status: JobStatus.NOT_STARTED
@@ -503,6 +507,7 @@ export class TaskInstanceService {
     if (input.reportFilterBindings !== undefined) updateData.reportFilterBindings = input.reportFilterBindings
     if (input.reconciliationConfigId !== undefined) updateData.reconciliationConfigId = input.reconciliationConfigId
     if (input.taskType !== undefined) updateData.taskType = input.taskType
+    if (input.targetDateRule !== undefined) updateData.targetDateRule = input.targetDateRule
     if (input.completedAt !== undefined) updateData.completedAt = input.completedAt
 
     const instance = await prisma.taskInstance.update({

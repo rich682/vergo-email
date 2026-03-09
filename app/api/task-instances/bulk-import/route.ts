@@ -1,12 +1,13 @@
 /**
  * Jobs Bulk Import Endpoint
- * 
+ *
  * POST /api/task-instances/bulk-import - Interpret spreadsheet data using AI
- * 
+ *
  * Takes raw spreadsheet rows and uses GPT to extract:
  * - Item name
- * - Due date (if present)
+ * - Target date pattern (accounting-friendly, e.g., "28th of each month")
  * - Owner (matched to team members)
+ * - Task type (reconciliation, report, form, request, analysis, other)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -15,14 +16,19 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { canPerformAction } from "@/lib/permissions"
+import { parseTargetDateText } from "@/lib/target-date-rules"
 
 export const maxDuration = 30
+
+const VALID_TASK_TYPES = ["reconciliation", "report", "form", "request", "analysis", "other"]
 
 interface ParsedItem {
   name: string
   dueDate?: string
   ownerId?: string
   ownerName?: string
+  taskType?: string
+  targetDateText?: string
 }
 
 interface TeamMember {
@@ -94,25 +100,28 @@ export async function POST(request: NextRequest) {
 
 For each row, extract:
 1. The task name (the main task description)
-2. A due date if one is present (in ISO format YYYY-MM-DD)
-3. An owner if one is mentioned (match to team member ID)${teamMembersPrompt}
+2. A target date pattern if one is present. Keep the original text as-is (e.g., "28th of each month", "every other Friday", "last day of each month", "every Friday", "4th of each month"). If it's a specific date, convert to ISO format YYYY-MM-DD and use that as "dueDate" instead.
+3. An owner if one is mentioned (match to team member ID)
+4. A task type if one can be inferred. Must be one of: "reconciliation", "report", "form", "request", "analysis", "other". Look for keywords like "reconcile" -> "reconciliation", "report" -> "report", "form" -> "form", etc.${teamMembersPrompt}
 
 Rules:
 - Skip header rows (rows that look like column titles)
 - Skip empty or irrelevant rows
 - The task name should be a clear, concise description
-- Only include a dueDate if there's a clear date in the row
+- For target dates that are recurring patterns (e.g., "28th of each month", "every Friday", "every other Friday", "last day of month", "EOM"), return them as "targetDateText" with the pattern text preserved
+- For specific dates, return as "dueDate" in ISO format YYYY-MM-DD
 - If a date is relative (e.g., "next Friday"), convert it to an absolute date based on today being ${new Date().toISOString().split('T')[0]}
 - For owner matching: look for names in the spreadsheet that match team members. Use fuzzy matching (e.g., "Rich Kane" matches "Richard Kane", "Tracy B" matches "Tracy Baldwin"). Only include ownerId if you find a confident match.
+- "Everyone" as an owner means leave ownerId empty
 
-Return a JSON array of objects with "name", optionally "dueDate", and optionally "ownerId" (the matched team member ID) and "ownerName" (the matched name for display).`
+Return a JSON array of objects with "name", optionally "targetDateText" OR "dueDate", optionally "ownerId" and "ownerName", optionally "taskType".`
 
     const userPrompt = `Extract tasks from this spreadsheet data:
 
 ${formattedRows}
 
 Return ONLY a valid JSON array, no other text. Example format:
-[{"name": "Task description", "dueDate": "2024-02-15", "ownerId": "abc123", "ownerName": "John Smith"}, {"name": "Another task"}]`
+[{"name": "Reconcile bank accounts", "targetDateText": "6th of each month", "ownerId": "abc123", "ownerName": "John Smith", "taskType": "reconciliation"}, {"name": "Submit expense reports", "dueDate": "2024-02-15", "taskType": "other"}]`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -125,7 +134,7 @@ Return ONLY a valid JSON array, no other text. Example format:
     })
 
     const responseText = completion.choices[0]?.message?.content || "[]"
-    
+
     // Parse the JSON response
     let items: ParsedItem[] = []
     try {
@@ -146,13 +155,23 @@ Return ONLY a valid JSON array, no other text. Example format:
     const teamMemberIds = new Set(teamMembers.map(m => m.id))
     const validItems = items
       .filter(item => item.name && typeof item.name === "string" && item.name.trim().length > 0)
-      .map(item => ({
-        name: item.name.trim(),
-        dueDate: item.dueDate && isValidDate(item.dueDate) ? item.dueDate : undefined,
-        // Only include ownerId if it's a valid team member
-        ownerId: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerId : undefined,
-        ownerName: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerName : undefined
-      }))
+      .map(item => {
+        // Parse target date text into a rule
+        const targetDateRule = item.targetDateText
+          ? parseTargetDateText(item.targetDateText)
+          : null
+
+        return {
+          name: item.name.trim(),
+          dueDate: item.dueDate && isValidDate(item.dueDate) ? item.dueDate : undefined,
+          targetDateText: item.targetDateText || undefined,
+          targetDateRule: targetDateRule || undefined,
+          taskType: item.taskType && VALID_TASK_TYPES.includes(item.taskType) ? item.taskType : undefined,
+          // Only include ownerId if it's a valid team member
+          ownerId: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerId : undefined,
+          ownerName: item.ownerId && teamMemberIds.has(item.ownerId) ? item.ownerName : undefined
+        }
+      })
 
     return NextResponse.json({
       success: true,

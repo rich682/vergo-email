@@ -42,6 +42,9 @@ export interface JobRow {
   respondedCount?: number // Number of requests that received responses
   draftRequestCount?: number // Number of draft requests awaiting review
   taskType?: string | null
+  targetDateRule?: Record<string, any> | null
+  boardPeriodStart?: string | null
+  boardPeriodEnd?: string | null
   createdAt?: string
   updatedAt?: string
 }
