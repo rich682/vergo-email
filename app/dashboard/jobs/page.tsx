@@ -400,6 +400,11 @@ export default function JobsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId])
 
+  // Re-fetch when My Tasks / Everyone filter changes
+  useEffect(() => {
+    fetchJobs()
+  }, [showMyTasksOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Lazy-load stakeholder options only when create modal opens
   useEffect(() => {
     if (isCreateOpen) {
