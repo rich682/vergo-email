@@ -522,7 +522,8 @@ export class BoardService {
       where: { id: completedBoardId, organizationId },
       include: {
         collaborators: true,
-        organization: { select: { fiscalYearStartMonth: true, timezone: true } }
+        organization: { select: { fiscalYearStartMonth: true, timezone: true } },
+        _count: { select: { taskInstances: true } },
       }
     })
 
@@ -874,8 +875,8 @@ export class BoardService {
           ownerId: task.ownerId,
           clientId: task.clientId,
           status: "NOT_STARTED",
-          customFields: task.customFields,
-          labels: task.labels,
+          customFields: task.customFields as any,
+          labels: task.labels as any,
           taskType: taskAny.taskType || null,
           targetDateRule: taskAny.targetDateRule || null,
           reconciliationConfigId: taskAny.reconciliationConfigId || null,
