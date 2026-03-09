@@ -29,6 +29,8 @@ import {
   Zap,
   Sparkles,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { formatDistanceToNow, differenceInDays, parseISO } from "date-fns"
 import {
@@ -255,6 +257,9 @@ export default function BoardsPage() {
   // Feature flag
   const [advancedBoardTypes, setAdvancedBoardTypes] = useState(false)
 
+  // Year filter (simplified mode) — defaults to current year
+  const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear())
+
   // Modal states
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<Board | null>(null)
@@ -323,7 +328,7 @@ export default function BoardsPage() {
   const fetchBoards = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/boards")
+      const response = await fetch(`/api/boards?year=${yearFilter}`)
       if (response.ok) {
         const data = await response.json()
         setBoards(data.boards || [])
@@ -341,7 +346,7 @@ export default function BoardsPage() {
 
   useEffect(() => {
     fetchBoards()
-  }, [])
+  }, [yearFilter])
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -562,8 +567,36 @@ export default function BoardsPage() {
   // Simplified Book Close View
   // ============================================
   if (!advancedBoardTypes) {
+    const currentYear = new Date().getFullYear()
+
     return (
       <div className="p-8">
+        {/* Year Filter */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <button
+            onClick={() => setYearFilter(y => y - 1)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <Select value={yearFilter.toString()} onValueChange={(v) => setYearFilter(parseInt(v, 10))}>
+            <SelectTrigger className="w-[120px] text-center font-medium">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map(y => (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button
+            onClick={() => setYearFilter(y => y + 1)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />

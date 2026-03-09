@@ -1071,20 +1071,28 @@ export class BoardService {
     organizationId: string,
     fiscalYearStartMonth: number,
     timezone: string,
-    createdById: string
+    createdById: string,
+    targetYear?: number  // If provided, generate Jan-Dec of this specific calendar year
   ): Promise<void> {
-    const now = new Date()
-    const currentMonth = now.getUTCMonth() // 0-indexed, UTC
-    const currentYear = now.getUTCFullYear()
-
-    // Calculate fiscal year start
-    // If fiscal year starts in July (7) and we're in Feb (1), fiscal year started July of previous year
-    const fiscalMonthIndex = fiscalYearStartMonth - 1 // Convert to 0-indexed
     let fiscalYearStart: Date
-    if (currentMonth >= fiscalMonthIndex) {
-      fiscalYearStart = new Date(Date.UTC(currentYear, fiscalMonthIndex, 1))
+
+    if (targetYear !== undefined) {
+      // Generate for a specific calendar year (Jan-Dec)
+      fiscalYearStart = new Date(Date.UTC(targetYear, 0, 1))
     } else {
-      fiscalYearStart = new Date(Date.UTC(currentYear - 1, fiscalMonthIndex, 1))
+      // Default: generate for the current fiscal year
+      const now = new Date()
+      const currentMonth = now.getUTCMonth() // 0-indexed, UTC
+      const currentYear = now.getUTCFullYear()
+
+      // Calculate fiscal year start
+      // If fiscal year starts in July (7) and we're in Feb (1), fiscal year started July of previous year
+      const fiscalMonthIndex = fiscalYearStartMonth - 1 // Convert to 0-indexed
+      if (currentMonth >= fiscalMonthIndex) {
+        fiscalYearStart = new Date(Date.UTC(currentYear, fiscalMonthIndex, 1))
+      } else {
+        fiscalYearStart = new Date(Date.UTC(currentYear - 1, fiscalMonthIndex, 1))
+      }
     }
 
     // Check existing MONTHLY boards for this fiscal year range

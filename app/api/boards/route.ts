@@ -69,12 +69,20 @@ export async function GET(request: NextRequest) {
 
     // In simplified mode, lazy-generate fiscal year boards
     if (!advancedBoardTypes) {
-      await BoardService.generateFiscalYearBoards(
-        organizationId,
-        organization?.fiscalYearStartMonth ?? 1,
-        organization?.timezone ?? "UTC",
-        userId
-      )
+      const fiscalYearStartMonth = organization?.fiscalYearStartMonth ?? 1
+      const tz = organization?.timezone ?? "UTC"
+
+      // Always generate current fiscal year boards
+      await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId)
+
+      // Also generate previous calendar year boards (for new customers)
+      const prevYear = new Date().getUTCFullYear() - 1
+      await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, prevYear)
+
+      // If a specific year is requested, ensure boards exist for that year too
+      if (year && year !== new Date().getUTCFullYear() && year !== prevYear) {
+        await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, year)
+      }
     }
 
     const boards = await BoardService.getByOrganizationId(organizationId, {
