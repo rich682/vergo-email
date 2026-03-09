@@ -116,6 +116,7 @@ export async function POST(
           customFields: source.customFields,
           labels: source.labels,
           taskType: sourceAny.taskType || null,
+          targetDateRule: sourceAny.targetDateRule || null,
           reconciliationConfigId: sourceAny.reconciliationConfigId || null,
           reportDefinitionId: sourceAny.reportDefinitionId || null,
           reportFilterBindings: sourceAny.reportFilterBindings || null,

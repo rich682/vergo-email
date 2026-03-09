@@ -151,7 +151,8 @@ interface Board {
 export default function JobsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { can } = usePermissions()
+  const { can, role } = usePermissions()
+  const isAdmin = role === "ADMIN"
   const canCreateTasks = can("tasks:create")
   const canImportTasks = can("tasks:import")
   const canAssignOwner = can("tasks:edit_any")
@@ -187,6 +188,7 @@ export default function JobsPage() {
   }, [searchQuery])
 
   // Filter state
+  const [showMyTasksOnly, setShowMyTasksOnly] = useState(true)
   const [taskTypeFilter, setTaskTypeFilter] = useState("")
 
   // Create modal state
@@ -247,6 +249,9 @@ export default function JobsPage() {
       }
       // Always include archived - they appear in their own "Archived" group section
       params.set("includeArchived", "true")
+      if (showMyTasksOnly) {
+        params.set("myTasks", "true")
+      }
 
       console.log("[BoardPage] fetchJobs start", { boardId })
       const response = await fetch(`/api/task-instances?${params.toString()}`, { credentials: "include" })
@@ -265,7 +270,7 @@ export default function JobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardId])
+  }, [boardId, showMyTasksOnly])
 
   const fetchBoard = useCallback(async () => {
     if (!boardId) {
@@ -1238,6 +1243,30 @@ export default function JobsPage() {
         {activeTab === "tasks" && (<>
         {/* Search & Filters */}
         <div className="mb-4 flex items-center gap-3">
+          {canAssignOwner && (
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setShowMyTasksOnly(true)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  showMyTasksOnly
+                    ? "bg-white text-gray-900 shadow-sm font-medium"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                My Tasks
+              </button>
+              <button
+                onClick={() => setShowMyTasksOnly(false)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  !showMyTasksOnly
+                    ? "bg-white text-gray-900 shadow-sm font-medium"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Everyone
+              </button>
+            </div>
+          )}
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
@@ -1273,8 +1302,8 @@ export default function JobsPage() {
           )}
         </div>
 
-        {/* AI Summary Panel */}
-        {filteredJobs.length > 0 && (
+        {/* AI Summary Panel - admin only to protect sensitive financial info */}
+        {isAdmin && filteredJobs.length > 0 && (
           <AISummaryPanel boardId={boardId} />
         )}
 

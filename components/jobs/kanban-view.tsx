@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Calendar, MessageSquare, Paperclip, ArrowUpDown } from "lucide-react"
 import {
   Select,
@@ -45,16 +44,6 @@ interface KanbanViewProps {
 // ============================================
 // Helpers
 // ============================================
-
-function getInitials(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.split(" ")
-    return parts.length > 1
-      ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-      : name.substring(0, 2).toUpperCase()
-  }
-  return email.substring(0, 2).toUpperCase()
-}
 
 function parseDateOnly(dateStr: string): Date {
   const datePart = dateStr.split("T")[0]
@@ -154,16 +143,9 @@ function TaskCard({ job, onClick }: TaskCardProps) {
         {/* Metadata */}
         <div className="flex items-center gap-2.5 text-xs text-gray-500 flex-shrink-0">
           {/* Owner */}
-          <div className="flex items-center gap-1">
-            <Avatar className="h-5 w-5">
-              <AvatarFallback className="text-[10px] bg-blue-100 text-blue-700">
-                {getInitials(job.ownerName, job.ownerEmail)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="truncate max-w-[70px]">
-              {job.ownerName || job.ownerEmail.split("@")[0]}
-            </span>
-          </div>
+          <span className="text-gray-500">
+            {job.ownerName || job.ownerEmail.split("@")[0]}
+          </span>
 
           {/* Target Date */}
           {job.dueDate && (
@@ -319,7 +301,7 @@ function sortJobs(jobs: JobRow[], sortBy: SortOption): JobRow[] {
 
 export function KanbanView({ jobs, onStatusChange }: KanbanViewProps) {
   const router = useRouter()
-  const [sortBy, setSortBy] = useState<SortOption>("created_newest")
+  const [sortBy, setSortBy] = useState<SortOption>("due_date")
 
   // Group jobs by kanban column, then sort within each column
   const jobsByColumn = useMemo(() => {

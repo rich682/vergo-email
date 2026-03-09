@@ -197,7 +197,7 @@ export class BoardService {
         periodEnd: data.periodEnd,
         createdById: data.createdById,
         status: "NOT_STARTED",
-        automationEnabled: data.automationEnabled ?? false,
+        automationEnabled: data.automationEnabled ?? true,
         collaborators: data.collaboratorIds?.length ? {
           create: data.collaboratorIds.map(userId => ({
             userId,
@@ -652,9 +652,13 @@ export class BoardService {
     nextBoardId: string,
     organizationId: string
   ): Promise<void> {
-    // Get the previous board for period info
+    // Get both boards for period info
     const previousBoard = await prisma.board.findUnique({
       where: { id: previousBoardId },
+    })
+    const nextBoard = await prisma.board.findUnique({
+      where: { id: nextBoardId },
+      select: { periodStart: true, periodEnd: true },
     })
 
     const previousInstances = await prisma.taskInstance.findMany({
@@ -684,7 +688,21 @@ export class BoardService {
         customFields: prev.customFields,
         labels: prev.labels,
         taskType: prevAny.taskType || null,
+        targetDateRule: prevAny.targetDateRule || null,
         reconciliationConfigId: prevAny.reconciliationConfigId || null,
+      }
+
+      // Compute dueDate from targetDateRule for the new board's period
+      if (prevAny.targetDateRule && nextBoard) {
+        const { computeDueDateFromRule, isValidTargetDateRule } = await import("@/lib/target-date-rules")
+        if (isValidTargetDateRule(prevAny.targetDateRule)) {
+          const computed = computeDueDateFromRule(
+            prevAny.targetDateRule,
+            nextBoard.periodStart?.toISOString() || null,
+            nextBoard.periodEnd?.toISOString() || null
+          )
+          if (computed) createData.dueDate = computed
+        }
       }
 
       // Carry forward report configuration if task has a report linked
@@ -859,6 +877,7 @@ export class BoardService {
           customFields: task.customFields,
           labels: task.labels,
           taskType: taskAny.taskType || null,
+          targetDateRule: taskAny.targetDateRule || null,
           reconciliationConfigId: taskAny.reconciliationConfigId || null,
           reportDefinitionId: taskAny.reportDefinitionId || null,
           reportFilterBindings: taskAny.reportFilterBindings || null,
@@ -1196,6 +1215,7 @@ export class BoardService {
           customFields: sourceTask.customFields as any,
           labels: sourceTask.labels as any,
           taskType: sourceAny.taskType || null,
+          targetDateRule: sourceAny.targetDateRule || null,
           reportDefinitionId: sourceAny.reportDefinitionId || null,
           reportFilterBindings: sourceAny.reportFilterBindings || null,
           reconciliationConfigId: sourceAny.reconciliationConfigId || null,
