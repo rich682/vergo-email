@@ -157,6 +157,23 @@ export class ReportExecutionService {
       totalDatabaseRows: allRows.length,
       parseFailures: 0,
       warnings: [] as string[],
+      // Debug info for period matching issues
+      debug: null as any,
+    }
+
+    // Temporary debug: log first row's date value and how it parses
+    if (allRows.length > 0 && dateColumnKey) {
+      const sampleRow = allRows[0]
+      const sampleDateValue = sampleRow[dateColumnKey]
+      const sampleParsed = periodKeyFromValue(sampleDateValue, cadence)
+      diagnostics.debug = {
+        dateColumnKey,
+        cadence,
+        sampleDateValue: sampleDateValue === undefined ? "UNDEFINED" : sampleDateValue === null ? "NULL" : String(sampleDateValue),
+        sampleDateType: typeof sampleDateValue,
+        sampleParsedPeriodKey: sampleParsed,
+        allKeys: Object.keys(sampleRow).slice(0, 10),
+      }
     }
 
     // Accounting layout: skip period filtering entirely — all rows used, dates ARE the columns
