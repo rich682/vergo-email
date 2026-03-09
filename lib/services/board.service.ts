@@ -1156,9 +1156,10 @@ export class BoardService {
 
     if (boardsToCreate.length === 0) return
 
-    // Create all missing boards
+    // Create all missing boards and track their IDs + periodStarts for task spawning
+    const createdBoards: Array<{ id: string; periodStart: Date }> = []
     for (const board of boardsToCreate) {
-      await prisma.board.create({
+      const created = await prisma.board.create({
         data: {
           organizationId,
           name: board.name,
@@ -1170,9 +1171,34 @@ export class BoardService {
           createdById,
         },
       })
+      createdBoards.push({ id: created.id, periodStart: board.periodStart })
     }
 
     console.log(`[BoardService] Generated ${boardsToCreate.length} fiscal year boards for org ${organizationId}`)
+
+    // Populate newly created boards with tasks from their nearest previous board
+    for (const newBoard of createdBoards) {
+      try {
+        // Find the most recent previous MONTHLY board that has task instances
+        const previousBoard = await prisma.board.findFirst({
+          where: {
+            organizationId,
+            cadence: "MONTHLY",
+            periodStart: { lt: newBoard.periodStart },
+            taskInstances: { some: {} },
+          },
+          orderBy: { periodStart: "desc" },
+          select: { id: true, name: true },
+        })
+
+        if (previousBoard) {
+          await this.spawnTaskInstancesForNextPeriod(previousBoard.id, newBoard.id, organizationId)
+        }
+      } catch (error) {
+        console.error(`[BoardService] Error spawning tasks for new board ${newBoard.id}:`, error)
+        // Don't throw - board was created successfully, task spawning failure shouldn't block
+      }
+    }
   }
 
   /**
