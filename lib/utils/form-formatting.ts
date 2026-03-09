@@ -29,7 +29,12 @@ export function formatResponseValue(value: unknown, fieldType?: string): string 
   if (fieldType === "checkbox") return value ? "Yes" : "No"
   if (fieldType === "date" && typeof value === "string") {
     try {
-      return new Date(value).toLocaleDateString()
+      // Parse YYYY-MM-DD as local date to avoid UTC timezone shift
+      const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      if (isoMatch) {
+        return new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3]).toLocaleDateString()
+      }
+      return new Date(value + "T00:00:00").toLocaleDateString()
     } catch {
       return String(value)
     }

@@ -83,7 +83,7 @@ export function BoardFormsTab({ boardId, tasks }: BoardFormsTabProps) {
                 </td>
                 <td className="px-4 py-2 text-sm text-gray-500">
                   {task.dueDate
-                    ? new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    ? new Date(task.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                     : "—"}
                 </td>
               </tr>

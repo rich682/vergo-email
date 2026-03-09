@@ -81,7 +81,8 @@ export function InboxTable({ tasks }: InboxTableProps) {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    // Append T00:00:00 to avoid UTC timezone shift for date-only strings
+    return new Date(dateString + "T00:00:00").toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric"

@@ -857,7 +857,13 @@ export default function DatabaseDetailPage() {
       case "date":
         if (value) {
           try {
-            return new Date(String(value)).toLocaleDateString()
+            const str = String(value)
+            // Parse YYYY-MM-DD as local date to avoid UTC timezone shift
+            const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+            if (isoMatch) {
+              return new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3]).toLocaleDateString()
+            }
+            return new Date(str + "T00:00:00").toLocaleDateString()
           } catch {
             return String(value)
           }

@@ -676,7 +676,7 @@ export default function FormFillPage() {
                 {formRequest.deadlineDate && (
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    Due: {new Date(formRequest.deadlineDate).toLocaleDateString()}
+                    Due: {new Date(formRequest.deadlineDate + "T00:00:00").toLocaleDateString()}
                   </span>
                 )}
               </div>
