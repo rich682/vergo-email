@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Calendar, MessageSquare, Paperclip, ArrowUpDown } from "lucide-react"
 import {
@@ -36,9 +36,17 @@ interface JobRow {
   updatedAt?: string
 }
 
+interface TeamMember {
+  id: string
+  name: string | null
+  email: string
+}
+
 interface KanbanViewProps {
   jobs: JobRow[]
   onStatusChange: (jobId: string, newStatus: string) => void
+  onOwnerChange?: (jobId: string, newOwnerId: string) => void
+  teamMembers?: TeamMember[]
 }
 
 // ============================================
@@ -111,15 +119,75 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
 ]
 
 // ============================================
+// Owner Selector (inline dropdown on kanban card)
+// ============================================
+
+function OwnerSelector({ job, teamMembers, onOwnerChange }: {
+  job: JobRow
+  teamMembers?: TeamMember[]
+  onOwnerChange?: (newOwnerId: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [isOpen])
+
+  if (!onOwnerChange || !teamMembers?.length) {
+    return (
+      <span className="text-gray-500">
+        {job.ownerName || job.ownerEmail.split("@")[0]}
+      </span>
+    )
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen) }}
+        className="text-gray-500 hover:text-gray-700 hover:underline"
+      >
+        {job.ownerName || job.ownerEmail.split("@")[0]}
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-30 min-w-[180px] py-1 max-h-48 overflow-y-auto">
+          {teamMembers.map(member => (
+            <button
+              key={member.id}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (member.id !== job.ownerId) onOwnerChange(member.id)
+                setIsOpen(false)
+              }}
+              className={`flex items-center w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 ${member.id === job.ownerId ? "bg-gray-50 font-medium text-gray-900" : "text-gray-700"}`}
+            >
+              {member.name || member.email}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================
 // Task Card Component
 // ============================================
 
 interface TaskCardProps {
   job: JobRow
   onClick: () => void
+  onOwnerChange?: (newOwnerId: string) => void
+  teamMembers?: TeamMember[]
 }
 
-function TaskCard({ job, onClick }: TaskCardProps) {
+function TaskCard({ job, onClick, onOwnerChange, teamMembers }: TaskCardProps) {
   const isOverdue = job.dueDate && new Date(job.dueDate) < new Date()
 
   return (
@@ -143,9 +211,11 @@ function TaskCard({ job, onClick }: TaskCardProps) {
         {/* Metadata */}
         <div className="flex items-center gap-2.5 text-xs text-gray-500 flex-shrink-0">
           {/* Owner */}
-          <span className="text-gray-500">
-            {job.ownerName || job.ownerEmail.split("@")[0]}
-          </span>
+          <OwnerSelector
+            job={job}
+            teamMembers={teamMembers}
+            onOwnerChange={onOwnerChange}
+          />
 
           {/* Target Date */}
           {job.dueDate && (
@@ -185,9 +255,11 @@ interface KanbanColumnProps {
   jobs: JobRow[]
   onTaskClick: (jobId: string) => void
   onDropTask: (jobId: string, newStatus: string) => void
+  onOwnerChange?: (jobId: string, newOwnerId: string) => void
+  teamMembers?: TeamMember[]
 }
 
-function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask }: KanbanColumnProps) {
+function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask, onOwnerChange, teamMembers }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.currentTarget.classList.add("bg-gray-50")
@@ -244,6 +316,8 @@ function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask }: Kanban
               <TaskCard
                 job={job}
                 onClick={() => onTaskClick(job.id)}
+                onOwnerChange={onOwnerChange ? (newOwnerId) => onOwnerChange(job.id, newOwnerId) : undefined}
+                teamMembers={teamMembers}
               />
             </div>
           ))
@@ -299,7 +373,7 @@ function sortJobs(jobs: JobRow[], sortBy: SortOption): JobRow[] {
 // Main Kanban View Component
 // ============================================
 
-export function KanbanView({ jobs, onStatusChange }: KanbanViewProps) {
+export function KanbanView({ jobs, onStatusChange, onOwnerChange, teamMembers }: KanbanViewProps) {
   const router = useRouter()
   const [sortBy, setSortBy] = useState<SortOption>("due_date")
 
@@ -371,6 +445,8 @@ export function KanbanView({ jobs, onStatusChange }: KanbanViewProps) {
             jobs={jobsByColumn[column.id]}
             onTaskClick={handleTaskClick}
             onDropTask={handleDropTask}
+            onOwnerChange={onOwnerChange}
+            teamMembers={teamMembers}
           />
         ))}
       </div>

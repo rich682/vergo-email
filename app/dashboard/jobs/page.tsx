@@ -190,6 +190,7 @@ export default function JobsPage() {
   // Filter state
   const [showMyTasksOnly, setShowMyTasksOnly] = useState(true)
   const [taskTypeFilter, setTaskTypeFilter] = useState("")
+  const [ownerFilter, setOwnerFilter] = useState("")
 
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -428,6 +429,27 @@ export default function JobsPage() {
       }
     } catch (error) {
       console.error("Error updating status:", error)
+    }
+  }
+
+  const handleOwnerChange = async (jobId: string, newOwnerId: string) => {
+    try {
+      const response = await fetch(`/api/task-instances/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: newOwnerId })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const ti = data.taskInstance
+        setJobs(prev => prev.map(j => j.id === jobId ? {
+          ...j,
+          ownerId: newOwnerId,
+          owner: ti?.owner || j.owner,
+        } : j))
+      }
+    } catch (error) {
+      console.error("Error updating owner:", error)
     }
   }
 
@@ -723,6 +745,10 @@ export default function JobsPage() {
     if (taskTypeFilter) {
       if (job.taskType !== taskTypeFilter) return false
     }
+    // Owner filter
+    if (ownerFilter) {
+      if (job.ownerId !== ownerFilter) return false
+    }
     // Search filter
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase()
@@ -734,7 +760,7 @@ export default function JobsPage() {
       )
     }
     return true
-  }), [jobs, taskTypeFilter, debouncedSearch])
+  }), [jobs, taskTypeFilter, ownerFilter, debouncedSearch])
 
   // Transform jobs to JobRow format for ConfigurableTable
   const jobRows: JobRow[] = useMemo(() => filteredJobs.map(job => ({
@@ -1297,12 +1323,26 @@ export default function JobsPage() {
             <option value="other">Other</option>
           </select>
 
-          {taskTypeFilter && (
+          {/* Owner Filter */}
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className={`px-3 py-2 border rounded-md text-sm ${ownerFilter ? "border-blue-300 bg-blue-50 text-blue-700" : "text-gray-600"}`}
+          >
+            <option value="">All Owners</option>
+            {teamMembers.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name || member.email}
+              </option>
+            ))}
+          </select>
+
+          {(taskTypeFilter || ownerFilter) && (
             <button
-              onClick={() => setTaskTypeFilter("")}
+              onClick={() => { setTaskTypeFilter(""); setOwnerFilter(""); }}
               className="text-xs text-gray-500 hover:text-gray-700 underline"
             >
-              Clear filter
+              Clear filters
             </button>
           )}
         </div>
@@ -1336,6 +1376,8 @@ export default function JobsPage() {
           <KanbanView
             jobs={jobRows}
             onStatusChange={handleStatusChange}
+            onOwnerChange={canAssignOwner ? handleOwnerChange : undefined}
+            teamMembers={teamMembers}
           />
         )}
       </>)}
