@@ -52,7 +52,7 @@ export async function POST(
 
     const existingReasoning =
       typeof req.aiReasoning === "object" && req.aiReasoning !== null
-        ? (req.aiReasoning as Record<string, any>)
+        ? (req.aiReasoning as Record<string, unknown>)
         : {}
 
     const now = new Date().toISOString()
@@ -61,7 +61,7 @@ export async function POST(
     switch (actionType) {
       case "mark_complete": {
         await prisma.request.update({
-          where: { id: requestId },
+          where: { id: requestId, organizationId: session.user.organizationId },
           data: {
             status: "COMPLETE",
             aiReasoning: {
@@ -82,7 +82,7 @@ export async function POST(
       case "review_reply": {
         // Mark as read so it doesn't show as "needs attention"
         await prisma.request.update({
-          where: { id: requestId },
+          where: { id: requestId, organizationId: session.user.organizationId },
           data: {
             readStatus: "read",
             aiReasoning: {

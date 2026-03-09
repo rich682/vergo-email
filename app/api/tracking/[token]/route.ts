@@ -108,7 +108,7 @@ export async function GET(
       // Update request with readStatus, riskLevel, riskReason, and lastActivityAt
       // Note: readStatus is determined from openedAt + hasReplies, not stored separately
       await prisma.request.update({
-        where: { id: task.id },
+        where: { id: task.id, organizationId: task.organizationId },
         data: {
           readStatus: riskComputation.readStatus,
           riskLevel: riskComputation.riskLevel,
@@ -134,7 +134,7 @@ export async function GET(
     } else {
       // Manual override exists - only update lastActivityAt, not risk
       await prisma.request.update({
-        where: { id: task.id },
+        where: { id: task.id, organizationId: task.organizationId },
         data: {
           lastActivityAt: now
         }

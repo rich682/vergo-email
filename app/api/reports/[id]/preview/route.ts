@@ -109,8 +109,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
 
       // Resolve filters: ReportDefinition.filterBindings takes priority over task-level (legacy)
-      const reportDef = await prisma.reportDefinition.findUnique({
-        where: { id },
+      const reportDef = await prisma.reportDefinition.findFirst({
+        where: { id, organizationId: session.user.organizationId },
         select: { filterBindings: true },
       })
       const reportDefFilters = reportDef?.filterBindings as Record<string, string[]> | null

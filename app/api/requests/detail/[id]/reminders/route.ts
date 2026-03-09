@@ -48,7 +48,8 @@ export async function GET(
     // Get reminder state
     const reminderState = await prisma.reminderState.findFirst({
       where: {
-        requestId: params.id
+        requestId: params.id,
+        organizationId: session.user.organizationId,
       },
       select: {
         id: true,
@@ -133,7 +134,8 @@ export async function DELETE(
     // Cancel reminders by setting stoppedReason
     await prisma.reminderState.updateMany({
       where: {
-        requestId: params.id
+        requestId: params.id,
+        organizationId: session.user.organizationId,
       },
       data: {
         stoppedReason: "cancelled",
@@ -143,7 +145,7 @@ export async function DELETE(
 
     // Also disable reminders on the request
     await prisma.request.update({
-      where: { id: params.id },
+      where: { id: params.id, organizationId: session.user.organizationId },
       data: {
         remindersEnabled: false
       }

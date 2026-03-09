@@ -54,8 +54,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     console.error("Error previewing accounting data:", error)
-    const message =
-      error instanceof Error ? error.message : "Failed to preview data"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: "An unexpected error occurred" },
+      { status: 500 }
+    )
   }
 }

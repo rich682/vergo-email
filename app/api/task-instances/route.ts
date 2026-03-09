@@ -21,6 +21,7 @@ import { BoardService } from "@/lib/services/board.service"
 import { JobStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 import { isValidTargetDateRule, computeDueDateFromRule, TargetDateRule } from "@/lib/target-date-rules"
+import type { TaskInstanceLabels } from "@/lib/services/task-instance.service"
 
 export async function GET(request: NextRequest) {
   try {
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Map instances to include effective status (custom status takes precedence)
     const instancesWithEffectiveStatus = result.taskInstances.map(instance => {
-      const labels = instance.labels as any
+      const labels = instance.labels as TaskInstanceLabels | null
       const customStatus = labels?.customStatus || null
       return {
         ...instance,
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("TaskInstances list error:", error)
     return NextResponse.json(
-      { error: "Failed to list task instances", code: error.code, meta: error.meta },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     )
   }
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest) {
           where: { id: organizationId },
           select: { features: true },
         })
-        const orgFeatures = (org?.features as Record<string, any>) || {}
+        const orgFeatures = (org?.features as Record<string, unknown>) || {}
         if (!orgFeatures.advancedBoardTypes) {
           await BoardService.propagateTaskToFutureBoards(
             taskInstance.id,

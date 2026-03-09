@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { ReconciliationService } from "@/lib/services/reconciliation.service"
+import { ReconciliationService, type SourceConfig } from "@/lib/services/reconciliation.service"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { getStorageService } from "@/lib/services/storage.service"
 import { canPerformAction } from "@/lib/permissions"
@@ -85,8 +85,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Parse the file
     const sourceConfig = source === "A"
-      ? (config.sourceAConfig as any)
-      : (config.sourceBConfig as any)
+      ? (config.sourceAConfig as unknown as SourceConfig)
+      : (config.sourceBConfig as unknown as SourceConfig)
 
     const parseResult = await ReconciliationFileParserService.parseFile(
       buffer,

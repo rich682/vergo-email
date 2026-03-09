@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { TaskInstanceService } from "@/lib/services/task-instance.service"
-import { UserRole } from "@prisma/client"
+import { UserRole, Prisma } from "@prisma/client"
 import type { DatasetColumn, DatasetRow, DatasetValidation } from "@/lib/utils/dataset-parser"
 
 export const maxDuration = 60
@@ -80,8 +80,8 @@ export async function POST(
           type: "dataset",
           emailColumn,
           emailColumnKey,
-          columns: columns as any,
-          validation: validation as any
+          columns: columns as unknown as Prisma.InputJsonValue,
+          validation: validation as unknown as Prisma.InputJsonValue
         }
       }
     })

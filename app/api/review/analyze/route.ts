@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import { canPerformAction } from "@/lib/permissions"
 import { getOpenAIClient } from "@/lib/utils/openai-client"
@@ -413,8 +414,8 @@ Analyze this reply and provide structured findings. If attachments contain relev
         campaignType: message.request.campaignType,
         recommendedAction,
         reasoning,
-        summaryBullets: summaryBullets as any,
-        findings: findings as any,
+        summaryBullets: summaryBullets as unknown as Prisma.InputJsonValue,
+        findings: findings as unknown as Prisma.InputJsonValue,
         model: "gpt-4o-mini",
         promptVersion: PROMPT_VERSION
       }

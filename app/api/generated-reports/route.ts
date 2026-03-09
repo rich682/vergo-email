@@ -112,29 +112,32 @@ export async function POST(request: NextRequest) {
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     })
 
-    // Add viewers if specified
+    // Add viewers if specified, wrapped in a transaction so viewer validation
+    // and creation are atomic (all viewers added or none)
     if (viewerIds && viewerIds.length > 0) {
-      // Validate viewerIds are valid users in the same org
-      const validUsers = await prisma.user.findMany({
-        where: {
-          id: { in: viewerIds },
-          organizationId: session.user.organizationId,
-        },
-        select: { id: true },
-      })
-      
-      const validUserIds = validUsers.map(u => u.id)
-      
-      if (validUserIds.length > 0) {
-        await prisma.generatedReportViewer.createMany({
-          data: validUserIds.map(userId => ({
-            generatedReportId: report.id,
-            userId,
-            addedBy: session.user.id,
-          })),
-          skipDuplicates: true,
+      await prisma.$transaction(async (tx) => {
+        // Validate viewerIds are valid users in the same org
+        const validUsers = await tx.user.findMany({
+          where: {
+            id: { in: viewerIds },
+            organizationId: session.user.organizationId,
+          },
+          select: { id: true },
         })
-      }
+
+        const validUserIds = validUsers.map(u => u.id)
+
+        if (validUserIds.length > 0) {
+          await tx.generatedReportViewer.createMany({
+            data: validUserIds.map(userId => ({
+              generatedReportId: report.id,
+              userId,
+              addedBy: session.user.id,
+            })),
+            skipDuplicates: true,
+          })
+        }
+      })
     }
 
     return NextResponse.json({ report }, { status: 201 })

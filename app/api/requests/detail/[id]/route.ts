@@ -133,8 +133,8 @@ export async function PATCH(
     // Handle READ virtual status -- keep DB status as REPLIED, set readStatus
     if (status === "READ") {
       const updatedTask = await prisma.request.update({
-        where: { id: params.id },
-        data: { 
+        where: { id: params.id, organizationId: session.user.organizationId },
+        data: {
           status: "REPLIED" as TaskStatus,
           readStatus: "read",
         },
@@ -166,8 +166,8 @@ export async function PATCH(
 
     // Update task status
     const updatedTask = await prisma.request.update({
-      where: { id: params.id },
-      data: { 
+      where: { id: params.id, organizationId: session.user.organizationId },
+      data: {
         status: newStatus,
         ...(readStatusUpdate !== undefined ? { readStatus: readStatusUpdate } : {}),
       },

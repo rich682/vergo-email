@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import type { SourceConfig } from "@/lib/services/reconciliation.service"
 
 export async function GET(
   request: NextRequest,
@@ -50,8 +51,8 @@ export async function GET(
           where: { id: task.reconciliationConfigId },
           select: { sourceAConfig: true, sourceBConfig: true, sourceType: true },
         })
-        const aLabel = (reconConfig?.sourceAConfig as any)?.label
-        const bLabel = (reconConfig?.sourceBConfig as any)?.label
+        const aLabel = (reconConfig?.sourceAConfig as unknown as SourceConfig | undefined)?.label
+        const bLabel = (reconConfig?.sourceBConfig as unknown as SourceConfig | undefined)?.label
         config.reconciliationConfigName = aLabel && bLabel
           ? `${aLabel} vs ${bLabel}`
           : "Reconciliation configuration"

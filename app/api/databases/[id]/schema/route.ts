@@ -19,6 +19,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseSchema, DatabaseSchemaColumn, validateSchema } from "@/lib/services/database.service"
+import { Prisma } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 
 interface RouteParams {
@@ -137,7 +138,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updated = await prisma.database.update({
       where: { id: params.id },
       data: {
-        schema: newSchema as any,
+        schema: newSchema as unknown as Prisma.InputJsonValue,
         // Keep existing identifierKeys for backwards compatibility
       },
       select: {

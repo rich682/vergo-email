@@ -114,7 +114,7 @@ export async function GET(
 
     // Get reminder state
     const reminderState = await prisma.reminderState.findFirst({
-      where: { requestId: params.taskId },
+      where: { requestId: params.taskId, organizationId: session.user.organizationId },
       select: {
         reminderNumber: true,
         sentCount: true,

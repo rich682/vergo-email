@@ -63,11 +63,12 @@ export async function POST(request: NextRequest) {
       if (instance.status === "COMPLETE") continue
       
       // Use parseDateOnlySafe to avoid timezone shift with date-only fields
-      const dueDate = parseDateOnlySafe(instance.dueDate as any)
+      const dueDateStr = instance.dueDate?.toISOString() ?? null
+      const dueDate = parseDateOnlySafe(dueDateStr)
       const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
 
       let reason: string | null = null
-      
+
       if (daysUntilDue !== null && daysUntilDue < 0) {
         reason = `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''}`
       }
@@ -77,13 +78,13 @@ export async function POST(request: NextRequest) {
       else if (daysUntilDue !== null && daysUntilDue <= 7 && instance.requestCount > 0 && instance.respondedCount < instance.requestCount) {
         reason = `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''} with ${instance.requestCount - instance.respondedCount} pending response${instance.requestCount - instance.respondedCount !== 1 ? 's' : ''}`
       }
-      
+
       if (reason) {
         atRiskItems.push({
           id: instance.id,
           name: instance.name,
           reason,
-          dueDate: formatDateOnly(instance.dueDate as any),
+          dueDate: formatDateOnly(dueDateStr),
           daysUntilDue
         })
       }
@@ -97,9 +98,10 @@ export async function POST(request: NextRequest) {
 
     const instancesContext = instances.slice(0, 50).map(instance => {
       // Use parseDateOnlySafe for date-only fields
-      const dueDate = parseDateOnlySafe(instance.dueDate as any)
+      const dueDateStr = instance.dueDate?.toISOString() ?? null
+      const dueDate = parseDateOnlySafe(dueDateStr)
       const daysUntilDue = dueDate ? differenceInDays(dueDate, today) : null
-      const labels = instance.labels as any
+      const labels = instance.labels
       
       return {
         name: instance.name,

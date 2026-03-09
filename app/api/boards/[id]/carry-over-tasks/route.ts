@@ -79,65 +79,69 @@ export async function POST(
       `[CarryOverTasks] Carrying over ${sourceInstances.length} tasks from "${sourceBoard.name}" to "${targetBoard.name}"`
     )
 
-    let tasksCarriedOver = 0
+    // Create instances in target board atomically, skipping any that already exist (by lineageId)
+    const tasksCarriedOver = await prisma.$transaction(async (tx) => {
+      let count = 0
 
-    // Create instances in target board, skipping any that already exist (by lineageId)
-    for (const source of sourceInstances) {
-      // Check if this task already exists in the target board (by lineageId)
-      const existingTask = source.lineageId
-        ? await prisma.taskInstance.findFirst({
-            where: {
-              boardId: targetBoardId,
-              lineageId: source.lineageId,
-              organizationId
-            }
-          })
-        : null
+      for (const source of sourceInstances) {
+        // Check if this task already exists in the target board (by lineageId)
+        const existingTask = source.lineageId
+          ? await tx.taskInstance.findFirst({
+              where: {
+                boardId: targetBoardId,
+                lineageId: source.lineageId,
+                organizationId
+              }
+            })
+          : null
 
-      if (existingTask) {
-        console.log(
-          `[CarryOverTasks] Skipping task "${source.name}" - already exists in target board`
-        )
-        continue
-      }
-
-      // Create new task instance in target board
-      const sourceAny = source as any
-      const newInstance = await prisma.taskInstance.create({
-        data: {
-          organizationId,
-          boardId: targetBoardId,
-          lineageId: source.lineageId,
-          name: source.name,
-          description: source.description,
-          ownerId: source.ownerId,
-          clientId: source.clientId,
-          status: "NOT_STARTED",
-          customFields: source.customFields,
-          labels: source.labels,
-          taskType: sourceAny.taskType || null,
-          targetDateRule: sourceAny.targetDateRule || null,
-          reconciliationConfigId: sourceAny.reconciliationConfigId || null,
-          reportDefinitionId: sourceAny.reportDefinitionId || null,
-          reportFilterBindings: sourceAny.reportFilterBindings || null,
+        if (existingTask) {
+          console.log(
+            `[CarryOverTasks] Skipping task "${source.name}" - already exists in target board`
+          )
+          continue
         }
-      })
 
-      // Copy collaborators
-      if (source.collaborators.length > 0) {
-        await prisma.taskInstanceCollaborator.createMany({
-          data: source.collaborators.map(c => ({
-            taskInstanceId: newInstance.id,
-            userId: c.userId,
-            role: c.role,
-            addedBy: c.addedBy
-          }))
+        // Create new task instance in target board
+        const sourceAny = source as any
+        const newInstance = await tx.taskInstance.create({
+          data: {
+            organizationId,
+            boardId: targetBoardId,
+            lineageId: source.lineageId,
+            name: source.name,
+            description: source.description,
+            ownerId: source.ownerId,
+            clientId: source.clientId,
+            status: "NOT_STARTED",
+            customFields: source.customFields,
+            labels: source.labels,
+            taskType: sourceAny.taskType || null,
+            targetDateRule: sourceAny.targetDateRule || null,
+            reconciliationConfigId: sourceAny.reconciliationConfigId || null,
+            reportDefinitionId: sourceAny.reportDefinitionId || null,
+            reportFilterBindings: sourceAny.reportFilterBindings || null,
+          }
         })
+
+        // Copy collaborators
+        if (source.collaborators.length > 0) {
+          await tx.taskInstanceCollaborator.createMany({
+            data: source.collaborators.map(c => ({
+              taskInstanceId: newInstance.id,
+              userId: c.userId,
+              role: c.role,
+              addedBy: c.addedBy
+            }))
+          })
+        }
+
+        count++
+        console.log(`[CarryOverTasks] Created task "${source.name}" in target board`)
       }
 
-      tasksCarriedOver++
-      console.log(`[CarryOverTasks] Created task "${source.name}" in target board`)
-    }
+      return count
+    })
 
     return NextResponse.json({
       success: true,

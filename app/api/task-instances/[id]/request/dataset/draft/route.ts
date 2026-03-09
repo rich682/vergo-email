@@ -150,7 +150,7 @@ export async function POST(
     }
 
     // Build prompt for AI
-    const labels = job.labels as any
+    const labels = job.labels
     const jobLabels = labels?.tags || []
 
     // Identify name-like columns for greeting

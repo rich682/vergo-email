@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error: any) {
     console.error("[Reconciliation] Error loading database rows:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to load database rows" },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     )
   }

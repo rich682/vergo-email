@@ -106,7 +106,7 @@ export async function POST(
     }
 
     // Build refinement prompt
-    const labels = job.labels as any
+    const labels = job.labels
     
     let prompt = `Revise the following email based on this instruction: "${instruction.trim()}"
 

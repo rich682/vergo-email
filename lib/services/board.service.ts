@@ -559,54 +559,71 @@ export class BoardService {
 
     if (!nextPeriodStart) return null
 
-    // Idempotency check: verify no board already exists for this period
-    const existingBoard = await prisma.board.findFirst({
-      where: {
-        organizationId,
-        cadence: completedBoard.cadence,
-        periodStart: nextPeriodStart,
-      }
-    })
-
-    if (existingBoard) {
-      console.log(`[BoardService] Board already exists for period ${nextPeriodStart.toISOString()}: ${existingBoard.name} (${existingBoard.id})`)
-      return null
-    }
-
     const nextPeriodEnd = getEndOfPeriod(completedBoard.cadence, nextPeriodStart, effectiveTimezone, { fiscalYearStartMonth })
     let boardName = generatePeriodBoardName(completedBoard.cadence, nextPeriodStart, effectiveTimezone, { fiscalYearStartMonth })
 
-    // Ensure name is unique within the organization
-    const nameConflict = await prisma.board.findFirst({
-      where: { organizationId, name: boardName },
-      select: { id: true },
-    })
-    if (nameConflict) {
-      boardName = `${boardName} (Auto)`
+    // Wrap the idempotency check + name check + create in a transaction to prevent
+    // race conditions where two concurrent calls both pass the checks and create duplicates.
+    let newBoard: any
+    try {
+      newBoard = await prisma.$transaction(async (tx) => {
+        // Idempotency check: verify no board already exists for this period
+        const existingBoard = await tx.board.findFirst({
+          where: {
+            organizationId,
+            cadence: completedBoard.cadence,
+            periodStart: nextPeriodStart,
+          }
+        })
+
+        if (existingBoard) {
+          console.log(`[BoardService] Board already exists for period ${nextPeriodStart.toISOString()}: ${existingBoard.name} (${existingBoard.id})`)
+          return null
+        }
+
+        // Ensure name is unique within the organization
+        const nameConflict = await tx.board.findFirst({
+          where: { organizationId, name: boardName },
+          select: { id: true },
+        })
+        if (nameConflict) {
+          boardName = `${boardName} (Auto)`
+        }
+
+        return tx.board.create({
+          data: {
+            organizationId,
+            name: boardName,
+            description: completedBoard.description,
+            ownerId: completedBoard.ownerId || createdById,
+            cadence: completedBoard.cadence,
+            periodStart: nextPeriodStart,
+            periodEnd: nextPeriodEnd,
+            createdById,
+            status: "NOT_STARTED",
+            automationEnabled: completedBoard.automationEnabled,
+            skipWeekends: completedBoard.skipWeekends,
+            collaborators: completedBoard.collaborators.length > 0 ? {
+              create: completedBoard.collaborators.map(c => ({
+                userId: c.userId,
+                role: c.role,
+                addedBy: createdById
+              }))
+            } : undefined
+          }
+        })
+      })
+    } catch (txError: any) {
+      // Handle race condition: if another concurrent call created the board between
+      // our check and create, Prisma throws a unique constraint violation (P2002)
+      if (txError.code === "P2002") {
+        console.log(`[BoardService] Board already created by concurrent request for period ${nextPeriodStart.toISOString()}`)
+        return null
+      }
+      throw txError
     }
 
-    const newBoard = await prisma.board.create({
-      data: {
-        organizationId,
-        name: boardName,
-        description: completedBoard.description,
-        ownerId: completedBoard.ownerId || createdById,
-        cadence: completedBoard.cadence,
-        periodStart: nextPeriodStart,
-        periodEnd: nextPeriodEnd,
-        createdById,
-        status: "NOT_STARTED",
-        automationEnabled: completedBoard.automationEnabled,
-        skipWeekends: completedBoard.skipWeekends,
-        collaborators: completedBoard.collaborators.length > 0 ? {
-          create: completedBoard.collaborators.map(c => ({
-            userId: c.userId,
-            role: c.role,
-            addedBy: createdById
-          }))
-        } : undefined
-      }
-    })
+    if (!newBoard) return null
 
     console.log(`[BoardService] Created new board: "${newBoard.name}" (${newBoard.id})`)
 

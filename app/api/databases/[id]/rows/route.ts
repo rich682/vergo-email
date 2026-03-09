@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 import { DatabaseRow } from "@/lib/services/database.service"
 
@@ -101,7 +102,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     await prisma.database.update({
       where: { id: params.id },
       data: {
-        rows: remainingRows as any,
+        rows: remainingRows as unknown as Prisma.InputJsonValue,
         rowCount: remainingRows.length,
       },
     })

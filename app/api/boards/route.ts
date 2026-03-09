@@ -72,16 +72,21 @@ export async function GET(request: NextRequest) {
       const fiscalYearStartMonth = organization?.fiscalYearStartMonth ?? 1
       const tz = organization?.timezone ?? "UTC"
 
-      // Always generate current fiscal year boards
-      await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId)
+      try {
+        // Always generate current fiscal year boards
+        await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId)
 
-      // Also generate previous calendar year boards (for new customers)
-      const prevYear = new Date().getUTCFullYear() - 1
-      await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, prevYear)
+        // Also generate previous calendar year boards (for new customers)
+        const prevYear = new Date().getUTCFullYear() - 1
+        await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, prevYear)
 
-      // If a specific year is requested, ensure boards exist for that year too
-      if (year && year !== new Date().getUTCFullYear() && year !== prevYear) {
-        await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, year)
+        // If a specific year is requested, ensure boards exist for that year too
+        if (year && year !== new Date().getUTCFullYear() && year !== prevYear) {
+          await BoardService.generateFiscalYearBoards(organizationId, fiscalYearStartMonth, tz, userId, year)
+        }
+      } catch (genError) {
+        // Log but don't fail the request — existing boards should still be returned
+        console.error("[API/boards] Error generating fiscal year boards:", genError)
       }
     }
 
@@ -200,7 +205,7 @@ export async function POST(request: NextRequest) {
     // Parse and normalize period dates if provided
     const parsedPeriodStart = periodStart ? new Date(periodStart) : undefined
     const normalizedStart = normalizePeriodStart(cadence as BoardCadence, parsedPeriodStart, { fiscalYearStartMonth })
-    
+
     // Derive periodEnd server-side if not provided (or override client value for consistency)
     const derivedEnd = derivePeriodEnd(cadence as BoardCadence, normalizedStart, { fiscalYearStartMonth })
     // Use client-provided periodEnd only if server derivation returns null
@@ -208,61 +213,62 @@ export async function POST(request: NextRequest) {
 
     let board
 
-    // If duplicating from an existing board
-    if (duplicateFromId) {
-      board = await BoardService.duplicate(
-        duplicateFromId,
-        organizationId,
-        name.trim(),
-        userId,
-        {
-          newOwnerId: ownerId,
-          newPeriodStart: normalizedStart || undefined,
-          newPeriodEnd: finalPeriodEnd || undefined
-        }
-      )
-    } else {
-      // Determine automationEnabled default based on cadence
-      // AD_HOC boards never have automation, others default to true
-      const finalAutomationEnabled = cadence === "AD_HOC" 
-        ? false 
-        : (automationEnabled !== undefined ? automationEnabled : true)
+    try {
+      // If duplicating from an existing board
+      if (duplicateFromId) {
+        board = await BoardService.duplicate(
+          duplicateFromId,
+          organizationId,
+          name.trim(),
+          userId,
+          {
+            newOwnerId: ownerId,
+            newPeriodStart: normalizedStart || undefined,
+            newPeriodEnd: finalPeriodEnd || undefined
+          }
+        )
+      } else {
+        // Determine automationEnabled default based on cadence
+        // AD_HOC boards never have automation, others default to true
+        const finalAutomationEnabled = cadence === "AD_HOC"
+          ? false
+          : (automationEnabled !== undefined ? automationEnabled : true)
 
-      // Create a new board
-      const createData = {
-        organizationId,
-        name: name.trim(),
-        description: description?.trim() || undefined,
-        ownerId: ownerId || userId, // Default to current user
-        cadence: cadence as BoardCadence | undefined,
-        periodStart: normalizedStart || undefined,
-        periodEnd: finalPeriodEnd || undefined,
-        createdById: userId,
-        collaboratorIds,
-        automationEnabled: finalAutomationEnabled
+        // Create a new board
+        const createData = {
+          organizationId,
+          name: name.trim(),
+          description: description?.trim() || undefined,
+          ownerId: ownerId || userId, // Default to current user
+          cadence: cadence as BoardCadence | undefined,
+          periodStart: normalizedStart || undefined,
+          periodEnd: finalPeriodEnd || undefined,
+          createdById: userId,
+          collaboratorIds,
+          automationEnabled: finalAutomationEnabled
+        }
+        console.log("[API/boards] Creating board with data:", JSON.stringify(createData, null, 2))
+
+        board = await BoardService.create(createData)
+        console.log("[API/boards] Board created successfully:", board.id)
       }
-      console.log("[API/boards] Creating board with data:", JSON.stringify(createData, null, 2))
-      
-      board = await BoardService.create(createData)
-      console.log("[API/boards] Board created successfully:", board.id)
+    } catch (createError: any) {
+      // Handle race condition: if another request created a board with the same name
+      // between our findFirst check and the create call, Prisma throws P2002
+      if (createError.code === "P2002") {
+        return NextResponse.json(
+          { error: `A board with the name "${name.trim()}" already exists` },
+          { status: 409 }
+        )
+      }
+      throw createError
     }
 
     return NextResponse.json({ board }, { status: 201 })
   } catch (error: any) {
     console.error("[API/boards] Error creating board:", error)
-    console.error("[API/boards] Error stack:", error.stack)
-    console.error("[API/boards] Error code:", error.code)
-    
-    // Return more detailed error for debugging
-    const errorMessage = error.message || "Unknown error"
-    const errorCode = error.code || "UNKNOWN"
-    
     return NextResponse.json(
-      { 
-        error: `Failed to create board: ${errorMessage}`,
-        message: errorMessage,
-        code: errorCode
-      },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     )
   }

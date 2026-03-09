@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { ReconciliationService } from "@/lib/services/reconciliation.service"
+import { ReconciliationService, type SourceConfig, type MatchingRules } from "@/lib/services/reconciliation.service"
 import { ReconciliationMatchingService } from "@/lib/services/reconciliation-matching.service"
 import { ReconciliationRunStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
@@ -54,9 +54,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Set status to PROCESSING
     await ReconciliationService.updateRunStatus(runId, session.user.organizationId, ReconciliationRunStatus.PROCESSING)
 
-    const sourceAConfig = run.config.sourceAConfig as any
-    const sourceBConfig = run.config.sourceBConfig as any
-    const matchingRules = run.config.matchingRules as any
+    const sourceAConfig = run.config.sourceAConfig as unknown as SourceConfig
+    const sourceBConfig = run.config.sourceBConfig as unknown as SourceConfig
+    const matchingRules = run.config.matchingRules as unknown as MatchingRules
 
     // Run matching
     const result = await ReconciliationMatchingService.runMatching(

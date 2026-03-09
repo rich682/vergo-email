@@ -184,7 +184,7 @@ export async function POST(
       }).join('\n')
 
     // Build job context
-    const labels = job.labels as any
+    const labels = job.labels
     const jobLabels = labels?.tags || []
 
     let prompt: string

@@ -58,11 +58,11 @@ export async function PUT(
     const overrideReasonValue = manualRiskOverride ? (overrideReason || "Manual override") : null
 
     const updatedTask = await prisma.request.update({
-      where: { id: task.id },
+      where: { id: task.id, organizationId: session.user.organizationId },
       data: {
-        manualRiskOverride: manualRiskOverride as any,
+        manualRiskOverride: manualRiskOverride as string | null,
         overrideReason: overrideReasonValue,
-        riskLevel: manualRiskOverride as any, // Also update riskLevel for immediate display
+        riskLevel: manualRiskOverride as string | null, // Also update riskLevel for immediate display
         riskReason: overrideReasonValue || task.riskReason || null
       }
     })

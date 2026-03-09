@@ -454,6 +454,7 @@ export async function GET(
         const reminders = await prisma.reminderState.findMany({
           where: {
             requestId: { in: requestIds },
+            organizationId,
             sentCount: { gt: 0 },
             lastSentAt: { not: null },
           },

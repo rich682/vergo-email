@@ -126,8 +126,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve filters: ReportDefinition.filterBindings takes priority over task-level (legacy)
-    const reportDef = await prisma.reportDefinition.findUnique({
-      where: { id: reportDefinitionId },
+    const reportDef = await prisma.reportDefinition.findFirst({
+      where: { id: reportDefinitionId, organizationId: session.user.organizationId },
       select: { filterBindings: true },
     })
     const reportDefFilters = reportDef?.filterBindings as Record<string, string[]> | null
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
       : (taskInstance.reportFilterBindings as Record<string, string[]>) || undefined
 
     // Check if a generated report already exists for this task+period
-    const existingReport = await (prisma as any).generatedReport.findFirst({
+    const existingReport = await prisma.generatedReport.findFirst({
       where: {
         taskInstanceId,
         periodKey,

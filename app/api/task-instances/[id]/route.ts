@@ -21,7 +21,7 @@ import { NotificationService } from "@/lib/services/notification.service"
 import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
-import { periodKeyFromDate } from "@/lib/utils/period"
+import { periodKeyFromDate, type ReportCadence } from "@/lib/utils/period"
 import { canPerformAction } from "@/lib/permissions"
 import { isValidTargetDateRule, computeDueDateFromRule, TargetDateRule } from "@/lib/target-date-rules"
 
@@ -68,7 +68,7 @@ export async function GET(
       )
     }
 
-    const labels = taskInstance.labels as any
+    const labels = taskInstance.labels
     const stakeholders = labels?.stakeholders || []
     const customStatus = labels?.customStatus || null
     const noStakeholdersNeeded = labels?.noStakeholdersNeeded || false
@@ -339,20 +339,20 @@ export async function PATCH(
     if (notes !== undefined && notes !== existingInstance.notes) {
       fieldChanges.push({ field: "notes", oldValue: existingInstance.notes ? "[previous]" : null, newValue: notes ? "[updated]" : null, displayField: "notes" })
     }
-    if (clientId !== undefined && clientId !== (existingInstance as any).clientId) {
-      fieldChanges.push({ field: "client", oldValue: (existingInstance as any).clientId, newValue: clientId, displayField: "client" })
+    if (clientId !== undefined && clientId !== existingInstance.clientId) {
+      fieldChanges.push({ field: "client", oldValue: existingInstance.clientId, newValue: clientId, displayField: "client" })
     }
-    if (taskType !== undefined && taskType !== (existingInstance as any).taskType) {
-      fieldChanges.push({ field: "type", oldValue: (existingInstance as any).taskType, newValue: taskType, displayField: "task type" })
+    if (taskType !== undefined && taskType !== existingInstance.taskType) {
+      fieldChanges.push({ field: "type", oldValue: existingInstance.taskType ?? null, newValue: taskType, displayField: "task type" })
     }
     if (validatedRule !== undefined) {
-      fieldChanges.push({ field: "target_date_rule", oldValue: (existingInstance as any).targetDateRule, newValue: validatedRule, displayField: "target date pattern" })
+      fieldChanges.push({ field: "target_date_rule", oldValue: existingInstance.targetDateRule ?? null, newValue: validatedRule, displayField: "target date pattern" })
     }
     if (reportDefinitionId !== undefined && reportDefinitionId !== existingInstance.reportDefinitionId) {
       fieldChanges.push({ field: "report_config", oldValue: existingInstance.reportDefinitionId, newValue: reportDefinitionId, displayField: "report configuration" })
     }
-    if (reconciliationConfigId !== undefined && reconciliationConfigId !== (existingInstance as any).reconciliationConfigId) {
-      fieldChanges.push({ field: "recon_config", oldValue: (existingInstance as any).reconciliationConfigId, newValue: reconciliationConfigId, displayField: "reconciliation configuration" })
+    if (reconciliationConfigId !== undefined && reconciliationConfigId !== existingInstance.reconciliationConfigId) {
+      fieldChanges.push({ field: "recon_config", oldValue: existingInstance.reconciliationConfigId ?? null, newValue: reconciliationConfigId, displayField: "reconciliation configuration" })
     }
 
     if (fieldChanges.length > 0) {
@@ -377,11 +377,11 @@ export async function PATCH(
         })
         
         if (board?.periodStart) {
-          const periodKey = periodKeyFromDate(board.periodStart, (board.cadence as any) || "monthly")
+          const periodKey = periodKeyFromDate(board.periodStart, (board.cadence?.toLowerCase() as ReportCadence) || "monthly")
           
           if (periodKey) {
             // Check if a generated report already exists for this task+period
-            const existingReport = await (prisma as any).generatedReport.findFirst({
+            const existingReport = await prisma.generatedReport.findFirst({
               where: {
                 taskInstanceId: id,
                 periodKey,
@@ -391,7 +391,7 @@ export async function PATCH(
 
             // Delete existing if it exists (to regenerate with new config)
             if (existingReport) {
-              await (prisma as any).generatedReport.delete({
+              await prisma.generatedReport.delete({
                 where: { id: existingReport.id }
               })
             }
@@ -526,19 +526,18 @@ export async function DELETE(
     }
 
     const boardId = existingInstance.boardId
-    const existingAny = existingInstance as any
 
     // In simplified mode, remove task from future monthly boards before deleting
-    if (boardId && existingAny.lineageId) {
+    if (boardId && existingInstance.lineageId) {
       try {
         const org = await prisma.organization.findUnique({
           where: { id: organizationId },
           select: { features: true },
         })
-        const orgFeatures = (org?.features as Record<string, any>) || {}
+        const orgFeatures = (org?.features as Record<string, unknown>) || {}
         if (!orgFeatures.advancedBoardTypes) {
           await BoardService.removeTaskFromFutureBoards(
-            existingAny.lineageId,
+            existingInstance.lineageId,
             boardId,
             organizationId
           )

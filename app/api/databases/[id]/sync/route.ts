@@ -117,9 +117,8 @@ export async function POST(
     })
   } catch (error) {
     console.error("Error syncing database:", error)
-    const msg = error instanceof Error ? error.message : String(error)
     return NextResponse.json(
-      { error: `Sync failed: ${msg}` },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     )
   }

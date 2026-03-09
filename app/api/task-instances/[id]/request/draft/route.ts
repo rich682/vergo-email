@@ -203,7 +203,7 @@ export async function POST(
       )
     }
 
-    const labels = job.labels as any
+    const labels = job.labels
 
     // Determine recipients - either from request body (new flow) or from stakeholders (legacy)
     let recipientsWithEmail: Array<{

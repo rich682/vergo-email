@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     if (config) {
       // Merge with defaults to include any new system columns
-      const mergedColumns = mergeWithDefaults(config.columns as any[])
+      const mergedColumns = mergeWithDefaults(config.columns as Record<string, unknown>[])
       return NextResponse.json({ columns: mergedColumns })
     }
 

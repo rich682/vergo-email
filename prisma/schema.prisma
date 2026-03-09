@@ -838,6 +838,7 @@ model ReminderState {
   @@unique([requestId, entityId]) // One state per request+entity
   @@index([requestId])
   @@index([entityId])
+  @@index([requestId, organizationId]) // For org-scoped reminder lookups by request
   @@index([organizationId, nextSendAt]) // For querying requests that need reminders
   @@index([scheduledEventId]) // For idempotency checks
 }

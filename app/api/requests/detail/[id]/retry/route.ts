@@ -90,7 +90,7 @@ export async function POST(
 
       // Delete the old failed request since a new one was created by sendEmail
       await prisma.request.delete({
-        where: { id: requestId },
+        where: { id: requestId, organizationId },
       })
 
       console.log(`[RetryRequest] Retry successful for ${failedRequest.entity.email}, new request: ${sendResult.taskId}`)
@@ -106,7 +106,7 @@ export async function POST(
       // Update the failed request with the new error
       const prevReasoning = failedRequest.aiReasoning as Record<string, unknown> || {}
       await prisma.request.update({
-        where: { id: requestId },
+        where: { id: requestId, organizationId },
         data: {
           aiReasoning: {
             ...prevReasoning,

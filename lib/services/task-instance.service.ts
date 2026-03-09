@@ -29,6 +29,8 @@ export interface TaskInstanceLabels {
   period?: string
   workType?: string
   stakeholders?: TaskInstanceStakeholder[]
+  customStatus?: string | null
+  noStakeholdersNeeded?: boolean
 }
 
 export type TaskType = "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
@@ -133,6 +135,8 @@ export interface TaskInstanceWithStats {
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null
+  // Reconciliation configuration
+  reconciliationConfigId?: string | null
   createdAt: Date
   updatedAt: Date
   owner: TaskInstanceOwner

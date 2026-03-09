@@ -92,7 +92,7 @@ export async function GET(
   } catch (error: any) {
     console.error("[API/boards/[id]] Error getting board:", error)
     return NextResponse.json(
-      { error: "Failed to get board", code: error.code, meta: error.meta },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     )
   }
