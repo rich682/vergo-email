@@ -345,7 +345,7 @@ export async function PATCH(request: NextRequest) {
 
 /**
  * DELETE /api/automation-rules?id=...
- * Deactivate an automation rule. Use ?hard=true to permanently delete (only if no runs).
+ * Permanently delete an automation rule. Workflow runs are cascade-deleted.
  */
 export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -361,7 +361,6 @@ export async function DELETE(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
-  const hard = searchParams.get("hard") === "true"
 
   if (!id) {
     return NextResponse.json({ error: "id query parameter is required" }, { status: 400 })
@@ -369,29 +368,13 @@ export async function DELETE(request: NextRequest) {
 
   const existing = await prisma.automationRule.findFirst({
     where: { id, organizationId },
-    include: { _count: { select: { workflowRuns: true } } },
   })
   if (!existing) {
     return NextResponse.json({ error: "Automation rule not found" }, { status: 404 })
   }
 
-  if (hard) {
-    if (existing._count.workflowRuns > 0) {
-      return NextResponse.json(
-        { error: "Cannot delete rule with existing workflow runs. Deactivate it instead." },
-        { status: 400 }
-      )
-    }
-    await prisma.automationRule.delete({ where: { id } })
-    return NextResponse.json({ success: true, deleted: true })
-  }
-
-  // Soft delete: deactivate
-  await prisma.automationRule.update({
-    where: { id },
-    data: { isActive: false },
-  })
-  return NextResponse.json({ success: true, deactivated: true })
+  await prisma.automationRule.delete({ where: { id } })
+  return NextResponse.json({ success: true, deleted: true })
 }
 
 // ─── Inline Template Resolution ──────────────────────────────────────────────

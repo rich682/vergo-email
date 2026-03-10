@@ -524,14 +524,18 @@ export function AgentTab({
     if (!deletingAgentId) return
     setDeleting(true)
     try {
-      await fetch(`/api/automation-rules?id=${deletingAgentId}`, {
+      const res = await fetch(`/api/automation-rules?id=${deletingAgentId}`, {
         method: "DELETE",
         credentials: "include",
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.error("Failed to delete agent:", err)
+      }
       setDeletingAgentId(null)
       fetchAgents()
-    } catch {
-      // Handle error silently
+    } catch (error) {
+      console.error("Error deleting agent:", error)
     } finally {
       setDeleting(false)
     }
@@ -780,7 +784,7 @@ export function AgentTab({
         open={!!deletingAgentId}
         onOpenChange={(open) => { if (!open) setDeletingAgentId(null) }}
         title="Delete Agent"
-        description="This will deactivate the agent and stop it from running. Existing run history will be preserved."
+        description="This will permanently delete the agent and its run history. This action cannot be undone."
         confirmLabel="Delete"
         variant="danger"
         onConfirm={handleDelete}
