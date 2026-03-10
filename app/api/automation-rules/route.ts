@@ -46,8 +46,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Permission denied" }, { status: 403 })
   }
 
+  const { searchParams } = new URL(request.url)
+  const lineageId = searchParams.get("lineageId")
+
   const rulesRaw = await prisma.automationRule.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(lineageId ? { lineageId } : {}) },
     orderBy: { createdAt: "desc" },
     include: {
       _count: {

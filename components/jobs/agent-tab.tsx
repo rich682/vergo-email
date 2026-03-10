@@ -168,40 +168,32 @@ export function AgentTab({
     }
     try {
       setLoading(true)
-      const res = await fetch(`/api/agents?lineageId=${lineageId}`, { credentials: "include" })
+      const res = await fetch(`/api/automation-rules?lineageId=${lineageId}`, { credentials: "include" })
       if (res.ok) {
         const data = await res.json()
-        const agentList = (data.agents || []).map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          isActive: a.isActive,
-          taskType: a.taskType,
+        const agentList = (data.rules || []).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          isActive: r.isActive,
+          taskType: r.taskType,
         }))
         setAgents(agentList)
 
-        // Fetch latest execution for each agent
-        for (const agent of agentList) {
-          try {
-            const execRes = await fetch(`/api/agents/${agent.id}/executions`, { credentials: "include" })
-            if (execRes.ok) {
-              const execData = await execRes.json()
-              const latest = execData.executions?.[0]
-              if (latest) {
-                if (latest.status === "running") {
-                  setExecutionStates(prev => ({
-                    ...prev,
-                    [agent.id]: { state: "running", executionId: latest.id },
-                  }))
-                } else if (latest.status === "completed" || latest.status === "needs_review") {
-                  setExecutionStates(prev => ({
-                    ...prev,
-                    [agent.id]: { state: "completed", outcome: latest.outcome || undefined },
-                  }))
-                }
-              }
+        // Check latest run status for each rule
+        for (const rule of data.rules || []) {
+          const lastRun = rule.lastRun
+          if (lastRun) {
+            if (lastRun.status === "RUNNING" || lastRun.status === "PENDING") {
+              setExecutionStates(prev => ({
+                ...prev,
+                [rule.id]: { state: "running", executionId: lastRun.id },
+              }))
+            } else if (lastRun.status === "COMPLETED" || lastRun.status === "NEEDS_REVIEW") {
+              setExecutionStates(prev => ({
+                ...prev,
+                [rule.id]: { state: "completed", outcome: lastRun.outcome || undefined },
+              }))
             }
-          } catch {
-            // Non-critical
           }
         }
       }
@@ -222,50 +214,51 @@ export function AgentTab({
   const handleRunAgent = async (agentId: string) => {
     setTriggeringAgent(agentId)
     try {
-      const res = await fetch(`/api/agents/${agentId}/execute`, {
+      const res = await fetch(`/api/automation-rules/${agentId}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
       })
       if (res.ok) {
         const data = await res.json()
+        const runId = data.workflowRun?.id
         setExecutionStates(prev => ({
           ...prev,
-          [agentId]: { state: "running", executionId: data.executionId, step: "Starting..." },
+          [agentId]: { state: "running", executionId: runId, step: "Starting..." },
         }))
-        // Start polling
-        const pollId = setInterval(async () => {
-          try {
-            const statusRes = await fetch(
-              `/api/agents/${agentId}/executions/${data.executionId}/status`,
-              { credentials: "include" }
-            )
-            if (statusRes.ok) {
-              const statusData = await statusRes.json()
-              if (statusData.currentStep) {
-                setExecutionStates(prev => ({
-                  ...prev,
-                  [agentId]: {
-                    ...prev[agentId],
-                    step: statusData.currentStep.action || "Processing...",
-                  },
-                }))
+        if (runId) {
+          // Poll workflow run status
+          const pollId = setInterval(async () => {
+            try {
+              const statusRes = await fetch(`/api/workflow-runs/${runId}`, { credentials: "include" })
+              if (statusRes.ok) {
+                const statusData = await statusRes.json()
+                const run = statusData.run
+                const latestLog = run?.auditLogs?.[run.auditLogs.length - 1]
+                if (latestLog) {
+                  setExecutionStates(prev => ({
+                    ...prev,
+                    [agentId]: {
+                      ...prev[agentId],
+                      step: latestLog.action || "Processing...",
+                    },
+                  }))
+                }
+                if (run?.status !== "RUNNING" && run?.status !== "PENDING") {
+                  setExecutionStates(prev => ({
+                    ...prev,
+                    [agentId]: { state: "completed", outcome: run?.outcome || undefined },
+                  }))
+                  clearInterval(pollId)
+                  delete pollRefs.current[agentId]
+                }
               }
-              if (statusData.status !== "running") {
-                setExecutionStates(prev => ({
-                  ...prev,
-                  [agentId]: { state: "completed", outcome: statusData.outcome || undefined },
-                }))
-                clearInterval(pollId)
-                delete pollRefs.current[agentId]
-              }
+            } catch {
+              // Retry on next tick
             }
-          } catch {
-            // Retry on next tick
-          }
-        }, 2000)
-        pollRefs.current[agentId] = pollId
+          }, 2000)
+          pollRefs.current[agentId] = pollId
+        }
       }
     } catch {
       // Handle error silently
