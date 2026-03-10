@@ -116,7 +116,7 @@ export default function ReportsPage() {
   const canViewAllReports = can("reports:view_all_definitions")
 
   // View toggle
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
 
   // Report templates state (admin-only)
   const [reports, setReports] = useState<ReportItem[]>([])

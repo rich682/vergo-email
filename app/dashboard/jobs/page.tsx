@@ -189,7 +189,7 @@ export default function JobsPage() {
   }, [searchQuery])
 
   // Filter state
-  const [showMyTasksOnly, setShowMyTasksOnly] = useState(true)
+  const [showMyTasksOnly, setShowMyTasksOnly] = useState(false)
   const [taskTypeFilter, setTaskTypeFilter] = useState("")
   const [ownerFilter, setOwnerFilter] = useState("")
 

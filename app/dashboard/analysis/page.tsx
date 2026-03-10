@@ -21,7 +21,7 @@ export default function AnalysisPage() {
   const canQuery = can("analysis:query")
   const canViewAll = can("analysis:view_all")
 
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
 
   // Redirect if user lacks any analysis permissions
   useEffect(() => {

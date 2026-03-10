@@ -81,7 +81,7 @@ export default function FormsPage() {
   const canViewAllForms = can("forms:view_all_templates")
 
   // View toggle
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
 
   // Section 1: Form definitions state
   const [forms, setForms] = useState<FormItem[]>([])

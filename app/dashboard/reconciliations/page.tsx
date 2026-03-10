@@ -93,7 +93,7 @@ export default function ReconciliationsPage() {
   const canViewAllRecons = can("reconciliations:view_all_configs")
 
   // View toggle
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
 
   // Section 1: Config state
   const [configs, setConfigs] = useState<ReconciliationConfig[]>([])

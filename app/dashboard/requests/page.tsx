@@ -221,7 +221,7 @@ export default function RequestsPage() {
   const canViewAll = can("inbox:view_all")
 
   // State
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
   const [requests, setRequests] = useState<RequestTask[]>([])
   const [total, setTotal] = useState(0)
   const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})

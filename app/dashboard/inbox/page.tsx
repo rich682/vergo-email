@@ -33,7 +33,7 @@ export default function InboxPage() {
   const canViewAll = can("inbox:view_all")
 
   // Filters
-  const [showMine, setShowMine] = useState(true)
+  const [showMine, setShowMine] = useState(false)
   const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
   const [riskFilter, setRiskFilter] = useState<string>("")
 
