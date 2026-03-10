@@ -24,9 +24,10 @@ const ROW_HEIGHT = 44
 
 interface BoardInboxTabProps {
   boardId: string
+  showMyTasksOnly?: boolean
 }
 
-export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
+export function BoardInboxTab({ boardId, showMyTasksOnly }: BoardInboxTabProps) {
   const [data, setData] = useState<InboxData | null>(null)
   const [loading, setLoading] = useState(true)
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
@@ -50,6 +51,7 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
       try {
         const params = new URLSearchParams()
         params.set("boardId", boardId)
+        if (showMyTasksOnly) params.set("myItems", "true")
         params.set("page", page.toString())
         params.set("limit", "50")
         if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
@@ -76,7 +78,7 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
 
     doFetch()
     return () => controller.abort()
-  }, [boardId, page, readStatusFilter, riskFilter])
+  }, [boardId, showMyTasksOnly, page, readStatusFilter, riskFilter])
 
   // Keep fetchInbox as a manual refresh function (for use after accept actions)
   const fetchInbox = useCallback(async () => {
@@ -84,6 +86,7 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
       setLoading(true)
       const params = new URLSearchParams()
       params.set("boardId", boardId)
+      if (showMyTasksOnly) params.set("myItems", "true")
       params.set("page", page.toString())
       params.set("limit", "50")
       if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
@@ -97,7 +100,7 @@ export function BoardInboxTab({ boardId }: BoardInboxTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [boardId, page, readStatusFilter, riskFilter])
+  }, [boardId, showMyTasksOnly, page, readStatusFilter, riskFilter])
 
   const handleAcceptSuggestion = async (requestId: string, actionType: string) => {
     setAcceptingId(requestId)

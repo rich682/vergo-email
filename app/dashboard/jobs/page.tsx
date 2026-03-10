@@ -1248,12 +1248,19 @@ export default function JobsPage() {
           </div>
         )}
 
+        {/* View Toggle — visible on all tabs */}
+        {canAssignOwner && (
+          <div className="mb-4">
+            <ViewToggle showMine={showMyTasksOnly} onToggle={setShowMyTasksOnly} myLabel="My Tasks" />
+          </div>
+        )}
+
         {/* Tab Content */}
         {activeTab === "requests" && boardId && (
-          <BoardRequestsTab boardId={boardId} />
+          <BoardRequestsTab boardId={boardId} showMyTasksOnly={showMyTasksOnly} />
         )}
         {activeTab === "inbox" && boardId && (
-          <BoardInboxTab boardId={boardId} />
+          <BoardInboxTab boardId={boardId} showMyTasksOnly={showMyTasksOnly} />
         )}
         {activeTab === "documents" && boardId && (
           <BoardDocumentsTab boardId={boardId} />
@@ -1275,9 +1282,6 @@ export default function JobsPage() {
         {activeTab === "tasks" && (<>
         {/* Search & Filters */}
         <div className="mb-4 flex items-center gap-3">
-          {canAssignOwner && (
-            <ViewToggle showMine={showMyTasksOnly} onToggle={setShowMyTasksOnly} myLabel="My Tasks" />
-          )}
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input

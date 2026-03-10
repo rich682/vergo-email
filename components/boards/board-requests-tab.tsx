@@ -192,9 +192,10 @@ function hasReply(status: string): boolean {
 
 interface BoardRequestsTabProps {
   boardId: string
+  showMyTasksOnly?: boolean
 }
 
-export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
+export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabProps) {
   const router = useRouter()
   const { can } = usePermissions()
   const canManageRequests = can("requests:manage")
@@ -236,6 +237,7 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
 
       const baseParams = new URLSearchParams()
       baseParams.set("boardId", boardId)
+      if (showMyTasksOnly) baseParams.set("myItems", "true")
       if (jobFilter !== "all") baseParams.set("jobId", jobFilter)
       if (ownerFilter !== "all") baseParams.set("ownerId", ownerFilter)
       if (dateFrom) baseParams.set("dateFrom", dateFrom)
@@ -397,7 +399,7 @@ export function BoardRequestsTab({ boardId }: BoardRequestsTabProps) {
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [boardId, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
+  }, [boardId, showMyTasksOnly, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
 
   // Fetch with AbortController — cancels previous in-flight request on re-fetch
   useEffect(() => {
