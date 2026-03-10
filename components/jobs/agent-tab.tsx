@@ -1,19 +1,45 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Bot, Play, Loader2, CheckCircle, ExternalLink, Plus, AlertCircle } from "lucide-react"
+import { Bot, Play, Loader2, CheckCircle, Plus, AlertCircle, MoreHorizontal, Pause, Settings, Trash2, Calendar, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { SectionHeader } from "@/components/ui/section-header"
-import Link from "next/link"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { TaskAgentWizard } from "@/components/jobs/task-agent-wizard"
+import { cronToSchedule, scheduleToCron } from "@/lib/automations/cron-helpers"
 
 interface AgentInfo {
   id: string
   name: string
   isActive: boolean
   taskType: string | null
+  conditions: Record<string, unknown>
+  cronExpression: string | null
+  timezone: string | null
 }
 
 interface ExecutionOutcome {
@@ -34,6 +60,209 @@ interface AgentTabProps {
   formRequestCount: number
   onJobUpdate?: () => void
 }
+
+// ── Schedule helpers (shared with task-agent-wizard) ─────────────────────────
+
+function getOrdinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return s[(v - 20) % 10] || s[v] || s[0]
+}
+
+const DAY_OF_MONTH_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
+  value: String(i + 1),
+  label: `${i + 1}${getOrdinalSuffix(i + 1)}`,
+}))
+
+const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}))
+
+const MINUTE_OPTIONS = [
+  { value: "0", label: "00" },
+  { value: "15", label: "15" },
+  { value: "30", label: "30" },
+  { value: "45", label: "45" },
+]
+
+// ── Edit Agent Dialog ────────────────────────────────────────────────────────
+
+function EditAgentDialog({
+  open,
+  onOpenChange,
+  agent,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  agent: AgentInfo
+  onSuccess: () => void
+}) {
+  const [name, setName] = useState(agent.name)
+  const [isActive, setIsActive] = useState(agent.isActive)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Parse existing schedule from cron
+  const existingSchedule = agent.cronExpression
+    ? cronToSchedule(agent.cronExpression, agent.timezone || "UTC")
+    : null
+
+  const [dayOfMonth, setDayOfMonth] = useState(existingSchedule?.dayOfMonth || 1)
+  const [hour, setHour] = useState(existingSchedule?.hour ?? 9)
+  const [minute, setMinute] = useState(existingSchedule?.minute ?? 0)
+
+  const hour12 = hour % 12 || 12
+  const ampm = hour >= 12 ? "PM" : "AM"
+  const setHourFrom12 = (h12: number, ap: string) => {
+    let h24 = h12 % 12
+    if (ap === "PM") h24 += 12
+    setHour(h24)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const timezone = agent.timezone || "UTC"
+      const cronExpression = scheduleToCron({ frequency: "monthly", dayOfMonth, hour, minute, timezone })
+
+      const updatedConditions = {
+        ...agent.conditions,
+        cronExpression,
+        timezone,
+      }
+
+      const res = await fetch("/api/automation-rules", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: agent.id,
+          name: name.trim(),
+          isActive,
+          conditions: updatedConditions,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to update agent")
+      }
+
+      onOpenChange(false)
+      onSuccess()
+    } catch (err: any) {
+      setError(err.message || "Something went wrong")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit Agent</DialogTitle>
+        </DialogHeader>
+
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-5 py-2">
+          {/* Name */}
+          <div>
+            <Label className="text-xs text-gray-500">Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+
+          {/* Schedule */}
+          <div>
+            <Label className="text-xs text-gray-500">Day of the month</Label>
+            <Select
+              value={String(dayOfMonth)}
+              onValueChange={(v) => setDayOfMonth(parseInt(v))}
+            >
+              <SelectTrigger className="w-36 mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DAY_OF_MONTH_OPTIONS.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-gray-500">Time</Label>
+            <div className="flex items-center gap-2 mt-1">
+              <Select value={String(hour12)} onValueChange={(v) => setHourFrom12(parseInt(v), ampm)}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {HOUR_OPTIONS.map((h) => (
+                    <SelectItem key={h.value} value={h.value}>{h.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-gray-400">:</span>
+              <Select value={String(minute)} onValueChange={(v) => setMinute(parseInt(v))}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MINUTE_OPTIONS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={ampm} onValueChange={(v) => setHourFrom12(hour12, v)}>
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AM">AM</SelectItem>
+                  <SelectItem value="PM">PM</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Active toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm text-gray-700">Active</Label>
+              <p className="text-xs text-gray-400">When active, this agent will run on its trigger.</p>
+            </div>
+            <Switch checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim()}>
+            {saving && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+            Save Changes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Config status check ──────────────────────────────────────────────────────
 
 function getConfigStatus(
   taskType: string | null,
@@ -102,6 +331,8 @@ function getConfigStatus(
   }
 }
 
+// ── Main AgentTab component ──────────────────────────────────────────────────
+
 export function AgentTab({
   jobId,
   lineageId,
@@ -117,6 +348,11 @@ export function AgentTab({
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [showWizard, setShowWizard] = useState(false)
+
+  // Edit / delete state
+  const [editingAgent, setEditingAgent] = useState<AgentInfo | null>(null)
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Reconciliation sourceType check
   const [reconSourceType, setReconSourceType] = useState<string | null>(null)
@@ -176,6 +412,9 @@ export function AgentTab({
           name: r.name,
           isActive: r.isActive,
           taskType: r.taskType,
+          conditions: r.conditions || {},
+          cronExpression: r.cronExpression || null,
+          timezone: r.timezone || null,
         }))
         setAgents(agentList)
 
@@ -267,10 +506,53 @@ export function AgentTab({
     }
   }
 
+  const handlePauseResume = async (agent: AgentInfo) => {
+    try {
+      await fetch("/api/automation-rules", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: agent.id, isActive: !agent.isActive }),
+      })
+      fetchAgents()
+    } catch {
+      // Handle error silently
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingAgentId) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/automation-rules?id=${deletingAgentId}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      setDeletingAgentId(null)
+      fetchAgents()
+    } catch {
+      // Handle error silently
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleWizardSuccess = () => {
     setShowWizard(false)
     onJobUpdate?.()
     fetchAgents()
+  }
+
+  // Helper: format schedule for display on card
+  const formatSchedule = (agent: AgentInfo): string | null => {
+    if (!agent.cronExpression) return null
+    const schedule = cronToSchedule(agent.cronExpression, agent.timezone || "UTC")
+    if (!schedule || schedule.frequency !== "monthly") return null
+    const day = schedule.dayOfMonth || 1
+    const h = schedule.hour % 12 || 12
+    const m = String(schedule.minute).padStart(2, "0")
+    const ap = schedule.hour >= 12 ? "PM" : "AM"
+    return `${day}${getOrdinalSuffix(day)} at ${h}:${m} ${ap}`
   }
 
   // Gate 1: Task not configured
@@ -369,6 +651,7 @@ export function AgentTab({
         <div className="space-y-3">
           {agents.map((agent) => {
             const execState = executionStates[agent.id]
+            const scheduleText = formatSchedule(agent)
             return (
               <Card key={agent.id}>
                 <CardContent className="p-4">
@@ -384,11 +667,17 @@ export function AgentTab({
                           {agent.isActive && (
                             <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">Active</Badge>
                           )}
+                          {scheduleText && (
+                            <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {scheduleText}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {/* Execution state */}
                       {execState?.state === "running" && (
                         <div className="flex items-center gap-2">
@@ -427,12 +716,36 @@ export function AgentTab({
                         </Button>
                       )}
 
-                      {/* Link to agent detail */}
-                      <Link href={`/dashboard/automations/${agent.id}`}>
-                        <Button size="sm" variant="ghost" className="text-xs h-7 w-7 p-0 text-gray-400 hover:text-orange-600">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </Button>
-                      </Link>
+                      {/* Actions dropdown */}
+                      {canEdit && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditingAgent(agent)}>
+                              <Settings className="w-3.5 h-3.5 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handlePauseResume(agent)}>
+                              {agent.isActive ? (
+                                <><Pause className="w-3.5 h-3.5 mr-2" />Pause</>
+                              ) : (
+                                <><Play className="w-3.5 h-3.5 mr-2" />Resume</>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => setDeletingAgentId(agent.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -453,6 +766,26 @@ export function AgentTab({
           onSuccess={handleWizardSuccess}
         />
       )}
+
+      {editingAgent && (
+        <EditAgentDialog
+          open={!!editingAgent}
+          onOpenChange={(open) => { if (!open) setEditingAgent(null) }}
+          agent={editingAgent}
+          onSuccess={fetchAgents}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!deletingAgentId}
+        onOpenChange={(open) => { if (!open) setDeletingAgentId(null) }}
+        title="Delete Agent"
+        description="This will deactivate the agent and stop it from running. Existing run history will be preserved."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   )
 }
