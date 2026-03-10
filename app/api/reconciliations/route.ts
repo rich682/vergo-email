@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { canPerformAction } from "@/lib/permissions"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
@@ -20,7 +20,16 @@ export async function GET() {
       return NextResponse.json({ configs: [] })
     }
 
+    const { searchParams } = new URL(request.url)
+    const myItems = searchParams.get("myItems") === "true"
+
     const configs = await ReconciliationService.listConfigs(session.user.organizationId)
+
+    // myItems: user explicitly wants only their own configs
+    if (myItems) {
+      const filteredConfigs = configs.filter((c) => c.createdById === session.user.id)
+      return NextResponse.json({ configs: filteredConfigs })
+    }
 
     // Users with view_all_configs see everything; others see only configs they created or are viewers of
     const canViewAll = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)

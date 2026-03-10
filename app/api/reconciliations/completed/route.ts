@@ -34,9 +34,10 @@ export async function GET(request: NextRequest) {
       configIdFilter = { in: viewerEntries.map(v => v.reconciliationConfigId) }
     }
 
-    // Optional boardId filter
+    // Optional filters
     const { searchParams } = new URL(request.url)
     const boardIdFilter = searchParams.get("boardId") || undefined
+    const myItems = searchParams.get("myItems") === "true"
 
     const runs = await prisma.reconciliationRun.findMany({
       where: {
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
         status: { in: ["COMPLETE", "REVIEW"] },
         ...(configIdFilter ? { configId: configIdFilter } : {}),
         ...(boardIdFilter ? { boardId: boardIdFilter } : {}),
+        ...(myItems ? { completedBy: session.user.id } : {}),
       },
       select: {
         id: true,

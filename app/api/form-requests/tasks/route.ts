@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const orgId = session.user.organizationId
     const { searchParams } = new URL(request.url)
     const boardIdFilter = searchParams.get("boardId") || undefined
+    const myItems = searchParams.get("myItems") === "true"
     const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)
 
     // Users without view_all_templates only see forms they are viewers of or created
@@ -46,14 +47,17 @@ export async function GET(request: NextRequest) {
       formIdFilter = { in: [...new Set([...viewerIds, ...createdIds])] }
     }
 
-    // If filtering by board, get task IDs in that board first
-    let boardTaskIdFilter: { in: string[] } | undefined = undefined
-    if (boardIdFilter) {
-      const boardTasks = await prisma.taskInstance.findMany({
-        where: { organizationId: orgId, boardId: boardIdFilter },
+    // If filtering by board or myItems, get task IDs matching the criteria
+    let taskIdFilter: { in: string[] } | undefined = undefined
+    if (boardIdFilter || myItems) {
+      const taskWhere: any = { organizationId: orgId }
+      if (boardIdFilter) taskWhere.boardId = boardIdFilter
+      if (myItems) taskWhere.ownerId = session.user.id
+      const matchingTasks = await prisma.taskInstance.findMany({
+        where: taskWhere,
         select: { id: true },
       })
-      boardTaskIdFilter = { in: boardTasks.map(t => t.id) }
+      taskIdFilter = { in: matchingTasks.map(t => t.id) }
     }
 
     // Group form requests by (taskInstanceId, formDefinitionId, status)
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
       where: {
         organizationId: orgId,
         ...(formIdFilter ? { formDefinitionId: formIdFilter } : {}),
-        ...(boardTaskIdFilter ? { taskInstanceId: boardTaskIdFilter } : {}),
+        ...(taskIdFilter ? { taskInstanceId: taskIdFilter } : {}),
       },
       _count: { id: true },
       _max: { createdAt: true },

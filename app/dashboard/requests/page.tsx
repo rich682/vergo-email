@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
 import { useSearchParams } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 
 // Types
 interface BoardOption {
@@ -217,8 +218,10 @@ export default function RequestsPage() {
   const boardIdFromUrl = searchParams.get("boardId")
   const { can } = usePermissions()
   const canManageRequests = can("requests:manage")
-  
+  const canViewAll = can("inbox:view_all")
+
   // State
+  const [showMine, setShowMine] = useState(true)
   const [requests, setRequests] = useState<RequestTask[]>([])
   const [total, setTotal] = useState(0)
   const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})
@@ -272,6 +275,7 @@ export default function RequestsPage() {
 
       // Build shared filter params
       const baseParams = new URLSearchParams()
+      if (showMine) baseParams.set("myItems", "true")
       if (boardFilter !== "all") baseParams.set("boardId", boardFilter)
       if (jobFilter !== "all") baseParams.set("jobId", jobFilter)
       if (ownerFilter !== "all") baseParams.set("ownerId", ownerFilter)
@@ -441,7 +445,7 @@ export default function RequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
+  }, [showMine, boardFilter, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
 
   useEffect(() => {
     fetchRequests()
@@ -589,6 +593,10 @@ export default function RequestsPage() {
       <div className="mb-4">
         {/* Filters - single row with wrap */}
         <div className="flex items-center gap-2 flex-wrap">
+          {canViewAll && (
+            <ViewToggle showMine={showMine} onToggle={setShowMine} myLabel="My Requests" />
+          )}
+
           {/* Board Filter */}
           {boards.length > 0 && (
             <Select value={boardFilter} onValueChange={setBoardFilter}>

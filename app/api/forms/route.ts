@@ -24,7 +24,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ forms: [] })
     }
 
+    const { searchParams } = new URL(request.url)
+    const myItems = searchParams.get("myItems") === "true"
+
     const forms = await FormDefinitionService.findAll(session.user.organizationId)
+
+    // myItems: user explicitly wants only their own forms
+    if (myItems) {
+      const filteredForms = forms.filter((f) => f.createdById === session.user.id)
+      return NextResponse.json({ forms: filteredForms })
+    }
 
     // view_all_templates: bypass viewer filter; otherwise only see created + viewer-assigned forms
     const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)

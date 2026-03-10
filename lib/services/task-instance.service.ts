@@ -507,6 +507,7 @@ export class TaskInstanceService {
     if (input.customFields !== undefined) updateData.customFields = input.customFields
     if (input.structuredData !== undefined) updateData.structuredData = input.structuredData
     if (input.isSnapshot !== undefined) updateData.isSnapshot = input.isSnapshot
+    if (input.lineageId !== undefined) updateData.lineageId = input.lineageId
     if (input.reportDefinitionId !== undefined) updateData.reportDefinitionId = input.reportDefinitionId
     if (input.reportFilterBindings !== undefined) updateData.reportFilterBindings = input.reportFilterBindings
     if (input.reconciliationConfigId !== undefined) updateData.reconciliationConfigId = input.reconciliationConfigId

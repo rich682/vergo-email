@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import type { FormField } from "@/lib/types/form"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 
 // Helper to safely render any value as a string (prevents React error #438)
 function safeString(value: unknown): string {
@@ -77,6 +78,10 @@ export default function FormsPage() {
   const router = useRouter()
   const { can } = usePermissions()
   const canManageForms = can("forms:manage")
+  const canViewAllForms = can("forms:view_all_templates")
+
+  // View toggle
+  const [showMine, setShowMine] = useState(true)
 
   // Section 1: Form definitions state
   const [forms, setForms] = useState<FormItem[]>([])
@@ -94,7 +99,9 @@ export default function FormsPage() {
   const fetchForms = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/forms", { credentials: "include" })
+      const formsParams = new URLSearchParams()
+      if (showMine) formsParams.set("myItems", "true")
+      const response = await fetch(`/api/forms?${formsParams.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         // Explicitly extract only needed fields - don't spread to avoid unknown properties
@@ -130,7 +137,7 @@ export default function FormsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showMine])
 
   useEffect(() => {
     fetchForms()
@@ -139,7 +146,9 @@ export default function FormsPage() {
   useEffect(() => {
     const fetchFormTasks = async () => {
       try {
-        const res = await fetch("/api/form-requests/tasks", { credentials: "include" })
+        const taskParams = new URLSearchParams()
+        if (showMine) taskParams.set("myItems", "true")
+        const res = await fetch(`/api/form-requests/tasks?${taskParams.toString()}`, { credentials: "include" })
         if (res.ok) {
           const data = await res.json()
           setFormTasks(data.tasks || [])
@@ -151,7 +160,7 @@ export default function FormsPage() {
       }
     }
     fetchFormTasks()
-  }, [])
+  }, [showMine])
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -211,6 +220,13 @@ export default function FormsPage() {
 
   return (
     <div className="p-8 space-y-8">
+      {/* View Toggle */}
+      {canViewAllForms && (
+        <div className="flex items-center">
+          <ViewToggle showMine={showMine} onToggle={setShowMine} myLabel="My Forms" />
+        </div>
+      )}
+
       {/* ============================================ */}
       {/* SECTION 1: Form Builder (Admin Only) */}
       {/* ============================================ */}

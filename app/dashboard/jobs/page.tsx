@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ViewToggle } from "@/components/ui/view-toggle"
 import {
   Plus,
   Search,
@@ -1275,28 +1276,7 @@ export default function JobsPage() {
         {/* Search & Filters */}
         <div className="mb-4 flex items-center gap-3">
           {canAssignOwner && (
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => setShowMyTasksOnly(true)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  showMyTasksOnly
-                    ? "bg-white text-gray-900 shadow-sm font-medium"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                My Tasks
-              </button>
-              <button
-                onClick={() => setShowMyTasksOnly(false)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  !showMyTasksOnly
-                    ? "bg-white text-gray-900 shadow-sm font-medium"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                Everyone
-              </button>
-            </div>
+            <ViewToggle showMine={showMyTasksOnly} onToggle={setShowMyTasksOnly} myLabel="My Tasks" />
           )}
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

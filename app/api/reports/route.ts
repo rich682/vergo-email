@@ -24,7 +24,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ reports: [] })
     }
 
+    const { searchParams } = new URL(request.url)
+    const myItems = searchParams.get("myItems") === "true"
+
     const reports = await ReportDefinitionService.listReportDefinitions(session.user.organizationId)
+
+    // myItems: admin explicitly wants only their own reports
+    if (myItems) {
+      const filteredReports = reports.filter((r: any) => r.createdById === session.user.id)
+      return NextResponse.json({ reports: filteredReports })
+    }
 
     // If user can view all definitions, return everything; otherwise filter to owned/viewable
     if (canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {

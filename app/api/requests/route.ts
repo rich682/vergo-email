@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
     const hasAttachments = searchParams.get("hasAttachments") // yes | no
     const requestType = searchParams.get("requestType") // "standard" | "data" | "form"
     const excludeFormRequests = searchParams.get("excludeFormRequests") // "true" to exclude form-type requests
+    const myItems = searchParams.get("myItems") === "true"
 
     // Pagination params
     const page = parseInt(searchParams.get("page") || "1", 10)
@@ -46,7 +47,9 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Get job access filter based on user role and action permissions
-    const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
+    const jobAccessFilter = myItems
+      ? { ownerId: userId }
+      : getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
 
     const where: any = {
       organizationId,

@@ -31,6 +31,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 
 interface ReconciliationConfig {
   id: string
@@ -89,6 +90,10 @@ export default function ReconciliationsPage() {
   const router = useRouter()
   const { can } = usePermissions()
   const canManageReconciliations = can("reconciliations:manage")
+  const canViewAllRecons = can("reconciliations:view_all_configs")
+
+  // View toggle
+  const [showMine, setShowMine] = useState(true)
 
   // Section 1: Config state
   const [configs, setConfigs] = useState<ReconciliationConfig[]>([])
@@ -115,7 +120,9 @@ export default function ReconciliationsPage() {
   useEffect(() => {
     const fetchConfigs = async () => {
       try {
-        const res = await fetch("/api/reconciliations")
+        const params = new URLSearchParams()
+        if (showMine) params.set("myItems", "true")
+        const res = await fetch(`/api/reconciliations?${params.toString()}`)
         if (res.ok) {
           const data = await res.json()
           setConfigs(data.configs || [])
@@ -127,12 +134,14 @@ export default function ReconciliationsPage() {
       }
     }
     fetchConfigs()
-  }, [])
+  }, [showMine])
 
   useEffect(() => {
     const fetchCompleted = async () => {
       try {
-        const res = await fetch("/api/reconciliations/completed")
+        const params = new URLSearchParams()
+        if (showMine) params.set("myItems", "true")
+        const res = await fetch(`/api/reconciliations/completed?${params.toString()}`)
         if (res.ok) {
           const data = await res.json()
           setCompletedRuns(data.runs || [])
@@ -144,7 +153,7 @@ export default function ReconciliationsPage() {
       }
     }
     fetchCompleted()
-  }, [])
+  }, [showMine])
 
   // Derive available periods from completed runs
   const availablePeriods = useMemo(() => {
@@ -215,6 +224,13 @@ export default function ReconciliationsPage() {
 
   return (
     <div className="p-8 space-y-8">
+      {/* View Toggle */}
+      {canViewAllRecons && (
+        <div className="flex items-center">
+          <ViewToggle showMine={showMine} onToggle={setShowMine} myLabel="My Reconciliations" />
+        </div>
+      )}
+
       {/* ============================================ */}
       {/* SECTION 1: Reconciliation Builder (Admin Only) */}
       {/* ============================================ */}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 import { Plus, MessageSquare, Search, Trash2 } from "lucide-react"
 import { DatabaseSelectDialog } from "@/components/analysis/database-select-dialog"
 
@@ -18,6 +19,9 @@ export default function AnalysisPage() {
   const router = useRouter()
   const { can } = usePermissions()
   const canQuery = can("analysis:query")
+  const canViewAll = can("analysis:view_all")
+
+  const [showMine, setShowMine] = useState(true)
 
   // Redirect if user lacks any analysis permissions
   useEffect(() => {
@@ -35,7 +39,9 @@ export default function AnalysisPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch("/api/analysis/conversations", { credentials: "include" })
+      const params = new URLSearchParams()
+      if (showMine) params.set("myItems", "true")
+      const res = await fetch(`/api/analysis/conversations?${params.toString()}`, { credentials: "include" })
       if (res.ok) {
         const data = await res.json()
         setConversations(data.conversations || [])
@@ -45,7 +51,7 @@ export default function AnalysisPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showMine])
 
   useEffect(() => {
     fetchData()
@@ -95,6 +101,9 @@ export default function AnalysisPage() {
     <div className="p-8">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
+        {canViewAll && (
+          <ViewToggle showMine={showMine} onToggle={setShowMine} myLabel="My Conversations" />
+        )}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input

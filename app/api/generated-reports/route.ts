@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     const reportDefinitionId = searchParams.get("reportDefinitionId") || undefined
     const periodKey = searchParams.get("periodKey") || undefined
     const boardId = searchParams.get("boardId") || undefined
+    const myItems = searchParams.get("myItems") === "true"
     const limitParam = searchParams.get("limit")
     const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
     const limit = isNaN(parsedLimit) ? 100 : Math.max(1, Math.min(parsedLimit, 1000))
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
       boardId,
       limit,
       viewerUserId, // Pass viewer filter for non-admins
+      ...(myItems ? { generatedBy: session.user.id } : {}),
     })
 
     // Also fetch distinct periods for filtering (only from visible reports for non-admins)

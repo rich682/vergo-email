@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 import { format } from "date-fns"
 import { 
   ReportFilterSelector, 
@@ -112,7 +113,11 @@ export default function ReportsPage() {
   const { can } = usePermissions()
   const canManageReports = can("reports:manage")
   const canGenerateReports = can("reports:generate")
-  
+  const canViewAllReports = can("reports:view_all_definitions")
+
+  // View toggle
+  const [showMine, setShowMine] = useState(true)
+
   // Report templates state (admin-only)
   const [reports, setReports] = useState<ReportItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -333,7 +338,9 @@ export default function ReportsPage() {
   const fetchReports = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/reports", { credentials: "include" })
+      const reportsParams = new URLSearchParams()
+      if (showMine) reportsParams.set("myItems", "true")
+      const response = await fetch(`/api/reports?${reportsParams.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
         setReports(data.reports || [])
@@ -348,20 +355,21 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showMine])
 
   // Fetch generated reports
   const fetchGeneratedReports = useCallback(async () => {
     try {
       setGeneratedLoading(true)
       const params = new URLSearchParams()
+      if (showMine) params.set("myItems", "true")
       if (periodFilter && periodFilter !== "all") {
         params.append("periodKey", periodFilter)
       }
       if (templateFilter && templateFilter !== "all") {
         params.append("reportDefinitionId", templateFilter)
       }
-      
+
       const response = await fetch(`/api/generated-reports?${params.toString()}`, { credentials: "include" })
       if (response.ok) {
         const data = await response.json()
@@ -373,7 +381,7 @@ export default function ReportsPage() {
     } finally {
       setGeneratedLoading(false)
     }
-  }, [periodFilter, templateFilter])
+  }, [showMine, periodFilter, templateFilter])
 
   // Fetch org users (non-admins) for viewer selector
   const fetchOrgUsers = useCallback(async () => {
@@ -542,6 +550,13 @@ export default function ReportsPage() {
 
   return (
     <div className="p-8 space-y-8">
+        {/* View Toggle */}
+        {canViewAllReports && (
+          <div className="flex items-center">
+            <ViewToggle showMine={showMine} onToggle={setShowMine} myLabel="My Reports" />
+          </div>
+        )}
+
         {/* ============================================ */}
         {/* SECTION 1: Report Builder (Admin Only) */}
         {/* ============================================ */}

@@ -90,6 +90,10 @@ export class AgentDefinitionService {
    * Update an agent definition.
    */
   static async update(id: string, organizationId: string, input: UpdateAgentInput) {
+    const agent = await prisma.agentDefinition.findFirst({
+      where: { id, organizationId },
+    })
+    if (!agent) return null
     return prisma.agentDefinition.update({
       where: { id },
       data: {
@@ -105,6 +109,10 @@ export class AgentDefinitionService {
    * Delete an agent definition.
    */
   static async delete(id: string, organizationId: string) {
+    const agent = await prisma.agentDefinition.findFirst({
+      where: { id, organizationId },
+    })
+    if (!agent) return null
     return prisma.agentDefinition.delete({
       where: { id },
     })

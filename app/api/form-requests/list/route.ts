@@ -34,9 +34,12 @@ export async function GET(request: NextRequest) {
     const contactSearch = searchParams.get("contactSearch")
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const myItems = searchParams.get("myItems") === "true"
 
     // Use same access filter as /api/requests for consistency
-    const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
+    const jobAccessFilter = myItems
+      ? { ownerId: userId }
+      : getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
 
     const where: any = {
       organizationId,

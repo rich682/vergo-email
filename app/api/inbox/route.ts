@@ -28,12 +28,15 @@ export async function GET(request: NextRequest) {
     const readStatusFilter = searchParams.get("readStatus") // unread | read | all
     const riskFilter = searchParams.get("riskLevel") // high | medium | low
     const boardId = searchParams.get("boardId") // optional board filter
+    const myItems = searchParams.get("myItems") === "true"
     const page = parseInt(searchParams.get("page") || "1", 10)
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100)
     const skip = (page - 1) * limit
 
     // Get job access filter based on role and action permissions
-    const jobAccessFilter = getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
+    const jobAccessFilter = myItems
+      ? { ownerId: userId }
+      : getJobAccessFilter(userId, userRole, "inbox:view_all", session.user.orgActionPermissions)
 
     // Build task instance filter (combines access filter + optional board filter)
     const taskInstanceFilter: any = {

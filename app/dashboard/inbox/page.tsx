@@ -12,6 +12,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { usePermissions } from "@/components/permissions-context"
+import { ViewToggle } from "@/components/ui/view-toggle"
 
 interface InboxData {
   items: InboxItem[]
@@ -29,8 +30,10 @@ export default function InboxPage() {
   const [page, setPage] = useState(1)
   const { can } = usePermissions()
   const canManageInbox = can("inbox:manage_requests")
+  const canViewAll = can("inbox:view_all")
 
   // Filters
+  const [showMine, setShowMine] = useState(true)
   const [readStatusFilter, setReadStatusFilter] = useState<string>("all")
   const [riskFilter, setRiskFilter] = useState<string>("")
 
@@ -42,6 +45,7 @@ export default function InboxPage() {
       const params = new URLSearchParams()
       params.set("page", page.toString())
       params.set("limit", "50")
+      if (showMine) params.set("myItems", "true")
       if (readStatusFilter !== "all") params.set("readStatus", readStatusFilter)
       if (riskFilter) params.set("riskLevel", riskFilter)
 
@@ -55,7 +59,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, readStatusFilter, riskFilter])
+  }, [page, showMine, readStatusFilter, riskFilter])
 
   useEffect(() => {
     setLoading(true)
@@ -134,6 +138,9 @@ export default function InboxPage() {
       {/* Filters + Bulk Action */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-2">
+          {canViewAll && (
+            <ViewToggle showMine={showMine} onToggle={(v) => { setShowMine(v); setPage(1) }} myLabel="My Inbox" />
+          )}
           <Filter className="w-4 h-4 text-gray-400" />
           <select
             value={readStatusFilter}

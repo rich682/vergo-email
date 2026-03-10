@@ -106,7 +106,6 @@ export class AgentExecutionService {
         steps: steps as any,
         llmCallCount: (execution.llmCallCount || 0) + (step.model ? 1 : 0),
         totalTokensUsed: (execution.totalTokensUsed || 0) + (step.tokensUsed || 0),
-        estimatedCostUsd: (execution.estimatedCostUsd || 0) + (step.durationMs ? 0 : 0),
       },
     })
   }

@@ -59,6 +59,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       { name, description, settings, isActive }
     )
 
+    if (!agent) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 })
+    }
+
     return NextResponse.json({ agent })
   } catch (error) {
     console.error("Error updating agent:", error)
@@ -77,7 +81,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    await AgentDefinitionService.delete(params.agentId, session.user.organizationId)
+    const deleted = await AgentDefinitionService.delete(params.agentId, session.user.organizationId)
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
