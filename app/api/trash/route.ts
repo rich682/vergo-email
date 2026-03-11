@@ -8,7 +8,14 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { isAdmin } from "@/lib/permissions"
-import { prismaWithDeleted } from "@/lib/prisma"
+import { prisma, prismaWithDeleted } from "@/lib/prisma"
+
+interface DeletedRowBatch {
+  rows: any[]
+  deletedAt: string
+  deletedById: string
+  deletedByName?: string
+}
 
 export async function GET() {
   try {
@@ -26,7 +33,7 @@ export async function GET() {
     const selectBase = { id: true, deletedAt: true, deletedById: true }
     const deletedBySelect = { deletedBy: { select: { id: true, name: true, email: true } } }
 
-    // Query all soft-deleted items in parallel
+    // Query all soft-deleted items AND databases with deleted rows in parallel
     const [
       databases,
       formDefinitions,
@@ -37,6 +44,7 @@ export async function GET() {
       agentDefinitions,
       entities,
       groups,
+      databasesWithDeletedRows,
     ] = await Promise.all([
       prismaWithDeleted.database.findMany({
         where: deletedFilter,
@@ -83,6 +91,11 @@ export async function GET() {
         select: { ...selectBase, name: true, ...deletedBySelect },
         orderBy: { deletedAt: "desc" },
       }),
+      // Find databases that have deleted rows (non-empty deletedRows array)
+      prisma.database.findMany({
+        where: { organizationId, NOT: { deletedRows: { equals: [] } } },
+        select: { id: true, name: true, deletedRows: true },
+      }),
     ])
 
     // Normalize entity names to "name" for consistent UI
@@ -94,6 +107,20 @@ export async function GET() {
       deletedBy: e.deletedBy,
     }))
 
+    // Build deleted rows summary per database
+    const deletedRowsBatches = databasesWithDeletedRows.flatMap((db) => {
+      const batches = (db.deletedRows as unknown as DeletedRowBatch[]) || []
+      return batches.map((batch, batchIndex) => ({
+        databaseId: db.id,
+        databaseName: db.name,
+        batchIndex,
+        rowCount: batch.rows.length,
+        deletedAt: batch.deletedAt,
+        deletedById: batch.deletedById,
+        deletedByName: batch.deletedByName || null,
+      }))
+    })
+
     return NextResponse.json({
       database: databases,
       formDefinition: formDefinitions,
@@ -104,6 +131,7 @@ export async function GET() {
       agentDefinition: agentDefinitions,
       entity: normalizedEntities,
       group: groups,
+      deletedRows: deletedRowsBatches,
     })
   } catch (error: any) {
     console.error("Error fetching trash:", error)

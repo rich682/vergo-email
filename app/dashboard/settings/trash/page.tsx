@@ -14,7 +14,17 @@ interface TrashItem {
   deletedBy: { id: string; name: string | null; email: string } | null
 }
 
-type TrashData = Record<TrashModelKey, TrashItem[]>
+interface DeletedRowBatch {
+  databaseId: string
+  databaseName: string
+  batchIndex: number
+  rowCount: number
+  deletedAt: string
+  deletedById: string
+  deletedByName: string | null
+}
+
+type TrashData = Record<TrashModelKey, TrashItem[]> & { deletedRows?: DeletedRowBatch[] }
 
 function TrashContent() {
   const [data, setData] = useState<TrashData | null>(null)
@@ -22,7 +32,9 @@ function TrashContent() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; model: TrashModelKey; item: TrashItem } | null>(null)
+  const [rowDeleteDialog, setRowDeleteDialog] = useState<{ open: boolean; batch: DeletedRowBatch } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [restoringRow, setRestoringRow] = useState<string | null>(null)
 
   useEffect(() => {
     fetchTrash()
@@ -87,8 +99,63 @@ function TrashContent() {
     }
   }
 
+  const handleRestoreRows = async (batch: DeletedRowBatch) => {
+    const key = `row-${batch.databaseId}-${batch.batchIndex}`
+    try {
+      setRestoringRow(key)
+      setMessage(null)
+      const response = await fetch(`/api/databases/${batch.databaseId}/rows/deleted`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchIndex: batch.batchIndex }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to restore rows")
+      }
+      const result = await response.json()
+      setMessage({ type: "success", text: `${result.restored} row${result.restored !== 1 ? "s" : ""} restored to "${batch.databaseName}".` })
+      setTimeout(() => setMessage(null), 5000)
+      fetchTrash()
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to restore rows" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setRestoringRow(null)
+    }
+  }
+
+  const handlePermanentDeleteRows = async () => {
+    if (!rowDeleteDialog) return
+    const { batch } = rowDeleteDialog
+    try {
+      setDeleting(true)
+      const response = await fetch(`/api/databases/${batch.databaseId}/rows/deleted`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchIndex: batch.batchIndex }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to delete rows")
+      }
+      setRowDeleteDialog(null)
+      setMessage({ type: "success", text: `${batch.rowCount} row${batch.rowCount !== 1 ? "s" : ""} permanently deleted from "${batch.databaseName}".` })
+      setTimeout(() => setMessage(null), 5000)
+      fetchTrash()
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to delete rows" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const deletedRows = data?.deletedRows || []
   const totalItems = data
-    ? Object.values(data).reduce((sum, items) => sum + items.length, 0)
+    ? (Object.entries(data) as [string, any[]][])
+        .filter(([key]) => key !== "deletedRows")
+        .reduce((sum, [, items]) => sum + items.length, 0) + deletedRows.length
     : 0
 
   return (
@@ -193,6 +260,61 @@ function TrashContent() {
                 )
               }
             )}
+
+            {/* Deleted database rows */}
+            {deletedRows.length > 0 && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-gray-900">Deleted Database Rows</h2>
+                  <span className="text-xs text-gray-500">
+                    {deletedRows.length} batch{deletedRows.length !== 1 ? "es" : ""}
+                  </span>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {deletedRows.map((batch) => {
+                    const batchKey = `row-${batch.databaseId}-${batch.batchIndex}`
+                    return (
+                      <div
+                        key={batchKey}
+                        className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {batch.rowCount} row{batch.rowCount !== 1 ? "s" : ""} from &ldquo;{batch.databaseName}&rdquo;
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Deleted{" "}
+                            {new Date(batch.deletedAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                            {batch.deletedByName ? ` by ${batch.deletedByName}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <button
+                            onClick={() => handleRestoreRows(batch)}
+                            disabled={restoringRow === batchKey}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition-colors"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            {restoringRow === batchKey ? "Restoring..." : "Restore"}
+                          </button>
+                          <button
+                            onClick={() => setRowDeleteDialog({ open: true, batch })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -209,6 +331,22 @@ function TrashContent() {
           cancelLabel="Cancel"
           variant="danger"
           onConfirm={handlePermanentDelete}
+          loading={deleting}
+        />
+      )}
+
+      {rowDeleteDialog && (
+        <ConfirmDialog
+          open={rowDeleteDialog.open}
+          onOpenChange={(open) => {
+            if (!open) setRowDeleteDialog(null)
+          }}
+          title="Permanently Delete Rows"
+          description={`Are you sure you want to permanently delete ${rowDeleteDialog.batch.rowCount} row${rowDeleteDialog.batch.rowCount !== 1 ? "s" : ""} from "${rowDeleteDialog.batch.databaseName}"? This action cannot be undone.`}
+          confirmLabel="Delete Permanently"
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handlePermanentDeleteRows}
           loading={deleting}
         />
       )}

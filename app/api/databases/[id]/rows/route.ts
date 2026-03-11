@@ -91,12 +91,28 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const existingRows = database.rows as unknown as DatabaseRow[]
     const indicesToDelete = new Set(rowIndices)
 
-    // Filter out the rows at the specified indices
-    const remainingRows = existingRows.filter((_, index) => !indicesToDelete.has(index))
-    const deletedCount = existingRows.length - remainingRows.length
+    // Separate rows into remaining and deleted
+    const remainingRows: DatabaseRow[] = []
+    const removedRows: DatabaseRow[] = []
+    existingRows.forEach((row, index) => {
+      if (indicesToDelete.has(index)) {
+        removedRows.push(row)
+      } else {
+        remainingRows.push(row)
+      }
+    })
 
-    if (deletedCount === 0) {
+    if (removedRows.length === 0) {
       return NextResponse.json({ deleted: 0 })
+    }
+
+    // Append deleted rows to the deletedRows archive for recovery
+    const existingDeletedRows = (database.deletedRows as unknown as any[]) || []
+    const deletionBatch = {
+      rows: removedRows,
+      deletedAt: new Date().toISOString(),
+      deletedById: session.user.id,
+      deletedByName: session.user.name || session.user.email || "Unknown",
     }
 
     await prisma.database.update({
@@ -104,10 +120,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       data: {
         rows: remainingRows as unknown as Prisma.InputJsonValue,
         rowCount: remainingRows.length,
+        deletedRows: [...existingDeletedRows, deletionBatch] as unknown as Prisma.InputJsonValue,
       },
     })
 
-    return NextResponse.json({ deleted: deletedCount, newRowCount: remainingRows.length })
+    return NextResponse.json({ deleted: removedRows.length, newRowCount: remainingRows.length })
   } catch (error) {
     console.error("Error deleting rows:", error)
     return NextResponse.json(

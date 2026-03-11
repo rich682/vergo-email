@@ -792,16 +792,28 @@ export class DatabaseService {
       keysToDelete.add(keyValues.join("|||"))
     }
 
-    // Filter out rows that match the keys to delete
-    const remainingRows = existingRows.filter(row => {
+    // Separate rows into remaining and deleted
+    const remainingRows: DatabaseRow[] = []
+    const removedRows: DatabaseRow[] = []
+    existingRows.forEach(row => {
       const rowKey = getCompositeKey(row, identifierKeys)
-      return !keysToDelete.has(rowKey)
+      if (keysToDelete.has(rowKey)) {
+        removedRows.push(row)
+      } else {
+        remainingRows.push(row)
+      }
     })
 
-    const deletedCount = existingRows.length - remainingRows.length
-
-    if (deletedCount === 0) {
+    if (removedRows.length === 0) {
       return { deleted: 0 }
+    }
+
+    // Append deleted rows to the deletedRows archive for recovery
+    const existingDeletedRows = (database.deletedRows as unknown as any[]) || []
+    const deletionBatch = {
+      rows: removedRows,
+      deletedAt: new Date().toISOString(),
+      deletedById: userId,
     }
 
     // Update database
@@ -810,6 +822,7 @@ export class DatabaseService {
       data: {
         rows: remainingRows as any,
         rowCount: remainingRows.length,
+        deletedRows: [...existingDeletedRows, deletionBatch] as any,
         updatedAt: new Date(),
       },
     })
@@ -817,7 +830,7 @@ export class DatabaseService {
     // Invalidate Parquet cache (analysis will rebuild on next query)
     invalidateParquet(id)
 
-    return { deleted: deletedCount }
+    return { deleted: removedRows.length }
   }
 
   /**

@@ -1220,6 +1220,10 @@ model Database {
   rows     Json @default("[]")
   rowCount Int  @default(0)
 
+  // Soft-deleted rows — stored here until permanently purged or restored
+  // Each entry: { rows: DatabaseRow[], deletedAt: ISO string, deletedById: string, deletedByName: string }
+  deletedRows Json @default("[]")
+
   // Integration source tracking
   sourceType       String? // null = manual, "merge_accounts", "merge_invoices", "merge_gl", etc.
   isReadOnly       Boolean @default(false) // true for integration-synced databases
