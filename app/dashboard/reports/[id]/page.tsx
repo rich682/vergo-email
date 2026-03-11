@@ -2285,6 +2285,20 @@ function MetricRowModal({
     }
   }, [open, editingKey, editingMetric, keysToLabels])
 
+  // Auto-derive display format for comparison rows based on output type
+  useEffect(() => {
+    if (type !== "comparison") return
+    if (compareOutput === "percent") {
+      setFormat("percent")
+    } else {
+      // Inherit format from the compared row
+      const comparedRow = metricRows.find(m => m.key === compareRowKey)
+      if (comparedRow) {
+        setFormat(comparedRow.format)
+      }
+    }
+  }, [type, compareOutput, compareRowKey, metricRows])
+
   const handleSave = () => {
     if (!label.trim()) return
     if (type === "source" && !sourceColumnKey) return
@@ -2562,8 +2576,8 @@ function MetricRowModal({
             </div>
           )}
 
-          {/* Display Format - only for Formula and Comparison (Source uses schema) */}
-          {(type === "formula" || type === "comparison") && (
+          {/* Display Format - only for Formula (Source uses schema, Comparison auto-derives) */}
+          {type === "formula" && (
             <div className="space-y-2">
               <Label>Display Format</Label>
               <Select value={format} onValueChange={(v) => setFormat(v as any)}>

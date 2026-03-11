@@ -362,7 +362,7 @@ export async function DELETE(
 
     if (hardDelete) {
       // Hard delete - only works if board has no jobs
-      await BoardService.delete(boardId, organizationId)
+      await BoardService.delete(boardId, organizationId, userId)
       return NextResponse.json({ success: true, deleted: true })
     } else {
       // Soft delete - archive the board

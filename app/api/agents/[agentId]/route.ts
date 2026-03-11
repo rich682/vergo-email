@@ -81,7 +81,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    const deleted = await AgentDefinitionService.delete(params.agentId, session.user.organizationId)
+    const deleted = await AgentDefinitionService.delete(params.agentId, session.user.organizationId, session.user.id)
 
     if (!deleted) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 })

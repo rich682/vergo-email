@@ -549,7 +549,7 @@ export class TaskInstanceService {
   static async delete(
     id: string,
     organizationId: string,
-    options?: { hard?: boolean }
+    options?: { hard?: boolean; deletedById?: string }
   ): Promise<{ success: boolean; requestCount?: number; error?: string }> {
     const existing = await prisma.taskInstance.findFirst({
       where: { id, organizationId },
@@ -561,15 +561,19 @@ export class TaskInstanceService {
     const requestCount = existing._count.requests
 
     if (options?.hard && requestCount > 0) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         requestCount,
         error: "This task has requests and cannot be permanently deleted. Archive it instead to preserve evidence."
       }
     }
 
     if (options?.hard) {
-      await prisma.taskInstance.delete({ where: { id } })
+      // Soft delete: set deletedAt instead of removing the record
+      await prisma.taskInstance.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedById: options?.deletedById ?? null },
+      })
     } else {
       await prisma.taskInstance.update({
         where: { id },

@@ -66,13 +66,13 @@ export class GroupService {
 
   static async delete(
     id: string,
-    organizationId: string
+    organizationId: string,
+    deletedById?: string
   ): Promise<void> {
-    await prisma.group.delete({
-      where: {
-        id,
-        organizationId
-      }
+    // Soft delete: set deletedAt instead of removing the record
+    await prisma.group.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
   }
 }

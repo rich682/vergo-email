@@ -163,10 +163,16 @@ export class ReconciliationService {
     })
   }
 
-  /** Delete a config and all its runs */
-  static async deleteConfig(configId: string, organizationId: string) {
-    return prisma.reconciliationConfig.deleteMany({
+  /** Soft delete a config (runs are preserved via cascade) */
+  static async deleteConfig(configId: string, organizationId: string, deletedById?: string) {
+    const existing = await prisma.reconciliationConfig.findFirst({
       where: { id: configId, organizationId },
+    })
+    if (!existing) throw new Error("Reconciliation config not found")
+
+    return prisma.reconciliationConfig.update({
+      where: { id: configId },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
   }
 

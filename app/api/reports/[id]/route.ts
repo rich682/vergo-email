@@ -145,7 +145,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ linkedTaskCount })
     }
 
-    await ReportDefinitionService.deleteReportDefinition(id, session.user.organizationId)
+    await ReportDefinitionService.deleteReportDefinition(id, session.user.organizationId, session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

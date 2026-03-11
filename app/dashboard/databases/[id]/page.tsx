@@ -12,7 +12,12 @@ import {
   Search,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Check,
+  Filter,
   AlertCircle,
   AlertTriangle,
   FileUp,
@@ -30,6 +35,11 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -154,6 +164,13 @@ export default function DatabaseDetailPage() {
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [columnFilters, setColumnFilters] = useState<ColumnFilter[]>([])
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
+
+  // Filter search state (for searching within column filter dropdowns)
+  const [filterSearches, setFilterSearches] = useState<Record<string, string>>({})
 
   // Row selection state (stores indices into the full database.rows array)
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
@@ -464,14 +481,30 @@ export default function DatabaseDetailPage() {
 
   const filteredRows = useMemo(() => filteredRowsWithIndex.map(r => r.row), [filteredRowsWithIndex])
 
+  // Reset to page 1 when filters/search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, columnFilters])
+
+  // Pagination calculations
+  const totalFilteredRows = filteredRowsWithIndex.length
+  const totalPages = Math.max(1, Math.ceil(totalFilteredRows / pageSize))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * pageSize
+  const endIndex = Math.min(startIndex + pageSize, totalFilteredRows)
+  const paginatedRows = useMemo(
+    () => filteredRowsWithIndex.slice(startIndex, endIndex),
+    [filteredRowsWithIndex, startIndex, endIndex]
+  )
+
   // ----------------------------------------
   // Row Selection & Delete Handlers
   // ----------------------------------------
 
-  // Get the original indices of the currently displayed (filtered, sliced) rows
+  // Get the original indices of the currently displayed (paginated) rows
   const displayedRowIndices = useMemo(() => {
-    return filteredRowsWithIndex.slice(0, 100).map(r => r.originalIndex)
-  }, [filteredRowsWithIndex])
+    return paginatedRows.map(r => r.originalIndex)
+  }, [paginatedRows])
 
   const allDisplayedSelected = displayedRowIndices.length > 0 && displayedRowIndices.every(i => selectedRows.has(i))
 
@@ -1194,87 +1227,121 @@ export default function DatabaseDetailPage() {
                         const filter = getColumnFilter(column.key)
                         const hasFilter = filter && filter.selectedValues.size > 0
                         const uniqueValues = getUniqueValues(column.key)
+                        const filterSearch = filterSearches[column.key] || ""
+                        const filteredUniqueValues = filterSearch
+                          ? uniqueValues.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase()))
+                          : uniqueValues
 
                         return (
                           <th
                             key={column.key}
                             className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                           >
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
+                            <Popover
+                              onOpenChange={(open) => {
+                                if (!open) {
+                                  setFilterSearches(prev => {
+                                    const next = { ...prev }
+                                    delete next[column.key]
+                                    return next
+                                  })
+                                }
+                              }}
+                            >
+                              <PopoverTrigger asChild>
                                 <button
                                   className={`inline-flex items-center gap-1 hover:text-gray-700 ${
                                     hasFilter ? "text-orange-600" : ""
                                   }`}
                                 >
                                   {column.label}
-                                  <ChevronDown className="w-3 h-3" />
+                                  {hasFilter ? (
+                                    <Filter className="w-3 h-3" />
+                                  ) : (
+                                    <ChevronDown className="w-3 h-3" />
+                                  )}
                                 </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
+                              </PopoverTrigger>
+                              <PopoverContent
                                 align="start"
-                                className="w-56 max-h-64 overflow-y-auto"
+                                className="w-64 p-0"
                               >
+                                {/* Search within filter values */}
+                                {uniqueValues.length > 10 && (
+                                  <div className="p-2 border-b border-gray-200">
+                                    <div className="relative">
+                                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                      <input
+                                        type="text"
+                                        placeholder="Search values..."
+                                        value={filterSearch}
+                                        onChange={(e) => setFilterSearches(prev => ({ ...prev, [column.key]: e.target.value }))}
+                                        className="w-full pl-7 pr-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
                                 {hasFilter && (
-                                  <>
-                                    <DropdownMenuItem
+                                  <div className="px-2 pt-2">
+                                    <button
                                       onClick={() => clearColumnFilter(column.key)}
+                                      className="text-sm text-orange-600 hover:text-orange-700 font-medium"
                                     >
                                       Clear filter
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                  </>
-                                )}
-                                {uniqueValues.length === 0 ? (
-                                  <div className="px-2 py-1.5 text-sm text-gray-500">
-                                    No values
+                                    </button>
                                   </div>
-                                ) : (
-                                  <>
-                                    {/* Select All / Deselect All */}
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        const displayedValues = uniqueValues.slice(0, 50)
-                                        const allSelected = displayedValues.every(v => filter?.selectedValues.has(v))
-                                        if (allSelected && hasFilter) {
-                                          // Deselect all
-                                          clearColumnFilter(column.key)
-                                        } else {
-                                          // Select all displayed values
-                                          setColumnFilters(prev => {
-                                            const newSelected = new Set(displayedValues)
-                                            const without = prev.filter(f => f.columnKey !== column.key)
-                                            return [...without, { columnKey: column.key, selectedValues: newSelected }]
-                                          })
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex items-center gap-2 w-full">
-                                        <div
-                                          className={`w-4 h-4 border rounded flex items-center justify-center ${
-                                            uniqueValues.slice(0, 50).every(v => filter?.selectedValues.has(v)) && hasFilter
-                                              ? "bg-orange-500 border-orange-500"
-                                              : "border-gray-300"
-                                          }`}
+                                )}
+                                <div className="max-h-64 overflow-y-auto p-1">
+                                  {uniqueValues.length === 0 ? (
+                                    <div className="px-2 py-3 text-sm text-gray-500 text-center">
+                                      No values
+                                    </div>
+                                  ) : filteredUniqueValues.length === 0 ? (
+                                    <div className="px-2 py-3 text-sm text-gray-500 text-center">
+                                      No matching values
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {/* Select All / Deselect All */}
+                                      {!filterSearch && (
+                                        <button
+                                          onClick={() => {
+                                            const allSelected = uniqueValues.every(v => filter?.selectedValues.has(v))
+                                            if (allSelected && hasFilter) {
+                                              clearColumnFilter(column.key)
+                                            } else {
+                                              setColumnFilters(prev => {
+                                                const newSelected = new Set(uniqueValues)
+                                                const without = prev.filter(f => f.columnKey !== column.key)
+                                                return [...without, { columnKey: column.key, selectedValues: newSelected }]
+                                              })
+                                            }
+                                          }}
+                                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100"
                                         >
-                                          {uniqueValues.slice(0, 50).every(v => filter?.selectedValues.has(v)) && hasFilter && (
-                                            <Check className="w-3 h-3 text-white" />
-                                          )}
-                                        </div>
-                                        <span className="font-medium text-gray-700">Select All</span>
-                                      </div>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    {uniqueValues.slice(0, 50).map((value) => (
-                                      <DropdownMenuItem
-                                        key={value}
-                                        onClick={() =>
-                                          toggleFilterValue(column.key, value)
-                                        }
-                                      >
-                                        <div className="flex items-center gap-2 w-full">
                                           <div
-                                            className={`w-4 h-4 border rounded flex items-center justify-center ${
+                                            className={`w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 ${
+                                              uniqueValues.every(v => filter?.selectedValues.has(v)) && hasFilter
+                                                ? "bg-orange-500 border-orange-500"
+                                                : "border-gray-300"
+                                            }`}
+                                          >
+                                            {uniqueValues.every(v => filter?.selectedValues.has(v)) && hasFilter && (
+                                              <Check className="w-3 h-3 text-white" />
+                                            )}
+                                          </div>
+                                          <span className="font-medium text-gray-700">Select All</span>
+                                          <span className="text-gray-400 text-xs ml-auto">{uniqueValues.length}</span>
+                                        </button>
+                                      )}
+                                      {filteredUniqueValues.slice(0, 200).map((value) => (
+                                        <button
+                                          key={value}
+                                          onClick={() => toggleFilterValue(column.key, value)}
+                                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-gray-100"
+                                        >
+                                          <div
+                                            className={`w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 ${
                                               filter?.selectedValues.has(value)
                                                 ? "bg-orange-500 border-orange-500"
                                                 : "border-gray-300"
@@ -1285,18 +1352,18 @@ export default function DatabaseDetailPage() {
                                             )}
                                           </div>
                                           <span className="truncate">{value}</span>
+                                        </button>
+                                      ))}
+                                      {filteredUniqueValues.length > 200 && (
+                                        <div className="px-2 py-1.5 text-xs text-gray-400 text-center">
+                                          +{filteredUniqueValues.length - 200} more values (use search to narrow)
                                         </div>
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </>
-                                )}
-                                {uniqueValues.length > 50 && (
-                                  <div className="px-2 py-1.5 text-xs text-gray-400">
-                                    +{uniqueValues.length - 50} more values
-                                  </div>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           </th>
                         )
                       })}
@@ -1315,7 +1382,7 @@ export default function DatabaseDetailPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredRowsWithIndex.slice(0, 100).map(({ row, originalIndex }) => (
+                      paginatedRows.map(({ row, originalIndex }) => (
                         <tr
                           key={originalIndex}
                           className={`hover:bg-gray-50 ${selectedRows.has(originalIndex) ? "bg-orange-50" : ""}`}
@@ -1344,9 +1411,70 @@ export default function DatabaseDetailPage() {
                   </tbody>
                 </table>
               </div>
-              {filteredRows.length > 100 && (
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
-                  Showing first 100 of {filteredRows.length.toLocaleString()} rows
+              {/* Pagination controls */}
+              {totalFilteredRows > 0 && (
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <span>
+                      Showing {startIndex + 1}-{endIndex} of {totalFilteredRows.toLocaleString()} rows
+                    </span>
+                    <span className="text-gray-300">|</span>
+                    <span>Rows per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value))
+                        setCurrentPage(1)
+                      }}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                    >
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                      <option value={500}>500</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={safeCurrentPage <= 1}
+                      className="h-8 w-8 p-0"
+                    >
+                      <ChevronsLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="h-8 w-8 p-0"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm text-gray-600 px-3">
+                      Page {safeCurrentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="h-8 w-8 p-0"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="h-8 w-8 p-0"
+                    >
+                      <ChevronsRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

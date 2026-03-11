@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { CalendarDays, ChevronRight, Link2, Shield } from "lucide-react"
+import { CalendarDays, ChevronRight, Link2, Shield, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 function SettingsContent() {
@@ -215,6 +215,25 @@ function SettingsContent() {
                 <div>
                   <h2 className="text-sm font-medium text-gray-900">Role Permissions</h2>
                   <p className="text-xs text-gray-500">Configure which areas of the app each role can access</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </div>
+          </Link>
+
+          {/* Trash Link */}
+          <Link
+            href="/dashboard/settings/trash"
+            className="block border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors"
+          >
+            <div className="px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-gray-900">Trash</h2>
+                  <p className="text-xs text-gray-500">View and recover deleted items</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />

@@ -108,13 +108,16 @@ export class AgentDefinitionService {
   /**
    * Delete an agent definition.
    */
-  static async delete(id: string, organizationId: string) {
+  static async delete(id: string, organizationId: string, deletedById?: string) {
     const agent = await prisma.agentDefinition.findFirst({
       where: { id, organizationId },
     })
     if (!agent) return null
-    return prisma.agentDefinition.delete({
+
+    // Soft delete: set deletedAt instead of removing the record
+    return prisma.agentDefinition.update({
       where: { id },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
   }
 

@@ -209,13 +209,13 @@ export class EntityService {
 
   static async delete(
     id: string,
-    organizationId: string
+    organizationId: string,
+    deletedById?: string
   ): Promise<void> {
-    await prisma.entity.delete({
-      where: {
-        id,
-        organizationId
-      }
+    // Soft delete: set deletedAt instead of removing the record
+    await prisma.entity.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
   }
 

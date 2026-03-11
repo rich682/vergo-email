@@ -134,38 +134,38 @@ model Organization {
   features             Json? // Account-level feature flags: { expenses: boolean, ap: boolean, ... }
   fiscalYearStartMonth Int      @default(1) // 1 = January, 12 = December
   timezone             String   @default("UTC") // IANA timezone e.g. "America/New_York", "Australia/Sydney"
-  aiContext            Json?    // AI context for report insights: { industry, entityType, keyMetrics[], terminology{} }
+  aiContext            Json? // AI context for report insights: { industry, entityType, keyMetrics[], terminology{} }
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  users                   User[]
-  entities                Entity[]
-  groups                  Group[]
-  taskInstances           TaskInstance[]
-  taskLineages            TaskLineage[]
-  importRecipes           ImportRecipe[]
-  connectedEmailAccounts  ConnectedEmailAccount[]
-  automationRules         AutomationRule[]
-  emailDrafts             EmailDraft[]
-  agentSchedules          AgentSchedule[]
-  boards                  Board[]
-  subtasks                Subtask[]
-  attachments             Attachment[]
-  emailQueue              EmailQueue[]
-  databases               Database[]
-  reportDefinitions       ReportDefinition[]
-  generatedReports        GeneratedReport[]
-  formDefinitions         FormDefinition[]
-  formRequests            FormRequest[]
-  formAttachments         FormAttachment[]
-  reconciliationConfigs   ReconciliationConfig[]
-  accountingIntegration   AccountingIntegration?
-  notifications           Notification[]
-  agentDefinitions        AgentDefinition[]
-  workflowRuns            WorkflowRun[]
-  requestTemplates        RequestTemplate[]
-  analysisDatasets        AnalysisDataset[]
-  analysisConversations   AnalysisConversation[]
+  users                  User[]
+  entities               Entity[]
+  groups                 Group[]
+  taskInstances          TaskInstance[]
+  taskLineages           TaskLineage[]
+  importRecipes          ImportRecipe[]
+  connectedEmailAccounts ConnectedEmailAccount[]
+  automationRules        AutomationRule[]
+  emailDrafts            EmailDraft[]
+  agentSchedules         AgentSchedule[]
+  boards                 Board[]
+  subtasks               Subtask[]
+  attachments            Attachment[]
+  emailQueue             EmailQueue[]
+  databases              Database[]
+  reportDefinitions      ReportDefinition[]
+  generatedReports       GeneratedReport[]
+  formDefinitions        FormDefinition[]
+  formRequests           FormRequest[]
+  formAttachments        FormAttachment[]
+  reconciliationConfigs  ReconciliationConfig[]
+  accountingIntegration  AccountingIntegration?
+  notifications          Notification[]
+  agentDefinitions       AgentDefinition[]
+  workflowRuns           WorkflowRun[]
+  requestTemplates       RequestTemplate[]
+  analysisDatasets       AnalysisDataset[]
+  analysisConversations  AnalysisConversation[]
 
   @@index([slug])
 }
@@ -179,9 +179,9 @@ model TaskLineage {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  instances     TaskInstance[]
-  importRecipes ImportRecipe[]
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  instances       TaskInstance[]
+  importRecipes   ImportRecipe[]
   agents          AgentDefinition[]
   automationRules AutomationRule[]
 
@@ -205,19 +205,19 @@ model ImportRecipe {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
+  id             String    @id @default(cuid())
+  email          String    @unique
   passwordHash   String
   name           String?
-  role           UserRole @default(MEMBER)
+  role           UserRole  @default(MEMBER)
   // Module-level access toggles (JSON): which dashboard modules this user can access
   // { boards: true, inbox: true, requests: false, collection: false, reports: true, forms: true, databases: false, reconciliations: false, contacts: false }
   // null = default access based on role (ADMIN gets all, MEMBER gets boards+inbox+reports+forms)
   moduleAccess   Json?
   signature      String? // User's email signature
   organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   lastLoginAt    DateTime? // Tracks most recent login time
 
   // Auth token fields for verification, password reset, and invites
@@ -230,40 +230,51 @@ model User {
   onboardingDismissed Boolean @default(false)
 
   // Debug/test user flag — hidden from customer-facing UIs, visible in admin dashboard
-  isDebugUser         Boolean  @default(false)
+  isDebugUser Boolean @default(false)
 
-  organization               Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  emailDrafts                EmailDraft[]
-  ownedTaskInstances         TaskInstance[]             @relation("TaskInstanceOwner")
-  taskInstanceCollaborations TaskInstanceCollaborator[]
-  taskInstanceComments       TaskInstanceComment[]
-  reviewedItems              CollectedItem[]            @relation("CollectedItemReviewer")
-  ownedBoards                Board[]                    @relation("BoardOwner")
-  createdBoards              Board[]                    @relation("BoardCreator")
-  boardCollaborations        BoardCollaborator[]
-  ownedSubtasks              Subtask[]                  @relation("SubtaskOwner")
-  uploadedAttachments        Attachment[]               @relation("AttachmentUploader")
-  reviewedMessages           Message[]                  @relation("MessageReviewer")
-  reviewAuditLogs            ReviewAuditLog[]           @relation("ReviewAuditAuthor")
-  connectedEmailAccounts     ConnectedEmailAccount[]
-  createdDatabases           Database[]                 @relation("DatabaseCreator")
-  importedDatabases          Database[]                 @relation("DatabaseImporter")
-  createdReportDefinitions   ReportDefinition[]         @relation("ReportDefinitionCreator")
-  reportViewerPermissions    GeneratedReportViewer[]
-  reportDefinitionViewerPermissions  ReportDefinitionViewer[] @relation("ReportDefinitionViewerUser")
-  createdFormDefinitions     FormDefinition[]           @relation("FormDefinitionCreator")
-  formRequests               FormRequest[]              @relation("FormRequestRecipient")
-  completedReconciliations   ReconciliationRun[]        @relation("ReconciliationCompleter")
-  notifications              Notification[]             @relation("NotificationRecipient")
-  formDefinitionViewerPermissions       FormDefinitionViewer[]          @relation("FormDefinitionViewerUser")
-  reconciliationConfigViewerPermissions ReconciliationConfigViewer[]    @relation("ReconciliationConfigViewerUser")
-  databaseViewerPermissions             DatabaseViewer[]                @relation("DatabaseViewerUser")
-  createdReconciliationConfigs          ReconciliationConfig[]          @relation("ReconciliationConfigCreator")
-  createdAgents                         AgentDefinition[]               @relation("AgentCreator")
-  createdAutomationRules                AutomationRule[]                @relation("AutomationRuleCreator")
-  createdRequestTemplates               RequestTemplate[]               @relation("RequestTemplateCreator")
-  uploadedAnalysisDatasets              AnalysisDataset[]               @relation("AnalysisDatasetUploader")
-  analysisConversations                 AnalysisConversation[]          @relation("AnalysisConversationUser")
+  organization                          Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDrafts                           EmailDraft[]
+  ownedTaskInstances                    TaskInstance[]               @relation("TaskInstanceOwner")
+  taskInstanceCollaborations            TaskInstanceCollaborator[]
+  taskInstanceComments                  TaskInstanceComment[]
+  reviewedItems                         CollectedItem[]              @relation("CollectedItemReviewer")
+  ownedBoards                           Board[]                      @relation("BoardOwner")
+  createdBoards                         Board[]                      @relation("BoardCreator")
+  boardCollaborations                   BoardCollaborator[]
+  ownedSubtasks                         Subtask[]                    @relation("SubtaskOwner")
+  uploadedAttachments                   Attachment[]                 @relation("AttachmentUploader")
+  reviewedMessages                      Message[]                    @relation("MessageReviewer")
+  reviewAuditLogs                       ReviewAuditLog[]             @relation("ReviewAuditAuthor")
+  connectedEmailAccounts                ConnectedEmailAccount[]
+  createdDatabases                      Database[]                   @relation("DatabaseCreator")
+  importedDatabases                     Database[]                   @relation("DatabaseImporter")
+  createdReportDefinitions              ReportDefinition[]           @relation("ReportDefinitionCreator")
+  reportViewerPermissions               GeneratedReportViewer[]
+  reportDefinitionViewerPermissions     ReportDefinitionViewer[]     @relation("ReportDefinitionViewerUser")
+  createdFormDefinitions                FormDefinition[]             @relation("FormDefinitionCreator")
+  formRequests                          FormRequest[]                @relation("FormRequestRecipient")
+  completedReconciliations              ReconciliationRun[]          @relation("ReconciliationCompleter")
+  notifications                         Notification[]               @relation("NotificationRecipient")
+  formDefinitionViewerPermissions       FormDefinitionViewer[]       @relation("FormDefinitionViewerUser")
+  reconciliationConfigViewerPermissions ReconciliationConfigViewer[] @relation("ReconciliationConfigViewerUser")
+  databaseViewerPermissions             DatabaseViewer[]             @relation("DatabaseViewerUser")
+  createdReconciliationConfigs          ReconciliationConfig[]       @relation("ReconciliationConfigCreator")
+  createdAgents                         AgentDefinition[]            @relation("AgentCreator")
+  createdAutomationRules                AutomationRule[]             @relation("AutomationRuleCreator")
+  createdRequestTemplates               RequestTemplate[]            @relation("RequestTemplateCreator")
+  uploadedAnalysisDatasets              AnalysisDataset[]            @relation("AnalysisDatasetUploader")
+  analysisConversations                 AnalysisConversation[]       @relation("AnalysisConversationUser")
+
+  // Soft delete reverse relations
+  deletedDatabases             Database[]             @relation("DatabaseDeleter")
+  deletedFormDefinitions       FormDefinition[]       @relation("FormDefinitionDeleter")
+  deletedReportDefinitions     ReportDefinition[]     @relation("ReportDefinitionDeleter")
+  deletedBoards                Board[]                @relation("BoardDeleter")
+  deletedTaskInstances         TaskInstance[]         @relation("TaskInstanceDeleter")
+  deletedReconciliationConfigs ReconciliationConfig[] @relation("ReconciliationConfigDeleter")
+  deletedAgentDefinitions      AgentDefinition[]      @relation("AgentDefinitionDeleter")
+  deletedEntities              Entity[]               @relation("EntityDeleter")
+  deletedGroups                Group[]                @relation("GroupDeleter")
 
   @@index([organizationId])
   @@index([email])
@@ -274,22 +285,22 @@ model User {
 
 model Notification {
   id             String   @id @default(cuid())
-  userId         String   // Recipient user
+  userId         String // Recipient user
   organizationId String
-  type           String   // "comment", "reply", "status_change", "collaborator_added", "request_sent", "form_response"
-  title          String   // Short summary
-  body           String?  // Optional longer description
+  type           String // "comment", "reply", "status_change", "collaborator_added", "request_sent", "form_response"
+  title          String // Short summary
+  body           String? // Optional longer description
   read           Boolean  @default(false)
   // Links to the source
   taskInstanceId String?  @map("jobId")
   requestId      String?  @map("taskId")
-  actorId        String?  // User who triggered the notification (null for system)
-  metadata       Json?    // Additional context (e.g. old/new status)
+  actorId        String? // User who triggered the notification (null for system)
+  metadata       Json? // Additional context (e.g. old/new status)
   createdAt      DateTime @default(now())
 
   user         User          @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskInstance TaskInstance?  @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
+  taskInstance TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
 
   @@index([userId, read])
   @@index([userId, createdAt])
@@ -306,8 +317,8 @@ model Entity {
   contactType            ContactType @default(UNKNOWN) // @deprecated - use isInternal instead
   contactTypeCustomLabel String? // @deprecated
   isInternal             Boolean     @default(false) // true = internal (employee), false = external (client/vendor)
-  mergeRemoteId          String?     // Merge.dev remote_id for contacts synced from accounting software
-  addressStreet1         String?     // Primary address from accounting system
+  mergeRemoteId          String? // Merge.dev remote_id for contacts synced from accounting software
+  addressStreet1         String? // Primary address from accounting system
   addressStreet2         String?
   addressCity            String?
   addressState           String?
@@ -317,7 +328,12 @@ model Entity {
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
   organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deletedBy           User?                      @relation("EntityDeleter", fields: [deletedById], references: [id])
   groups              EntityGroup[]
   requests            Request[]
   messages            Message[]
@@ -331,6 +347,7 @@ model Entity {
   @@index([organizationId, email])
   @@index([organizationId, isInternal])
   @@index([organizationId, mergeRemoteId])
+  @@index([organizationId, deletedAt])
 }
 
 model Group {
@@ -342,11 +359,17 @@ model Group {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deletedBy    User?           @relation("GroupDeleter", fields: [deletedById], references: [id])
   entities     EntityGroup[]
   schedules    AgentSchedule[]
 
   @@index([organizationId])
+  @@index([organizationId, deletedAt])
 }
 
 model EntityGroup {
@@ -401,7 +424,7 @@ model TaskInstance {
   ownerId        String // Required: accountable user for this job
   status         JobStatus @default(NOT_STARTED)
   dueDate        DateTime? // Target completion date (computed from targetDateRule + board period)
-  targetDateRule Json?      // Accounting-friendly pattern: { type: "day_of_month", day: 28 } etc.
+  targetDateRule Json? // Accounting-friendly pattern: { type: "day_of_month", day: 28 } etc.
   labels         Json? // Flexible tagging/categorization
   boardId        String? // Optional: parent Board for period-based organization
   sortOrder      Int?      @default(0) // Order within board for drag-drop reordering
@@ -409,43 +432,48 @@ model TaskInstance {
   customFields   Json? // Custom column data for configurable table
   structuredData Json? // Structured data storage
   isSnapshot     Boolean   @default(false) // If true, this instance is an immutable historical record
-  
+
   // Report configuration - any task can have a report linked
-  reportDefinitionId     String?
-  reportFilterBindings   Json?    // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
-  
+  reportDefinitionId   String?
+  reportFilterBindings Json? // Dynamic filters: { "location": ["Bixby, OK"], "brand": ["CHIPOTLE"] }
+
   // Reconciliation configuration - any task can point to a reusable reconciliation config
   reconciliationConfigId String?
 
   // Task type - optional classification for agent integration
-  taskType               String?  // "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
-  
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  completedAt    DateTime? // When the task was completed — used for target vs actual analytics
+  taskType String? // "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
 
-  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lineage         TaskLineage?               @relation(fields: [lineageId], references: [id], onDelete: SetNull)
-  client          Entity?                    @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
-  owner           User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
-  board           Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
-  reportDefinition ReportDefinition?         @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
-  reconciliationConfig ReconciliationConfig? @relation(fields: [reconciliationConfigId], references: [id], onDelete: SetNull)
-  collaborators   TaskInstanceCollaborator[] // Team members who can collaborate on this job
-  requests        Request[] // Child tasks (requests) belonging to this job
-  emailDrafts     EmailDraft[] // Request-level association
-  comments        TaskInstanceComment[] // Internal collaboration comments
-  collectedItems  CollectedItem[] // Evidence/attachments collected for this job
-  subtasks        Subtask[] // Checklist subitems within this job
-  attachments     Attachment[] // Direct file attachments on this job
-  generatedReports GeneratedReport[] // Reports generated for this task
-  formRequests     FormRequest[] // Form requests sent for this task
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime? // When the task was completed — used for target vs actual analytics
 
-  taskInstanceLabels TaskInstanceLabel[] // Item-scoped labels for contacts
-  reconciliationRuns ReconciliationRun[] // Reconciliation runs triggered from this task
-  notifications      Notification[] // Notifications related to this task
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineage              TaskLineage?               @relation(fields: [lineageId], references: [id], onDelete: SetNull)
+  client               Entity?                    @relation("TaskInstanceClient", fields: [clientId], references: [id], onDelete: SetNull)
+  owner                User                       @relation("TaskInstanceOwner", fields: [ownerId], references: [id])
+  deletedBy            User?                      @relation("TaskInstanceDeleter", fields: [deletedById], references: [id])
+  board                Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  reportDefinition     ReportDefinition?          @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
+  reconciliationConfig ReconciliationConfig?      @relation(fields: [reconciliationConfigId], references: [id], onDelete: SetNull)
+  collaborators        TaskInstanceCollaborator[] // Team members who can collaborate on this job
+  requests             Request[] // Child tasks (requests) belonging to this job
+  emailDrafts          EmailDraft[] // Request-level association
+  comments             TaskInstanceComment[] // Internal collaboration comments
+  collectedItems       CollectedItem[] // Evidence/attachments collected for this job
+  subtasks             Subtask[] // Checklist subitems within this job
+  attachments          Attachment[] // Direct file attachments on this job
+  generatedReports     GeneratedReport[] // Reports generated for this task
+  formRequests         FormRequest[] // Form requests sent for this task
+
+  taskInstanceLabels    TaskInstanceLabel[] // Item-scoped labels for contacts
+  reconciliationRuns    ReconciliationRun[] // Reconciliation runs triggered from this task
+  notifications         Notification[] // Notifications related to this task
   analysisConversations AnalysisConversation[] // Analysis conversations linked to this task
-  activityEvents     ActivityEvent[] // Unified activity audit trail
+  activityEvents        ActivityEvent[] // Unified activity audit trail
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -457,6 +485,7 @@ model TaskInstance {
   @@index([reconciliationConfigId])
   @@index([organizationId, boardId, status]) // Board page: filtered task queries
   @@index([organizationId, ownerId, status]) // My tasks: owner-scoped queries
+  @@index([organizationId, deletedAt])
   @@map("Job")
 }
 
@@ -543,7 +572,7 @@ model Request {
   entityId                 String? // Optional: contact may be deleted but request history preserved
   campaignName             String?
   campaignType             CampaignType?
-  requestType              String?       // "standard" | "data" | "form" - source of the request
+  requestType              String? // "standard" | "data" | "form" - source of the request
   status                   TaskStatus    @default(AWAITING_RESPONSE)
   threadId                 String        @unique
   replyToEmail             String?
@@ -719,33 +748,33 @@ model ConnectedEmailAccount {
 }
 
 model AutomationRule {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   organizationId String
   name           String
   trigger        String // "board_created" | "board_status_changed" | "scheduled" | "data_condition" | "data_uploaded" | "form_submitted" | "compound"
   conditions     Json // Trigger-specific conditions (see lib/workflows/types.ts)
   actions        Json // WorkflowDefinition: { version: 1, steps: WorkflowStep[] }
-  isActive       Boolean  @default(true)
+  isActive       Boolean @default(true)
 
   // Scheduling fields (for trigger = "scheduled" or "compound")
-  cronExpression String?   // Cron format via cron-parser
-  timezone       String?   // IANA timezone, e.g. "America/New_York"
+  cronExpression String? // Cron format via cron-parser
+  timezone       String? // IANA timezone, e.g. "America/New_York"
   nextRunAt      DateTime? // Next scheduled execution
   lastRunAt      DateTime? // Last successful execution
   armedAt        DateTime? // Compound trigger: set when time condition met, cleared after workflow fires
   dataSettledAt  DateTime? // Compound trigger: when data condition first matched (for settling window)
 
   // Task linkage
-  lineageId      String?   // Links to recurring task lineage
-  taskType       String?   // "reconciliation" | "report" | "form" | "request" | "analysis"
+  lineageId String? // Links to recurring task lineage
+  taskType  String? // "reconciliation" | "report" | "form" | "request" | "analysis"
 
-  createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?          @relation("AutomationRuleCreator", fields: [createdById], references: [id])
-  lineage      TaskLineage?   @relation(fields: [lineageId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("AutomationRuleCreator", fields: [createdById], references: [id])
+  lineage      TaskLineage?  @relation(fields: [lineageId], references: [id], onDelete: SetNull)
   workflowRuns WorkflowRun[]
 
   @@index([organizationId])
@@ -918,16 +947,22 @@ model Board {
   updatedAt   DateTime  @updatedAt
   closedAt    DateTime? // When the board was closed — used for close-speed analytics
 
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
   organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner            User?               @relation("BoardOwner", fields: [ownerId], references: [id])
   createdBy        User                @relation("BoardCreator", fields: [createdById], references: [id])
+  deletedBy        User?               @relation("BoardDeleter", fields: [deletedById], references: [id])
   collaborators    BoardCollaborator[]
   taskInstances    TaskInstance[]
-  generatedReports GeneratedReport[]   // Reports generated for this period
+  generatedReports GeneratedReport[] // Reports generated for this period
 
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([ownerId])
+  @@index([organizationId, deletedAt])
 }
 
 // BoardCollaborator join table for team collaboration on Boards
@@ -1171,138 +1206,150 @@ model AIRecommendation {
 // Database represents a structured data store with schema and rows
 // This is the core model for the Databases feature - standalone structured data management
 model Database {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  organizationId  String
+  id             String  @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String
 
   // Schema definition (JSON) - DatabaseSchema type
   // { columns: DatabaseSchemaColumn[], version: number }
-  schema          Json
-  identifierKeys  Json     // String[] - Column keys that together form the unique row identifier (composite key)
+  schema         Json
+  identifierKeys Json // String[] - Column keys that together form the unique row identifier (composite key)
 
   // Current data (JSON array of rows) - DatabaseRow[]
-  rows            Json     @default("[]")
-  rowCount        Int      @default(0)
+  rows     Json @default("[]")
+  rowCount Int  @default(0)
 
   // Integration source tracking
-  sourceType      String?  // null = manual, "merge_accounts", "merge_invoices", "merge_gl", etc.
-  isReadOnly      Boolean  @default(false) // true for integration-synced databases
-  syncFilter      Json?    // Column-value filters for accounting source: [{ column: "status", value: "UNPAID" }]
+  sourceType       String? // null = manual, "merge_accounts", "merge_invoices", "merge_gl", etc.
+  isReadOnly       Boolean @default(false) // true for integration-synced databases
+  syncFilter       Json? // Column-value filters for accounting source: [{ column: "status", value: "UNPAID" }]
   lastSyncAsOfDate String? // Last "as of" date used for sync (YYYY-MM-DD)
-  syncStatus      String?  // null | "syncing" | "error" | "success"
-  lastSyncError   String?  // Error message from last sync attempt
+  syncStatus       String? // null | "syncing" | "error" | "success"
+  lastSyncError    String? // Error message from last sync attempt
 
   // Analysis / Parquet cache (for DuckDB analytical queries)
-  parquetBlobKey         String?   // Vercel Blob key, e.g., "databases/{orgId}/{id}.parquet"
-  parquetBlobUrl         String?   // Public URL for the Parquet file
-  parquetRowCount        Int?      // Row count at time of Parquet generation
+  parquetBlobKey         String? // Vercel Blob key, e.g., "databases/{orgId}/{id}.parquet"
+  parquetBlobUrl         String? // Public URL for the Parquet file
+  parquetRowCount        Int? // Row count at time of Parquet generation
   parquetGeneratedAt     DateTime? // When the Parquet was last built
-  parquetStatus          String?   // null | "building" | "ready" | "stale" | "error"
-  parquetError           String?   // Error message if Parquet build failed
-  analysisSchemaSnapshot Json?     // DuckDB column types + sample values for LLM context
-  analysisSummaryStats   Json?     // Row count + per-column stats for LLM context
-  analysisTableName      String?   // Sanitized table name for DuckDB queries
+  parquetStatus          String? // null | "building" | "ready" | "stale" | "error"
+  parquetError           String? // Error message if Parquet build failed
+  analysisSchemaSnapshot Json? // DuckDB column types + sample values for LLM context
+  analysisSummaryStats   Json? // Row count + per-column stats for LLM context
+  analysisTableName      String? // Sanitized table name for DuckDB queries
 
   // Metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  lastImportedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String
+  lastImportedAt   DateTime?
   lastImportedById String?
 
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy          User               @relation("DatabaseCreator", fields: [createdById], references: [id])
-  lastImportedBy     User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
-  reportDefinitions  ReportDefinition[]
-  formDefinitions    FormDefinition[]
-  viewers            DatabaseViewer[]
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy         User               @relation("DatabaseCreator", fields: [createdById], references: [id])
+  lastImportedBy    User?              @relation("DatabaseImporter", fields: [lastImportedById], references: [id])
+  deletedBy         User?              @relation("DatabaseDeleter", fields: [deletedById], references: [id])
+  reportDefinitions ReportDefinition[]
+  formDefinitions   FormDefinition[]
+  viewers           DatabaseViewer[]
 
   @@index([organizationId])
   @@index([organizationId, name])
   @@index([organizationId, sourceType])
+  @@index([organizationId, deletedAt])
 }
 
 // FormDefinition represents a form template for collecting structured data from users
 // Forms are linked to a Database where responses are stored as rows
 model FormDefinition {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  organizationId  String
-  
+  id             String  @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String
+
   // Form field definitions (JSON array)
   // Array of: { key, label, type, required, helpText?, defaultValue?, options?, validation?, order }
-  fields          Json     @default("[]")
-  
+  fields Json @default("[]")
+
   // Form settings
   // { allowEdit: boolean, enforceDeadline: boolean }
-  settings        Json     @default("{}")
-  
+  settings Json @default("{}")
+
   // Target database for storing responses
-  databaseId      String?
+  databaseId    String?
   // Mapping from form field keys to database column keys
   // { formFieldKey: databaseColumnKey }
-  columnMapping   Json     @default("{}")
-  
+  columnMapping Json    @default("{}")
+
   // Metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  
-  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  database        Database?     @relation(fields: [databaseId], references: [id], onDelete: SetNull)
-  createdBy       User          @relation("FormDefinitionCreator", fields: [createdById], references: [id])
-  formRequests    FormRequest[]
-  viewers         FormDefinitionViewer[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  database     Database?              @relation(fields: [databaseId], references: [id], onDelete: SetNull)
+  createdBy    User                   @relation("FormDefinitionCreator", fields: [createdById], references: [id])
+  deletedBy    User?                  @relation("FormDefinitionDeleter", fields: [deletedById], references: [id])
+  formRequests FormRequest[]
+  viewers      FormDefinitionViewer[]
 
   @@index([organizationId])
   @@index([databaseId])
+  @@index([organizationId, deletedAt])
 }
 
 // FormRequest represents a form sent to a specific user for completion
 // Each request tracks submission status and links to the database row created/updated
 model FormRequest {
-  id                String    @id @default(cuid())
-  organizationId    String
-  taskInstanceId    String
-  formDefinitionId  String
-  
+  id               String @id @default(cuid())
+  organizationId   String
+  taskInstanceId   String
+  formDefinitionId String
+
   // Recipient can be either an internal user OR an external entity (stakeholder)
-  recipientUserId   String?   // Internal user (has login account)
-  recipientEntityId String?   // External stakeholder (no login account)
-  
+  recipientUserId   String? // Internal user (has login account)
+  recipientEntityId String? // External stakeholder (no login account)
+
   // Access token for external stakeholders to access form without login
-  accessToken       String?   @unique
-  
+  accessToken String? @unique
+
   // Status: PENDING (awaiting response), SUBMITTED (completed), EXPIRED (past deadline)
-  status            String    @default("PENDING")
-  submittedAt       DateTime?
-  
+  status      String    @default("PENDING")
+  submittedAt DateTime?
+
   // Response data (JSON object of form field values)
-  responseData      Json?
+  responseData     Json?
   // Index into database.rows array for the row created for this request
-  databaseRowIndex  Int?
-  
+  databaseRowIndex Int?
+
   // Deadline and reminders
-  deadlineDate      DateTime?
-  remindersEnabled  Boolean   @default(false)
-  remindersSent     Int       @default(0)
-  remindersMaxCount Int       @default(3)
-  reminderFrequencyHours Int  @default(72) // 3 days default
-  nextReminderAt    DateTime?
-  
+  deadlineDate           DateTime?
+  remindersEnabled       Boolean   @default(false)
+  remindersSent          Int       @default(0)
+  remindersMaxCount      Int       @default(3)
+  reminderFrequencyHours Int       @default(72) // 3 days default
+  nextReminderAt         DateTime?
+
   // Metadata
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
-  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskInstance      TaskInstance   @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  formDefinition    FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
-  recipientUser     User?          @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
-  recipientEntity   Entity?        @relation("FormRequestEntity", fields: [recipientEntityId], references: [id])
-  attachments       FormAttachment[]
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taskInstance    TaskInstance     @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  formDefinition  FormDefinition   @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
+  recipientUser   User?            @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
+  recipientEntity Entity?          @relation("FormRequestEntity", fields: [recipientEntityId], references: [id])
+  attachments     FormAttachment[]
+
   @@index([organizationId])
   @@index([taskInstanceId])
   @@index([recipientUserId])
@@ -1315,21 +1362,21 @@ model FormRequest {
 // FormAttachment stores files uploaded via form submissions
 // Files are stored in Vercel Blob, with metadata tracked here
 model FormAttachment {
-  id              String       @id @default(cuid())
-  organizationId  String
-  formRequestId   String
-  fieldKey        String       // Which form field this belongs to
-  
-  filename        String       // Original filename
-  url             String       // Vercel Blob URL
-  mimeType        String       // e.g., "application/pdf"
-  sizeBytes       Int
-  
-  uploadedAt      DateTime     @default(now())
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  formRequest     FormRequest  @relation(fields: [formRequestId], references: [id], onDelete: Cascade)
-  
+  id             String @id @default(cuid())
+  organizationId String
+  formRequestId  String
+  fieldKey       String // Which form field this belongs to
+
+  filename  String // Original filename
+  url       String // Vercel Blob URL
+  mimeType  String // e.g., "application/pdf"
+  sizeBytes Int
+
+  uploadedAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  formRequest  FormRequest  @relation(fields: [formRequestId], references: [id], onDelete: Cascade)
+
   @@index([organizationId])
   @@index([formRequestId])
   @@index([formRequestId, fieldKey])
@@ -1339,105 +1386,112 @@ model FormAttachment {
 // Users define columns (source + formula) and formula rows (aggregations)
 // The report renders data from a linked Database
 model ReportDefinition {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  organizationId  String
-  databaseId      String
-  
+  id             String  @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String
+  databaseId     String
+
   // Period configuration
-  cadence         String   // "daily" | "monthly" | "quarterly" | "annual"
-  dateColumnKey   String   // Database column key containing date data for period filtering
-  
+  cadence       String // "daily" | "monthly" | "quarterly" | "annual"
+  dateColumnKey String // Database column key containing date data for period filtering
+
   // Layout mode: "standard" (rows=db rows, cols=selected) or "pivot" (cols=pivot values, rows=metrics)
-  layout          String   @default("standard")
-  
+  layout String @default("standard")
+
   // === Standard layout fields ===
   // Column configuration (selected database columns + formula columns)
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, dataType, order }
-  columns         Json     @default("[]")
-  
+  columns Json @default("[]")
+
   // Formula rows (aggregation rows at bottom, like Excel SUM rows)
   // Array of: { key, label, columnFormulas: { [colKey]: "SUM"|"AVG"|expression }, order }
-  formulaRows     Json     @default("[]")
-  
+  formulaRows Json @default("[]")
+
   // === Pivot / Accounting layout fields ===
   // Database column whose unique values become column headers (e.g., project_name, as_of_date)
-  pivotColumnKey  String?
+  pivotColumnKey String?
 
   // === Accounting layout fields ===
   // Column identifying each row (e.g., account_name)
-  rowColumnKey     String?
+  rowColumnKey   String?
   // Column providing cell values (e.g., current_balance)
-  valueColumnKey   String?
-  
+  valueColumnKey String?
+
   // Metric rows for pivot layout
   // Array of: { key, label, type: "source"|"formula", sourceColumnKey?, expression?, format, order }
-  metricRows      Json     @default("[]")
-  
+  metricRows Json @default("[]")
+
   // Formula columns for pivot layout - computed columns that aggregate across pivot columns
   // Array of: { key, label, expression, order }
   pivotFormulaColumns Json @default("[]")
-  
+
   // Variance analysis configuration
-  compareMode     String   @default("none")  // "none" | "mom" | "yoy"
-  
+  compareMode String @default("none") // "none" | "mom" | "yoy"
+
   // Filter configuration - which database columns to expose as filters
   // Array of column keys: ["location", "brand", "pm"]
   // Auto-derived from filterBindings keys when filterBindings is set
-  filterColumnKeys Json    @default("[]")
+  filterColumnKeys Json @default("[]")
 
   // Baked-in filter values for this report definition
   // Record<string, string[]> e.g. { "location": ["Bixby, OK"], "pm": ["Caleb"] }
   // When set, these filters are enforced server-side for all viewers
-  filterBindings   Json?
+  filterBindings Json?
 
   // Pivot/accounting column sorting configuration
   // { type: "alphabetical"|"by_row", direction: "asc"|"desc", rowKey?: string }
-  pivotSortConfig  Json?
+  pivotSortConfig Json?
 
   // Metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  
-  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  database         Database         @relation(fields: [databaseId], references: [id], onDelete: Cascade)
-  createdBy        User             @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
-  taskInstances    TaskInstance[]   // Tasks that use this report template
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  database         Database                 @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  createdBy        User                     @relation("ReportDefinitionCreator", fields: [createdById], references: [id])
+  deletedBy        User?                    @relation("ReportDefinitionDeleter", fields: [deletedById], references: [id])
+  taskInstances    TaskInstance[] // Tasks that use this report template
   generatedReports GeneratedReport[] // Reports generated from this template
   viewers          ReportDefinitionViewer[] // Users with viewer access to reports from this builder
 
   @@index([organizationId])
   @@index([databaseId])
+  @@index([organizationId, deletedAt])
 }
 
 // GeneratedReport stores the output of a report for a specific period
 // Created automatically when a board with REPORTS tasks completes, or manually by user
 model GeneratedReport {
-  id                 String   @id @default(cuid())
+  id                 String  @id @default(cuid())
   organizationId     String
   reportDefinitionId String
-  taskInstanceId     String?  // Source task that triggered generation (null for manual reports)
-  boardId            String?  // Board period that was completed (null for manual reports)
-  periodKey          String   // e.g., "2026-01" for monthly, "2026-Q1" for quarterly
-  source             String   @default("task") // "task" or "manual"
-  
+  taskInstanceId     String? // Source task that triggered generation (null for manual reports)
+  boardId            String? // Board period that was completed (null for manual reports)
+  periodKey          String // e.g., "2026-01" for monthly, "2026-Q1" for quarterly
+  source             String  @default("task") // "task" or "manual"
+
   // Snapshot of report output at generation time
-  data               Json     // { columns, rows, formulaRows, metrics, etc. }
-  
+  data Json // { columns, rows, formulaRows, metrics, etc. }
+
   // Metadata
-  generatedAt        DateTime @default(now())
-  generatedBy        String   // "system" or userId
-  
-  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reportDefinition   ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
-  taskInstance       TaskInstance?    @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  board              Board?           @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  viewers            GeneratedReportViewer[]
-  
+  generatedAt DateTime @default(now())
+  generatedBy String // "system" or userId
+
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reportDefinition ReportDefinition        @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
+  taskInstance     TaskInstance?           @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  board            Board?                  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  viewers          GeneratedReportViewer[]
+
   @@index([organizationId, periodKey])
   @@index([reportDefinitionId])
+  @@index([reportDefinitionId, organizationId])
   @@index([boardId])
   @@index([taskInstanceId])
 }
@@ -1450,10 +1504,10 @@ model GeneratedReportViewer {
   userId            String
   addedAt           DateTime @default(now())
   addedBy           String
-  
+
   generatedReport GeneratedReport @relation(fields: [generatedReportId], references: [id], onDelete: Cascade)
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@unique([generatedReportId, userId])
   @@index([userId])
 }
@@ -1461,14 +1515,14 @@ model GeneratedReportViewer {
 // ReportDefinitionViewer - join table for report builder viewer permissions
 // Admins can see all reports; non-admins must be explicit viewers of the report builder
 model ReportDefinitionViewer {
-  id                   String   @id @default(cuid())
-  reportDefinitionId   String
-  userId               String
-  addedAt              DateTime @default(now())
-  addedBy              String
+  id                 String   @id @default(cuid())
+  reportDefinitionId String
+  userId             String
+  addedAt            DateTime @default(now())
+  addedBy            String
 
-  reportDefinition     ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
-  user                 User             @relation("ReportDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  reportDefinition ReportDefinition @relation(fields: [reportDefinitionId], references: [id], onDelete: Cascade)
+  user             User             @relation("ReportDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([reportDefinitionId, userId])
   @@index([userId])
@@ -1476,14 +1530,14 @@ model ReportDefinitionViewer {
 
 // FormDefinitionViewer - join table for form builder viewer permissions
 model FormDefinitionViewer {
-  id                 String   @id @default(cuid())
-  formDefinitionId   String
-  userId             String
-  addedAt            DateTime @default(now())
-  addedBy            String
+  id               String   @id @default(cuid())
+  formDefinitionId String
+  userId           String
+  addedAt          DateTime @default(now())
+  addedBy          String
 
-  formDefinition     FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
-  user               User           @relation("FormDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  formDefinition FormDefinition @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
+  user           User           @relation("FormDefinitionViewerUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([formDefinitionId, userId])
   @@index([userId])
@@ -1491,14 +1545,14 @@ model FormDefinitionViewer {
 
 // ReconciliationConfigViewer - join table for reconciliation config viewer permissions
 model ReconciliationConfigViewer {
-  id                       String   @id @default(cuid())
-  reconciliationConfigId   String
-  userId                   String
-  addedAt                  DateTime @default(now())
-  addedBy                  String
+  id                     String   @id @default(cuid())
+  reconciliationConfigId String
+  userId                 String
+  addedAt                DateTime @default(now())
+  addedBy                String
 
-  reconciliationConfig     ReconciliationConfig @relation(fields: [reconciliationConfigId], references: [id], onDelete: Cascade)
-  user                     User                 @relation("ReconciliationConfigViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  reconciliationConfig ReconciliationConfig @relation(fields: [reconciliationConfigId], references: [id], onDelete: Cascade)
+  user                 User                 @relation("ReconciliationConfigViewerUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([reconciliationConfigId, userId])
   @@index([userId])
@@ -1506,14 +1560,14 @@ model ReconciliationConfigViewer {
 
 // DatabaseViewer - join table for database viewer permissions
 model DatabaseViewer {
-  id          String   @id @default(cuid())
-  databaseId  String
-  userId      String
-  addedAt     DateTime @default(now())
-  addedBy     String
+  id         String   @id @default(cuid())
+  databaseId String
+  userId     String
+  addedAt    DateTime @default(now())
+  addedBy    String
 
-  database    Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
-  user        User     @relation("DatabaseViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  database Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  user     User     @relation("DatabaseViewerUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([databaseId, userId])
   @@index([userId])
@@ -1542,54 +1596,60 @@ model AppError {
 // ── Reconciliation Feature ──────────────────────────────────────────────
 
 enum ReconciliationRunStatus {
-  PENDING      // Awaiting file uploads
-  PROCESSING   // Matching engine running
-  REVIEW       // Matches generated, awaiting human review
-  COMPLETE     // Signed off by user
+  PENDING // Awaiting file uploads
+  PROCESSING // Matching engine running
+  REVIEW // Matches generated, awaiting human review
+  COMPLETE // Signed off by user
 }
 
 // Reusable reconciliation configuration (like ReportDefinition)
 // Created independently, then linked to tasks via TaskInstance.reconciliationConfigId
 model ReconciliationConfig {
-  id             String   @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String
 
-  name           String   // "Chase Checking Bank Rec"
+  name String // "Chase Checking Bank Rec"
 
   // Source type: "document_document" | "database_document" | "database_database"
-  sourceType     String   @default("document_document")
+  sourceType String @default("document_document")
 
   // Source definitions (JSON)
   // { label: string, columns: { key: string, label: string, type: "date"|"amount"|"text"|"reference" }[] }
-  sourceAConfig  Json
-  sourceBConfig  Json
+  sourceAConfig Json
+  sourceBConfig Json
 
   // Matching rules (JSON)
   // { amountMatch: "exact"|"tolerance", amountTolerance?: number, dateWindowDays: number, fuzzyDescription: boolean }
-  matchingRules  Json
+  matchingRules Json
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  createdById    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy      User?           @relation("ReconciliationConfigCreator", fields: [createdById], references: [id])
-  taskInstances  TaskInstance[]   // Tasks that use this config
-  runs           ReconciliationRun[]
-  viewers        ReconciliationConfigViewer[]
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization  Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User?                        @relation("ReconciliationConfigCreator", fields: [createdById], references: [id])
+  deletedBy     User?                        @relation("ReconciliationConfigDeleter", fields: [deletedById], references: [id])
+  taskInstances TaskInstance[] // Tasks that use this config
+  runs          ReconciliationRun[]
+  viewers       ReconciliationConfigViewer[]
 
   @@index([organizationId])
+  @@index([organizationId, deletedAt])
 }
 
 // One run per period execution (upload two files + matching results)
 model ReconciliationRun {
-  id              String   @id @default(cuid())
-  organizationId  String
-  configId        String
-  boardId         String?  // Optional: which board/period this run belongs to
-  taskInstanceId  String?  // Which task triggered this run
+  id             String  @id @default(cuid())
+  organizationId String
+  configId       String
+  boardId        String? // Optional: which board/period this run belongs to
+  taskInstanceId String? // Which task triggered this run
 
-  status          ReconciliationRunStatus @default(PENDING)
+  status ReconciliationRunStatus @default(PENDING)
 
   // Uploaded source files
   sourceAFileKey  String?
@@ -1598,32 +1658,32 @@ model ReconciliationRun {
   sourceBFileName String?
 
   // Parsed data (JSON arrays of row objects)
-  sourceARows     Json?
-  sourceBRows     Json?
+  sourceARows Json?
+  sourceBRows Json?
 
   // Match results (JSON)
   // { matched: { sourceAIdx, sourceBIdx, confidence, method, reasoning? }[], unmatchedA: number[], unmatchedB: number[] }
-  matchResults    Json?
+  matchResults Json?
 
   // Exception classifications (JSON)
   // { [index]: { category, reason, resolution?, resolvedBy?, notes? } }
-  exceptions      Json?
+  exceptions Json?
 
   // Summary stats
-  totalSourceA    Int      @default(0)
-  totalSourceB    Int      @default(0)
-  matchedCount    Int      @default(0)
-  exceptionCount  Int      @default(0)
-  variance        Float    @default(0)  // Dollar variance
+  totalSourceA   Int   @default(0)
+  totalSourceB   Int   @default(0)
+  matchedCount   Int   @default(0)
+  exceptionCount Int   @default(0)
+  variance       Float @default(0) // Dollar variance
 
-  completedAt     DateTime?
-  completedBy     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  completedAt DateTime?
+  completedBy String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   config          ReconciliationConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   taskInstance    TaskInstance?        @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
-  completedByUser User?               @relation("ReconciliationCompleter", fields: [completedBy], references: [id])
+  completedByUser User?                @relation("ReconciliationCompleter", fields: [completedBy], references: [id])
 
   @@index([organizationId])
   @@index([configId])
@@ -1636,39 +1696,39 @@ model ReconciliationRun {
 // Accounting software integration via Merge.dev
 // Stores connection details and sync state per organization
 model AccountingIntegration {
-  id                String   @id @default(cuid())
-  organizationId    String   @unique // One integration per org
+  id             String @id @default(cuid())
+  organizationId String @unique // One integration per org
 
   // Merge.dev connection
-  accountToken      String   // Encrypted - Merge account_token
-  integrationName   String?  // e.g. "Xero", "QuickBooks Online"
-  integrationSlug   String?  // e.g. "xero", "quickbooks-online"
-  endUserEmail      String?  // Email of user who connected
+  accountToken    String // Encrypted - Merge account_token
+  integrationName String? // e.g. "Xero", "QuickBooks Online"
+  integrationSlug String? // e.g. "xero", "quickbooks-online"
+  endUserEmail    String? // Email of user who connected
 
   // Connection state
-  isActive          Boolean  @default(true)
-  connectedAt       DateTime @default(now())
-  disconnectedAt    DateTime?
+  isActive       Boolean   @default(true)
+  connectedAt    DateTime  @default(now())
+  disconnectedAt DateTime?
 
   // Sync configuration (JSON) - which models to sync + interval
   // { contacts: true, invoices: true, accounts: true, journalEntries: true,
   //   payments: true, glTransactions: true, syncIntervalMinutes: 60 }
-  syncConfig        Json     @default("{}")
+  syncConfig Json @default("{}")
 
   // Per-model sync state (JSON)
   // { contacts: { lastSyncAt, status, error, rowCount },
   //   invoices: { lastSyncAt, status, error, rowCount }, ... }
-  syncState         Json     @default("{}")
+  syncState Json @default("{}")
 
   // Global sync state
-  lastSyncAt        DateTime?
-  lastSyncError     String?
-  syncStatus        String   @default("idle") // "idle" | "syncing" | "error"
+  lastSyncAt    DateTime?
+  lastSyncError String?
+  syncStatus    String    @default("idle") // "idle" | "syncing" | "error"
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([isActive])
@@ -1678,66 +1738,72 @@ model AccountingIntegration {
 
 // AgentDefinition represents a configured AI agent optionally linked to a task type and config
 model AgentDefinition {
-  id              String   @id @default(cuid())
-  organizationId  String
-  taskType        String?  // "reconciliation" | "report" | "form" | "request" | "analysis"
-  name            String   // "Chase Bank Rec Agent"
-  description     String?
-  configId        String?  // ReconciliationConfig id, ReportDefinition id, etc.
-  configType      String?  // "reconciliation_config" | "report_definition"
-  lineageId       String?  // Links agent to a recurring task lineage
-  settings        Json     @default("{}")
+  id             String   @id @default(cuid())
+  organizationId String
+  taskType       String? // "reconciliation" | "report" | "form" | "request" | "analysis"
+  name           String // "Chase Bank Rec Agent"
+  description    String?
+  configId       String? // ReconciliationConfig id, ReportDefinition id, etc.
+  configType     String? // "reconciliation_config" | "report_definition"
+  lineageId      String? // Links agent to a recurring task lineage
+  settings       Json     @default("{}")
   // { customInstructions, confidenceThreshold, maxIterations, notifyOnCompletion, notifyOnReview }
-  isActive        Boolean  @default(true)
-  createdById     String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive       Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy     User             @relation("AgentCreator", fields: [createdById], references: [id])
-  lineage       TaskLineage?     @relation(fields: [lineageId], references: [id])
-  executions    AgentExecution[]
-  memories      AgentMemory[]
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("AgentCreator", fields: [createdById], references: [id])
+  deletedBy    User?            @relation("AgentDefinitionDeleter", fields: [deletedById], references: [id])
+  lineage      TaskLineage?     @relation(fields: [lineageId], references: [id])
+  executions   AgentExecution[]
+  memories     AgentMemory[]
 
   @@unique([organizationId, configId, lineageId])
   @@index([organizationId])
   @@index([lineageId])
+  @@index([organizationId, deletedAt])
 }
 
 // AgentExecution represents one run of an agent with full reasoning trace
 model AgentExecution {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   organizationId    String
   agentDefinitionId String
-  triggerType       String   // "manual" | "event"
-  triggeredBy       String?  // userId who triggered
+  triggerType       String // "manual" | "event"
+  triggeredBy       String? // userId who triggered
   goal              String
-  inputContext       Json    @default("{}")
-  status            String   @default("running")
+  inputContext      Json    @default("{}")
+  status            String  @default("running")
   // "running" | "completed" | "failed" | "needs_review" | "cancelled"
-  cancelled         Boolean  @default(false)
+  cancelled         Boolean @default(false)
 
-  steps             Json     @default("[]")
+  steps Json @default("[]")
   // Array of { stepNumber, timestamp, reasoning, action, toolName, toolInput, toolOutput, status, model, tokensUsed }
 
-  outcome           Json?
+  outcome Json?
   // { matchRate, matchedCount, exceptionCount, recommended, flaggedForReview, variance, summary }
 
   // Execution metadata
-  promptVersion     String?  // "recon-agent-v1.0" for debugging
-  fallbackUsed      Boolean  @default(false)
-  fallbackReason    String?
-  llmCallCount      Int      @default(0)
-  totalTokensUsed   Int      @default(0)
-  estimatedCostUsd  Float?
-  executionTimeMs   Int?
-  completedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  promptVersion    String? // "recon-agent-v1.0" for debugging
+  fallbackUsed     Boolean   @default(false)
+  fallbackReason   String?
+  llmCallCount     Int       @default(0)
+  totalTokensUsed  Int       @default(0)
+  estimatedCostUsd Float?
+  executionTimeMs  Int?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  agentDefinition  AgentDefinition       @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
-  feedback         AgentFeedback[]
-  metrics          AgentExecutionMetrics?
+  agentDefinition AgentDefinition        @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  feedback        AgentFeedback[]
+  metrics         AgentExecutionMetrics?
 
   @@index([agentDefinitionId, createdAt])
   @@index([organizationId, status])
@@ -1745,27 +1811,27 @@ model AgentExecution {
 
 // AgentMemory stores persistent knowledge the agent learns over time
 model AgentMemory {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   organizationId    String
   agentDefinitionId String
-  scope             String   // "entity" | "pattern" | "config"
-  entityKey         String?  // Vendor name, account number
-  category          String?  // "timing_delay" | "bank_fee" | "column_mapping"
-  content           Json     // Structured memory content
-  conditions        Json?    // When this memory applies: { vendor, amountRange, descContains }
+  scope             String // "entity" | "pattern" | "config"
+  entityKey         String? // Vendor name, account number
+  category          String? // "timing_delay" | "bank_fee" | "column_mapping"
+  content           Json // Structured memory content
+  conditions        Json? // When this memory applies: { vendor, amountRange, descContains }
 
   // Bayesian confidence: confidence = correctCount / totalCount
-  confidence        Float    @default(0.5)
-  correctCount      Int      @default(1)  // Beta prior: starts at 1
-  totalCount        Int      @default(2)  // Beta prior: starts at 2 (gives 0.5)
-  usageCount        Int      @default(0)
-  lastUsedAt        DateTime?
-  isArchived        Boolean  @default(false) // Soft-deleted by TTL cleanup
+  confidence   Float     @default(0.5)
+  correctCount Int       @default(1) // Beta prior: starts at 1
+  totalCount   Int       @default(2) // Beta prior: starts at 2 (gives 0.5)
+  usageCount   Int       @default(0)
+  lastUsedAt   DateTime?
+  isArchived   Boolean   @default(false) // Soft-deleted by TTL cleanup
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  agentDefinition  AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition @relation(fields: [agentDefinitionId], references: [id], onDelete: Cascade)
 
   @@index([agentDefinitionId, scope, confidence])
   @@index([agentDefinitionId, entityKey])
@@ -1774,50 +1840,50 @@ model AgentMemory {
 
 // AgentFeedback stores human corrections on agent recommendations
 model AgentFeedback {
-  id              String   @id @default(cuid())
-  organizationId  String
-  executionId     String
-  feedbackType    String   // "correction" | "approval" | "rejection"
-  originalValue   Json?    // What agent decided
-  correctedValue  Json?    // What human wanted
-  correctedBy     String
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String
+  executionId    String
+  feedbackType   String // "correction" | "approval" | "rejection"
+  originalValue  Json? // What agent decided
+  correctedValue Json? // What human wanted
+  correctedBy    String
+  createdAt      DateTime @default(now())
 
-  execution  AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId])
 }
 
 // AgentExecutionMetrics tracks improvement over time (before/after comparison)
 model AgentExecutionMetrics {
-  id                      String   @id @default(cuid())
-  organizationId          String
-  executionId             String   @unique
-  agentDefinitionId       String
-  periodKey               String?
+  id                String  @id @default(cuid())
+  organizationId    String
+  executionId       String  @unique
+  agentDefinitionId String
+  periodKey         String?
 
   // Before/after comparison (agent's value-add)
-  baselineMatchRate       Float?   // Deterministic-only result
-  agentMatchRate          Float?   // After agent enhancement
-  exceptionsTotal         Int?
-  exceptionsRecommended   Int?     // Agent recommendations made
-  humanCorrections        Int?     // Agent recs that were overridden
+  baselineMatchRate     Float? // Deterministic-only result
+  agentMatchRate        Float? // After agent enhancement
+  exceptionsTotal       Int?
+  exceptionsRecommended Int? // Agent recommendations made
+  humanCorrections      Int? // Agent recs that were overridden
 
   // Memory usage
-  memoriesUsed            Int?
-  memoriesCreated         Int?
-  memoriesUpdated         Int?
+  memoriesUsed    Int?
+  memoriesCreated Int?
+  memoriesUpdated Int?
 
   // Cost tracking
-  llmCallCount            Int?
-  totalTokensUsed         Int?
-  estimatedCostUsd        Float?
-  executionTimeMs         Int?
-  fallbackUsed            Boolean  @default(false)
+  llmCallCount     Int?
+  totalTokensUsed  Int?
+  estimatedCostUsd Float?
+  executionTimeMs  Int?
+  fallbackUsed     Boolean @default(false)
 
-  createdAt               DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  execution  AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([agentDefinitionId, createdAt])
   @@index([agentDefinitionId, periodKey])
@@ -1827,24 +1893,24 @@ model AgentExecutionMetrics {
 
 // WorkflowRun tracks the execution state of a single workflow invocation
 model WorkflowRun {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   automationRuleId String
   organizationId   String
-  status           String   @default("PENDING")
+  status           String    @default("PENDING")
   // "PENDING" | "RUNNING" | "WAITING_APPROVAL" | "COMPLETED" | "FAILED" | "CANCELLED"
-  currentStepId    String?  // ID of the step currently being executed
-  stepResults      Json     @default("[]") // Array of { stepId, outcome, data, completedAt }
-  triggerContext    Json     @default("{}") // Data from the trigger event (boardId, runId, periodKey, etc.)
-  idempotencyKey   String?  @unique // Prevents duplicate runs: "${ruleId}:${triggerType}:${eventId}"
-  triggeredBy      String?  // userId or "system"
+  currentStepId    String? // ID of the step currently being executed
+  stepResults      Json      @default("[]") // Array of { stepId, outcome, data, completedAt }
+  triggerContext   Json      @default("{}") // Data from the trigger event (boardId, runId, periodKey, etc.)
+  idempotencyKey   String?   @unique // Prevents duplicate runs: "${ruleId}:${triggerType}:${eventId}"
+  triggeredBy      String? // userId or "system"
   startedAt        DateTime?
   completedAt      DateTime?
   failureReason    String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  automationRule AutomationRule   @relation(fields: [automationRuleId], references: [id], onDelete: Cascade)
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  automationRule AutomationRule     @relation(fields: [automationRuleId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   auditLogs      WorkflowAuditLog[]
 
   @@index([automationRuleId])
@@ -1857,14 +1923,14 @@ model WorkflowAuditLog {
   id             String   @id @default(cuid())
   workflowRunId  String
   organizationId String
-  stepId         String?  // Step ID within the workflow definition
-  actionType     String   // "action_executed" | "condition_evaluated" | "approval_requested" | "approval_granted" | "approval_rejected" | "approval_timeout" | "step_failed" | "step_skipped"
-  targetType     String?  // "reconciliation_run" | "quest" | "form_request" | "report" | "agent_execution"
-  targetId       String?  // ID of the entity acted upon
-  outcome        String?  // "success" | "failed" | "skipped"
-  detail         Json?    // Additional context (match rate, recipient count, error message, etc.)
+  stepId         String? // Step ID within the workflow definition
+  actionType     String // "action_executed" | "condition_evaluated" | "approval_requested" | "approval_granted" | "approval_rejected" | "approval_timeout" | "step_failed" | "step_skipped"
+  targetType     String? // "reconciliation_run" | "quest" | "form_request" | "report" | "agent_execution"
+  targetId       String? // ID of the entity acted upon
+  outcome        String? // "success" | "failed" | "skipped"
+  detail         Json? // Additional context (match rate, recipient count, error message, etc.)
   actorType      String   @default("system") // "system" | "human"
-  actorId        String?  // userId for human actors
+  actorId        String? // userId for human actors
   createdAt      DateTime @default(now())
 
   workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
@@ -1878,36 +1944,36 @@ model WorkflowAuditLog {
 // Powers per-task timeline, per-request tracking, and org-wide activity feeds.
 
 model ActivityEvent {
-  id             String   @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String
 
   // Scoping — at least one should be set for meaningful queries
-  taskInstanceId String?  @map("jobId")     // Per-task timeline queries
-  requestId      String?  @map("taskId")    // Per-request tracking (email threads)
-  formRequestId  String?                     // Per-form-request tracking
-  boardId        String?                     // Board-level events
+  taskInstanceId String? @map("jobId") // Per-task timeline queries
+  requestId      String? @map("taskId") // Per-request tracking (email threads)
+  formRequestId  String? // Per-form-request tracking
+  boardId        String? // Board-level events
 
   // Event classification
-  eventType      String   // Dot-notated: "task.status_changed", "email.sent", "comment.added", etc.
+  eventType String // Dot-notated: "task.status_changed", "email.sent", "comment.added", etc.
 
   // Actor
-  actorId        String?  // User ID (null for system-generated events)
-  actorType      String   @default("user")  // "user" | "system" | "agent" | "workflow"
+  actorId   String? // User ID (null for system-generated events)
+  actorType String  @default("user") // "user" | "system" | "agent" | "workflow"
 
   // Human-readable summary (pre-rendered for fast timeline display)
-  summary        String   // e.g., "Richard changed status from NOT_STARTED to IN_PROGRESS"
+  summary String // e.g., "Richard changed status from NOT_STARTED to IN_PROGRESS"
 
   // Structured metadata (old/new values, recipient info, etc.)
-  metadata       Json?    // Shape varies by eventType
+  metadata Json? // Shape varies by eventType
 
   // Related entity references for filtering
-  targetId       String?  // ID of affected sub-entity (commentId, attachmentId, etc.)
-  targetType     String?  // "comment" | "attachment" | "collaborator" | "label" | etc.
+  targetId   String? // ID of affected sub-entity (commentId, attachmentId, etc.)
+  targetType String? // "comment" | "attachment" | "collaborator" | "label" | etc.
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   // Relations
-  taskInstance   TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
+  taskInstance TaskInstance? @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
 
   // Per-task timeline (primary use case)
   @@index([taskInstanceId, createdAt])
@@ -1934,7 +2000,7 @@ model RequestTemplate {
   subjectTemplate  String
   bodyTemplate     String   @db.Text
   htmlBodyTemplate String?  @db.Text
-  availableTags    Json?    // String[] of expected personalization tag names
+  availableTags    Json? // String[] of expected personalization tag names
   createdById      String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1950,58 +2016,58 @@ model RequestTemplate {
 // DEPRECATED: Analysis now queries Database records directly via Parquet cache. Remove in follow-up.
 
 model AnalysisDataset {
-  id              String   @id @default(cuid())
-  organizationId  String
-  name            String
-  description     String?
-  tableName       String   // Sanitized DuckDB table name
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  tableName      String // Sanitized DuckDB table name
 
   // File origin
   originalFilename String
   fileSizeBytes    Int
-  parquetBlobKey   String   // Vercel Blob key for the Parquet file
-  parquetBlobUrl   String?  // Cached blob URL
+  parquetBlobKey   String // Vercel Blob key for the Parquet file
+  parquetBlobUrl   String? // Cached blob URL
 
   // Schema snapshot: { columns: [{ name, duckdbType, sampleValues }] }
-  schemaSnapshot   Json
+  schemaSnapshot Json
 
   // Summary stats: { rowCount, columns: { colName: { type, min, max, mean, nullCount, distinctCount, sampleValues } } }
-  summaryStats     Json?
+  summaryStats Json?
 
   // Processing state
-  status           String   @default("processing") // "processing" | "ready" | "failed"
-  errorMessage     String?
-  rowCount         Int      @default(0)
-  columnCount      Int      @default(0)
+  status       String  @default("processing") // "processing" | "ready" | "failed"
+  errorMessage String?
+  rowCount     Int     @default(0)
+  columnCount  Int     @default(0)
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  uploadedById     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  uploadedById String
 
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  uploadedBy       User         @relation("AnalysisDatasetUploader", fields: [uploadedById], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation("AnalysisDatasetUploader", fields: [uploadedById], references: [id])
 
   @@index([organizationId])
   @@index([organizationId, status])
 }
 
 model AnalysisConversation {
-  id              String   @id @default(cuid())
-  organizationId  String
-  userId          String
-  title           String   @default("New Analysis")
-  taskInstanceId  String?  // Optional link to a TaskInstance for task-scoped analysis
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String  @default("New Analysis")
+  taskInstanceId String? // Optional link to a TaskInstance for task-scoped analysis
 
   // Which databases this conversation can query (JSON array of Database IDs)
-  databaseIds     Json     @default("[]")
+  databaseIds Json @default("[]")
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User               @relation("AnalysisConversationUser", fields: [userId], references: [id])
-  taskInstance    TaskInstance?       @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
-  messages        AnalysisMessage[]
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User              @relation("AnalysisConversationUser", fields: [userId], references: [id])
+  taskInstance TaskInstance?     @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
+  messages     AnalysisMessage[]
 
   @@index([organizationId, userId])
   @@index([userId, updatedAt])
@@ -2009,28 +2075,27 @@ model AnalysisConversation {
 }
 
 model AnalysisMessage {
-  id               String   @id @default(cuid())
-  conversationId   String
-  role             String   // "user" | "assistant"
-  content          String   @db.Text
+  id             String @id @default(cuid())
+  conversationId String
+  role           String // "user" | "assistant"
+  content        String @db.Text
 
   // For assistant messages: SQL + results
-  generatedSql     String?  @db.Text
-  queryResultJson  Json?
-  queryRowCount    Int?
-  queryDurationMs  Int?
-  queryError       String?
-  chartConfig      Json?    // { type: "bar"|"line"|"pie"|"area", xKey, yKeys, title }
+  generatedSql    String? @db.Text
+  queryResultJson Json?
+  queryRowCount   Int?
+  queryDurationMs Int?
+  queryError      String?
+  chartConfig     Json? // { type: "bar"|"line"|"pie"|"area", xKey, yKeys, title }
 
   // LLM metadata
   model            String?
   tokensUsed       Int?
   estimatedCostUsd Float?
 
-  createdAt        DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  conversation     AnalysisConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation AnalysisConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
 }
-

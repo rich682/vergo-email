@@ -261,7 +261,7 @@ export class FormDefinitionService {
   /**
    * Delete a form definition
    */
-  static async delete(id: string, organizationId: string) {
+  static async delete(id: string, organizationId: string, deletedById?: string) {
     // Verify form exists and belongs to org
     const existing = await prisma.formDefinition.findFirst({
       where: {
@@ -281,13 +281,15 @@ export class FormDefinitionService {
       throw new Error("Form not found or access denied")
     }
 
-    // Warn if there are existing requests (but still allow deletion)
+    // Warn if there are existing requests (but still allow soft deletion)
     if (existing._count.formRequests > 0) {
-      console.warn(`Deleting form ${id} with ${existing._count.formRequests} associated requests`)
+      console.warn(`Soft-deleting form ${id} with ${existing._count.formRequests} associated requests`)
     }
 
-    await prisma.formDefinition.delete({
+    // Soft delete: set deletedAt instead of removing the record
+    await prisma.formDefinition.update({
       where: { id },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
 
     return { success: true, deletedId: id }

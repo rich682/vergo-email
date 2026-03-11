@@ -156,7 +156,7 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const result = await FormDefinitionService.delete(id, session.user.organizationId)
+    const result = await FormDefinitionService.delete(id, session.user.organizationId, session.user.id)
 
     return NextResponse.json(result)
   } catch (error: any) {

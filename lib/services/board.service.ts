@@ -975,20 +975,24 @@ export class BoardService {
   /**
    * Delete a board and all its task instances
    */
-  static async delete(boardId: string, organizationId: string): Promise<boolean> {
+  static async delete(boardId: string, organizationId: string, deletedById?: string): Promise<boolean> {
     const board = await prisma.board.findFirst({
       where: { id: boardId, organizationId }
     })
     if (!board) return false
 
-    // Delete all task instances first
-    await prisma.taskInstance.deleteMany({
-      where: { boardId, organizationId }
+    const now = new Date()
+
+    // Cascade soft delete: soft-delete all task instances first
+    await prisma.taskInstance.updateMany({
+      where: { boardId, organizationId, deletedAt: null },
+      data: { deletedAt: now, deletedById: deletedById ?? null },
     })
 
-    // Delete the board
-    await prisma.board.delete({
-      where: { id: boardId }
+    // Soft delete the board
+    await prisma.board.update({
+      where: { id: boardId },
+      data: { deletedAt: now, deletedById: deletedById ?? null },
     })
 
     return true

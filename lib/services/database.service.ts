@@ -529,14 +529,29 @@ export class DatabaseService {
   /**
    * Delete a database
    */
-  static async deleteDatabase(id: string, organizationId: string) {
-    const result = await prisma.database.deleteMany({
+  static async deleteDatabase(id: string, organizationId: string, deletedById?: string) {
+    // Soft delete: set deletedAt instead of removing the record
+    const existing = await prisma.database.findFirst({
       where: { id, organizationId },
     })
 
-    if (result.count === 0) {
+    if (!existing) {
       throw new Error("Database not found")
     }
+
+    const now = new Date()
+
+    // Soft delete the database
+    await prisma.database.update({
+      where: { id },
+      data: { deletedAt: now, deletedById: deletedById ?? null },
+    })
+
+    // Cascade soft delete: also soft-delete linked report definitions
+    await prisma.reportDefinition.updateMany({
+      where: { databaseId: id, organizationId, deletedAt: null },
+      data: { deletedAt: now, deletedById: deletedById ?? null },
+    })
 
     return { deleted: true }
   }

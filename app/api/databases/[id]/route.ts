@@ -171,7 +171,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
     }
 
-    await DatabaseService.deleteDatabase(params.id, session.user.organizationId)
+    await DatabaseService.deleteDatabase(params.id, session.user.organizationId, session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

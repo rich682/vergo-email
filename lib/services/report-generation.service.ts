@@ -180,7 +180,12 @@ export class ReportGenerationService {
           select: { id: true, name: true, cadence: true, layout: true },
         },
         taskInstance: {
-          select: { id: true, name: true },
+          select: {
+            id: true,
+            name: true,
+            ownerId: true,
+            collaborators: { select: { userId: true } },
+          },
         },
         board: {
           select: { id: true, name: true, periodStart: true, periodEnd: true },
@@ -189,20 +194,14 @@ export class ReportGenerationService {
     })
 
     // Add task owner and collaborators as viewers so they can see the report in the Reports page
-    if (taskInstanceId) {
+    if (taskInstanceId && generated.taskInstance) {
       try {
-        const taskInstance = await prisma.taskInstance.findUnique({
-          where: { id: taskInstanceId },
-          select: {
-            ownerId: true,
-            collaborators: { select: { userId: true } }
-          }
-        })
-        
+        const taskInstance = generated.taskInstance
+
         if (taskInstance) {
           const viewerIds = new Set<string>()
           viewerIds.add(taskInstance.ownerId)
-          taskInstance.collaborators.forEach(c => viewerIds.add(c.userId))
+          taskInstance.collaborators.forEach((c: { userId: string }) => viewerIds.add(c.userId))
           if (generatedBy !== "system") viewerIds.add(generatedBy)
           
           await prismaAny.generatedReportViewer.createMany({

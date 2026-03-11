@@ -444,7 +444,7 @@ export class ReportDefinitionService {
   /**
    * Delete a report definition
    */
-  static async deleteReportDefinition(id: string, organizationId: string) {
+  static async deleteReportDefinition(id: string, organizationId: string, deletedById?: string) {
     const existing = await prisma.reportDefinition.findFirst({
       where: { id, organizationId },
     })
@@ -453,8 +453,10 @@ export class ReportDefinitionService {
       throw new Error("Report definition not found")
     }
 
-    await prisma.reportDefinition.delete({
+    // Soft delete: set deletedAt instead of removing the record
+    await prisma.reportDefinition.update({
       where: { id },
+      data: { deletedAt: new Date(), deletedById: deletedById ?? null },
     })
 
     return { deleted: true }
