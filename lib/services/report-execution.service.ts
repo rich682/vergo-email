@@ -640,6 +640,27 @@ export class ReportExecutionService {
             }
           }
           row[fc.key] = evaluateSafeExpression(metric.expression, context)
+        } else if (metric.type === "comparison" && metric.compareOutput === "percent" && metric.compareRowKey) {
+          // For percent comparison rows, recalculate the total as:
+          // (totalCurrent - totalPrevious) / totalPrevious
+          // instead of summing individual percent changes which is meaningless.
+          const refTotals = formulaColumnTotalsByMetricKey[metric.compareRowKey]
+          const totalCurrent = refTotals?.[fc.key] ?? null
+
+          // Sum the compare-period values for the referenced row across all pivot columns
+          let totalPrevious: number | null = null
+          for (const pv of pivotValues) {
+            const cmpVal = compareNumericMetricsByPivot[pv]?.[metric.compareRowKey]
+            if (typeof cmpVal === "number" && !isNaN(cmpVal)) {
+              totalPrevious = (totalPrevious ?? 0) + cmpVal
+            }
+          }
+
+          if (totalCurrent != null && totalPrevious != null && totalPrevious !== 0) {
+            row[fc.key] = (totalCurrent - totalPrevious) / totalPrevious
+          } else {
+            row[fc.key] = null
+          }
         } else {
           row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
         }
