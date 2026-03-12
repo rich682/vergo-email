@@ -18,7 +18,6 @@ function RolePermissionsContent() {
 
   // Action permissions state
   const [actionPermissions, setActionPermissions] = useState<ActionPermissions>(() => ({
-    MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
     MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
   }))
   const [originalActionPermissions, setOriginalActionPermissions] = useState<ActionPermissions | null>(null)
@@ -36,21 +35,16 @@ function RolePermissionsContent() {
 
         // Start with defaults
         const mergedActions: ActionPermissions = {
-          MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
           MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
         }
 
-        // Merge org-level action permission overrides
-        if (data.roleActionPermissions) {
-          for (const role of ["MEMBER", "MANAGER"]) {
-            if (data.roleActionPermissions[role]) {
-              for (const [key, val] of Object.entries(data.roleActionPermissions[role])) {
-                // Skip legacy module:* keys
-                if (key.startsWith("module:")) continue
-                if (typeof val === "boolean") {
-                  mergedActions[role][key as ActionKey] = val
-                }
-              }
+        // Merge org-level action permission overrides for MANAGER
+        if (data.roleActionPermissions?.MANAGER) {
+          for (const [key, val] of Object.entries(data.roleActionPermissions.MANAGER)) {
+            // Skip legacy module:* keys
+            if (key.startsWith("module:")) continue
+            if (typeof val === "boolean") {
+              mergedActions.MANAGER[key as ActionKey] = val
             }
           }
         }
@@ -105,7 +99,6 @@ function RolePermissionsContent() {
 
   const handleResetToSystemDefaults = () => {
     setActionPermissions({
-      MEMBER: { ...DEFAULT_ACTION_PERMISSIONS.MEMBER },
       MANAGER: { ...DEFAULT_ACTION_PERMISSIONS.MANAGER },
     })
     setHasChanges(true)
@@ -180,7 +173,8 @@ function RolePermissionsContent() {
           <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-blue-800">
             <p>
-              Admin users always have full access. These settings apply to <strong>Employee</strong> and <strong>Manager</strong> roles.
+              Admin users always have full access. These settings apply to the <strong>Manager</strong> role.
+              Employee access is fixed — employees can only see Book Close tasks they collaborate on.
               Enabling any permission for a module will automatically make that module visible in the sidebar.
               Changes take effect within 1 minute.
             </p>
@@ -202,9 +196,6 @@ function RolePermissionsContent() {
                   <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
                     Manager
                   </th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
-                    Employee
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -212,7 +203,7 @@ function RolePermissionsContent() {
                   <>
                     {/* Category header row */}
                     <tr key={`cat-${category.key}`} className="bg-gray-50/70">
-                      <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wider">
                         {category.label}
                       </td>
                     </tr>
@@ -234,19 +225,6 @@ function RolePermissionsContent() {
                               setActionPermissions(prev => ({
                                 ...prev,
                                 MANAGER: { ...prev.MANAGER, [action.key]: checked },
-                              }))
-                              setHasChanges(true)
-                            }}
-                          />
-                        </td>
-                        {/* Employee */}
-                        <td className="text-center px-4 py-2.5">
-                          <Checkbox
-                            checked={actionPermissions.MEMBER?.[action.key] ?? DEFAULT_ACTION_PERMISSIONS.MEMBER[action.key] ?? false}
-                            onCheckedChange={(checked: boolean) => {
-                              setActionPermissions(prev => ({
-                                ...prev,
-                                MEMBER: { ...prev.MEMBER, [action.key]: checked },
                               }))
                               setHasChanges(true)
                             }}

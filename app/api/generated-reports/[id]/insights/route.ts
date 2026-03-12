@@ -35,10 +35,6 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
-    }
-
     const generatedReportId = params.id
 
     // Fetch the generated report
@@ -104,10 +100,6 @@ export async function POST(
     const session = await getServerSession(authOptions)
     if (!session?.user?.organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
     }
 
     const generatedReportId = params.id

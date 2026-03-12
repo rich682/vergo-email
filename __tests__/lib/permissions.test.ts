@@ -68,59 +68,30 @@ describe("canPerformAction", () => {
   })
 
   describe("MEMBER role", () => {
-    it("only has tasks:create and attachments:upload by default", () => {
-      expect(canPerformAction("MEMBER", "tasks:create")).toBe(true)
-      expect(canPerformAction("MEMBER", "attachments:upload")).toBe(true)
-    })
-
-    it("does not have view/edit/delete by default", () => {
-      expect(canPerformAction("MEMBER", "tasks:view_all")).toBe(false)
-      expect(canPerformAction("MEMBER", "tasks:edit_any")).toBe(false)
-      expect(canPerformAction("MEMBER", "tasks:delete")).toBe(false)
-    })
-
-    it("does not have inbox permissions by default", () => {
-      expect(canPerformAction("MEMBER", "inbox:view_all")).toBe(false)
-      expect(canPerformAction("MEMBER", "inbox:send_emails")).toBe(false)
-    })
-
-    it("does not have reports permissions by default", () => {
-      expect(canPerformAction("MEMBER", "reports:view_definitions")).toBe(false)
-      expect(canPerformAction("MEMBER", "reports:manage")).toBe(false)
-    })
-
-    it("does not have database permissions by default", () => {
-      expect(canPerformAction("MEMBER", "databases:view_databases")).toBe(false)
-      expect(canPerformAction("MEMBER", "databases:manage")).toBe(false)
-    })
-
-    it("respects org overrides that enable permissions", () => {
-      const orgPerms: OrgActionPermissions = {
-        MEMBER: { "inbox:view_all": true, "inbox:send_emails": true },
+    it("has NO permissions — all action keys return false", () => {
+      for (const action of ALL_ACTION_KEYS) {
+        expect(canPerformAction("MEMBER", action)).toBe(false)
       }
-      expect(canPerformAction("MEMBER", "inbox:view_all", orgPerms)).toBe(true)
-      expect(canPerformAction("MEMBER", "inbox:send_emails", orgPerms)).toBe(true)
-      // Non-overridden still use defaults
-      expect(canPerformAction("MEMBER", "inbox:manage_requests", orgPerms)).toBe(false)
+    })
+
+    it("ignores org overrides — always returns false", () => {
+      const orgPerms: OrgActionPermissions = {
+        MEMBER: { "inbox:view_all": true, "tasks:create": true, "reports:view_definitions": true },
+      }
+      expect(canPerformAction("MEMBER", "inbox:view_all", orgPerms)).toBe(false)
+      expect(canPerformAction("MEMBER", "tasks:create", orgPerms)).toBe(false)
+      expect(canPerformAction("MEMBER", "reports:view_definitions", orgPerms)).toBe(false)
     })
   })
 
   describe("edge cases", () => {
-    it("handles undefined role (falls back to MEMBER)", () => {
-      expect(canPerformAction(undefined, "tasks:create")).toBe(true)
+    it("handles undefined role (falls back to MEMBER, all false)", () => {
+      expect(canPerformAction(undefined, "tasks:create")).toBe(false)
       expect(canPerformAction(undefined, "tasks:delete")).toBe(false)
     })
 
     it("handles null orgActionPermissions", () => {
-      expect(canPerformAction("MEMBER", "tasks:create", null)).toBe(true)
-    })
-
-    it("handles org overrides for unknown role (falls back to MEMBER)", () => {
-      const orgPerms: OrgActionPermissions = {
-        UNKNOWN_ROLE: { "tasks:create": false },
-      }
-      // Unknown role key should not affect MEMBER defaults
-      expect(canPerformAction("MEMBER", "tasks:create", orgPerms)).toBe(true)
+      expect(canPerformAction("MEMBER", "tasks:create", null)).toBe(false)
     })
   })
 })
@@ -149,34 +120,33 @@ describe("hasModuleAccess", () => {
     }
   })
 
-  it("MEMBER has access to boards (via tasks:create)", () => {
+  it("MEMBER has implicit access to boards only", () => {
     expect(hasModuleAccess("MEMBER", "boards")).toBe(true)
   })
 
-  it("MEMBER does NOT have access to inbox by default", () => {
-    expect(hasModuleAccess("MEMBER", "inbox")).toBe(false)
-  })
-
-  it("MEMBER does NOT have access to reports by default", () => {
-    expect(hasModuleAccess("MEMBER", "reports")).toBe(false)
-  })
-
-  it("MEMBER does NOT have access to databases by default", () => {
-    expect(hasModuleAccess("MEMBER", "databases")).toBe(false)
-  })
-
-  it("granting any module action key grants module access", () => {
-    const orgPerms: OrgActionPermissions = {
-      MEMBER: { "reports:view_generated": true },
+  it("MEMBER does NOT have access to any other modules", () => {
+    const nonBoardModules: ModuleKey[] = [
+      "inbox", "requests", "collection", "reports",
+      "forms", "databases", "reconciliations", "agents", "analysis",
+    ]
+    for (const mod of nonBoardModules) {
+      expect(hasModuleAccess("MEMBER", mod)).toBe(false)
     }
-    expect(hasModuleAccess("MEMBER", "reports", orgPerms)).toBe(true)
   })
 
-  it("MEMBER can gain inbox access via org override", () => {
+  it("MEMBER org overrides are ignored — cannot gain module access", () => {
     const orgPerms: OrgActionPermissions = {
-      MEMBER: { "inbox:view_all": true },
+      MEMBER: { "reports:view_generated": true, "inbox:view_all": true },
     }
-    expect(hasModuleAccess("MEMBER", "inbox", orgPerms)).toBe(true)
+    expect(hasModuleAccess("MEMBER", "reports", orgPerms)).toBe(false)
+    expect(hasModuleAccess("MEMBER", "inbox", orgPerms)).toBe(false)
+  })
+
+  it("MANAGER can lose module access via org override", () => {
+    const orgPerms: OrgActionPermissions = {
+      MANAGER: { "reports:view_definitions": false, "reports:view_generated": false, "reports:view_all_definitions": false, "reports:generate": false, "reports:manage": false },
+    }
+    expect(hasModuleAccess("MANAGER", "reports", orgPerms)).toBe(false)
   })
 })
 
@@ -198,28 +168,36 @@ describe("getEffectiveActionPermissions", () => {
     expect(perms["reports:manage"]).toBe(true)
   })
 
-  it("returns MEMBER defaults without overrides", () => {
+  it("returns MEMBER defaults — all false", () => {
     const perms = getEffectiveActionPermissions("MEMBER")
-    expect(perms["tasks:create"]).toBe(true)
-    expect(perms["attachments:upload"]).toBe(true)
-    expect(perms["tasks:delete"]).toBe(false)
-    expect(perms["inbox:view_all"]).toBe(false)
+    for (const key of ALL_ACTION_KEYS) {
+      expect(perms[key]).toBe(false)
+    }
   })
 
-  it("applies org overrides on top of defaults", () => {
+  it("MEMBER ignores org overrides — always all false", () => {
     const orgPerms: OrgActionPermissions = {
-      MEMBER: { "inbox:view_all": true, "tasks:create": false },
+      MEMBER: { "inbox:view_all": true, "tasks:create": true },
     }
     const perms = getEffectiveActionPermissions("MEMBER", orgPerms)
-    expect(perms["inbox:view_all"]).toBe(true) // Overridden to true
-    expect(perms["tasks:create"]).toBe(false) // Overridden to false
-    expect(perms["attachments:upload"]).toBe(true) // Default unchanged
+    expect(perms["inbox:view_all"]).toBe(false)
+    expect(perms["tasks:create"]).toBe(false)
   })
 
-  it("handles undefined role as MEMBER", () => {
+  it("MANAGER applies org overrides on top of defaults", () => {
+    const orgPerms: OrgActionPermissions = {
+      MANAGER: { "tasks:delete": false },
+    }
+    const perms = getEffectiveActionPermissions("MANAGER", orgPerms)
+    expect(perms["tasks:delete"]).toBe(false) // Overridden to false
+    expect(perms["tasks:create"]).toBe(true) // Default unchanged
+  })
+
+  it("handles undefined role as MEMBER (all false)", () => {
     const perms = getEffectiveActionPermissions(undefined)
-    expect(perms["tasks:create"]).toBe(true)
-    expect(perms["tasks:delete"]).toBe(false)
+    for (const key of ALL_ACTION_KEYS) {
+      expect(perms[key]).toBe(false)
+    }
   })
 })
 
@@ -294,21 +272,35 @@ describe("canAccessRoute", () => {
     expect(canAccessRoute("MEMBER", "/api/form-requests/abc123/submit")).toBe(true)
   })
 
-  it("MEMBER can access boards (has tasks:create)", () => {
+  it("MEMBER can access boards (implicit module access)", () => {
     expect(canAccessRoute("MEMBER", "/dashboard/boards")).toBe(true)
     expect(canAccessRoute("MEMBER", "/api/boards")).toBe(true)
+    expect(canAccessRoute("MEMBER", "/api/task-instances")).toBe(true)
   })
 
-  it("MEMBER cannot access inbox by default", () => {
+  it("MEMBER can access report API routes (implicit API access)", () => {
+    expect(canAccessRoute("MEMBER", "/api/reports")).toBe(true)
+    expect(canAccessRoute("MEMBER", "/api/generated-reports")).toBe(true)
+    expect(canAccessRoute("MEMBER", "/api/generated-reports/123")).toBe(true)
+  })
+
+  it("MEMBER cannot access report dashboard routes", () => {
+    expect(canAccessRoute("MEMBER", "/dashboard/reports")).toBe(false)
+  })
+
+  it("MEMBER cannot access inbox, even with org overrides", () => {
     expect(canAccessRoute("MEMBER", "/dashboard/inbox")).toBe(false)
     expect(canAccessRoute("MEMBER", "/api/inbox")).toBe(false)
-  })
-
-  it("MEMBER with org override can access inbox", () => {
     const orgPerms: OrgActionPermissions = {
       MEMBER: { "inbox:view_all": true },
     }
-    expect(canAccessRoute("MEMBER", "/dashboard/inbox", orgPerms)).toBe(true)
+    expect(canAccessRoute("MEMBER", "/dashboard/inbox", orgPerms)).toBe(false)
+  })
+
+  it("MEMBER cannot access other module routes", () => {
+    expect(canAccessRoute("MEMBER", "/dashboard/databases")).toBe(false)
+    expect(canAccessRoute("MEMBER", "/dashboard/agents")).toBe(false)
+    expect(canAccessRoute("MEMBER", "/dashboard/analysis")).toBe(false)
   })
 
   it("allows unknown routes (not mapped to any module)", () => {
@@ -340,11 +332,12 @@ describe("getJobAccessFilter", () => {
     expect(filter!.OR).toContainEqual({ ownerId: userId })
   })
 
-  it("returns null for MEMBER with org override granting view_all", () => {
+  it("MEMBER org overrides are ignored — still gets filter", () => {
     const orgPerms: OrgActionPermissions = {
       MEMBER: { "tasks:view_all": true },
     }
-    expect(getJobAccessFilter(userId, "MEMBER", "tasks:view_all", orgPerms)).toBeNull()
+    const filter = getJobAccessFilter(userId, "MEMBER", "tasks:view_all", orgPerms)
+    expect(filter).not.toBeNull()
   })
 
   it("legacy fallback: ADMIN and MANAGER see all without viewAllAction", () => {
@@ -455,13 +448,10 @@ describe("data integrity", () => {
     }
   })
 
-  it("MEMBER defaults only have 2 true values", () => {
-    const trueKeys = Object.entries(DEFAULT_ACTION_PERMISSIONS.MEMBER)
-      .filter(([_, v]) => v === true)
-      .map(([k]) => k)
-    expect(trueKeys).toContain("tasks:create")
-    expect(trueKeys).toContain("attachments:upload")
-    expect(trueKeys).toHaveLength(2)
+  it("MEMBER defaults are all false (non-configurable)", () => {
+    for (const [, value] of Object.entries(DEFAULT_ACTION_PERMISSIONS.MEMBER)) {
+      expect(value).toBe(false)
+    }
   })
 
   it("MODULE_ACTION_KEYS covers all modules", () => {

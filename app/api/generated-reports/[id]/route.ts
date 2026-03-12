@@ -25,10 +25,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to view reports" }, { status: 403 })
-    }
-
     const report = await ReportGenerationService.getById(id, session.user.organizationId)
 
     if (!report) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { AttachmentService } from "@/lib/services/attachment.service"
 import { canPerformAction } from "@/lib/permissions"
 
@@ -56,10 +57,27 @@ export async function DELETE(
     }
 
     const organizationId = session.user.organizationId
+    const userId = session.user.id
     const attachmentId = params.id
 
+    // Allow delete if user has permission OR is owner/collaborator of the attachment's task
     if (!canPerformAction(session.user.role, "attachments:upload", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to delete attachments" }, { status: 403 })
+      const attachment = await prisma.attachment.findFirst({
+        where: { id: attachmentId, organizationId },
+        select: {
+          taskInstance: {
+            select: {
+              ownerId: true,
+              collaborators: { select: { userId: true } }
+            }
+          }
+        }
+      })
+      const task = attachment?.taskInstance
+      const isInvolved = task && (task.ownerId === userId || task.collaborators.some(c => c.userId === userId))
+      if (!isInvolved) {
+        return NextResponse.json({ error: "You do not have permission to delete attachments" }, { status: 403 })
+      }
     }
 
     await AttachmentService.delete(attachmentId, organizationId)

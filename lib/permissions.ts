@@ -7,16 +7,20 @@
  * - ADMIN: Full access to everything. Can manage team, org settings, all data.
  * - MANAGER: Scoped by role defaults. Can see all tasks (not just own).
  *            Can manage team members they supervise. Cannot change org settings.
- * - MEMBER: Can only see/edit jobs they own or collaborate on. Scoped by role defaults.
+ * - MEMBER: Can only see Book Close. Sees boards and tasks they collaborate on.
+ *            Can comment and upload on collaborated tasks. Report access requires
+ *            explicit viewer assignment. Has no configurable action permissions.
  * - VIEWER: (Deprecated - treated as MEMBER) Kept in enum for backward compatibility.
  *
  * Permission Model:
  * Module visibility (sidebar links, route access) is derived automatically from
  * action permissions. If a user has ANY action permission for a module, they can
  * see and access that module. There is no separate "module visibility" toggle.
+ * MEMBER is an exception: they always have implicit access to the boards module
+ * (data scoping happens at the service layer), but no configurable permissions.
  *
- * Action permissions are role-based. Org admins can customize per-role defaults
- * via the Role Permissions settings page. There are no per-user overrides.
+ * Action permissions are role-based. Org admins can customize MANAGER role defaults
+ * via the Role Permissions settings page. MEMBER permissions are fixed (all false).
  */
 
 import { UserRole, Prisma } from "@prisma/client"
@@ -222,9 +226,9 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
  * Hardcoded default action permissions per role.
  * ADMIN is not listed because ADMIN always returns true.
  *
- * MEMBER defaults: only Tasks-related permissions are enabled. All other module
- * permissions are false — an admin must explicitly grant them. Enabling any
- * action permission for a module automatically makes that module visible.
+ * MEMBER: All permissions are false. MEMBER has no configurable permissions.
+ * Their access is implicit: boards module via MEMBER_IMPLICIT_MODULES,
+ * task scoping via getJobAccessFilter, report access via viewer tables.
  */
 export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolean>> = {
   MANAGER: {
@@ -278,13 +282,13 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
   MEMBER: {
     "tasks:view_all": false,
     "boards:view_all": false,
-    "tasks:create": true,
+    "tasks:create": false,
     "tasks:edit_any": false,
     "tasks:delete": false,
     "tasks:import": false,
     "boards:manage": false,
     "boards:edit_columns": false,
-    "attachments:upload": true,
+    "attachments:upload": false,
     "inbox:view_all": false,
     "inbox:manage_requests": false,
     "inbox:send_emails": false,
@@ -463,6 +467,26 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   analysis:        ["analysis:view", "analysis:view_all", "analysis:manage", "analysis:query"],
 }
 
+// ─── MEMBER Implicit Access ───────────────────────────────────────────────────
+
+/**
+ * Modules that MEMBER can always access at the route/middleware level,
+ * even with zero action permissions. Actual data scoping happens at the
+ * service layer (getJobAccessFilter, getBoardAccessFilter, viewer checks).
+ */
+const MEMBER_IMPLICIT_MODULES: ModuleKey[] = ["boards"]
+
+/**
+ * Additional API route prefixes that MEMBER can access without module permissions.
+ * These are needed because report data is loaded from within the task detail page
+ * (which is in the boards module), but the API routes map to the reports module.
+ * Sidebar visibility is NOT affected — only route-level access.
+ */
+const MEMBER_IMPLICIT_API_ROUTES: string[] = [
+  "/api/reports",
+  "/api/generated-reports",
+]
+
 // ─── Core Permission Functions ────────────────────────────────────────────────
 
 /**
@@ -470,8 +494,9 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
  *
  * Resolution order:
  * 1. ADMIN: Always returns true.
- * 2. Org-level action overrides (Organization.features.roleActionPermissions).
- * 3. Hardcoded defaults (DEFAULT_ACTION_PERMISSIONS).
+ * 2. MEMBER: Always returns false (no configurable permissions).
+ * 3. Org-level action overrides (Organization.features.roleActionPermissions).
+ * 4. Hardcoded defaults (DEFAULT_ACTION_PERMISSIONS).
  */
 export function canPerformAction(
   role: UserRole | string | undefined,
@@ -486,6 +511,11 @@ export function canPerformAction(
   }
 
   const roleKey = normalizedRole || "MEMBER"
+
+  // MEMBER has no configurable permissions — skip org overrides, return false
+  if (roleKey === "MEMBER" || roleKey === "VIEWER") {
+    return false
+  }
 
   // Check org-level action overrides
   if (orgActionPermissions && roleKey in orgActionPermissions) {
@@ -505,6 +535,7 @@ export function canPerformAction(
  * action keys are enabled. This drives sidebar visibility and route access.
  *
  * ADMIN always has access to all modules.
+ * MEMBER has implicit access to MEMBER_IMPLICIT_MODULES (boards).
  */
 export function hasModuleAccess(
   role: UserRole | string | undefined,
@@ -513,6 +544,12 @@ export function hasModuleAccess(
 ): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
   if (normalizedRole === UserRole.ADMIN) return true
+
+  // MEMBER has implicit access to boards (data scoping at service layer)
+  if ((normalizedRole === UserRole.MEMBER || normalizedRole === "VIEWER" as any) &&
+      MEMBER_IMPLICIT_MODULES.includes(module)) {
+    return true
+  }
 
   const actionKeys = MODULE_ACTION_KEYS[module]
   if (!actionKeys) return false
@@ -539,6 +576,12 @@ export function getEffectiveActionPermissions(
   }
 
   const roleKey = normalizedRole || "MEMBER"
+
+  // MEMBER has no configurable permissions — always return all-false defaults
+  if (roleKey === "MEMBER" || roleKey === "VIEWER") {
+    return { ...DEFAULT_ACTION_PERMISSIONS.MEMBER }
+  }
+
   const defaults = { ...(DEFAULT_ACTION_PERMISSIONS[roleKey] || DEFAULT_ACTION_PERMISSIONS.MEMBER) }
   const overrides = orgActionPermissions?.[roleKey] || {}
 
@@ -605,6 +648,12 @@ export function canAccessRoute(
   // Check module-based access — derived from action permissions
   const module = getModuleForRoute(path)
   if (module) {
+    // MEMBER has implicit API route access for reports (loaded from task detail)
+    const isMember = normalizedRole === UserRole.MEMBER || normalizedRole === "VIEWER" as any
+    if (isMember && MEMBER_IMPLICIT_API_ROUTES.some(prefix => path === prefix || path.startsWith(prefix + "/"))) {
+      return true
+    }
+
     return hasModuleAccess(role, module, orgActionPermissions)
   }
 

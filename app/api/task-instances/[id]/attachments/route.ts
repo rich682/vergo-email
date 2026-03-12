@@ -116,21 +116,24 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "attachments:upload", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to upload attachments" }, { status: 403 })
-    }
-
     const organizationId = session.user.organizationId
     const userId = session.user.id
     const taskInstanceId = params.id
 
     // Verify task instance exists and belongs to organization
     const instance = await prisma.taskInstance.findFirst({
-      where: { id: taskInstanceId, organizationId }
+      where: { id: taskInstanceId, organizationId },
+      include: { collaborators: { select: { userId: true } } }
     })
 
     if (!instance) {
       return NextResponse.json({ error: "Task instance not found" }, { status: 404 })
+    }
+
+    // Allow upload if user has the permission OR is the task owner/collaborator
+    const isInvolved = instance.ownerId === userId || instance.collaborators.some(c => c.userId === userId)
+    if (!isInvolved && !canPerformAction(session.user.role, "attachments:upload", session.user.orgActionPermissions)) {
+      return NextResponse.json({ error: "You do not have permission to upload attachments" }, { status: 403 })
     }
 
     // Parse multipart form data

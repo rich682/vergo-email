@@ -5,8 +5,9 @@
  * PUT /api/org/role-permissions - Update org-level action permissions (admin only)
  *
  * Stored in Organization.features JSON as:
- * { roleActionPermissions: { MEMBER: { "reports:view_definitions": true, ... }, MANAGER: { ... } } }
+ * { roleActionPermissions: { MANAGER: { ... } } }
  *
+ * MEMBER (Employee) has no configurable permissions — their access is fixed.
  * Module visibility is derived automatically from action permissions —
  * if a user has ANY action permission for a module, they can see/access it.
  */
@@ -17,7 +18,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { ALL_ACTION_KEYS, type ActionKey } from "@/lib/permissions"
 
-const CONFIGURABLE_ROLES = ["MEMBER", "MANAGER"] as const
+const CONFIGURABLE_ROLES = ["MANAGER"] as const
 
 /**
  * GET - Fetch org-level role action permissions
@@ -38,6 +39,11 @@ export async function GET(request: NextRequest) {
     const features = (organization?.features as Record<string, any>) || {}
     const roleActionPermissions = features.roleActionPermissions || null
 
+    // Strip MEMBER from response — MEMBER has no configurable permissions
+    if (roleActionPermissions && "MEMBER" in roleActionPermissions) {
+      delete roleActionPermissions.MEMBER
+    }
+
     return NextResponse.json({
       success: true,
       roleActionPermissions,
@@ -55,7 +61,7 @@ export async function GET(request: NextRequest) {
  * PUT - Update org-level role action permissions
  * Admin-only endpoint
  *
- * Body: { roleActionPermissions: { MEMBER: { "reports:view_definitions": true, ... }, MANAGER: { ... } } }
+ * Body: { roleActionPermissions: { MANAGER: { "reports:view_definitions": true, ... } } }
  */
 export async function PUT(request: NextRequest) {
   try {

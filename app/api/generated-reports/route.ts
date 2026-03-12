@@ -21,10 +21,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view_generated", session.user.orgActionPermissions)) {
-      return NextResponse.json({ reports: [], periods: [] })
-    }
-
     // Parse query params
     const { searchParams } = new URL(request.url)
     const reportDefinitionId = searchParams.get("reportDefinitionId") || undefined

@@ -20,12 +20,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)) {
-      return NextResponse.json({ reports: [] })
-    }
+    const canViewDefinitions = canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)
+    const canViewAll = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)
 
     const { searchParams } = new URL(request.url)
     const myItems = searchParams.get("myItems") === "true"
+
+    // If user has no view permission, only return reports they're an explicit viewer of
+    if (!canViewDefinitions && !canViewAll) {
+      const viewerEntries = await prisma.reportDefinitionViewer.findMany({
+        where: { userId: session.user.id },
+        select: { reportDefinitionId: true },
+      })
+      if (viewerEntries.length === 0) {
+        return NextResponse.json({ reports: [] })
+      }
+      const viewableIds = new Set(viewerEntries.map(v => v.reportDefinitionId))
+      const reports = await ReportDefinitionService.listReportDefinitions(session.user.organizationId)
+      return NextResponse.json({ reports: reports.filter((r: any) => viewableIds.has(r.id)) })
+    }
 
     const reports = await ReportDefinitionService.listReportDefinitions(session.user.organizationId)
 
@@ -36,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     // If user can view all definitions, return everything; otherwise filter to owned/viewable
-    if (canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)) {
+    if (canViewAll) {
       return NextResponse.json({ reports })
     }
 
