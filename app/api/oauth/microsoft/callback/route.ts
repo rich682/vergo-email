@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -49,27 +50,48 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Try to get session, but fall back to state if session is lost during OAuth round-trip
     const session = await getServerSession(authOptions)
     console.log("[Microsoft OAuth Callback] Session user:", {
       hasSession: !!session,
       userId: session?.user?.id,
       orgId: session?.user?.organizationId
     })
-    
-    if (!session?.user?.id || !session.user.organizationId) {
-      console.error("[Microsoft OAuth Callback] No session found")
-      return NextResponse.redirect(new URL("/auth/signin", request.url))
-    }
-    if (session.user.id !== userId || session.user.organizationId !== organizationId) {
-      console.error("[Microsoft OAuth Callback] Session mismatch!", { 
-        stateUserId: userId, 
-        sessionUserId: session.user.id,
-        stateOrgId: organizationId,
-        sessionOrgId: session.user.organizationId 
+
+    let effectiveUserId: string
+    let effectiveOrgId: string
+
+    if (session?.user?.id && session.user.organizationId) {
+      // Session exists — validate it matches the state
+      if (session.user.id !== userId || session.user.organizationId !== organizationId) {
+        console.error("[Microsoft OAuth Callback] Session mismatch!", {
+          stateUserId: userId,
+          sessionUserId: session.user.id,
+          stateOrgId: organizationId,
+          sessionOrgId: session.user.organizationId
+        })
+        return NextResponse.redirect(new URL("/dashboard/settings/email?error=session_mismatch", request.url))
+      }
+      effectiveUserId = session.user.id
+      effectiveOrgId = session.user.organizationId
+    } else {
+      // Session lost during OAuth round-trip — use state as trusted identity
+      console.warn("[Microsoft OAuth Callback] No session — falling back to state", {
+        stateUserId: userId,
+        stateOrgId: organizationId
       })
-      return NextResponse.redirect(new URL("/dashboard/settings/email?error=session_mismatch", request.url))
+      const user = await prisma.user.findFirst({
+        where: { id: userId, organizationId },
+        select: { id: true }
+      })
+      if (!user) {
+        console.error("[Microsoft OAuth Callback] State userId/orgId not found in DB")
+        return NextResponse.redirect(new URL("/dashboard/settings/email?error=session_mismatch", request.url))
+      }
+      effectiveUserId = userId
+      effectiveOrgId = organizationId
     }
-    
+
     console.log("[Microsoft OAuth Callback] Validation passed, proceeding with token exchange...")
 
     // Check required env vars
@@ -188,10 +210,10 @@ export async function GET(request: Request) {
     const expiresInMs = tokenData.expires_in ? Number(tokenData.expires_in) * 1000 : 3600 * 1000
 
     // Create connection in ConnectedEmailAccount (used by email sync)
-    // Associate with the logged-in user so they can send from their own inbox
+    // Associate with the user who initiated the OAuth flow
     const connectedAccount = await EmailConnectionService.createMicrosoftConnection({
-      organizationId,
-      userId: session.user.id,  // Associate account with the connecting user
+      organizationId: effectiveOrgId,
+      userId: effectiveUserId,
       email,
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,

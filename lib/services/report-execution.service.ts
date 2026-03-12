@@ -607,7 +607,13 @@ export class ReportExecutionService {
     }
 
     // Build output rows with format and type information
-    const dataRows = sortedMetrics.map(metric => {
+    // Use a loop (not .map) so we can track formula column totals for earlier rows,
+    // allowing percent-format formula rows to recalculate their total from referenced rows' totals
+    // instead of nonsensically summing individual percentages.
+    const formulaColumnTotalsByMetricKey: Record<string, Record<string, number | null>> = {}
+    const dataRows: Record<string, unknown>[] = []
+
+    for (const metric of sortedMetrics) {
       const row: Record<string, unknown> = {
         _label: metric.label,
         _format: metric.format, // Include format for frontend rendering
@@ -618,14 +624,32 @@ export class ReportExecutionService {
       for (const pv of pivotValues) {
         row[pv] = metricValuesByPivot[pv][metric.key]
       }
-      
-      // Compute formula column values for this row
+
+      // Compute formula column values (e.g., Total column) for this row
+      formulaColumnTotalsByMetricKey[metric.key] = {}
       for (const fc of sortedFormulaColumns) {
-        row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
+        // For percent-format formula rows, recalculate using the formula applied to
+        // the referenced rows' totals (e.g., Total GP% = Total GP / Total Revenue)
+        // instead of summing individual column percentages which is meaningless.
+        if (metric.format === "percent" && metric.type === "formula" && metric.expression) {
+          const context: Record<string, number> = {}
+          for (const otherMetric of sortedMetrics) {
+            const otherTotals = formulaColumnTotalsByMetricKey[otherMetric.key]
+            if (otherTotals && otherTotals[fc.key] != null) {
+              context[otherMetric.key] = otherTotals[fc.key]!
+            }
+          }
+          row[fc.key] = evaluateSafeExpression(metric.expression, context)
+        } else {
+          row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
+        }
+        const val = row[fc.key]
+        formulaColumnTotalsByMetricKey[metric.key][fc.key] =
+          typeof val === "number" && !isNaN(val) ? val : null
       }
-      
-      return row
-    })
+
+      dataRows.push(row)
+    }
 
     return { columns, rows: dataRows, formulaRows: [] }
   }

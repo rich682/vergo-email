@@ -4,6 +4,7 @@ import { EmailConnectionService } from "@/lib/services/email-connection.service"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { verifyOAuthState } from "@/lib/utils/oauth-state"
+import { prisma } from "@/lib/prisma"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -71,7 +72,14 @@ export async function GET(request: Request) {
     const organizationId: string | null = parsed.organizationId || null
     const userId: string | null = parsed.userId || null
 
-    // Get session
+    // If we couldn't parse state at all, fail
+    if (!organizationId || !userId) {
+      console.error("[Gmail OAuth Callback] Could not extract organizationId/userId from state")
+      return NextResponse.redirect(new URL("/dashboard/settings/email?error=invalid_state", request.url))
+    }
+
+    // Try to get session, but fall back to HMAC-signed state if session is lost
+    // (session can be lost during cross-domain OAuth redirect, e.g. preview URL vs production redirect URI)
     const session = await getServerSession(authOptions)
     console.log("[Gmail OAuth Callback] Session user:", {
       hasSession: !!session,
@@ -79,43 +87,53 @@ export async function GET(request: Request) {
       orgId: session?.user?.organizationId
     })
 
-    // Validate session exists
-    if (!session?.user?.id || !session.user.organizationId) {
-      console.error("[Gmail OAuth Callback] No session - redirecting to signin")
-      return NextResponse.redirect(new URL("/auth/signin", request.url))
-    }
+    let effectiveUserId: string
+    let effectiveOrgId: string
 
-    // Validate user ID matches
-    if (userId && session.user.id !== userId) {
-      console.error("[Gmail OAuth Callback] User ID mismatch!", {
+    if (session?.user?.id && session.user.organizationId) {
+      // Session exists — validate it matches the signed state
+      if (session.user.id !== userId) {
+        console.error("[Gmail OAuth Callback] User ID mismatch!", {
+          stateUserId: userId,
+          sessionUserId: session.user.id
+        })
+        return NextResponse.redirect(new URL("/dashboard/settings/email?error=user_mismatch", request.url))
+      }
+      if (session.user.organizationId !== organizationId) {
+        console.error("[Gmail OAuth Callback] Org ID mismatch!", {
+          stateOrgId: organizationId,
+          sessionOrgId: session.user.organizationId
+        })
+        return NextResponse.redirect(new URL("/dashboard/settings/email?error=org_mismatch", request.url))
+      }
+      effectiveUserId = session.user.id
+      effectiveOrgId = session.user.organizationId
+    } else {
+      // Session lost during OAuth round-trip — use HMAC-signed state as trusted identity
+      // Verify the user still exists and belongs to the specified organization
+      console.warn("[Gmail OAuth Callback] No session — falling back to HMAC-signed state", {
         stateUserId: userId,
-        sessionUserId: session.user.id
+        stateOrgId: organizationId
       })
-      return NextResponse.redirect(new URL("/dashboard/settings/email?error=user_mismatch", request.url))
-    }
-
-    // Validate organization ID matches
-    if (organizationId && session.user.organizationId !== organizationId) {
-      console.error("[Gmail OAuth Callback] Org ID mismatch!", {
-        stateOrgId: organizationId,
-        sessionOrgId: session.user.organizationId
+      const user = await prisma.user.findFirst({
+        where: { id: userId, organizationId },
+        select: { id: true }
       })
-      return NextResponse.redirect(new URL("/dashboard/settings/email?error=org_mismatch", request.url))
-    }
-
-    // If we couldn't parse state at all, fail
-    if (!organizationId) {
-      console.error("[Gmail OAuth Callback] Could not extract organizationId from state")
-      return NextResponse.redirect(new URL("/dashboard/settings/email?error=invalid_state", request.url))
+      if (!user) {
+        console.error("[Gmail OAuth Callback] State userId/orgId not found in DB")
+        return NextResponse.redirect(new URL("/dashboard/settings/email?error=session_mismatch", request.url))
+      }
+      effectiveUserId = userId
+      effectiveOrgId = organizationId
     }
 
     console.log("[Gmail OAuth Callback] Validation passed, creating connection...")
 
     // Create connection in ConnectedEmailAccount (used by email sync)
-    // Associate with the logged-in user so they can send from their own inbox
+    // Associate with the user who initiated the OAuth flow
     const connectedAccount = await EmailConnectionService.createGmailConnection({
-      organizationId,
-      userId: session.user.id,  // Associate account with the connecting user
+      organizationId: effectiveOrgId,
+      userId: effectiveUserId,
       email: userInfo.data.email,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,

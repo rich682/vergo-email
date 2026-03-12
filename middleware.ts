@@ -96,6 +96,11 @@ export default withAuth(
           return true
         }
 
+        // Allow OAuth callbacks (authentication verified via HMAC-signed state at route level)
+        if (pathname.startsWith("/api/oauth/")) {
+          return true
+        }
+
         return !!token
       },
     },
