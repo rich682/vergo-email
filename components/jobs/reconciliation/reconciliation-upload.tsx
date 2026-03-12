@@ -11,6 +11,14 @@ interface ReconciliationUploadProps {
   sourceBLabel: string
   sourceAFileName?: string | null
   sourceBFileName?: string | null
+  /** Restrict accepted file types for Source A (e.g. ".xlsx,.xls"). Defaults to all supported formats. */
+  sourceAAccept?: string
+  /** Restrict accepted file types for Source B. Defaults to all supported formats. */
+  sourceBAccept?: string
+  /** Human-readable format label for Source A (e.g. "Excel (.xlsx, .xls)"). */
+  sourceAFormatLabel?: string
+  /** Human-readable format label for Source B. */
+  sourceBFormatLabel?: string
   onBothUploaded: () => void
 }
 
@@ -21,6 +29,10 @@ export function ReconciliationUpload({
   sourceBLabel,
   sourceAFileName,
   sourceBFileName,
+  sourceAAccept,
+  sourceBAccept,
+  sourceAFormatLabel,
+  sourceBFormatLabel,
   onBothUploaded,
 }: ReconciliationUploadProps) {
   const [uploading, setUploading] = useState<"A" | "B" | null>(null)
@@ -77,6 +89,8 @@ export function ReconciliationUpload({
   const DropZone = ({ source, label, uploaded }: { source: "A" | "B"; label: string; uploaded: { name: string; rowCount: number } | null }) => {
     const [dragOver, setDragOver] = useState(false)
     const isUploading = uploading === source
+    const acceptStr = source === "A" ? (sourceAAccept || ".csv,.xlsx,.xls,.pdf") : (sourceBAccept || ".csv,.xlsx,.xls,.pdf")
+    const formatHint = source === "A" ? (sourceAFormatLabel || "CSV, Excel, or PDF") : (sourceBFormatLabel || "CSV, Excel, or PDF")
 
     const handleDrop = (e: React.DragEvent) => {
       e.preventDefault()
@@ -101,7 +115,7 @@ export function ReconciliationUpload({
           )}
           <label className="mt-3 inline-block text-xs text-green-600 hover:text-green-700 cursor-pointer underline">
             Replace file
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleFileSelect} />
+            <input type="file" accept={acceptStr} className="hidden" onChange={handleFileSelect} />
           </label>
         </div>
       )
@@ -125,12 +139,12 @@ export function ReconciliationUpload({
           <>
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
             <p className="text-sm font-medium text-gray-700">{label}</p>
-            <p className="text-xs text-gray-400 mt-1">Drop CSV, Excel, or PDF here</p>
+            <p className="text-xs text-gray-400 mt-1">Drop {formatHint} here</p>
             <label className="mt-3 inline-block">
               <span className="text-xs text-orange-500 hover:text-orange-600 cursor-pointer underline">
                 Or browse files
               </span>
-              <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleFileSelect} />
+              <input type="file" accept={acceptStr} className="hidden" onChange={handleFileSelect} />
             </label>
           </>
         )}
@@ -146,7 +160,9 @@ export function ReconciliationUpload({
         <h3 className="text-lg font-semibold text-gray-900 mb-1">Upload Source Files</h3>
         <p className="text-sm text-gray-500">
           Upload the two files you want to reconcile. {sourceALabel} is the source of truth — unmatched rows will appear in &ldquo;Not Matched&rdquo;.
-          Supported formats: CSV, Excel (.xlsx/.xls), PDF.
+          {sourceAFormatLabel || sourceBFormatLabel
+            ? ` Supported: ${sourceAFormatLabel || "CSV, Excel, PDF"} for ${sourceALabel}, ${sourceBFormatLabel || "CSV, Excel, PDF"} for ${sourceBLabel}.`
+            : " Supported formats: CSV, Excel (.xlsx/.xls), PDF."}
         </p>
       </div>
 

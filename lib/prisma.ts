@@ -1,16 +1,17 @@
 import { PrismaClient, Prisma } from '@prisma/client'
 
 // Models that support soft delete via deletedAt field
+// NOTE: Prisma $allModels callbacks receive PascalCase model names (matching the schema)
 const SOFT_DELETE_MODELS = [
-  'database',
-  'formDefinition',
-  'reportDefinition',
-  'board',
-  'taskInstance',
-  'reconciliationConfig',
-  'agentDefinition',
-  'entity',
-  'group',
+  'Database',
+  'FormDefinition',
+  'ReportDefinition',
+  'Board',
+  'TaskInstance',
+  'ReconciliationConfig',
+  'AgentDefinition',
+  'Entity',
+  'Group',
 ] as const
 
 type SoftDeleteModel = typeof SOFT_DELETE_MODELS[number]

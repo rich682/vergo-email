@@ -10,7 +10,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { mapDatabaseColumnType } from "@/lib/services/reconciliation-database.service"
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+/** Map a database schema column dataType to a reconciliation column type.
+ *  Duplicated here to avoid importing the server-only service (which pulls in Prisma). */
+function mapDatabaseColumnType(
+  dataType: string
+): "date" | "amount" | "text" | "reference" {
+  switch (dataType) {
+    case "currency":
+    case "number":
+      return "amount"
+    case "date":
+      return "date"
+    default:
+      return "text"
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────
 

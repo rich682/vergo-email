@@ -39,7 +39,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Reconciliation config not found" }, { status: 404 })
     }
 
-    if (config.sourceType === "document_document") {
+    // Reject if neither source is a database (data-driven check supports all source types)
+    const sourceA = config.sourceAConfig as Record<string, unknown> | null
+    const sourceB = config.sourceBConfig as Record<string, unknown> | null
+    if (sourceA?.sourceType !== "database" && sourceB?.sourceType !== "database") {
       return NextResponse.json(
         { error: "This reconciliation uses file uploads, not database sources" },
         { status: 400 }

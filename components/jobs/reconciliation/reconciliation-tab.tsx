@@ -418,8 +418,23 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false, onConfigC
   // Run: PENDING - upload files or load database rows
   if (activeRun.status === "PENDING") {
     const isDatabaseDatabase = linkedConfig.sourceType === "database_database"
-    const isDatabaseDocument = linkedConfig.sourceType === "database_document"
-    const hasDatabaseSources = isDatabaseDatabase || isDatabaseDocument
+    const hasDatabaseSources = isDatabaseDatabase
+      || linkedConfig.sourceType === "database_document"
+      || linkedConfig.sourceType === "excel_database"
+
+    // Derive accepted file formats from sourceType for format-restricted configs
+    const formatProps = (() => {
+      switch (linkedConfig.sourceType) {
+        case "excel_excel":
+          return { sourceAAccept: ".xlsx,.xls", sourceBAccept: ".xlsx,.xls", sourceAFormatLabel: "Excel (.xlsx, .xls)", sourceBFormatLabel: "Excel (.xlsx, .xls)" }
+        case "excel_pdf":
+          return { sourceAAccept: ".xlsx,.xls", sourceBAccept: ".pdf", sourceAFormatLabel: "Excel (.xlsx, .xls)", sourceBFormatLabel: "PDF" }
+        case "excel_database":
+          return { sourceAAccept: ".xlsx,.xls", sourceAFormatLabel: "Excel (.xlsx, .xls)" }
+        default:
+          return {}
+      }
+    })()
 
     return (
       <div className="space-y-4">
@@ -430,7 +445,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false, onConfigC
             <p className="text-xs text-gray-400">
               {isDatabaseDatabase
                 ? "Load data from both databases to begin"
-                : isDatabaseDocument
+                : hasDatabaseSources
                 ? "Load database data and upload a file to begin"
                 : "Upload both source files to begin"}
             </p>
@@ -475,7 +490,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false, onConfigC
             )}
           </div>
         ) : (
-          /* Document-based: use file upload component */
+          /* File-based (or hybrid): use file upload component */
           <ReconciliationUpload
             configId={linkedConfig.id}
             runId={activeRun.id}
@@ -483,6 +498,7 @@ export function ReconciliationTab({ jobId, taskName, readOnly = false, onConfigC
             sourceBLabel={linkedConfig.sourceBConfig.label}
             sourceAFileName={activeRun.sourceAFileName}
             sourceBFileName={activeRun.sourceBFileName}
+            {...formatProps}
             onBothUploaded={handleRunMatching}
           />
         )}

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect, Suspense } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, Mail, Check, ChevronDown, X } from "lucide-react"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 
 interface ConnectedEmail {
@@ -72,7 +72,6 @@ function combineName(firstName: string, lastName: string): string {
 
 function TeamSettingsContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [teamUsers, setTeamUsers] = useState<OrgUser[]>([])
@@ -99,69 +98,6 @@ function TeamSettingsContent() {
   const [deletingUser, setDeletingUser] = useState<OrgUser | null>(null)
   const [deleting, setDeleting] = useState(false)
   
-  // Inbox connection state
-  const [connectDropdownUserId, setConnectDropdownUserId] = useState<string | null>(null)
-  const [inboxPopoverUserId, setInboxPopoverUserId] = useState<string | null>(null)
-  const [disconnecting, setDisconnecting] = useState<string | null>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  
-
-  // Handle OAuth callback messages
-  useEffect(() => {
-    const success = searchParams.get("success")
-    const error = searchParams.get("error")
-
-    if (success === "gmail_connected" || success === "microsoft_connected") {
-      setMessage({ type: "success", text: "Email inbox connected successfully!" })
-      setTimeout(() => setMessage(null), 5000)
-      window.history.replaceState({}, "", "/dashboard/settings/team")
-      fetchTeamUsers() // Refresh to show new connection
-    } else if (error) {
-      const errorMessages: Record<string, string> = {
-        oauth_failed: "OAuth authentication failed. Please try again.",
-        no_tokens: "Failed to get access tokens. Please try again.",
-        no_email: "Failed to get email address from provider.",
-        session_mismatch: "Session mismatch - please ensure you're logged in and try again.",
-        user_mismatch: "User ID mismatch - please try again.",
-        org_mismatch: "Organization mismatch - please try again.",
-        invalid_state: "Invalid OAuth state - please try again.",
-        invalid_state_data: "Invalid OAuth state data - please try again.",
-        missing_code_or_state: "OAuth callback missing required data.",
-        token_exchange_failed: "Failed to exchange tokens with provider.",
-        no_access_token: "No access token received from provider.",
-        no_refresh_token: "No refresh token received - offline access may not be enabled.",
-        profile_fetch_failed: "Failed to fetch profile from provider.",
-        no_email_in_profile: "No email found in your account profile.",
-        missing_config: "Server configuration error - contact support.",
-        ms_access_denied: "Access denied - you may have declined permissions.",
-        ms_consent_required: "Admin consent may be required for this app.",
-        unexpected_error: "An unexpected error occurred.",
-      }
-      const customMessage = searchParams.get("message")
-      let errorText = errorMessages[error] || `Connection error: ${error}`
-      if (customMessage) {
-        errorText += ` (${decodeURIComponent(customMessage)})`
-      }
-      setMessage({ type: "error", text: errorText })
-      setTimeout(() => setMessage(null), 10000)
-      window.history.replaceState({}, "", "/dashboard/settings/team")
-    }
-  }, [searchParams])
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setConnectDropdownUserId(null)
-      }
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        setInboxPopoverUserId(null)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
 
   useEffect(() => {
     fetchTeamUsers()
@@ -185,36 +121,6 @@ function TeamSettingsContent() {
       setIsAdmin(false)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleConnectGmail = (userId: string) => {
-    setConnectDropdownUserId(null)
-    window.location.href = `/api/oauth/gmail?returnTo=/dashboard/settings/team`
-  }
-
-  const handleConnectMicrosoft = (userId: string) => {
-    setConnectDropdownUserId(null)
-    window.location.href = `/api/oauth/microsoft?returnTo=/dashboard/settings/team`
-  }
-
-  const handleDisconnect = async (accountId: string, userId: string) => {
-    try {
-      setDisconnecting(accountId)
-      const res = await fetch(`/api/email-accounts/${accountId}`, { method: "DELETE" })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to disconnect")
-      }
-      setMessage({ type: "success", text: "Inbox disconnected successfully" })
-      setTimeout(() => setMessage(null), 5000)
-      setInboxPopoverUserId(null)
-      fetchTeamUsers()
-    } catch (err: any) {
-      setMessage({ type: "error", text: err?.message || "Failed to disconnect" })
-      setTimeout(() => setMessage(null), 5000)
-    } finally {
-      setDisconnecting(null)
     }
   }
 
@@ -369,16 +275,7 @@ function TeamSettingsContent() {
     <div className="min-h-screen bg-white">
       <div className="px-8 py-4">
         {/* Action Row */}
-        <div className="flex items-center justify-between mb-4">
-          {/* Info text for non-admins */}
-          {!isAdmin && (
-            <p className="text-sm text-gray-500">
-              Connect your inbox to send and receive emails through Vergo.
-            </p>
-          )}
-          
-          {/* Spacer for layout */}
-          <div />
+        <div className="flex items-center justify-end mb-4">
           
           {/* Invite User Button - Admin only */}
           {isAdmin && (
@@ -502,14 +399,13 @@ function TeamSettingsContent() {
             />
           </div>
         ) : teamUsers.length > 0 ? (
-          <div className="border border-gray-200 rounded-lg overflow-visible">
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-              <div className="col-span-3">Name</div>
-              <div className="col-span-3">Email</div>
-              <div className="col-span-1">Role</div>
+              <div className="col-span-4">Name</div>
+              <div className="col-span-4">Email</div>
+              <div className="col-span-2">Role</div>
               <div className="col-span-1">Status</div>
-              <div className="col-span-3">Inbox</div>
               <div className="col-span-1 text-right">{isAdmin ? "Actions" : ""}</div>
             </div>
             
@@ -517,12 +413,11 @@ function TeamSettingsContent() {
             <div className="divide-y divide-gray-100">
               {teamUsers.map((user) => {
                 const initials = getInitials(user.name, user.email)
-                const canManageInbox = user.isCurrentUser // Only the user themselves can connect/disconnect
-                
+
                 return (
                   <div key={user.id} className="grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50">
                     {/* Name */}
-                    <div className="col-span-3 flex items-center gap-3">
+                    <div className="col-span-4 flex items-center gap-3">
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium ${
                         user.isCurrentUser ? "bg-orange-100 text-orange-700" : "bg-gray-200 text-gray-600"
                       }`}>
@@ -539,12 +434,12 @@ function TeamSettingsContent() {
                     </div>
                     
                     {/* Email */}
-                    <div className="col-span-3 text-sm text-gray-600 truncate">
+                    <div className="col-span-4 text-sm text-gray-600 truncate">
                       {user.email}
                     </div>
                     
                     {/* Role */}
-                    <div className="col-span-1">
+                    <div className="col-span-2">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${
                         user.role === "ADMIN"
                           ? "border-purple-200 text-purple-700 bg-purple-50"
@@ -568,116 +463,6 @@ function TeamSettingsContent() {
                           <Clock className="w-3 h-3" />
                           Pending
                         </span>
-                      )}
-                    </div>
-                    
-                    {/* Inbox */}
-                    <div className="col-span-3 relative">
-                      {user.connectedEmail ? (
-                        // Connected - show email with popover on click
-                        <div className="relative">
-                          <button
-                            onClick={() => setInboxPopoverUserId(inboxPopoverUserId === user.id ? null : user.id)}
-                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                              user.isCurrentUser 
-                                ? "bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100"
-                                : "bg-green-50 border border-green-200 text-green-700 hover:bg-green-100"
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span className="truncate max-w-[140px]">{user.connectedEmail.email}</span>
-                            {canManageInbox && <ChevronDown className="w-3 h-3" />}
-                          </button>
-                          
-                          {/* Popover for connected inbox */}
-                          {inboxPopoverUserId === user.id && (
-                            <div 
-                              ref={popoverRef}
-                              className="absolute left-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3"
-                            >
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Mail className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm font-medium text-gray-900 truncate">
-                                    {user.connectedEmail.email}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                    user.connectedEmail.provider === "GMAIL" 
-                                      ? "bg-red-100 text-red-700"
-                                      : user.connectedEmail.provider === "MICROSOFT"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : "bg-gray-100 text-gray-700"
-                                  }`}>
-                                    {user.connectedEmail.provider}
-                                  </span>
-                                  {user.connectedEmail.isPrimary && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                      Primary
-                                    </span>
-                                  )}
-                                </div>
-                                {user.connectedEmail.lastSyncAt && (
-                                  <p className="text-xs text-gray-500">
-                                    Last synced: {new Date(user.connectedEmail.lastSyncAt).toLocaleString()}
-                                  </p>
-                                )}
-                                {canManageInbox && (
-                                  <button
-                                    onClick={() => handleDisconnect(user.connectedEmail!.id, user.id)}
-                                    disabled={disconnecting === user.connectedEmail.id}
-                                    className="w-full mt-2 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                                  >
-                                    {disconnecting === user.connectedEmail.id ? "Disconnecting..." : "Disconnect"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : user.status === "pending" ? (
-                        // Pending user - can't connect yet
-                        <span className="text-sm text-gray-400">—</span>
-                      ) : canManageInbox ? (
-                        // Not connected + is current user - show connect dropdown
-                        <div className="relative" ref={dropdownRef}>
-                          <button
-                            onClick={() => setConnectDropdownUserId(connectDropdownUserId === user.id ? null : user.id)}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 transition-colors"
-                          >
-                            <Mail className="w-4 h-4" />
-                            Connect
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                          
-                          {/* Dropdown for connect options */}
-                          {connectDropdownUserId === user.id && (
-                            <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
-                              <button
-                                onClick={() => handleConnectGmail(user.id)}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                              >
-                                <div className="w-5 h-5 bg-red-100 rounded flex items-center justify-center">
-                                  <Mail className="w-3 h-3 text-red-600" />
-                                </div>
-                                Connect Gmail
-                              </button>
-                              <button
-                                onClick={() => handleConnectMicrosoft(user.id)}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                              >
-                                <div className="w-5 h-5 bg-blue-100 rounded flex items-center justify-center">
-                                  <Mail className="w-3 h-3 text-blue-600" />
-                                </div>
-                                Connect Microsoft
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        // Not connected + not current user - show not connected
-                        <span className="text-sm text-gray-400">Not connected</span>
                       )}
                     </div>
                     

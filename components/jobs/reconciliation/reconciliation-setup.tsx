@@ -24,12 +24,49 @@ import {
   AlertCircle,
   Database,
   Files,
+  FileSpreadsheet,
 } from "lucide-react"
 import { DatabaseSourcePicker, type DatabaseAnalysis } from "./database-source-picker"
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-type SourceType = "document_document" | "database_document" | "database_database"
+type SourceType =
+  | "document_document"
+  | "database_document"
+  | "database_database"
+  | "excel_excel"
+  | "excel_pdf"
+  | "excel_database"
+
+const SOURCE_TYPE_META: Record<SourceType, {
+  sideA: { kind: "file" | "database"; accept?: string; formatLabel?: string }
+  sideB: { kind: "file" | "database"; accept?: string; formatLabel?: string }
+}> = {
+  document_document: {
+    sideA: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
+    sideB: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
+  },
+  database_document: {
+    sideA: { kind: "database" },
+    sideB: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
+  },
+  database_database: {
+    sideA: { kind: "database" },
+    sideB: { kind: "database" },
+  },
+  excel_excel: {
+    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
+    sideB: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
+  },
+  excel_pdf: {
+    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
+    sideB: { kind: "file", accept: ".pdf", formatLabel: "PDF" },
+  },
+  excel_database: {
+    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
+    sideB: { kind: "database" },
+  },
+}
 
 interface DetectedColumn {
   key: string
@@ -97,8 +134,8 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   // ── Source type helpers ──────────────────────────────────────────────
 
-  const sourceAIsDatabase = sourceType === "database_document" || sourceType === "database_database"
-  const sourceBIsDatabase = sourceType === "database_database"
+  const sourceAIsDatabase = SOURCE_TYPE_META[sourceType].sideA.kind === "database"
+  const sourceBIsDatabase = SOURCE_TYPE_META[sourceType].sideB.kind === "database"
 
   // Get the columns for mapping (from file or database analysis)
   const getSourceAColumns = (): DetectedColumn[] => {
@@ -404,6 +441,42 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </div>
         ),
       },
+      {
+        value: "excel_excel",
+        title: "Excel vs Excel",
+        description: "Reconcile two Excel files (.xlsx, .xls)",
+        icon: (
+          <div className="flex items-center gap-1">
+            <FileSpreadsheet className="w-5 h-5" />
+            <span className="text-gray-300 text-xs">&times;</span>
+            <FileSpreadsheet className="w-5 h-5" />
+          </div>
+        ),
+      },
+      {
+        value: "excel_pdf",
+        title: "Excel vs PDF",
+        description: "Reconcile an Excel file against a PDF statement",
+        icon: (
+          <div className="flex items-center gap-1">
+            <FileSpreadsheet className="w-5 h-5" />
+            <span className="text-gray-300 text-xs">&times;</span>
+            <FileText className="w-5 h-5" />
+          </div>
+        ),
+      },
+      {
+        value: "excel_database",
+        title: "Excel vs Database",
+        description: "Reconcile an uploaded Excel file against a connected database",
+        icon: (
+          <div className="flex items-center gap-1">
+            <FileSpreadsheet className="w-5 h-5" />
+            <span className="text-gray-300 text-xs">&times;</span>
+            <Database className="w-5 h-5" />
+          </div>
+        ),
+      },
     ]
 
     return (
@@ -460,6 +533,9 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     analyzing: boolean
   }) => {
     const [dragOver, setDragOver] = useState(false)
+    const meta = side === "A" ? SOURCE_TYPE_META[sourceType].sideA : SOURCE_TYPE_META[sourceType].sideB
+    const acceptStr = meta.accept || ".csv,.xlsx,.xls,.pdf"
+    const formatLabel = meta.formatLabel || "CSV, Excel, or PDF"
 
     const handleDrop = (e: React.DragEvent) => {
       e.preventDefault()
@@ -496,7 +572,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </div>
           <label className="mt-3 inline-block text-xs text-green-600 hover:text-green-700 cursor-pointer underline">
             Replace file
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleFileSelect} />
+            <input type="file" accept={acceptStr} className="hidden" onChange={handleFileSelect} />
           </label>
         </div>
       )
@@ -526,12 +602,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             <p className="text-xs text-gray-400 mt-1">
               {side === "A" ? "e.g. ERP, General Ledger, AP report" : "e.g. Bank statement, card feed"}
             </p>
-            <p className="text-[10px] text-gray-300 mt-0.5">Drop CSV, Excel, or PDF</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">Drop {formatLabel}</p>
             <label className="mt-3 inline-block">
               <span className="text-xs text-orange-500 hover:text-orange-600 cursor-pointer underline">
                 Browse files
               </span>
-              <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleFileSelect} />
+              <input type="file" accept={acceptStr} className="hidden" onChange={handleFileSelect} />
             </label>
           </>
         )}
@@ -540,34 +616,44 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   }
 
   if (step === "upload") {
-    const sourceTypeLabel =
-      sourceType === "document_document" ? "Document vs Document" :
-      sourceType === "database_document" ? "Database vs Document" :
-      "Database vs Database"
+    const sourceTypeLabels: Record<SourceType, string> = {
+      document_document: "Document vs Document",
+      database_document: "Database vs Document",
+      database_database: "Database vs Database",
+      excel_excel: "Excel vs Excel",
+      excel_pdf: "Excel vs PDF",
+      excel_database: "Excel vs Database",
+    }
+    const sourceTypeLabel = sourceTypeLabels[sourceType]
 
     return (
       <div className="max-w-3xl space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-lg font-semibold text-gray-900">
-              {sourceType === "document_document" ? "Upload Files to Reconcile" :
-               sourceType === "database_database" ? "Select Databases to Reconcile" :
-               "Select Sources to Reconcile"}
+              {sourceAIsDatabase && sourceBIsDatabase
+                ? "Select Databases to Reconcile"
+                : sourceAIsDatabase || sourceBIsDatabase
+                ? "Select Sources to Reconcile"
+                : "Upload Files to Reconcile"}
             </h3>
             <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
               {sourceTypeLabel}
             </span>
           </div>
           <p className="text-sm text-gray-500">
-            {sourceType === "document_document" ? (
-              <>Upload both reports and AI will automatically detect the columns and data types.
-              Source A is your source of truth — unmatched Source A rows will appear in the &ldquo;Not Matched&rdquo; tab.</>
-            ) : sourceType === "database_database" ? (
+            {sourceAIsDatabase && sourceBIsDatabase ? (
               <>Select the two databases to reconcile. AI will map columns automatically.
               Source A is your source of truth.</>
-            ) : (
+            ) : sourceAIsDatabase && !sourceBIsDatabase ? (
               <>Select a database for Source A and upload a file for Source B.
               Source A is your source of truth.</>
+            ) : !sourceAIsDatabase && sourceBIsDatabase ? (
+              <>Upload a file for Source A and select a database for Source B.
+              Source A is your source of truth.</>
+            ) : (
+              <>Upload both reports and AI will automatically detect the columns and data types.
+              Source A is your source of truth — unmatched Source A rows will appear in the &ldquo;Not Matched&rdquo; tab.</>
             )}
           </p>
         </div>

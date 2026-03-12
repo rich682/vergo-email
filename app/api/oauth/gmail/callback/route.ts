@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (!code || !state) {
     console.error("[Gmail OAuth Callback] Missing code or state - code:", !!code, "state:", !!state)
     return NextResponse.redirect(
-      new URL("/dashboard/settings/team?error=oauth_failed", request.url)
+      new URL("/dashboard/settings/email?error=oauth_failed", request.url)
     )
   }
 
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     if (!tokens.access_token || !tokens.refresh_token) {
       console.error("[Gmail OAuth Callback] Missing tokens")
       return NextResponse.redirect(
-        new URL("/dashboard/settings/team?error=no_tokens", request.url)
+        new URL("/dashboard/settings/email?error=no_tokens", request.url)
       )
     }
 
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     if (!userInfo.data.email) {
       console.error("[Gmail OAuth Callback] No email in user info")
       return NextResponse.redirect(
-        new URL("/dashboard/settings/team?error=no_email", request.url)
+        new URL("/dashboard/settings/email?error=no_email", request.url)
       )
     }
 
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     const parsed = verifyOAuthState(state)
     if (!parsed) {
       console.error("[Gmail OAuth Callback] State verification failed - possible tampering")
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/email?error=invalid_state", request.url))
     }
     const organizationId: string | null = parsed.organizationId || null
     const userId: string | null = parsed.userId || null
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
         stateUserId: userId,
         sessionUserId: session.user.id
       })
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=user_mismatch", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/email?error=user_mismatch", request.url))
     }
 
     // Validate organization ID matches
@@ -100,13 +100,13 @@ export async function GET(request: Request) {
         stateOrgId: organizationId,
         sessionOrgId: session.user.organizationId
       })
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=org_mismatch", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/email?error=org_mismatch", request.url))
     }
 
     // If we couldn't parse state at all, fail
     if (!organizationId) {
       console.error("[Gmail OAuth Callback] Could not extract organizationId from state")
-      return NextResponse.redirect(new URL("/dashboard/settings/team?error=invalid_state", request.url))
+      return NextResponse.redirect(new URL("/dashboard/settings/email?error=invalid_state", request.url))
     }
 
     console.log("[Gmail OAuth Callback] Validation passed, creating connection...")
@@ -138,12 +138,12 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-      new URL("/dashboard/settings/team?success=gmail_connected", request.url)
+      new URL("/dashboard/settings/email?success=gmail_connected", request.url)
     )
   } catch (error) {
     console.error("Gmail OAuth error:", error)
     return NextResponse.redirect(
-      new URL("/dashboard/settings/team?error=oauth_error", request.url)
+      new URL("/dashboard/settings/email?error=oauth_error", request.url)
     )
   }
 }

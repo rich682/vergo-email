@@ -1,24 +1,19 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { CalendarDays, ChevronRight, Link2, Shield, Trash2 } from "lucide-react"
+import { CalendarDays, ChevronRight, Link2, Mail, Shield, Trash2 } from "lucide-react"
 import Link from "next/link"
 
 function SettingsContent() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [signature, setSignature] = useState<string>("")
-  const [loadingSignature, setLoadingSignature] = useState(true)
-  const [savingSignature, setSavingSignature] = useState(false)
-  
+
   // Company settings state
   const [companyName, setCompanyName] = useState<string>("")
   const [loadingCompany, setLoadingCompany] = useState(true)
   const [savingCompany, setSavingCompany] = useState(false)
 
   useEffect(() => {
-    fetchUserSignature()
     fetchCompanySettings()
   }, [])
 
@@ -62,45 +57,6 @@ function SettingsContent() {
     }
   }
 
-  const fetchUserSignature = async () => {
-    try {
-      setLoadingSignature(true)
-      const response = await fetch("/api/user/signature")
-      if (response.ok) {
-        const data = await response.json()
-        setSignature(data.signature || "")
-      }
-    } catch (error) {
-      console.error("Error fetching signature:", error)
-    } finally {
-      setLoadingSignature(false)
-    }
-  }
-
-  const handleSaveSignature = async () => {
-    try {
-      setSavingSignature(true)
-      setMessage(null)
-      const response = await fetch("/api/user/signature", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signature })
-      })
-      
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to save signature")
-      }
-      
-      setMessage({ type: "success", text: "Signature saved successfully!" })
-      setTimeout(() => setMessage(null), 5000)
-    } catch (err: any) {
-      setMessage({ type: "error", text: err?.message || "Failed to save signature" })
-      setTimeout(() => setMessage(null), 5000)
-    } finally {
-      setSavingSignature(false)
-    }
-  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -202,6 +158,25 @@ function SettingsContent() {
             </div>
           </Link>
 
+          {/* Email Setup Link */}
+          <Link
+            href="/dashboard/settings/email"
+            className="block border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors"
+          >
+            <div className="px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Mail className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-gray-900">Email Setup</h2>
+                  <p className="text-xs text-gray-500">Connect your inbox and configure your email signature</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </div>
+          </Link>
+
           {/* Role Permissions Link */}
           <Link
             href="/dashboard/settings/role-permissions"
@@ -240,49 +215,6 @@ function SettingsContent() {
             </div>
           </Link>
 
-          {/* Email Signature Section */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <h2 className="text-sm font-medium text-gray-900">Email Signature</h2>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <Label htmlFor="signature" className="text-sm font-medium text-gray-700 mb-2 block">
-                  Your email signature (will be appended to all outgoing emails)
-                </Label>
-                {loadingSignature ? (
-                  <div className="py-4 text-gray-500 text-sm">Loading signature...</div>
-                ) : (
-                  <>
-                    <Textarea
-                      id="signature"
-                      value={signature}
-                      onChange={(e) => setSignature(e.target.value)}
-                      placeholder="John Doe&#10;Accountant&#10;john@example.com"
-                      rows={5}
-                      className="w-full"
-                    />
-                    <p className="text-xs text-gray-500 mt-2">
-                      Leave empty to use auto-generated signature from your name, organization, and email.
-                    </p>
-                    <button
-                      onClick={handleSaveSignature}
-                      disabled={savingSignature}
-                      className="
-                        mt-4 px-4 py-2 rounded-md text-sm font-medium
-                        bg-gray-900 text-white
-                        hover:bg-gray-800
-                        disabled:opacity-50 disabled:cursor-not-allowed
-                        transition-colors
-                      "
-                    >
-                      {savingSignature ? "Saving..." : "Save Signature"}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
