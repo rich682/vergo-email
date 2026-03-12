@@ -191,7 +191,7 @@ export function PreviewPanel({
             // Contact mode: filter to only include recipients that are actually selected
             const selectedEmails = new Set(
               recipients
-                .filter(r => r.type === "entity" && r.email)
+                .filter(r => r.type === "user" && r.email)
                 .map(r => r.email?.toLowerCase().trim())
                 .filter((email): email is string => Boolean(email))
             )
@@ -240,7 +240,7 @@ export function PreviewPanel({
   // Auto-select first recipient when recipients are available and none is selected (fallback for contact mode)
   useEffect(() => {
     if (personalizationMode === "contact" && recipients.length > 0 && !selectedPreviewRecipient) {
-      const firstEntityRecipient = recipients.find(r => r.type === "entity" && r.email)
+      const firstEntityRecipient = recipients.find(r => r.type === "user" && r.email)
       if (firstEntityRecipient) {
         setSelectedPreviewRecipient(`${firstEntityRecipient.type}-${firstEntityRecipient.id}`)
       }
@@ -266,7 +266,7 @@ export function PreviewPanel({
         setPreviewBody(bodyResult.rendered)
       }
     } else if (personalizationMode === "contact") {
-      const recipient = recipients.find(r => `${r.type}-${r.id}` === selectedPreviewRecipient && r.type === "entity" && r.email)
+      const recipient = recipients.find(r => `${r.type}-${r.id}` === selectedPreviewRecipient && r.type === "user" && r.email)
       if (recipient) {
         const data = buildContactData(recipient)
         const subjectResult = renderTemplate(activeTemplate.subject, data)
@@ -415,8 +415,8 @@ export function PreviewPanel({
                   className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm"
                 >
                   {r.name}
-                  {r.type === "group" && r.entityCount !== undefined && (
-                    <span className="text-xs text-gray-500">({r.entityCount})</span>
+                  {r.type === "database_query" && (
+                    <span className="text-xs text-gray-500">(database)</span>
                   )}
                 </span>
               ))}
@@ -458,7 +458,7 @@ export function PreviewPanel({
                   {personalizationMode === "contact" && (
                     <>
                       {recipients
-                        .filter((r) => r.type === "entity" && r.email)
+                        .filter((r) => r.type === "user" && r.email)
                         .map((r) => (
                           <SelectItem key={`${r.type}-${r.id}`} value={`${r.type}-${r.id}`}>
                             {r.name} ({r.email})

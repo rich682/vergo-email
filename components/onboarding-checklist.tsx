@@ -42,13 +42,13 @@ const STEPS: OnboardingStep[] = [
     href: "/dashboard/settings",
     actionLabel: "Connect"
   },
-  { 
-    key: "contactAdded", 
-    label: "Add your first contact", 
-    description: "Import or create contacts to send requests to",
+  {
+    key: "contactAdded",
+    label: "Invite team members",
+    description: "Add users to your organization to collaborate and send requests",
     icon: Users,
-    href: "/dashboard/contacts",
-    actionLabel: "Add contact"
+    href: "/dashboard/settings",
+    actionLabel: "Invite"
   },
   { 
     key: "boardCreated", 

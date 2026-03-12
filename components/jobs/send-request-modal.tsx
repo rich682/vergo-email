@@ -14,7 +14,7 @@
  * - POST /api/quests/[id]/execute (send)
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Dialog,
   DialogContent,
@@ -59,6 +59,11 @@ import { formatPeriodDisplay } from "@/lib/utils/timezone"
 
 // Data Personalization Flow
 import { DataPersonalizationFlow } from "./data-personalization-flow"
+
+// Recipient Source Selector
+import { RecipientSourceSelector } from "@/components/shared/recipient-source-selector"
+import type { RecipientSourceSelection } from "@/lib/types/recipient-source"
+import { EMPTY_RECIPIENT_SOURCE } from "@/lib/types/recipient-source"
 
 
 // Types
@@ -224,33 +229,8 @@ export function SendRequestModal({
   const [showPreview, setShowPreview] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
   
-  // Recipient search state
-  const [recipientSearchQuery, setRecipientSearchQuery] = useState("")
-  const [recipientSearchResults, setRecipientSearchResults] = useState<{
-    entities: Array<{ id: string; firstName: string; email: string; isInternal?: boolean }>
-  } | null>(null)
-  const [recipientSearchLoading, setRecipientSearchLoading] = useState(false)
-  const [searchTimeoutRef, setSearchTimeoutRef] = useState<NodeJS.Timeout | null>(null)
-  
-  // All available recipients for selection
-  const [allAvailableRecipients, setAllAvailableRecipients] = useState<Array<{
-    id: string
-    name: string
-    email: string
-    type: "user" | "entity"
-    subLabel?: string
-    contactType?: string
-  }>>([])
-  const [loadingAllRecipients, setLoadingAllRecipients] = useState(false)
-  const [recipientSelectionSearch, setRecipientSelectionSearch] = useState("")
-  
-  // Selected recipients for draft generation (used in selecting_recipients step)
-  const [selectedRecipientsForDraft, setSelectedRecipientsForDraft] = useState<Map<string, {
-    id: string
-    name: string
-    email: string
-    type: "user" | "entity"
-  }>>(new Map())
+  // Recipient source selection (Users + Database)
+  const [recipientSource, setRecipientSource] = useState<RecipientSourceSelection>(EMPTY_RECIPIENT_SOURCE)
   
   // Send confirmation state
   const [showSendConfirmation, setShowSendConfirmation] = useState(false)
@@ -296,132 +276,6 @@ export function SendRequestModal({
     }
   }, [open, hasEmailAccount, checkEmailAccounts])
 
-  // Fetch all available recipients (users and entities)
-  const fetchAllRecipients = useCallback(async () => {
-    try {
-      setLoadingAllRecipients(true)
-      const allRecipients: Array<{
-        id: string
-        name: string
-        email: string
-        type: "user" | "entity"
-        subLabel?: string
-      }> = []
-
-      // Fetch internal users
-      const usersResponse = await fetch("/api/users", { credentials: "include" })
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json()
-        const users = usersData.users || []
-        for (const user of users) {
-          if (user.email) {
-            allRecipients.push({
-              id: user.id,
-              name: user.name || user.email,
-              email: user.email,
-              type: "user",
-              subLabel: user.role?.toLowerCase(),
-            })
-          }
-        }
-      }
-
-      // Entities are no longer listed directly — users search or use databases for recipients
-
-      setAllAvailableRecipients(allRecipients)
-    } catch (err) {
-      console.error("Error fetching all recipients:", err)
-    } finally {
-      setLoadingAllRecipients(false)
-    }
-  }, [])
-
-  // Toggle recipient selection
-  const toggleRecipientSelection = useCallback((recipient: {
-    id: string
-    name: string
-    email: string
-    type: "user" | "entity"
-  }) => {
-    setSelectedRecipientsForDraft(prev => {
-      const newMap = new Map(prev)
-      if (newMap.has(recipient.id)) {
-        newMap.delete(recipient.id)
-      } else {
-        newMap.set(recipient.id, recipient)
-      }
-      return newMap
-    })
-  }, [])
-
-  // Bulk selection constants and computed values
-  const BULK_CONTACT_TYPES = useMemo(() => [
-    { id: "EMPLOYEE", label: "Employees" },
-    { id: "VENDOR", label: "Vendors" },
-    { id: "CLIENT", label: "Clients" },
-    { id: "CONTRACTOR", label: "Contractors" },
-    { id: "MANAGEMENT", label: "Management" },
-  ], [])
-
-  // Map contact type → list of recipient IDs
-  const contactTypeRecipientMap = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const r of allAvailableRecipients) {
-      if (r.type === "entity" && r.contactType) {
-        const existing = map.get(r.contactType) || []
-        existing.push(r.id)
-        map.set(r.contactType, existing)
-      }
-    }
-    return map
-  }, [allAvailableRecipients])
-
-  // All team member (user) IDs
-  const teamMemberIds = useMemo(() => {
-    return allAvailableRecipients.filter(r => r.type === "user").map(r => r.id)
-  }, [allAvailableRecipients])
-
-  // Check if all IDs in a bulk category are selected
-  const isBulkActive = useCallback((recipientIds: string[]) => {
-    if (recipientIds.length === 0) return false
-    return recipientIds.every(id => selectedRecipientsForDraft.has(id))
-  }, [selectedRecipientsForDraft])
-
-  // Check if some but not all IDs in a bulk category are selected
-  const isBulkPartial = useCallback((recipientIds: string[]) => {
-    if (recipientIds.length === 0) return false
-    const selectedCount = recipientIds.filter(id => selectedRecipientsForDraft.has(id)).length
-    return selectedCount > 0 && selectedCount < recipientIds.length
-  }, [selectedRecipientsForDraft])
-
-  // Toggle all recipients in a bulk category
-  const toggleBulkSelection = useCallback((recipientIds: string[]) => {
-    setSelectedRecipientsForDraft(prev => {
-      const newMap = new Map(prev)
-      const allSelected = recipientIds.every(id => newMap.has(id))
-
-      if (allSelected) {
-        for (const id of recipientIds) {
-          newMap.delete(id)
-        }
-      } else {
-        for (const id of recipientIds) {
-          if (!newMap.has(id)) {
-            const recipient = allAvailableRecipients.find(r => r.id === id)
-            if (recipient) {
-              newMap.set(id, {
-                id: recipient.id,
-                name: recipient.name,
-                email: recipient.email,
-                type: recipient.type,
-              })
-            }
-          }
-        }
-      }
-      return newMap
-    })
-  }, [allAvailableRecipients])
 
   // Fetch labels for this job
   // Fetch draft with selected recipients
@@ -493,15 +347,49 @@ export function SendRequestModal({
   }, [job.id, job.name])
 
   // Handle proceeding from recipient selection to AI draft generation
-  const handleProceedToDraft = useCallback(() => {
-    const selectedList = Array.from(selectedRecipientsForDraft.values())
-    if (selectedList.length === 0) {
+  const handleProceedToDraft = useCallback(async () => {
+    // Check if any recipients are configured
+    const hasUserRecipients = recipientSource.mode === "users" &&
+      (recipientSource.userIds.length > 0 || recipientSource.roleSelections.length > 0)
+    const hasDbRecipients = recipientSource.mode === "database" &&
+      !!recipientSource.databaseId && !!recipientSource.emailColumnKey
+
+    if (!hasUserRecipients && !hasDbRecipients) {
       setError("Please select at least one recipient")
       return
     }
-    // Generate draft with selected recipients
-    fetchDraft(selectedList)
-  }, [selectedRecipientsForDraft, fetchDraft])
+
+    // Resolve recipients via API
+    try {
+      const resolveResponse = await fetch("/api/recipients/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(recipientSource),
+      })
+
+      if (!resolveResponse.ok) {
+        throw new Error("Failed to resolve recipients")
+      }
+
+      const { recipients: resolved } = await resolveResponse.json()
+      if (!resolved || resolved.length === 0) {
+        setError("No valid recipients found")
+        return
+      }
+
+      const selectedList = resolved.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        type: r.source === "user" ? "user" as const : "entity" as const,
+      }))
+
+      fetchDraft(selectedList)
+    } catch (err: any) {
+      setError(err.message || "Failed to resolve recipients")
+    }
+  }, [recipientSource, fetchDraft])
 
   // Handle mode selection
   const handleModeSelect = (selectedMode: RequestMode) => {
@@ -512,72 +400,6 @@ export function SendRequestModal({
       setState("idle") // Move past mode_selection to show the flow component
     }
   }
-
-  // Load all recipients when entering selecting_recipients state
-  useEffect(() => {
-    if (state === "selecting_recipients" && allAvailableRecipients.length === 0) {
-      fetchAllRecipients()
-    }
-  }, [state, allAvailableRecipients.length, fetchAllRecipients])
-
-  // Debounced recipient search
-  const handleRecipientSearch = useCallback((query: string) => {
-    setRecipientSearchQuery(query)
-    
-    // Clear previous timeout
-    if (searchTimeoutRef) {
-      clearTimeout(searchTimeoutRef)
-    }
-    
-    // Clear results if query too short
-    if (query.length < 2) {
-      setRecipientSearchResults(null)
-      return
-    }
-    
-    // Debounce the search
-    const timeout = setTimeout(async () => {
-      setRecipientSearchLoading(true)
-      try {
-        const response = await fetch(`/api/recipients/search?q=${encodeURIComponent(query)}`, {
-          credentials: "include"
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setRecipientSearchResults({ entities: data.entities || [] })
-        }
-      } catch (err) {
-        console.error("Error searching recipients:", err)
-      } finally {
-        setRecipientSearchLoading(false)
-      }
-    }, 300)
-    
-    setSearchTimeoutRef(timeout)
-  }, [searchTimeoutRef])
-
-  // Add recipient from search
-  const addRecipientFromSearch = useCallback((entity: { id: string; firstName: string; email: string }) => {
-    // Check if already in recipients
-    if (recipients.some(r => r.id === entity.id)) {
-      return
-    }
-    
-    setRecipients(prev => [
-      ...prev,
-      {
-        id: entity.id,
-        email: entity.email,
-        firstName: entity.firstName,
-        lastName: null,
-        included: true,
-      }
-    ])
-    
-    // Clear search
-    setRecipientSearchQuery("")
-    setRecipientSearchResults(null)
-  }, [recipients])
 
   // Reset state when modal closes
   useEffect(() => {
@@ -602,16 +424,9 @@ export function SendRequestModal({
       setReminderPreviews([])
       setReminderPreviewIndex(0)
       setHasEmailAccount(null) // Reset so we re-check next time
-      // Reset search state
-      setRecipientSearchQuery("")
-      setRecipientSearchResults(null)
-      if (searchTimeoutRef) clearTimeout(searchTimeoutRef)
-      // Reset recipient selection state
-      setSelectedRecipientsForDraft(new Map())
-      setRecipientSelectionSearch("")
-      setAllAvailableRecipients([])
+      setRecipientSource(EMPTY_RECIPIENT_SOURCE)
     }
-  }, [open, searchTimeoutRef])
+  }, [open])
 
   // Fetch reminder previews
   const fetchReminderPreviews = async () => {
@@ -781,21 +596,19 @@ export function SendRequestModal({
 
     try {
       // Build interpretation matching existing Quest structure
-      // Separate entity IDs and user IDs based on selected recipient types
-      const selectedRecipientTypes = Array.from(selectedRecipientsForDraft.values())
-      const entityIds = selectedRecipientTypes.filter(r => r.type === "entity").map(r => r.id)
-      const userIds = selectedRecipientTypes.filter(r => r.type === "user").map(r => r.id)
-      
-      // Fallback: if no typed recipients, treat all as entities (legacy behavior)
-      const fallbackEntityIds = entityIds.length === 0 && userIds.length === 0
+      // Determine user vs entity IDs based on recipient source mode
+      const userIds = recipientSource.mode === "users"
         ? includedRecipients.map(r => r.id)
-        : entityIds
+        : []
+      const entityIds = recipientSource.mode === "database"
+        ? includedRecipients.map(r => r.id)
+        : []
 
       const isScheduled = sendTiming === "scheduled"
 
       const interpretation = {
         recipientSelection: {
-          entityIds: fallbackEntityIds.length > 0 ? fallbackEntityIds : undefined,
+          entityIds: entityIds.length > 0 ? entityIds : undefined,
           userIds: userIds.length > 0 ? userIds : undefined,
         },
         scheduleIntent: {
@@ -1045,7 +858,7 @@ export function SendRequestModal({
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2">Standard Request</h3>
                 <p className="text-sm text-gray-500 text-center">
-                  Send an AI-drafted email to selected recipients. Choose from your contacts and team members.
+                  Send an AI-drafted email to selected recipients. Choose from your team members or a database.
                 </p>
                 <span className="mt-3 text-xs text-blue-600 font-medium">
                   Select recipients at send time
@@ -1101,14 +914,13 @@ export function SendRequestModal({
 
         {/* Recipient Selection for Standard Request */}
         {mode === "standard" && state === "selecting_recipients" && (
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 flex-1 overflow-y-auto">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
                   setMode(null)
                   setState("mode_selection")
-                  setSelectedRecipientsForDraft(new Map())
-                  setRecipientSelectionSearch("")
+                  setRecipientSource(EMPTY_RECIPIENT_SOURCE)
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -1122,185 +934,10 @@ export function SendRequestModal({
               </div>
             </div>
 
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                placeholder="Search by name or email..."
-                value={recipientSelectionSearch}
-                onChange={(e) => setRecipientSelectionSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            {/* Selected Count */}
-            {selectedRecipientsForDraft.size > 0 && (
-              <div className="flex items-center gap-2 text-sm text-gray-600 bg-orange-50 px-3 py-2 rounded-lg">
-                <Users className="w-4 h-4 text-orange-500" />
-                <span>{selectedRecipientsForDraft.size} recipient{selectedRecipientsForDraft.size !== 1 ? 's' : ''} selected</span>
-              </div>
-            )}
-
-            {/* Quick Select Chips */}
-            {!loadingAllRecipients && allAvailableRecipients.length > 0 && (
-              (() => {
-                const hasTeam = teamMemberIds.length > 0
-                const hasTypes = BULK_CONTACT_TYPES.some(ct => (contactTypeRecipientMap.get(ct.id) || []).length > 0)
-                if (!hasTeam && !hasTypes) return null
-                return (
-                  <div className="space-y-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Quick Select</span>
-                    <div className="flex flex-wrap gap-2">
-                      {/* All Team Members */}
-                      {teamMemberIds.length > 0 && (
-                        <button
-                          onClick={() => toggleBulkSelection(teamMemberIds)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                            isBulkActive(teamMemberIds)
-                              ? 'bg-orange-500 text-white border-orange-500'
-                              : isBulkPartial(teamMemberIds)
-                              ? 'bg-orange-100 text-orange-700 border-orange-300'
-                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Users className="w-3 h-3" />
-                          All Team Members ({teamMemberIds.length})
-                          {isBulkActive(teamMemberIds) && <Check className="w-3 h-3" />}
-                        </button>
-                      )}
-
-                      {/* Contact Type chips */}
-                      {BULK_CONTACT_TYPES.map(ct => {
-                        const ids = contactTypeRecipientMap.get(ct.id) || []
-                        if (ids.length === 0) return null
-                        return (
-                          <button
-                            key={ct.id}
-                            onClick={() => toggleBulkSelection(ids)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                              isBulkActive(ids)
-                                ? 'bg-orange-500 text-white border-orange-500'
-                                : isBulkPartial(ids)
-                                ? 'bg-orange-100 text-orange-700 border-orange-300'
-                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
-                          >
-                            {ct.label} ({ids.length})
-                            {isBulkActive(ids) && <Check className="w-3 h-3" />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })()
-            )}
-
-            {/* Recipient List */}
-            <div className="border rounded-lg max-h-[400px] overflow-y-auto">
-              {loadingAllRecipients ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-                  <span className="ml-2 text-sm text-gray-500">Loading contacts...</span>
-                </div>
-              ) : allAvailableRecipients.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">
-                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm">No contacts found</p>
-                  <p className="text-xs mt-1">Add team members or stakeholders to your organization first.</p>
-                </div>
-              ) : (
-                <>
-                  {/* Team Members Section */}
-                  {allAvailableRecipients.filter(r => r.type === "user").length > 0 && (
-                    <div>
-                      <div className="px-3 py-2 bg-gray-50 border-b sticky top-0">
-                        <span className="text-xs font-medium text-gray-500 uppercase">Team Members</span>
-                      </div>
-                      {allAvailableRecipients
-                        .filter(r => r.type === "user")
-                        .filter(r => 
-                          recipientSelectionSearch === "" ||
-                          r.name.toLowerCase().includes(recipientSelectionSearch.toLowerCase()) ||
-                          r.email.toLowerCase().includes(recipientSelectionSearch.toLowerCase())
-                        )
-                        .map(recipient => (
-                          <button
-                            key={`user-${recipient.id}`}
-                            onClick={() => toggleRecipientSelection(recipient)}
-                            className={`w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
-                              selectedRecipientsForDraft.has(recipient.id) ? 'bg-orange-50' : ''
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                              selectedRecipientsForDraft.has(recipient.id)
-                                ? 'bg-orange-500 border-orange-500'
-                                : 'border-gray-300'
-                            }`}>
-                              {selectedRecipientsForDraft.has(recipient.id) && (
-                                <Check className="w-3 h-3 text-white" />
-                              )}
-                            </div>
-                            <div className="flex-1 text-left">
-                              <div className="text-sm font-medium text-gray-900">{recipient.name}</div>
-                              <div className="text-xs text-gray-500">{recipient.email}</div>
-                            </div>
-                            {recipient.subLabel && (
-                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                                {recipient.subLabel}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-
-                  {/* Stakeholders Section */}
-                  {allAvailableRecipients.filter(r => r.type === "entity").length > 0 && (
-                    <div>
-                      <div className="px-3 py-2 bg-gray-50 border-b border-t sticky top-0">
-                        <span className="text-xs font-medium text-gray-500 uppercase">Stakeholders</span>
-                      </div>
-                      {allAvailableRecipients
-                        .filter(r => r.type === "entity")
-                        .filter(r => 
-                          recipientSelectionSearch === "" ||
-                          r.name.toLowerCase().includes(recipientSelectionSearch.toLowerCase()) ||
-                          r.email.toLowerCase().includes(recipientSelectionSearch.toLowerCase())
-                        )
-                        .map(recipient => (
-                          <button
-                            key={`entity-${recipient.id}`}
-                            onClick={() => toggleRecipientSelection(recipient)}
-                            className={`w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors ${
-                              selectedRecipientsForDraft.has(recipient.id) ? 'bg-orange-50' : ''
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                              selectedRecipientsForDraft.has(recipient.id)
-                                ? 'bg-orange-500 border-orange-500'
-                                : 'border-gray-300'
-                            }`}>
-                              {selectedRecipientsForDraft.has(recipient.id) && (
-                                <Check className="w-3 h-3 text-white" />
-                              )}
-                            </div>
-                            <div className="flex-1 text-left">
-                              <div className="text-sm font-medium text-gray-900">{recipient.name}</div>
-                              <div className="text-xs text-gray-500">{recipient.email}</div>
-                            </div>
-                            {recipient.subLabel && (
-                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
-                                {recipient.subLabel}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <RecipientSourceSelector
+              value={recipientSource}
+              onChange={setRecipientSource}
+            />
 
             {/* Error Message */}
             {error && (
@@ -1317,8 +954,7 @@ export function SendRequestModal({
                 onClick={() => {
                   setMode(null)
                   setState("mode_selection")
-                  setSelectedRecipientsForDraft(new Map())
-                  setRecipientSelectionSearch("")
+                  setRecipientSource(EMPTY_RECIPIENT_SOURCE)
                   setError(null)
                 }}
               >
@@ -1326,7 +962,11 @@ export function SendRequestModal({
               </Button>
               <Button
                 onClick={handleProceedToDraft}
-                disabled={selectedRecipientsForDraft.size === 0}
+                disabled={
+                  recipientSource.mode === "users"
+                    ? (recipientSource.userIds.length === 0 && recipientSource.roleSelections.length === 0)
+                    : (!recipientSource.databaseId || !recipientSource.emailColumnKey)
+                }
                 className="bg-orange-500 hover:bg-orange-600"
               >
                 Continue
@@ -1426,55 +1066,6 @@ export function SendRequestModal({
                     </svg>
                   </div>
                 </summary>
-                
-                {/* Recipient Search */}
-                <div className="mt-2 relative">
-                  <Input
-                    type="text"
-                    placeholder="Search contacts to add..."
-                    value={recipientSearchQuery}
-                    onChange={(e) => handleRecipientSearch(e.target.value)}
-                    className="w-full text-sm"
-                  />
-                  {recipientSearchLoading && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    </div>
-                  )}
-                  {recipientSearchResults && recipientSearchResults.entities.length > 0 && (
-                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {recipientSearchResults.entities.map(entity => {
-                        const alreadyAdded = recipients.some(r => r.id === entity.id)
-                        return (
-                          <button
-                            key={entity.id}
-                            type="button"
-                            onClick={() => !alreadyAdded && addRecipientFromSearch(entity)}
-                            disabled={alreadyAdded}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
-                              alreadyAdded ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
-                          >
-                            <div>
-                              <div className="font-medium text-gray-900">{entity.firstName}</div>
-                              <div className="text-xs text-gray-500">{entity.email}</div>
-                            </div>
-                            {alreadyAdded ? (
-                              <span className="text-xs text-gray-400">Added</span>
-                            ) : (
-                              <span className="text-xs text-orange-600">+ Add</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {recipientSearchResults && recipientSearchResults.entities.length === 0 && recipientSearchQuery.length >= 2 && (
-                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm text-gray-500 text-center">
-                      No contacts found
-                    </div>
-                  )}
-                </div>
                 
                 <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
                   {recipients.length === 0 ? (

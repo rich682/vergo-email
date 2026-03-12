@@ -2,10 +2,10 @@
 
 /**
  * Form Request Flow
- * 
+ *
  * Multi-step flow for sending form requests:
  * 1. Select a form template
- * 2. Select recipients (stakeholders)
+ * 2. Select recipients (users or database)
  * 3. Configure deadline and reminders
  * 4. Send
  */
@@ -31,7 +31,10 @@ import { Input } from "@/components/ui/input"
 import { usePermissions } from "@/components/permissions-context"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { RecipientSourceSelector } from "@/components/shared/recipient-source-selector"
 import type { FormField } from "@/lib/types/form"
+import type { RecipientSourceSelection } from "@/lib/types/recipient-source"
+import { EMPTY_RECIPIENT_SOURCE } from "@/lib/types/recipient-source"
 
 interface FormDefinitionOption {
   id: string
@@ -42,32 +45,6 @@ interface FormDefinitionOption {
     id: string
     name: string
   } | null
-}
-
-// Internal user type
-interface UserOption {
-  id: string
-  name: string | null
-  email: string
-  role: string
-}
-
-// External stakeholder/entity type
-interface EntityOption {
-  id: string
-  firstName: string
-  lastName: string | null
-  email: string | null
-  contactType?: string
-}
-
-// Combined recipient type for display
-interface RecipientOption {
-  id: string
-  name: string
-  email: string
-  type: "user" | "entity"
-  subLabel?: string // role for users, contactType for entities
 }
 
 type FlowStep = "select_form" | "select_recipients" | "configure" | "sending" | "success" | "error"
@@ -100,19 +77,15 @@ export function FormRequestFlow({
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null)
   const [formSearchQuery, setFormSearchQuery] = useState("")
 
-  // Recipient selection - all users and entities
-  const [recipients, setRecipients] = useState<RecipientOption[]>([])
-  const [loadingRecipients, setLoadingRecipients] = useState(false)
-  const [selectedRecipients, setSelectedRecipients] = useState<Map<string, "user" | "entity">>(new Map())
-  const [recipientSearchQuery, setRecipientSearchQuery] = useState("")
-  const [recipientFilter, setRecipientFilter] = useState<"all" | "users" | "entities">("all")
+  // Recipient selection
+  const [recipientSource, setRecipientSource] = useState<RecipientSourceSelection>(EMPTY_RECIPIENT_SOURCE)
 
   // Configuration
   const [deadline, setDeadline] = useState<string>(deadlineDate || "")
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [reminderDays, setReminderDays] = useState(3)
   const [maxReminders, setMaxReminders] = useState(3)
-  
+
   // Scheduling
   const [sendTiming, setSendTiming] = useState<"immediate" | "scheduled">("immediate")
   const [scheduleOffsetDays, setScheduleOffsetDays] = useState(5)
@@ -121,13 +94,6 @@ export function FormRequestFlow({
   useEffect(() => {
     fetchForms()
   }, [])
-
-  // Load recipients when moving to recipient step
-  useEffect(() => {
-    if (step === "select_recipients" && recipients.length === 0) {
-      fetchRecipients()
-    }
-  }, [step])
 
   const fetchForms = async () => {
     try {
@@ -144,41 +110,13 @@ export function FormRequestFlow({
     }
   }
 
-  const fetchRecipients = async () => {
-    try {
-      setLoadingRecipients(true)
-      const allRecipients: RecipientOption[] = []
-
-      // Fetch internal users
-      const usersResponse = await fetch("/api/users", { credentials: "include" })
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json()
-        const users: UserOption[] = usersData.users || []
-        for (const user of users) {
-          if (user.email) {
-            allRecipients.push({
-              id: user.id,
-              name: user.name || user.email,
-              email: user.email,
-              type: "user",
-              subLabel: user.role?.toLowerCase(),
-            })
-          }
-        }
-      }
-
-      // Entities are no longer listed directly — users search or use databases for recipients
-
-      setRecipients(allRecipients)
-    } catch (err) {
-      console.error("Error fetching recipients:", err)
-    } finally {
-      setLoadingRecipients(false)
-    }
-  }
+  // Check if recipient selection is valid
+  const hasRecipients = recipientSource.mode === "users"
+    ? (recipientSource.userIds.length > 0 || recipientSource.roleSelections.length > 0)
+    : (!!recipientSource.databaseId && !!recipientSource.emailColumnKey)
 
   const handleSend = async () => {
-    if (!selectedFormId || selectedRecipients.size === 0) {
+    if (!selectedFormId || !hasRecipients) {
       setError("Please select a form and at least one recipient")
       return
     }
@@ -187,17 +125,32 @@ export function FormRequestFlow({
     setError(null)
 
     try {
-      // Separate user IDs and entity IDs
-      const recipientUserIds: string[] = []
-      const recipientEntityIds: string[] = []
-      
-      for (const [id, type] of selectedRecipients.entries()) {
-        if (type === "user") {
-          recipientUserIds.push(id)
-        } else {
-          recipientEntityIds.push(id)
-        }
+      // Resolve recipients via API
+      const resolveResponse = await fetch("/api/recipients/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(recipientSource),
+      })
+
+      if (!resolveResponse.ok) {
+        throw new Error("Failed to resolve recipients")
       }
+
+      const { recipients } = await resolveResponse.json()
+
+      if (!recipients || recipients.length === 0) {
+        throw new Error("No valid recipients found")
+      }
+
+      // Separate user and database recipients
+      const recipientUserIds = recipients
+        .filter((r: any) => r.source === "user")
+        .map((r: any) => r.id)
+
+      // For database recipients, create entities or use email-based sending
+      // For now, database recipients create form requests via user IDs resolved from the database
+      // The backend handles email-based form requests
 
       const response = await fetch(`/api/task-instances/${jobId}/form-requests`, {
         method: "POST",
@@ -206,7 +159,7 @@ export function FormRequestFlow({
         body: JSON.stringify({
           formDefinitionId: selectedFormId,
           recipientUserIds: recipientUserIds.length > 0 ? recipientUserIds : undefined,
-          recipientEntityIds: recipientEntityIds.length > 0 ? recipientEntityIds : undefined,
+          recipientSource: recipientSource.mode === "database" ? recipientSource : undefined,
           deadlineDate: deadline || undefined,
           sendTiming,
           scheduleOffsetDays: sendTiming === "scheduled" ? scheduleOffsetDays : undefined,
@@ -245,47 +198,6 @@ export function FormRequestFlow({
     )
   })
 
-  // Filter recipients by search query and type filter
-  const filteredRecipients = recipients.filter((r) => {
-    // Filter by type
-    if (recipientFilter === "users" && r.type !== "user") return false
-    if (recipientFilter === "entities" && r.type !== "entity") return false
-    
-    // Filter by search query
-    if (!recipientSearchQuery) return true
-    const query = recipientSearchQuery.toLowerCase()
-    return (
-      r.name.toLowerCase().includes(query) ||
-      r.email.toLowerCase().includes(query)
-    )
-  })
-
-  const toggleRecipient = (id: string, type: "user" | "entity") => {
-    const newMap = new Map(selectedRecipients)
-    if (newMap.has(id)) {
-      newMap.delete(id)
-    } else {
-      newMap.set(id, type)
-    }
-    setSelectedRecipients(newMap)
-  }
-
-  const toggleAllRecipients = () => {
-    if (selectedRecipients.size === filteredRecipients.length) {
-      setSelectedRecipients(new Map())
-    } else {
-      const newMap = new Map<string, "user" | "entity">()
-      for (const r of filteredRecipients) {
-        newMap.set(r.id, r.type)
-      }
-      setSelectedRecipients(newMap)
-    }
-  }
-  
-  // Count recipients by type
-  const userCount = recipients.filter(r => r.type === "user").length
-  const entityCount = recipients.filter(r => r.type === "entity").length
-
   // Sending state
   if (step === "sending") {
     return (
@@ -304,9 +216,9 @@ export function FormRequestFlow({
           {sendTiming === "scheduled" ? "Scheduling form requests..." : "Sending form requests..."}
         </h3>
         <p className="text-sm text-gray-500 mt-1">
-          {sendTiming === "scheduled" 
-            ? `Scheduling for ${selectedRecipients.size} recipient${selectedRecipients.size !== 1 ? "s" : ""}`
-            : `Sending to ${selectedRecipients.size} recipient${selectedRecipients.size !== 1 ? "s" : ""}`
+          {sendTiming === "scheduled"
+            ? "Scheduling form requests for recipients"
+            : "Sending form requests to recipients"
           }
         </p>
       </div>
@@ -330,7 +242,7 @@ export function FormRequestFlow({
           {sendTiming === "scheduled" ? "Form requests scheduled!" : "Form requests sent!"}
         </h3>
         <p className="text-sm text-gray-500 mt-1">
-          {sendTiming === "scheduled" 
+          {sendTiming === "scheduled"
             ? `Scheduled to send ${scheduleOffsetDays} days before period end`
             : "Recipients will receive an email with a link to complete the form"
           }
@@ -484,127 +396,10 @@ export function FormRequestFlow({
             </p>
           </div>
 
-          {/* Filter tabs */}
-          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-            <button
-              onClick={() => setRecipientFilter("all")}
-              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                recipientFilter === "all"
-                  ? "bg-white shadow text-gray-900 font-medium"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              All ({recipients.length})
-            </button>
-            <button
-              onClick={() => setRecipientFilter("users")}
-              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                recipientFilter === "users"
-                  ? "bg-white shadow text-gray-900 font-medium"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Team ({userCount})
-            </button>
-            <button
-              onClick={() => setRecipientFilter("entities")}
-              className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                recipientFilter === "entities"
-                  ? "bg-white shadow text-gray-900 font-medium"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Contacts ({entityCount})
-            </button>
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search by name or email..."
-              value={recipientSearchQuery}
-              onChange={(e) => setRecipientSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-
-          {/* Select all */}
-          <div className="flex items-center justify-between px-1">
-            <button
-              onClick={toggleAllRecipients}
-              className="text-sm text-orange-600 hover:underline"
-            >
-              {selectedRecipients.size === filteredRecipients.length && filteredRecipients.length > 0
-                ? "Deselect all"
-                : "Select all"}
-            </button>
-            <span className="text-sm text-gray-500">
-              {selectedRecipients.size} selected
-            </span>
-          </div>
-
-          {/* Recipients list */}
-          {loadingRecipients ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-            </div>
-          ) : filteredRecipients.length === 0 ? (
-            <div className="text-center py-8">
-              <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">
-                {recipients.length === 0
-                  ? "No recipients found"
-                  : "No recipients match your search"}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {filteredRecipients.map((recipient) => {
-                const isSelected = selectedRecipients.has(recipient.id)
-                return (
-                  <button
-                    key={`${recipient.type}-${recipient.id}`}
-                    onClick={() => toggleRecipient(recipient.id, recipient.type)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all flex items-center gap-3 ${
-                      isSelected
-                        ? "border-orange-500 bg-orange-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                        isSelected
-                          ? "border-orange-500 bg-orange-500"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900">{recipient.name || 'Unknown'}</p>
-                      <p className="text-sm text-gray-500">{recipient.email || ''}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        recipient.type === "user" 
-                          ? "bg-blue-100 text-blue-700" 
-                          : "bg-purple-100 text-purple-700"
-                      }`}>
-                        {recipient.type === "user" ? "Team" : "Contact"}
-                      </span>
-                      {recipient.subLabel && (
-                        <span className="text-xs text-gray-400 capitalize">
-                          {recipient.subLabel}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          <RecipientSourceSelector
+            value={recipientSource}
+            onChange={setRecipientSource}
+          />
         </div>
       )}
 
@@ -626,7 +421,16 @@ export function FormRequestFlow({
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Users className="w-4 h-4 text-gray-500" />
-              <span>{selectedRecipients.size} recipients</span>
+              <span>
+                {recipientSource.mode === "users"
+                  ? `${recipientSource.userIds.length} user${recipientSource.userIds.length !== 1 ? "s" : ""}${
+                      recipientSource.roleSelections.length > 0
+                        ? ` + all ${recipientSource.roleSelections.map(r => r.toLowerCase()).join(", ")}s`
+                        : ""
+                    }`
+                  : "Database recipients"
+                }
+              </span>
             </div>
             {boardPeriod && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -653,13 +457,13 @@ export function FormRequestFlow({
               <Calendar className="w-4 h-4 text-gray-500" />
               <Label>When to send</Label>
             </div>
-            
+
             <div className="space-y-2">
               {/* Send Now */}
-              <label 
+              <label
                 className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                  sendTiming === "immediate" 
-                    ? "border-orange-500 bg-orange-50" 
+                  sendTiming === "immediate"
+                    ? "border-orange-500 bg-orange-50"
                     : "border-gray-200 hover:bg-gray-50"
                 }`}
               >
@@ -681,10 +485,10 @@ export function FormRequestFlow({
               </label>
 
               {/* Schedule */}
-              <label 
+              <label
                 className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                  sendTiming === "scheduled" 
-                    ? "border-orange-500 bg-orange-50" 
+                  sendTiming === "scheduled"
+                    ? "border-orange-500 bg-orange-50"
                     : "border-gray-200 hover:bg-gray-50"
                 }`}
               >
@@ -744,7 +548,7 @@ export function FormRequestFlow({
               <div>
                 <Label>Enable Reminders</Label>
                 <p className="text-xs text-gray-500">
-                  {sendTiming === "scheduled" 
+                  {sendTiming === "scheduled"
                     ? "Coming soon for scheduled requests"
                     : "Send automatic reminders for incomplete forms"
                   }
@@ -825,7 +629,7 @@ export function FormRequestFlow({
         {step === "select_recipients" && (
           <Button
             onClick={() => setStep("configure")}
-            disabled={selectedRecipients.size === 0}
+            disabled={!hasRecipients}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             Next
@@ -841,12 +645,12 @@ export function FormRequestFlow({
             {sendTiming === "scheduled" ? (
               <>
                 <CalendarClock className="w-4 h-4 mr-2" />
-                Schedule for {selectedRecipients.size} Recipient{selectedRecipients.size !== 1 ? "s" : ""}
+                Schedule
               </>
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Send to {selectedRecipients.size} Recipient{selectedRecipients.size !== 1 ? "s" : ""}
+                Send
               </>
             )}
           </Button>

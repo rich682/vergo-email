@@ -7,7 +7,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/boards": "Boards",
   "/dashboard/inbox": "Inbox",
   "/dashboard/jobs": UI_LABELS.jobsPageTitle,
-  "/dashboard/contacts": "Contacts",
+  // "/dashboard/contacts": "Contacts", // Deprecated: contacts replaced by users + database selection
   "/dashboard/requests": "Requests",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/team": "Team",

@@ -16,6 +16,7 @@ import { UserRole } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
+import { resolveDatabaseRecipients } from "@/lib/services/database-recipient.service"
 
 export async function GET(
   request: NextRequest,
@@ -115,26 +116,62 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { formDefinitionId, recipientUserIds, recipientEntityIds, deadlineDate, reminderConfig } = body
+    const { formDefinitionId, recipientUserIds, recipientEntityIds, recipientSource, deadlineDate, reminderConfig } = body
 
     // Validate required fields
     if (!formDefinitionId) {
       return NextResponse.json({ error: "formDefinitionId is required" }, { status: 400 })
     }
-    
-    const hasUserIds = recipientUserIds && Array.isArray(recipientUserIds) && recipientUserIds.length > 0
-    const hasEntityIds = recipientEntityIds && Array.isArray(recipientEntityIds) && recipientEntityIds.length > 0
-    
+
+    // Resolve database recipients if recipientSource is provided
+    let resolvedUserIds = recipientUserIds || []
+    let resolvedEntityIds = recipientEntityIds || []
+
+    if (recipientSource?.mode === "database" && recipientSource.databaseId && recipientSource.emailColumnKey) {
+      try {
+        const dbResult = await resolveDatabaseRecipients(
+          session.user.organizationId,
+          recipientSource.databaseId,
+          recipientSource.emailColumnKey,
+          recipientSource.nameColumnKey,
+          recipientSource.filters || []
+        )
+        // For database recipients, we need to find or create entities
+        // For now, match emails to existing users where possible
+        const dbEmails = dbResult.recipients.map(r => r.email)
+        if (dbEmails.length > 0) {
+          const matchedUsers = await prisma.user.findMany({
+            where: {
+              organizationId: session.user.organizationId,
+              email: { in: dbEmails },
+            },
+            select: { id: true, email: true },
+          })
+          const matchedUserIds = matchedUsers.map(u => u.id)
+          resolvedUserIds = [...new Set([...resolvedUserIds, ...matchedUserIds])]
+        }
+      } catch (dbError: any) {
+        console.error("[FormRequests] Database recipient resolution failed:", dbError.message)
+      }
+    }
+
+    const hasUserIds = resolvedUserIds.length > 0
+    const hasEntityIds = resolvedEntityIds && Array.isArray(resolvedEntityIds) && resolvedEntityIds.length > 0
+
     if (!hasUserIds && !hasEntityIds) {
       return NextResponse.json({ error: "At least one recipient is required" }, { status: 400 })
     }
+
+    // Use resolved IDs for the rest of the flow
+    const recipientUserIdsFinal = resolvedUserIds
+    const recipientEntityIdsFinal = resolvedEntityIds
 
     console.log(`[FormRequests] Creating form requests:`, {
       organizationId: session.user.organizationId,
       taskInstanceId,
       formDefinitionId,
-      userCount: recipientUserIds?.length || 0,
-      entityCount: recipientEntityIds?.length || 0,
+      userCount: recipientUserIdsFinal?.length || 0,
+      entityCount: recipientEntityIdsFinal?.length || 0,
       deadlineDate,
     })
 
@@ -149,7 +186,7 @@ export async function POST(
         taskInstanceId,
         {
           formDefinitionId,
-          recipientUserIds,
+          recipientUserIds: recipientUserIdsFinal,
           deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
           reminderConfig,
         }
@@ -166,7 +203,7 @@ export async function POST(
         taskInstanceId,
         {
           formDefinitionId,
-          recipientEntityIds,
+          recipientEntityIds: recipientEntityIdsFinal,
           deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
           reminderConfig,
         }
