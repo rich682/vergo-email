@@ -110,18 +110,6 @@ export default function ReviewHubPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          Items requiring your attention
-        </p>
-        {!loading && totalCount > 0 && (
-          <span className="text-sm text-gray-500">
-            {totalCount} item{totalCount !== 1 ? "s" : ""} pending
-          </span>
-        )}
-      </div>
-
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-gray-100 pb-px">
         {TAB_CONFIG.map(tab => {
@@ -154,7 +142,8 @@ export default function ReviewHubPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 justify-between">
+        <div className="flex items-center gap-3">
         <div className="relative">
           <select
             value={selectedBoardId}
@@ -180,6 +169,12 @@ export default function ReviewHubPage() {
           </select>
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
         </div>
+        </div>
+        {!loading && totalCount > 0 && (
+          <span className="text-sm text-gray-500">
+            {totalCount} item{totalCount !== 1 ? "s" : ""} pending
+          </span>
+        )}
       </div>
 
       {/* Content */}

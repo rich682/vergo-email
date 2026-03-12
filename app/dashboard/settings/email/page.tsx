@@ -178,12 +178,11 @@ function EmailSetupContent() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="p-8">
+    <div className="p-8 space-y-6">
         {/* Success/Error Messages */}
         {message && (
           <div
-            className={`mb-6 p-4 rounded-lg ${
+            className={`p-4 rounded-lg ${
               message.type === "success"
                 ? "bg-green-50 text-green-800 border border-green-200"
                 : "bg-red-50 text-red-800 border border-red-200"
@@ -193,7 +192,7 @@ function EmailSetupContent() {
           </div>
         )}
 
-        <div className="space-y-6 max-w-3xl">
+        <div className="space-y-6">
           {/* Connected Inbox Section */}
           <div className="border border-gray-200 rounded-lg">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
@@ -323,7 +322,6 @@ function EmailSetupContent() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   )
 }
@@ -331,11 +329,9 @@ function EmailSetupContent() {
 export default function EmailSetupPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-white">
-        <div className="px-8 py-6">
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
-          </div>
+      <div className="p-8">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
         </div>
       </div>
     }>
